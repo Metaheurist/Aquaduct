@@ -135,12 +135,21 @@ def main() -> None:
         load_dotenv()
 
     ap = argparse.ArgumentParser()
+    ap.add_argument("--ui", action="store_true", help="Launch the desktop UI.")
+    ap.add_argument("--cli", action="store_true", help="Run the CLI pipeline (default is UI).")
     ap.add_argument("--once", action="store_true", help="Run a single generation cycle and exit.")
     ap.add_argument("--interval-hours", type=float, default=4.0, help="Polling interval in hours.")
     ap.add_argument("--music", type=str, default="", help="Optional background music file path.")
     args = ap.parse_args()
 
     music = Path(args.music).resolve() if args.music else None
+
+    # Default: launching main should bring up the UI (unless CLI mode requested).
+    if args.ui or (not args.cli and not args.once):
+        from UI.app import main as ui_main
+
+        ui_main()
+        return
 
     if args.once:
         app = AppSettings(topic_tags=[], background_music_path=str(music) if music else "")
