@@ -103,6 +103,14 @@ class ModelDownloadWorker(QThread):
         self.repo_ids = [r for r in repo_ids if r]
         self.models_dir = models_dir
         self.title = title
+        self._cancel_requested = False
+
+    def cancel(self) -> None:
+        """
+        Best-effort cancellation.
+        We signal our progress bridge to abort; partial files are left in place so a later run can resume.
+        """
+        self._cancel_requested = True
 
     def run(self) -> None:
         try:
@@ -114,6 +122,9 @@ class ModelDownloadWorker(QThread):
 
             worker = self
 
+            class _CancelledDownload(RuntimeError):
+                pass
+
             class QtTqdm(tqdm):  # type: ignore[misc]
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
@@ -123,6 +134,9 @@ class ModelDownloadWorker(QThread):
 
                 def refresh(self, *args, **kwargs):  # noqa: D401
                     try:
+                        if worker._cancel_requested:
+                            raise _CancelledDownload("Cancelled")
+
                         def _human_bytes(x: float | int | None) -> str:
                             if x is None:
                                 return "?"
@@ -176,9 +190,16 @@ class ModelDownloadWorker(QThread):
                     return super().refresh(*args, **kwargs)
 
             for i, repo_id in enumerate(self.repo_ids, start=1):
+                if self._cancel_requested:
+                    self.done.emit("Cancelled")
+                    return
                 base = int(((i - 1) / total_models) * 100)
                 self.progress.emit(base, f"[{i}/{total_models}] {repo_id}")
-                download_model_to_project(repo_id, models_dir=self.models_dir, tqdm_class=QtTqdm)
+                try:
+                    download_model_to_project(repo_id, models_dir=self.models_dir, tqdm_class=QtTqdm)
+                except _CancelledDownload:
+                    self.done.emit("Cancelled")
+                    return
                 self.progress.emit(int((i / total_models) * 100), f"Downloaded: {repo_id}")
 
             self.done.emit("Done")

@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
         self.worker: PipelineWorker | None = None
         self.topic_worker: TopicDiscoverWorker | None = None
         self.download_worker: ModelDownloadWorker | None = None
+        self._download_popup: DownloadPopup | None = None
 
         if hasattr(self, "personality_combo") and hasattr(self, "personality_hint"):
             self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
@@ -446,16 +447,25 @@ class MainWindow(QMainWindow):
             return
 
         popup = DownloadPopup(self, title=title)
+        self._download_popup = popup
 
         self.download_worker = ModelDownloadWorker(repo_ids=repo_ids, models_dir=self.paths.models_dir, title=title)
+
+        # If user closes the popup, cancel the background worker so app can exit cleanly.
+        popup.cancel_requested.connect(lambda: self.download_worker.cancel() if self.download_worker else None)
 
         def on_progress(pct: int, status: str) -> None:
             popup.status.setText(status)
             popup.bar.setValue(max(0, min(100, int(pct))))
 
         def on_done(_msg: str) -> None:
-            popup.status.setText("Done.")
-            popup.bar.setValue(100)
+            msg = str(_msg or "").strip().lower()
+            if "cancel" in msg:
+                popup.status.setText("Cancelled. You can resume later.")
+                # Don't force bar to 0; leave last visible state.
+            else:
+                popup.status.setText("Done.")
+                popup.bar.setValue(100)
             popup.accept()
 
         def on_failed(err: str) -> None:
@@ -470,6 +480,23 @@ class MainWindow(QMainWindow):
         self.download_worker.start()
 
         popup.exec()
+        self._download_popup = None
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        # Make app exit reliably even if a background download is running.
+        try:
+            if self.download_worker and self.download_worker.isRunning():
+                self.download_worker.cancel()
+                # Best-effort: wait briefly so the thread can unwind.
+                self.download_worker.wait(1500)
+        except Exception:
+            pass
+        try:
+            if self._download_popup is not None:
+                self._download_popup.close()
+        except Exception:
+            pass
+        return super().closeEvent(event)
 
     def _on_run(self) -> None:
         if self.worker and self.worker.isRunning():
