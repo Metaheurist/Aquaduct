@@ -18,11 +18,14 @@ __pycache__/
 .venv/
 venv/
 ENV/
+.venv-build/
 
 # Build / artifacts
-build/
 dist/
 *.egg-info/
+
+# PyInstaller build work dir (generated)
+build/ai-news-factory*/
 
 # Hugging Face caches (often contain large blobs + auth state)
 **/.cache/huggingface/
