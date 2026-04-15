@@ -26,7 +26,7 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
         video_model_id="z",
         voice_model_id="v",
         background_music_path="C:\\music.mp3",
-        video=VideoSettings(width=720, height=1280, fps=24, images_per_video=5),
+        video=VideoSettings(width=720, height=1280, fps=24, images_per_video=5, cleanup_images_after_run=True),
     )
     save_settings(s)
     s2 = load_settings()
@@ -35,4 +35,5 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     assert s2.video.height == 1280
     assert s2.video.fps == 24
     assert s2.video.images_per_video == 5
+    assert s2.video.cleanup_images_after_run is True
 

@@ -6,6 +6,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+import shutil
 
 try:
     from dotenv import load_dotenv
@@ -18,6 +19,7 @@ from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_t
 from src.crawler import get_latest_items, pick_one_item
 from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.clips import generate_clips
+from src.branding_video import apply_palette_to_prompts
 from src.voice import synthesize
 from src.preflight import preflight_check
 from src.personality_auto import auto_pick_personality
@@ -142,6 +144,7 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
         items=sources,
         topic_tags=app.topic_tags,
         personality_id=picked.preset.id,
+        branding=getattr(app, "branding", None),
     )
 
     safe_dir = safe_title_to_dirname(pkg.title)
@@ -165,6 +168,7 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
     out_final = video_dir / "final.mp4"
     music = Path(app.background_music_path).resolve() if app.background_music_path else None
     branding = getattr(app, "branding", None)
+    prompts = apply_palette_to_prompts(prompts, branding)
 
     if video_settings.use_image_slideshow:
         img_dir = assets_dir / "images"
@@ -220,6 +224,16 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
             background_music=music,
             branding=branding,
         )
+
+    # Optional cleanup: remove large image/keyframe folders to save disk space.
+    if bool(getattr(video_settings, "cleanup_images_after_run", False)):
+        for rel in ("images", "keyframes"):
+            p = assets_dir / rel
+            try:
+                if p.exists() and p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+            except Exception:
+                pass
 
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts)
     return video_dir

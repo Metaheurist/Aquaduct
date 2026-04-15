@@ -55,6 +55,7 @@ def load_settings() -> AppSettings:
         use_image_slideshow=bool(video_raw.get("use_image_slideshow", True)),
         clips_per_video=int(video_raw.get("clips_per_video", 3)),
         clip_seconds=float(video_raw.get("clip_seconds", 4.0)),
+        cleanup_images_after_run=bool(video_raw.get("cleanup_images_after_run", False)),
     )
 
     branding_raw = data.get("branding", {}) if isinstance(data, dict) else {}
@@ -81,6 +82,10 @@ def load_settings() -> AppSettings:
         if str(branding_raw.get("watermark_position", "top_right"))
         in ("top_left", "top_right", "bottom_left", "bottom_right", "center")
         else "top_right",
+        video_style_enabled=bool(branding_raw.get("video_style_enabled", False)),
+        video_style_strength=str(branding_raw.get("video_style_strength", "subtle"))
+        if str(branding_raw.get("video_style_strength", "subtle")) in ("subtle", "strong")
+        else "subtle",
     )
 
     return AppSettings(

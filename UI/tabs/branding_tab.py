@@ -147,6 +147,29 @@ def attach_branding_tab(win) -> None:
     divider.setFixedHeight(8)
     lay.addWidget(divider)
 
+    # ---- Video style section (palette affects prompts + captions) ----
+    vs_header = QLabel("Video style (palette → prompts + captions)")
+    vs_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
+    lay.addWidget(vs_header)
+
+    win.brand_video_style_enable = QCheckBox("Apply branding to generated video style")
+    win.brand_video_style_enable.setChecked(bool(getattr(b, "video_style_enabled", False)))
+    lay.addWidget(win.brand_video_style_enable)
+
+    vs_row = QHBoxLayout()
+    vs_lbl = QLabel("Strength")
+    vs_lbl.setStyleSheet("color: #B7B7C2;")
+    vs_row.addWidget(vs_lbl)
+    win.brand_video_style_strength = QComboBox()
+    win.brand_video_style_strength.addItem("Subtle (readability first)", "subtle")
+    win.brand_video_style_strength.addItem("Strong (dominant palette)", "strong")
+    cur_strength = str(getattr(b, "video_style_strength", "subtle") or "subtle")
+    idx = win.brand_video_style_strength.findData(cur_strength)
+    win.brand_video_style_strength.setCurrentIndex(idx if idx >= 0 else 0)
+    vs_row.addWidget(win.brand_video_style_strength)
+    vs_row.addStretch(1)
+    lay.addLayout(vs_row)
+
     wmark_header = QLabel("Logo watermark (videos)")
     wmark_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
     lay.addWidget(wmark_header)
@@ -229,6 +252,10 @@ def attach_branding_tab(win) -> None:
             watermark_opacity=float(win.brand_watermark_opacity.value()) / 100.0,
             watermark_scale=float(win.brand_watermark_scale.value()) / 100.0,
             watermark_position=str(win.brand_watermark_pos.currentData() or "top_right"),
+            video_style_enabled=bool(win.brand_video_style_enable.isChecked()) if hasattr(win, "brand_video_style_enable") else False,
+            video_style_strength=str(win.brand_video_style_strength.currentData() or "subtle")
+            if hasattr(win, "brand_video_style_strength")
+            else "subtle",
         )
 
     def _apply_live_theme() -> None:
@@ -265,6 +292,10 @@ def attach_branding_tab(win) -> None:
         win.brand_watermark_opacity.setEnabled(enabled_wm)
         win.brand_watermark_scale.setEnabled(enabled_wm)
 
+        enabled_vs = bool(win.brand_video_style_enable.isChecked()) if hasattr(win, "brand_video_style_enable") else False
+        if hasattr(win, "brand_video_style_strength"):
+            win.brand_video_style_strength.setEnabled(enabled_vs)
+
     # Live apply + enablement wiring
     for sig_src in [
         win.brand_theme_enable,
@@ -281,6 +312,7 @@ def attach_branding_tab(win) -> None:
         win.brand_muted_hex,
         win.brand_accent_hex,
         win.brand_danger_hex,
+        win.brand_video_style_enable,
     ]:
         try:
             if isinstance(sig_src, QLineEdit):
@@ -298,6 +330,7 @@ def attach_branding_tab(win) -> None:
     win.brand_watermark_pos.currentIndexChanged.connect(lambda _i: None)
     win.brand_watermark_opacity.valueChanged.connect(lambda _v: None)
     win.brand_watermark_scale.valueChanged.connect(lambda _v: None)
+    win.brand_video_style_strength.currentIndexChanged.connect(lambda _i: None)
 
     _sync_enabled()
     _apply_live_theme()

@@ -284,6 +284,7 @@ class MainWindow(QMainWindow):
             use_image_slideshow=bool(self.use_slideshow_chk.isChecked()) if hasattr(self, "use_slideshow_chk") else True,
             clips_per_video=int(self.clips_spin.value()) if hasattr(self, "clips_spin") else 3,
             clip_seconds=float(self.clip_seconds_spin.value()) if hasattr(self, "clip_seconds_spin") else 4.0,
+            cleanup_images_after_run=bool(self.cleanup_images_chk.isChecked()) if hasattr(self, "cleanup_images_chk") else False,
         )
 
         branding = getattr(self.settings, "branding", BrandingSettings())
@@ -319,6 +320,12 @@ class MainWindow(QMainWindow):
                     watermark_position=str(self.brand_watermark_pos.currentData() or "top_right")
                     if hasattr(self, "brand_watermark_pos")
                     else str(getattr(branding, "watermark_position", "top_right")),
+                    video_style_enabled=bool(self.brand_video_style_enable.isChecked())
+                    if hasattr(self, "brand_video_style_enable")
+                    else bool(getattr(branding, "video_style_enabled", False)),
+                    video_style_strength=str(self.brand_video_style_strength.currentData() or "subtle")
+                    if hasattr(self, "brand_video_style_strength")
+                    else str(getattr(branding, "video_style_strength", "subtle")),
                 )
             except Exception:
                 branding = getattr(self.settings, "branding", BrandingSettings())

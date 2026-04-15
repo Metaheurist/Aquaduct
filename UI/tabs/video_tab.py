@@ -104,6 +104,10 @@ def attach_video_tab(win) -> None:
     win.export_microclips_chk.setChecked(bool(win.settings.video.export_microclips))
     form.addRow("", win.export_microclips_chk)
 
+    win.cleanup_images_chk = QCheckBox("Delete generated images after run (save storage)")
+    win.cleanup_images_chk.setChecked(bool(getattr(win.settings.video, "cleanup_images_after_run", False)))
+    form.addRow("", win.cleanup_images_chk)
+
     lay.addLayout(form)
 
     # (Merged) Quality / performance toggles
