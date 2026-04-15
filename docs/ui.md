@@ -34,6 +34,7 @@ python UI/ui_app.py
   - Micro-clip min/max seconds
   - Bitrate preset (low/med/high)
   - Export intermediate micro-clips toggle
+  - Delete generated images after run (save storage)
 - Quality/performance and advanced controls live under **Video**:
   - Prefer GPU toggle (advisory)
   - Try 4-bit LLM toggle (advisory; pipeline falls back if unavailable)

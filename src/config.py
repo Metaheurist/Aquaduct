@@ -71,6 +71,7 @@ class VideoSettings:
     use_image_slideshow: bool = True
     clips_per_video: int = 3
     clip_seconds: float = 4.0
+    cleanup_images_after_run: bool = False
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,10 @@ class BrandingSettings:
     watermark_opacity: float = 0.22
     watermark_scale: float = 0.18  # fraction of output width
     watermark_position: Literal["top_left", "top_right", "bottom_left", "bottom_right", "center"] = "top_right"
+
+    # Video style (optional): apply palette to prompts + captions
+    video_style_enabled: bool = False
+    video_style_strength: Literal["subtle", "strong"] = "subtle"
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,8 @@ from typing import Any
 
 from .utils_vram import cleanup_vram, vram_guard
 from .personalities import PersonalityPreset, get_personality_by_id
+from .config import BrandingSettings
+from .branding_video import palette_prompt_suffix, video_style_strength
 
 
 @dataclass(frozen=True)
@@ -129,6 +131,7 @@ def _prompt_for_items(
     headlines: list[dict[str, str]],
     topic_tags: list[str] | None,
     personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
 ) -> str:
     # Keep it stable for JSON parsing.
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
@@ -143,6 +146,17 @@ def _prompt_for_items(
         + "\n".join(f"- {r}" for r in personality.do_dont)
         + "\n"
     )
+
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
     return (
         "You are a viral short-form scriptwriter focused on AI tool reviews.\n"
         "Write a ~50 second vertical video script with 6-10 few-second beats.\n"
@@ -157,6 +171,7 @@ def _prompt_for_items(
         "- avoid markdown except optional ```json fence\n"
         "\n"
         f"{personality_block}"
+        f"{style_suffix}"
         f"{tag_line}"
         f"Headlines (pick ONE main tool release to review): {json.dumps(headlines, ensure_ascii=False)}\n"
     )
@@ -215,13 +230,14 @@ def generate_script(
     items: list[dict[str, str]],
     topic_tags: list[str] | None = None,
     personality_id: str = "neutral",
+    branding: BrandingSettings | None = None,
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links.
     Tries local 4-bit transformers; falls back to a deterministic template if the model fails to load.
     """
     personality = get_personality_by_id(personality_id)
-    prompt = _prompt_for_items(items, topic_tags, personality)
+    prompt = _prompt_for_items(items, topic_tags, personality, branding=branding)
 
     with vram_guard():
         try:
@@ -304,6 +320,26 @@ def generate_script(
                 ],
                 cta=cta,
             )
+
+            # Apply palette to fallback prompts (best-effort)
+            if branding and bool(getattr(branding, "video_style_enabled", False)):
+                suf = palette_prompt_suffix(branding)
+                if suf:
+                    pkg = VideoPackage(
+                        title=pkg.title,
+                        description=pkg.description,
+                        hashtags=pkg.hashtags,
+                        hook=pkg.hook,
+                        segments=[
+                            ScriptSegment(
+                                narration=s.narration,
+                                visual_prompt=(s.visual_prompt if "Palette:" in s.visual_prompt else f"{s.visual_prompt}, {suf}"),
+                                on_screen_text=s.on_screen_text,
+                            )
+                            for s in pkg.segments
+                        ],
+                        cta=pkg.cta,
+                    )
             # If tags are provided, append a couple as hashtags (best-effort).
             if topic_tags:
                 extra = []

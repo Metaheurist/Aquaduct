@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.config import BrandingSettings
 from UI.theme import build_qss, resolve_palette
+from src.branding_video import apply_palette_to_prompt, palette_prompt_suffix
 
 
 def test_resolve_palette_invalid_hex_falls_back():
@@ -32,4 +33,18 @@ def test_build_qss_includes_palette_values():
     qss = build_qss(pal)
     assert pal["bg"] in qss
     assert pal["accent"] in qss
+
+
+def test_palette_prompt_suffix_changes_with_strength():
+    b_subtle = BrandingSettings(video_style_enabled=True, video_style_strength="subtle")
+    b_strong = BrandingSettings(video_style_enabled=True, video_style_strength="strong")
+    assert "Palette:" in palette_prompt_suffix(b_subtle)
+    assert "dominant" in palette_prompt_suffix(b_strong).lower()
+
+
+def test_apply_palette_to_prompt_is_idempotent():
+    b = BrandingSettings(video_style_enabled=True, video_style_strength="subtle")
+    p1 = apply_palette_to_prompt("cyberpunk ui, neon", b)
+    p2 = apply_palette_to_prompt(p1, b)
+    assert p1 == p2
 

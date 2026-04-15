@@ -30,3 +30,13 @@ Invalid hex values are ignored and safely fall back to the selected preset.
 ### Validation
 If watermarking is enabled but the file path is missing/invalid, **preflight will fail** (strict mode blocks runs) so you don’t start a run that can’t complete.
 
+## Video style (palette → prompts + captions)
+If enabled, the Branding palette also influences the generated video:
+
+- **Prompts**: the palette is appended to each segment’s `visual_prompt` so image/video generation trends toward the same vibe.
+- **Captions**: the caption highlight bar uses the palette accent color; text remains high-contrast for readability.
+
+### Strength
+- **Subtle**: small accent usage; keep the original “cyberpunk UI” look, just nudged toward the palette.
+- **Strong**: more dominant palette language in prompts so visuals lean heavily toward the selected colors.
+

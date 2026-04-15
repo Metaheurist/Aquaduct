@@ -68,6 +68,7 @@ def _caption_frame(
     active_idx: int,
     w: int,
     h: int,
+    branding: BrandingSettings | None = None,
 ) -> np.ndarray:
     """
     Renders a transparent RGBA caption frame with current word highlighted.
@@ -93,6 +94,40 @@ def _caption_frame(
         lines = [text]
 
     y = int(h * 0.70)
+
+    # Default caption colors
+    text_fill = (255, 255, 255, 235)
+    stroke_fill = (0, 0, 0, 220)
+    bar_fill = (0, 255, 200, 45)
+    bar_outline = (0, 255, 200, 65)
+
+    # If enabled, apply palette colors to captions as well.
+    try:
+        if branding and bool(getattr(branding, "video_style_enabled", False)):
+            from UI.theme import resolve_palette
+
+            pal = resolve_palette(branding)
+
+            def _hex_to_rgb(s: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
+                s = str(s or "").strip()
+                if s.startswith("#"):
+                    s = s[1:]
+                if len(s) != 6:
+                    return fallback
+                try:
+                    return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+                except Exception:
+                    return fallback
+
+            tr, tg, tb = _hex_to_rgb(pal.get("text", "#FFFFFF"), (255, 255, 255))
+            ar, ag, ab = _hex_to_rgb(pal.get("accent", "#25F4EE"), (0, 255, 200))
+            # Keep stroke dark for readability, regardless of palette.
+            text_fill = (tr, tg, tb, 235)
+            bar_fill = (ar, ag, ab, 45)
+            bar_outline = (ar, ag, ab, 65)
+    except Exception:
+        pass
+
     for li, line in enumerate(lines):
         bbox = draw.textbbox((0, 0), line, font=font)
         tw = bbox[2] - bbox[0]
@@ -100,7 +135,7 @@ def _caption_frame(
         x = (w - tw) // 2
         yy = y + li * (th + 10)
         # stroke for readability
-        draw.text((x, yy), line, font=font, fill=(255, 255, 255, 235), stroke_width=6, stroke_fill=(0, 0, 0, 220))
+        draw.text((x, yy), line, font=font, fill=text_fill, stroke_width=6, stroke_fill=stroke_fill)
 
     # Active word highlight (best-effort): draw a glow bar behind active word on first line
     if words and 0 <= active_idx < len(words):
@@ -110,8 +145,8 @@ def _caption_frame(
         draw.rounded_rectangle(
             [int(w * 0.10), bar_y, int(w * 0.90), bar_y + bar_h],
             radius=24,
-            fill=(0, 255, 200, 45),
-            outline=(0, 255, 200, 65),
+            fill=bar_fill,
+            outline=bar_outline,
             width=2,
         )
     return np.array(img)
@@ -246,7 +281,7 @@ def assemble_microclips_then_concat(
                 seq.append(ww.word)
             seq = seq[-6:] if len(seq) > 6 else seq
             active_idx = min(len(seq) - 1, active) if active != -1 else -1
-            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height)
+            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height, branding=branding)
 
         cap = ImageClip(caption_make_frame(0)).set_duration(dur)
         cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
@@ -352,7 +387,7 @@ def assemble_generated_clips_then_concat(
                 seq.append(ww.word)
             seq = seq[-6:] if len(seq) > 6 else seq
             active_idx = min(len(seq) - 1, active) if active != -1 else -1
-            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height)
+            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height, branding=branding)
 
         cap = ImageClip(caption_make_frame(0)).set_duration(dur)
         cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
