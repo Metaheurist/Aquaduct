@@ -66,6 +66,11 @@ class VideoSettings:
     images_per_video: int = 8
     export_microclips: bool = True
     bitrate_preset: Literal["low", "med", "high"] = "med"
+    # If true, generate images and stitch into micro-clips (current default).
+    # If false, try generating actual video clips using a video model, then concat.
+    use_image_slideshow: bool = True
+    clips_per_video: int = 3
+    clip_seconds: float = 4.0
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,7 @@ class AppSettings:
     background_music_path: str = ""
     llm_model_id: str = ""
     image_model_id: str = ""
+    video_model_id: str = ""  # optional: separate clip model (e.g., img→vid) when paired with keyframe image model
     voice_model_id: str = ""
     video: VideoSettings = VideoSettings()
 

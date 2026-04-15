@@ -132,6 +132,48 @@ def get_latest_items(
     return fresh
 
 
+def fetch_latest_items(
+    *,
+    limit: int = 8,
+    query: str = '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")',
+    topic_tags: list[str] | None = None,
+) -> list[NewsItem]:
+    """
+    Fetches up to `limit` items from sources WITHOUT applying the seen-cache filter.
+    Use this for UI discovery features where "newest headlines" matters more than "unseen".
+    """
+    fetched: list[NewsItem] = []
+
+    if topic_tags:
+        tags = [t.strip() for t in topic_tags if t and t.strip()]
+        if tags:
+            tag_expr = " OR ".join(f"\"{t}\"" for t in tags[:12])
+            query = f"({tag_expr}) (AI OR \"AI tool\" OR \"AI app\") (release OR launched OR introduces OR \"new tool\")"
+
+    try:
+        fetched = _google_news_rss(query=query, limit=limit)
+    except Exception:
+        fetched = []
+
+    if len(fetched) < limit:
+        try:
+            fetched.extend(_marktechpost_latest(limit=limit - len(fetched)))
+        except Exception:
+            pass
+
+    # Basic dedupe by URL
+    out: list[NewsItem] = []
+    seen: set[str] = set()
+    for it in fetched:
+        if it.url in seen:
+            continue
+        seen.add(it.url)
+        out.append(it)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def pick_one_item(items: Iterable[NewsItem]) -> NewsItem | None:
     items = list(items)
     if not items:

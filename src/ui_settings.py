@@ -52,6 +52,9 @@ def load_settings() -> AppSettings:
         images_per_video=int(video_raw.get("images_per_video", 8)),
         export_microclips=bool(video_raw.get("export_microclips", True)),
         bitrate_preset=str(video_raw.get("bitrate_preset", "med")) if video_raw.get("bitrate_preset") in ("low", "med", "high") else "med",
+        use_image_slideshow=bool(video_raw.get("use_image_slideshow", True)),
+        clips_per_video=int(video_raw.get("clips_per_video", 3)),
+        clip_seconds=float(video_raw.get("clip_seconds", 4.0)),
     )
 
     return AppSettings(
@@ -62,6 +65,7 @@ def load_settings() -> AppSettings:
         background_music_path=str(data.get("background_music_path", "")) if isinstance(data, dict) else "",
         llm_model_id=str(data.get("llm_model_id", "")) if isinstance(data, dict) else "",
         image_model_id=str(data.get("image_model_id", "")) if isinstance(data, dict) else "",
+        video_model_id=str(data.get("video_model_id", "")) if isinstance(data, dict) else "",
         voice_model_id=str(data.get("voice_model_id", "")) if isinstance(data, dict) else "",
         video=video,
     )

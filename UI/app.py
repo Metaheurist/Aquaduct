@@ -25,6 +25,13 @@ def _ensure_project_root_on_path() -> None:
 
 def main() -> None:
     _ensure_project_root_on_path()
+    # Load HF_TOKEN (and other env vars) from repo `.env` for authenticated downloads.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except Exception:
+        pass
     app = QApplication(sys.argv)
     app.setStyleSheet(TIKTOK_QSS)
     win = MainWindow()

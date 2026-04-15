@@ -19,6 +19,26 @@ QPushButton:hover { border: 1px solid #25F4EE; }
 QPushButton:pressed { border: 1px solid #FE2C55; }
 QPushButton#primary { background: #25F4EE; color: #0B0B0F; border: 1px solid #25F4EE; font-weight: 600; }
 QPushButton#danger { background: #FE2C55; color: #FFFFFF; border: 1px solid #FE2C55; font-weight: 600; }
+QPushButton#closeBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #FF6B8A;
+  font-weight: 800;
+  padding: 4px 10px;
+}
+QPushButton#closeBtn:hover { background: rgba(254, 44, 85, 0.18); border: 1px solid rgba(254, 44, 85, 0.35); color: #FFFFFF; }
+QPushButton#closeBtn:pressed { background: rgba(254, 44, 85, 0.28); }
+QPushButton#saveBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #25F4EE;
+  font-weight: 800;
+  padding: 4px 10px;
+}
+QPushButton#saveBtn:hover { background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: #FFFFFF; }
+QPushButton#saveBtn:pressed { background: rgba(37, 244, 238, 0.22); }
 QCheckBox { spacing: 10px; }
 QCheckBox::indicator { width: 18px; height: 18px; border-radius: 6px; border: 1px solid #2A2A33; background: #15151B; }
 QCheckBox::indicator:checked { background: #25F4EE; border: 1px solid #25F4EE; }

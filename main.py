@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -15,8 +16,52 @@ from src.artist import generate_images
 from src.brain import VideoPackage, generate_script
 from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
 from src.crawler import get_latest_items, pick_one_item
-from src.editor import assemble_microclips_then_concat
+from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
+from src.clips import generate_clips
 from src.voice import synthesize
+from src.preflight import preflight_check
+
+
+def _single_instance_guard(name: str = "Aquaduct") -> None:
+    """
+    Prevent multiple instances from running at the same time.
+    On Windows, uses a named mutex. Else, uses an exclusive lock file in the project cache dir.
+    """
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            mutex = kernel32.CreateMutexW(None, True, f"Global\\{name}")
+            last_err = kernel32.GetLastError()
+            # 183 = ERROR_ALREADY_EXISTS
+            if mutex and int(last_err) == 183:
+                raise SystemExit(f"{name} is already running.")
+            return
+        except SystemExit:
+            raise
+        except Exception:
+            # Fall back to lock file below
+            pass
+
+    try:
+        import msvcrt  # type: ignore
+    except Exception:
+        msvcrt = None  # type: ignore
+
+    paths = get_paths()
+    lock_path = paths.cache_dir / f"{name}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(lock_path, "a+", encoding="utf-8")
+    try:
+        if msvcrt:
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl  # type: ignore
+
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except Exception:
+        raise SystemExit(f"{name} is already running.")
 
 
 def _now_run_id() -> str:
@@ -60,12 +105,17 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
     video_settings = app.video
     llm_id = app.llm_model_id.strip() or models.llm_id
     img_id = app.image_model_id.strip() or models.sdxl_turbo_id
+    clip_id = getattr(app, "video_model_id", "").strip()
     voice_id = app.voice_model_id.strip() or models.kokoro_id
 
     # Ensure base dirs exist
     paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
     paths.runs_dir.mkdir(parents=True, exist_ok=True)
     paths.videos_dir.mkdir(parents=True, exist_ok=True)
+
+    pf = preflight_check(settings=app, strict=True)
+    if not pf.ok:
+        raise RuntimeError("Preflight failed:\n- " + "\n- ".join(pf.errors))
 
     items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
     item = pick_one_item(items)
@@ -103,28 +153,61 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
 
     # Images
     prompts = [s.visual_prompt for s in pkg.segments][:10]
-    img_dir = assets_dir / "images"
-    gen = generate_images(
-        sdxl_turbo_model_id=img_id,
-        prompts=prompts,
-        out_dir=img_dir,
-        max_images=max(1, int(video_settings.images_per_video)),
-    )
-    image_paths = [g.path for g in gen]
-
-    # Editor
     out_final = video_dir / "final.mp4"
     music = Path(app.background_music_path).resolve() if app.background_music_path else None
-    assemble_microclips_then_concat(
-        ffmpeg_dir=paths.ffmpeg_dir,
-        settings=video_settings,
-        images=image_paths,
-        voice_wav=voice_wav,
-        captions_json=captions_json,
-        out_final_mp4=out_final,
-        out_assets_dir=assets_dir,
-        background_music=music,
-    )
+
+    if video_settings.use_image_slideshow:
+        img_dir = assets_dir / "images"
+        gen = generate_images(
+            sdxl_turbo_model_id=img_id,
+            prompts=prompts,
+            out_dir=img_dir,
+            max_images=max(1, int(video_settings.images_per_video)),
+        )
+        image_paths = [g.path for g in gen]
+        assemble_microclips_then_concat(
+            ffmpeg_dir=paths.ffmpeg_dir,
+            settings=video_settings,
+            images=image_paths,
+            voice_wav=voice_wav,
+            captions_json=captions_json,
+            out_final_mp4=out_final,
+            out_assets_dir=assets_dir,
+            background_music=music,
+        )
+    else:
+        # For img→vid clip models, first generate keyframe images (using the image model),
+        # then animate them into clips with the selected clip model.
+        key_dir = assets_dir / "keyframes"
+        key_gen = generate_images(
+            sdxl_turbo_model_id=img_id,
+            prompts=prompts,
+            out_dir=key_dir,
+            max_images=max(1, int(video_settings.clips_per_video)),
+        )
+        keyframes = [g.path for g in key_gen]
+
+        clip_dir = assets_dir / "clips"
+        gen_clips = generate_clips(
+            video_model_id=(clip_id or img_id),
+            prompts=prompts,
+            init_images=keyframes,
+            out_dir=clip_dir,
+            max_clips=max(1, int(video_settings.clips_per_video)),
+            fps=int(video_settings.fps),
+            seconds_per_clip=float(video_settings.clip_seconds),
+        )
+        clip_paths = [c.path for c in gen_clips]
+        assemble_generated_clips_then_concat(
+            ffmpeg_dir=paths.ffmpeg_dir,
+            settings=video_settings,
+            clips=clip_paths,
+            voice_wav=voice_wav,
+            captions_json=captions_json,
+            out_final_mp4=out_final,
+            out_assets_dir=assets_dir,
+            background_music=music,
+        )
 
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts)
     return video_dir
@@ -133,6 +216,8 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
 def main() -> None:
     if load_dotenv:
         load_dotenv()
+
+    _single_instance_guard()
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--ui", action="store_true", help="Launch the desktop UI.")

@@ -29,5 +29,5 @@ dist/
 **/.cache/torch/
 **/.cache/pip/
 
-# Local model folders can be huge; keep configs if you want
-models/**/.cache/
+# Local model downloads can be huge; never commit them
+models/

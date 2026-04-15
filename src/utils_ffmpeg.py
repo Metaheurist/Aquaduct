@@ -18,6 +18,18 @@ def _is_windows() -> bool:
     return platform.system().lower().startswith("win")
 
 
+def find_ffmpeg(ffmpeg_dir: Path) -> Path | None:
+    """
+    Returns ffmpeg executable path if already installed under ffmpeg_dir, else None.
+    Does not download anything.
+    """
+    exe_name = "ffmpeg.exe" if _is_windows() else "ffmpeg"
+    if not ffmpeg_dir.exists():
+        return None
+    existing = list(ffmpeg_dir.rglob(exe_name))
+    return existing[0] if existing else None
+
+
 def ensure_ffmpeg(ffmpeg_dir: Path) -> Path:
     """
     Downloads a static ffmpeg build on first run and returns the path to ffmpeg executable.
@@ -26,9 +38,9 @@ def ensure_ffmpeg(ffmpeg_dir: Path) -> Path:
     exe_name = "ffmpeg.exe" if _is_windows() else "ffmpeg"
 
     # If already present, use it.
-    existing = list(ffmpeg_dir.rglob(exe_name))
+    existing = find_ffmpeg(ffmpeg_dir)
     if existing:
-        return existing[0]
+        return existing
 
     zip_path = ffmpeg_dir / "ffmpeg.zip"
     tmp_extract = ffmpeg_dir / "_extract"

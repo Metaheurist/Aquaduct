@@ -10,6 +10,7 @@ from moviepy.editor import (
     AudioFileClip,
     CompositeVideoClip,
     ImageClip,
+    VideoFileClip,
     concatenate_videoclips,
 )
 from PIL import Image, ImageDraw, ImageFont
@@ -235,6 +236,106 @@ def assemble_microclips_then_concat(
         codec="libx264",
         audio_codec="aac",
         bitrate=final_bitrate,
+        preset="medium",
+        threads=4,
+        logger=None,
+    )
+
+
+def assemble_generated_clips_then_concat(
+    *,
+    ffmpeg_dir: Path,
+    settings: VideoSettings,
+    clips: list[Path],
+    voice_wav: Path,
+    captions_json: Path,
+    out_final_mp4: Path,
+    out_assets_dir: Path,
+    background_music: Path | None = None,
+) -> None:
+    """
+    Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
+    and syncing each clip to a slice of the narration audio.
+    """
+    out_final_mp4.parent.mkdir(parents=True, exist_ok=True)
+    out_assets_dir.mkdir(parents=True, exist_ok=True)
+
+    ffmpeg_exe = ensure_ffmpeg(ffmpeg_dir)
+    configure_moviepy_ffmpeg(ffmpeg_exe)
+
+    audio = AudioFileClip(str(voice_wav)).volumex(settings.voice_volume)
+    words = _load_captions(captions_json)
+
+    total_dur = float(audio.duration)
+    if total_dur <= 0.2:
+        total_dur = max(3.0, float(len(clips)))
+
+    src = clips[:] if clips else []
+    if not src:
+        raise ValueError("No clips provided to editor.")
+
+    clip_count = len(src)
+    chunk = total_dur / clip_count
+
+    out_clips = []
+    for idx, clip_path in enumerate(src, start=1):
+        t0 = (idx - 1) * chunk
+        t1 = min(total_dur, idx * chunk)
+        dur = max(0.25, t1 - t0)
+
+        base = VideoFileClip(str(clip_path)).subclip(0, min(dur, float(VideoFileClip(str(clip_path)).duration)))
+        base = base.resize((settings.width, settings.height))
+
+        a_seg = audio.subclip(t0, t0 + dur)
+
+        w_in = [w for w in words if (w.end > t0 and w.start < t0 + dur)]
+
+        def caption_make_frame(local_t: float):
+            global_t = t0 + local_t
+            active = -1
+            seq = []
+            for i, ww in enumerate(w_in):
+                if ww.start <= global_t <= ww.end:
+                    active = i
+                seq.append(ww.word)
+            seq = seq[-6:] if len(seq) > 6 else seq
+            active_idx = min(len(seq) - 1, active) if active != -1 else -1
+            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height)
+
+        cap = ImageClip(caption_make_frame(0)).set_duration(dur)
+        cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
+
+        comp = CompositeVideoClip([base, cap]).set_audio(a_seg)
+
+        if settings.export_microclips:
+            clip_out = out_assets_dir / f"clip_{idx:02d}.mp4"
+            comp.write_videofile(
+                str(clip_out),
+                fps=settings.fps,
+                codec="libx264",
+                audio_codec="aac",
+                preset="medium",
+                threads=4,
+                logger=None,
+            )
+
+        out_clips.append(comp)
+
+    final = concatenate_videoclips(out_clips, method="compose").set_audio(audio)
+
+    if background_music and background_music.exists():
+        try:
+            music = AudioFileClip(str(background_music)).volumex(settings.music_volume)
+            music = music.audio_loop(duration=final.duration)
+            final = final.set_audio(final.audio.set_fps(44100).fx(lambda a: a) + music)
+        except Exception:
+            pass
+
+    final.write_videofile(
+        str(out_final_mp4),
+        fps=settings.fps,
+        codec="libx264",
+        audio_codec="aac",
         preset="medium",
         threads=4,
         logger=None,
