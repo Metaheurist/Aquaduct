@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture()
+def tmp_repo_root(tmp_path: Path) -> Path:
+    # Provides a fake repo root for path monkeypatching
+    return tmp_path
+
+
+@pytest.fixture()
+def patch_paths(monkeypatch: pytest.MonkeyPatch, tmp_repo_root: Path):
+    """
+    Monkeypatch src.config.get_paths() to use a temp directory so tests don't touch real disk.
+    """
+    from src import config as config_mod
+
+    def _fake_get_paths():
+        root = tmp_repo_root
+        data_dir = root / "data"
+        cache_dir = root / ".cache"
+        return config_mod.Paths(
+            root=root,
+            data_dir=data_dir,
+            news_cache_dir=data_dir / "news_cache",
+            runs_dir=root / "runs",
+            videos_dir=root / "videos",
+            models_dir=root / "models",
+            cache_dir=cache_dir,
+            ffmpeg_dir=cache_dir / "ffmpeg",
+        )
+
+    monkeypatch.setattr(config_mod, "get_paths", _fake_get_paths)
+    return _fake_get_paths
+
+
+@pytest.fixture()
+def no_network(monkeypatch: pytest.MonkeyPatch):
+    """
+    Disable real HTTP by making requests.get raise unless tests explicitly mock it.
+    """
+    import requests
+
+    def _blocked(*args, **kwargs):
+        raise RuntimeError("Network disabled in unit tests; mock requests.get")
+
+    monkeypatch.setattr(requests, "get", _blocked)
+
+
+@pytest.fixture()
+def write_ui_settings(tmp_repo_root: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    Helper to write ui_settings.json into a temp root and patch ui_settings._root().
+    """
+    from src import ui_settings as ui_mod
+
+    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+
+    def _write(payload: dict) -> Path:
+        p = tmp_repo_root / "ui_settings.json"
+        p.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return p
+
+    return _write
+

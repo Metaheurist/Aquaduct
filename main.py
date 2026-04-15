@@ -20,6 +20,7 @@ from src.editor import assemble_generated_clips_then_concat, assemble_microclips
 from src.clips import generate_clips
 from src.voice import synthesize
 from src.preflight import preflight_check
+from src.personality_auto import auto_pick_personality
 
 
 def _single_instance_guard(name: str = "Aquaduct") -> None:
@@ -129,10 +130,18 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
 
     # Brain
     sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+    titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+    picked = auto_pick_personality(
+        requested_id=getattr(app, "personality_id", "auto"),
+        llm_model_id=llm_id,
+        titles=titles,
+        topic_tags=list(app.topic_tags),
+    )
     pkg = generate_script(
         model_id=llm_id,
         items=sources,
         topic_tags=app.topic_tags,
+        personality_id=picked.preset.id,
     )
 
     safe_dir = safe_title_to_dirname(pkg.title)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .utils_vram import cleanup_vram, vram_guard
+from .personalities import PersonalityPreset, get_personality_by_id
 
 
 @dataclass(frozen=True)
@@ -124,10 +125,24 @@ def _to_package(data: dict[str, Any]) -> VideoPackage:
     )
 
 
-def _prompt_for_items(headlines: list[dict[str, str]], topic_tags: list[str] | None) -> str:
+def _prompt_for_items(
+    headlines: list[dict[str, str]],
+    topic_tags: list[str] | None,
+    personality: PersonalityPreset,
+) -> str:
     # Keep it stable for JSON parsing.
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     tag_line = f"Topic tags (must strongly influence the tool choice/angle): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
     return (
         "You are a viral short-form scriptwriter focused on AI tool reviews.\n"
         "Write a ~50 second vertical video script with 6-10 few-second beats.\n"
@@ -141,6 +156,7 @@ def _prompt_for_items(headlines: list[dict[str, str]], topic_tags: list[str] | N
         "- mention the tool name early\n"
         "- avoid markdown except optional ```json fence\n"
         "\n"
+        f"{personality_block}"
         f"{tag_line}"
         f"Headlines (pick ONE main tool release to review): {json.dumps(headlines, ensure_ascii=False)}\n"
     )
@@ -198,12 +214,14 @@ def generate_script(
     model_id: str,
     items: list[dict[str, str]],
     topic_tags: list[str] | None = None,
+    personality_id: str = "neutral",
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links.
     Tries local 4-bit transformers; falls back to a deterministic template if the model fails to load.
     """
-    prompt = _prompt_for_items(items, topic_tags)
+    personality = get_personality_by_id(personality_id)
+    prompt = _prompt_for_items(items, topic_tags, personality)
 
     with vram_guard():
         try:
@@ -214,6 +232,33 @@ def generate_script(
             # Fallback: minimal structured script without the LLM (keeps pipeline running).
             tool_title = (items[0].get("title") if items else "") or "New AI Tool"
             title = tool_title[:80]
+
+            # Tone shaping for fallback
+            if personality.id == "hype":
+                hook = "Stop scrolling—this AI tool is actually insane."
+                cta = "Follow for daily AI tool drops with real takeaways."
+            elif personality.id == "analytical":
+                hook = "Quick technical breakdown: a new AI tool just shipped."
+                cta = "Follow for practical AI tooling breakdowns."
+            elif personality.id == "comedic":
+                hook = "Stop scrolling—your workflow is about to get bullied (in a good way)."
+                cta = "Follow for daily AI tools, minus the cringe."
+            elif personality.id == "skeptical":
+                hook = "Before you believe the hype—here’s what this new AI tool really does."
+                cta = "Follow for honest AI tool reviews and trade-offs."
+            elif personality.id == "cozy":
+                hook = "Hey—quick and simple: this new AI tool might save you time."
+                cta = "Follow for friendly AI tool tips you can use today."
+            elif personality.id == "urgent":
+                hook = "Breaking: a new AI tool just dropped—here’s the fast rundown."
+                cta = "Follow for daily AI news you can act on."
+            elif personality.id == "contrarian":
+                hook = "Hot take: this new AI tool is useful—but not for the reason you think."
+                cta = "Follow for sharp AI tool takes with receipts."
+            else:
+                hook = "Stop scrolling—this new AI tool just dropped."
+                cta = "Follow for daily AI tool reviews you can actually use."
+
             pkg = VideoPackage(
                 title=title,
                 description=f"Fast review: {tool_title}. What it does, who it’s for, and why it matters.",
@@ -234,7 +279,7 @@ def generate_script(
                     "#Shorts",
                     "#TikTok",
                 ],
-                hook="Stop scrolling—this new AI tool just dropped.",
+                hook=hook,
                 segments=[
                     ScriptSegment(
                         narration=f"Today’s drop: {tool_title}. Here’s the quick breakdown.",
@@ -257,7 +302,7 @@ def generate_script(
                         on_screen_text="QUICK TAKE",
                     ),
                 ],
-                cta="Follow for daily AI tool reviews you can actually use.",
+                cta=cta,
             )
             # If tags are provided, append a couple as hashtags (best-effort).
             if topic_tags:

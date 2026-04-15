@@ -63,6 +63,7 @@ def load_settings() -> AppSettings:
         try_llm_4bit=bool(data.get("try_llm_4bit", True)) if isinstance(data, dict) else True,
         try_sdxl_turbo=bool(data.get("try_sdxl_turbo", True)) if isinstance(data, dict) else True,
         background_music_path=str(data.get("background_music_path", "")) if isinstance(data, dict) else "",
+        personality_id=str(data.get("personality_id", "auto")) if isinstance(data, dict) else "auto",
         llm_model_id=str(data.get("llm_model_id", "")) if isinstance(data, dict) else "",
         image_model_id=str(data.get("image_model_id", "")) if isinstance(data, dict) else "",
         video_model_id=str(data.get("video_model_id", "")) if isinstance(data, dict) else "",

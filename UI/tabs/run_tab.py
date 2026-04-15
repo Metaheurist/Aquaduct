@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSpinBox, QVBoxLayout, QWidget
+
+from src.personalities import get_personality_presets
 
 
 def attach_run_tab(win) -> None:
@@ -21,6 +23,30 @@ def attach_run_tab(win) -> None:
     qty_row.addWidget(win.run_qty_spin)
     qty_row.addStretch(1)
     lay.addLayout(qty_row)
+
+    # Personality selection
+    p_row = QHBoxLayout()
+    p_lbl = QLabel("Personality")
+    p_lbl.setStyleSheet("color: #B7B7C2;")
+    p_row.addWidget(p_lbl)
+
+    win.personality_combo = QComboBox()
+    win.personality_combo.addItem("Auto (recommended)", "auto")
+    for p in get_personality_presets():
+        win.personality_combo.addItem(p.label, p.id)
+
+    # Restore selection if present
+    current = getattr(win.settings, "personality_id", "auto") or "auto"
+    idx = win.personality_combo.findData(current)
+    if idx >= 0:
+        win.personality_combo.setCurrentIndex(idx)
+    p_row.addWidget(win.personality_combo, 1)
+    p_row.addStretch(1)
+    lay.addLayout(p_row)
+
+    win.personality_hint = QLabel("")
+    win.personality_hint.setStyleSheet("color: #B7B7C2;")
+    lay.addWidget(win.personality_hint)
 
     win.run_status = QLabel("Idle")
     win.run_status.setStyleSheet("color: #B7B7C2;")

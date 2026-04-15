@@ -21,6 +21,7 @@ from src.config import AppSettings, VideoSettings, get_paths
 from src.model_manager import download_model_to_project
 from src.preflight import preflight_check
 from src.ui_settings import load_settings, save_settings
+from src.personalities import get_personality_by_id
 
 from UI.paths import project_root
 from UI.tabs import (
@@ -92,6 +93,10 @@ class MainWindow(QMainWindow):
         self.topic_worker: TopicDiscoverWorker | None = None
         self.download_worker: ModelDownloadWorker | None = None
 
+        if hasattr(self, "personality_combo") and hasattr(self, "personality_hint"):
+            self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
+            self._update_personality_hint()
+
         # Resize window to match active tab content.
         self.tabs.currentChanged.connect(lambda _idx: self._resize_to_current_tab())
         QTimer.singleShot(0, self._resize_to_current_tab)
@@ -117,6 +122,17 @@ class MainWindow(QMainWindow):
         max_h = 980
         h = max(min_h, min(max_h, int(h)))
         self.setFixedSize(self.width(), h)
+
+    def _update_personality_hint(self) -> None:
+        if not hasattr(self, "personality_combo") or not hasattr(self, "personality_hint"):
+            return
+        pid = str(self.personality_combo.currentData() or "auto")
+        if pid == "auto":
+            self.personality_hint.setText("Auto: will choose based on headlines + topic tags.")
+        else:
+            p = get_personality_by_id(pid)
+            self.personality_hint.setText(f"Selected: {p.label}")
+        self._resize_to_current_tab()
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
@@ -285,6 +301,7 @@ class MainWindow(QMainWindow):
             try_llm_4bit=bool(self.try_llm_chk.isChecked()),
             try_sdxl_turbo=bool(self.try_sdxl_chk.isChecked()),
             background_music_path=str(self.music_path.text()).strip(),
+            personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
             image_model_id=image_model_id,
             video_model_id=video_model_id,

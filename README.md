@@ -28,6 +28,13 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### Tests
+
+```powershell
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -q
+```
+
 ### 2) Run once (recommended for first test)
 
 ```powershell

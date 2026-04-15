@@ -110,6 +110,7 @@ class ModelDownloadWorker(QThread):
 
             # TQDM bridge to Qt progress
             from tqdm.auto import tqdm
+            import time
 
             worker = self
 
@@ -117,14 +118,59 @@ class ModelDownloadWorker(QThread):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
                     self._last_pct = -1
+                    self._last_n = -1
+                    self._last_emit_t = 0.0
 
                 def refresh(self, *args, **kwargs):  # noqa: D401
                     try:
-                        if self.total:
-                            pct = int((self.n / float(self.total)) * 100)
-                            if pct != self._last_pct:
-                                self._last_pct = pct
-                                worker.progress.emit(pct, str(getattr(self, "desc", "") or "Downloading…"))
+                        def _human_bytes(x: float | int | None) -> str:
+                            if x is None:
+                                return "?"
+                            x = float(x)
+                            if x < 0:
+                                return "?"
+                            units = ["B", "KB", "MB", "GB", "TB"]
+                            u = 0
+                            while x >= 1024.0 and u < len(units) - 1:
+                                x /= 1024.0
+                                u += 1
+                            if u == 0:
+                                return f"{int(x)}{units[u]}"
+                            return f"{x:.1f}{units[u]}"
+
+                        total = getattr(self, "total", None)
+                        n = getattr(self, "n", 0) or 0
+                        pct = int((n / float(total)) * 100) if total else 0
+
+                        # rate (bytes/sec) if known
+                        rate = None
+                        try:
+                            fd = self.format_dict
+                            rate = fd.get("rate", None) if isinstance(fd, dict) else None
+                        except Exception:
+                            rate = None
+
+                        now = time.time()
+                        should_emit = False
+                        if pct != self._last_pct:
+                            should_emit = True
+                        # Also emit if bytes advanced, even if percent didn't change (e.g. pct stays 0 when total unknown)
+                        if n != self._last_n and (now - self._last_emit_t) >= 0.35:
+                            should_emit = True
+                        # And emit periodically so rate updates
+                        if (now - self._last_emit_t) >= 1.2:
+                            should_emit = True
+
+                        if should_emit:
+                            self._last_pct = pct
+                            self._last_n = n
+                            self._last_emit_t = now
+
+                            desc = str(getattr(self, "desc", "") or "Downloading…").strip()
+                            n_s = _human_bytes(n)
+                            total_s = _human_bytes(total) if total else "?"
+                            rate_s = (_human_bytes(rate) + "/s") if rate else "?/s"
+                            worker.progress.emit(pct, f"{desc}\n{n_s}/{total_s} • {rate_s}")
                     except Exception:
                         pass
                     return super().refresh(*args, **kwargs)

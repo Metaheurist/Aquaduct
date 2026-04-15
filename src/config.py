@@ -80,6 +80,7 @@ class AppSettings:
     try_llm_4bit: bool = True
     try_sdxl_turbo: bool = True
     background_music_path: str = ""
+    personality_id: str = "auto"
     llm_model_id: str = ""
     image_model_id: str = ""
     video_model_id: str = ""  # optional: separate clip model (e.g., img→vid) when paired with keyframe image model
