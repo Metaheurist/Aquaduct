@@ -15,7 +15,7 @@ from moviepy.editor import (
 )
 from PIL import Image, ImageDraw, ImageFont
 
-from .config import VideoSettings
+from .config import BrandingSettings, VideoSettings
 from .utils_ffmpeg import configure_moviepy_ffmpeg, ensure_ffmpeg
 
 
@@ -117,6 +117,54 @@ def _caption_frame(
     return np.array(img)
 
 
+def _watermark_position_xy(*, pos: str, w: int, h: int, wm_w: int, wm_h: int) -> tuple[int, int]:
+    pad_x = int(w * 0.03)
+    pad_y = int(h * 0.03)
+    pos = (pos or "").strip().lower()
+    if pos == "top_left":
+        return pad_x, pad_y
+    if pos == "top_right":
+        return max(pad_x, w - wm_w - pad_x), pad_y
+    if pos == "bottom_left":
+        return pad_x, max(pad_y, h - wm_h - pad_y)
+    if pos == "bottom_right":
+        return max(pad_x, w - wm_w - pad_x), max(pad_y, h - wm_h - pad_y)
+    # center
+    return max(0, (w - wm_w) // 2), max(0, (h - wm_h) // 2)
+
+
+def _make_watermark_clip(
+    *,
+    branding: BrandingSettings | None,
+    out_w: int,
+    out_h: int,
+    duration: float,
+) -> ImageClip | None:
+    if not branding or not getattr(branding, "watermark_enabled", False):
+        return None
+    p = Path(str(getattr(branding, "watermark_path", "") or "").strip())
+    if not p.exists() or not p.is_file():
+        return None
+    try:
+        opacity = float(getattr(branding, "watermark_opacity", 0.22))
+    except Exception:
+        opacity = 0.22
+    try:
+        scale = float(getattr(branding, "watermark_scale", 0.18))
+    except Exception:
+        scale = 0.18
+    scale = max(0.05, min(0.6, scale))
+    opacity = max(0.05, min(1.0, opacity))
+    pos = str(getattr(branding, "watermark_position", "top_right") or "top_right")
+
+    wm = ImageClip(str(p)).set_duration(duration).set_opacity(opacity)
+    target_w = max(24, int(out_w * scale))
+    wm = wm.resize(width=target_w)
+    x, y = _watermark_position_xy(pos=pos, w=out_w, h=out_h, wm_w=int(wm.w), wm_h=int(wm.h))
+    wm = wm.set_position((x, y))
+    return wm
+
+
 def assemble_microclips_then_concat(
     *,
     ffmpeg_dir: Path,
@@ -127,6 +175,7 @@ def assemble_microclips_then_concat(
     out_final_mp4: Path,
     out_assets_dir: Path,
     background_music: Path | None = None,
+    branding: BrandingSettings | None = None,
 ) -> None:
     """
     Builds 9:16 final video as concatenation of few-second micro-clips (one per image/beat).
@@ -202,7 +251,9 @@ def assemble_microclips_then_concat(
         cap = ImageClip(caption_make_frame(0)).set_duration(dur)
         cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
 
-        comp = CompositeVideoClip([base, cap]).set_audio(a_seg)
+        wm = _make_watermark_clip(branding=branding, out_w=settings.width, out_h=settings.height, duration=dur)
+        layers = [base, cap] + ([wm] if wm is not None else [])
+        comp = CompositeVideoClip(layers).set_audio(a_seg)
 
         # Optional export each micro-clip
         if settings.export_microclips:
@@ -252,6 +303,7 @@ def assemble_generated_clips_then_concat(
     out_final_mp4: Path,
     out_assets_dir: Path,
     background_music: Path | None = None,
+    branding: BrandingSettings | None = None,
 ) -> None:
     """
     Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
@@ -305,7 +357,9 @@ def assemble_generated_clips_then_concat(
         cap = ImageClip(caption_make_frame(0)).set_duration(dur)
         cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
 
-        comp = CompositeVideoClip([base, cap]).set_audio(a_seg)
+        wm = _make_watermark_clip(branding=branding, out_w=settings.width, out_h=settings.height, duration=dur)
+        layers = [base, cap] + ([wm] if wm is not None else [])
+        comp = CompositeVideoClip(layers).set_audio(a_seg)
 
         if settings.export_microclips:
             clip_out = out_assets_dir / f"clip_{idx:02d}.mp4"

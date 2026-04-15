@@ -74,6 +74,38 @@ class VideoSettings:
 
 
 @dataclass(frozen=True)
+class BrandingSettings:
+    # Theme (optional overrides)
+    theme_enabled: bool = False
+    palette_id: str = "default"  # default | tiktok | ocean | sunset | mono | custom
+
+    bg_enabled: bool = False
+    bg_hex: str = "#0F0F10"
+
+    panel_enabled: bool = False
+    panel_hex: str = "#0B0B0F"
+
+    text_enabled: bool = False
+    text_hex: str = "#FFFFFF"
+
+    muted_enabled: bool = False
+    muted_hex: str = "#B7B7C2"
+
+    accent_enabled: bool = False
+    accent_hex: str = "#25F4EE"
+
+    danger_enabled: bool = False
+    danger_hex: str = "#FE2C55"
+
+    # Watermark (optional)
+    watermark_enabled: bool = False
+    watermark_path: str = ""
+    watermark_opacity: float = 0.22
+    watermark_scale: float = 0.18  # fraction of output width
+    watermark_position: Literal["top_left", "top_right", "bottom_left", "bottom_right", "center"] = "top_right"
+
+
+@dataclass(frozen=True)
 class AppSettings:
     topic_tags: list[str]
     prefer_gpu: bool = True
@@ -86,6 +118,7 @@ class AppSettings:
     video_model_id: str = ""  # optional: separate clip model (e.g., img→vid) when paired with keyframe image model
     voice_model_id: str = ""
     video: VideoSettings = VideoSettings()
+    branding: BrandingSettings = BrandingSettings()
 
 
 def safe_title_to_dirname(title: str) -> str:

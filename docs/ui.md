@@ -22,24 +22,27 @@ python UI/ui_app.py
 ## Tabs
 - **Run**
   - One-shot run button
-  - Live log output
   - Open `videos/` folder
   - Save settings
 - **Topics**
   - Add/remove free-text topic tags (stored in `ui_settings.json`)
 - **Video**
   - Images per video
+  - Video format presets (resolution/aspect)
+  - Clip mode vs slideshow mode
   - FPS
   - Micro-clip min/max seconds
   - Bitrate preset (low/med/high)
   - Export intermediate micro-clips toggle
-- **Quality**
+- Quality/performance and advanced controls live under **Video**:
   - Prefer GPU toggle (advisory)
   - Try 4-bit LLM toggle (advisory; pipeline falls back if unavailable)
   - Try SDXL Turbo toggle (advisory; pipeline falls back if unavailable)
-- **Advanced**
   - Background music picker
   - Clear `data/news_cache/seen.json`
+- **Branding**
+  - Optional full-theme palette overrides (presets or custom hex + color picker)
+  - Optional logo watermark on generated videos
 - **Settings**
   - Dependency check (import test)
   - Dependency install (runs `pip install -r requirements.txt`)
@@ -56,6 +59,7 @@ Saved to:
 ## Theme
 Applied via a global Qt stylesheet (QSS) with:
 - near-black backgrounds
-- cyan accent `#25F4EE`
-- pink/red accent `#FE2C55`
+- default cyan accent `#25F4EE`
+- default pink/red accent `#FE2C55`
+- optional palette overrides configured in the Branding tab
 

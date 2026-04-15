@@ -15,11 +15,15 @@ Each option is labeled with a relative speed marker:
 - `fastest` / `faster` / `slow`
 
 ## How downloads work
-Downloads use Hugging Face Hub snapshot download into:
-- `.cache/hf/`
+Downloads use Hugging Face Hub snapshot download into a project-local folder:
+- `models/<repo_as_dirname>/`
 
 This is implemented in:
 - `src/model_manager.py`
+
+Notes:
+- Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
+- In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.
 
 ## Model overrides
 Selected model repo IDs are persisted in `ui_settings.json` and passed into the pipeline through:

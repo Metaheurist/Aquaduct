@@ -100,9 +100,8 @@ python -m UI
 Tabs:
 - **Run**: one-shot run + logs + open `videos/`
 - **Topics**: add/remove free-text topic tags
-- **Video**: output quality knobs (FPS, micro-clip timing, bitrate, images per video)
-- **Quality**: toggles for “try LLM 4-bit” / “try SDXL Turbo”
-- **Advanced**: background music picker + clear seen cache
+- **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
+- **Branding**: theme palette overrides + logo watermark
 - **Settings**: dependency check/install + model select/download (script/video/voice)
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
 
@@ -125,6 +124,7 @@ Example:
 - [Main loop / CLI](docs/main.md)
 - [Config](docs/config.md)
 - [Desktop UI](docs/ui.md)
+- [Branding (theme + watermark)](docs/branding.md)
 - [Models + downloads](docs/models.md)
 - [Hardware + model fit rules](docs/hardware.md)
 - [FFmpeg auto-download](docs/ffmpeg.md)

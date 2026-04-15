@@ -50,6 +50,22 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         if v.clip_seconds <= 0:
             errors.append("Seconds per clip must be > 0 for clip mode.")
 
+    # Branding watermark sanity (optional)
+    try:
+        b = getattr(settings, "branding", None)
+        if b and bool(getattr(b, "watermark_enabled", False)):
+            p = str(getattr(b, "watermark_path", "") or "").strip()
+            if not p:
+                errors.append("Watermark is enabled but no logo file is selected.")
+            else:
+                from pathlib import Path
+
+                wp = Path(p)
+                if not wp.exists() or not wp.is_file():
+                    errors.append(f"Watermark logo file not found: {p}")
+    except Exception:
+        pass
+
     # Python deps required to run end-to-end
     core_mods = [
         "requests",

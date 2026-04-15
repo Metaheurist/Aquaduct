@@ -5,6 +5,7 @@ Assemble a final vertical (9:16) MP4 by:
 - splitting the video into **few-second micro-clips**
 - pairing each micro-clip with one generated image
 - overlaying **word-by-word captions**
+- optionally applying a **logo watermark**
 - concatenating into `final.mp4`
 
 ## FFmpeg
@@ -18,6 +19,11 @@ MoviePy requires FFmpeg for encoding. The project auto-downloads a Windows build
   - center-crop image to 9:16
   - subtle zoom
   - render captions into RGBA frames and overlay
+
+## Optional watermark
+If enabled in the UI Branding tab, a logo is overlaid onto each clip during composition:
+- position: top-left / top-right / bottom-left / bottom-right / center
+- opacity + size are configurable
 
 ## Outputs
 Per video folder:

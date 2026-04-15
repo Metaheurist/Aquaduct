@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.config import AppSettings, VideoSettings, get_paths
+from src.config import AppSettings, BrandingSettings, VideoSettings, get_paths
 from src.model_manager import download_model_to_project
 from src.preflight import preflight_check
 from src.ui_settings import load_settings, save_settings
@@ -25,6 +25,7 @@ from src.personalities import get_personality_by_id
 
 from UI.paths import project_root
 from UI.tabs import (
+    attach_branding_tab,
     attach_my_pc_tab,
     attach_run_tab,
     attach_settings_tab,
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
         attach_run_tab(self)
         attach_topics_tab(self)
         attach_video_tab(self)
+        attach_branding_tab(self)
         attach_settings_tab(self)
         attach_my_pc_tab(self)
 
@@ -284,6 +286,43 @@ class MainWindow(QMainWindow):
             clip_seconds=float(self.clip_seconds_spin.value()) if hasattr(self, "clip_seconds_spin") else 4.0,
         )
 
+        branding = getattr(self.settings, "branding", BrandingSettings())
+        if hasattr(self, "brand_theme_enable") and hasattr(self, "brand_palette_combo"):
+            try:
+                branding = BrandingSettings(
+                    theme_enabled=bool(self.brand_theme_enable.isChecked()),
+                    palette_id=str(self.brand_palette_combo.currentData() or "default"),
+                    bg_enabled=bool(self.brand_bg_chk.isChecked()) if hasattr(self, "brand_bg_chk") else False,
+                    bg_hex=str(self.brand_bg_hex.text()).strip() if hasattr(self, "brand_bg_hex") else branding.bg_hex,
+                    panel_enabled=bool(self.brand_panel_chk.isChecked()) if hasattr(self, "brand_panel_chk") else False,
+                    panel_hex=str(self.brand_panel_hex.text()).strip() if hasattr(self, "brand_panel_hex") else branding.panel_hex,
+                    text_enabled=bool(self.brand_text_chk.isChecked()) if hasattr(self, "brand_text_chk") else False,
+                    text_hex=str(self.brand_text_hex.text()).strip() if hasattr(self, "brand_text_hex") else branding.text_hex,
+                    muted_enabled=bool(self.brand_muted_chk.isChecked()) if hasattr(self, "brand_muted_chk") else False,
+                    muted_hex=str(self.brand_muted_hex.text()).strip() if hasattr(self, "brand_muted_hex") else branding.muted_hex,
+                    accent_enabled=bool(self.brand_accent_chk.isChecked()) if hasattr(self, "brand_accent_chk") else False,
+                    accent_hex=str(self.brand_accent_hex.text()).strip() if hasattr(self, "brand_accent_hex") else branding.accent_hex,
+                    danger_enabled=bool(self.brand_danger_chk.isChecked()) if hasattr(self, "brand_danger_chk") else False,
+                    danger_hex=str(self.brand_danger_hex.text()).strip() if hasattr(self, "brand_danger_hex") else branding.danger_hex,
+                    watermark_enabled=bool(self.brand_watermark_enable.isChecked())
+                    if hasattr(self, "brand_watermark_enable")
+                    else bool(getattr(branding, "watermark_enabled", False)),
+                    watermark_path=str(self.brand_watermark_path.text()).strip()
+                    if hasattr(self, "brand_watermark_path")
+                    else str(getattr(branding, "watermark_path", "")),
+                    watermark_opacity=float(self.brand_watermark_opacity.value()) / 100.0
+                    if hasattr(self, "brand_watermark_opacity")
+                    else float(getattr(branding, "watermark_opacity", 0.22)),
+                    watermark_scale=float(self.brand_watermark_scale.value()) / 100.0
+                    if hasattr(self, "brand_watermark_scale")
+                    else float(getattr(branding, "watermark_scale", 0.18)),
+                    watermark_position=str(self.brand_watermark_pos.currentData() or "top_right")
+                    if hasattr(self, "brand_watermark_pos")
+                    else str(getattr(branding, "watermark_position", "top_right")),
+                )
+            except Exception:
+                branding = getattr(self.settings, "branding", BrandingSettings())
+
         # Video/images selection can be either a simple repo_id (images or text→vid),
         # or a paired selection: (image_repo_id, video_repo_id) for img→vid pipelines.
         img_data = self.img_combo.currentData() if hasattr(self, "img_combo") else self.settings.image_model_id
@@ -308,6 +347,7 @@ class MainWindow(QMainWindow):
             video_model_id=video_model_id,
             voice_model_id=str(self.voice_combo.currentData()) if hasattr(self, "voice_combo") else self.settings.voice_model_id,
             video=video,
+            branding=branding,
         )
 
     def _save_settings(self) -> None:
