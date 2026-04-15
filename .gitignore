@@ -34,3 +34,7 @@ build/ai-news-factory*/
 
 # Local model downloads can be huge; never commit them
 models/
+
+# Local app state (do not commit)
+ui_settings.json
+data/news_cache/seen.json
