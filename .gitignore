@@ -1,0 +1,33 @@
+# Secrets / env files (never commit tokens)
+.env
+.env.*
+!.env.example
+*.token
+*.secret
+hf_token.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Build / artifacts
+build/
+dist/
+*.egg-info/
+
+# Hugging Face caches (often contain large blobs + auth state)
+**/.cache/huggingface/
+**/.cache/torch/
+**/.cache/pip/
+
+# Local model folders can be huge; keep configs if you want
+models/**/.cache/

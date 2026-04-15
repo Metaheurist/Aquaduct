@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Allow running as a script from repo root without installing as a package.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.config import get_paths
+from src.model_manager import download_model_to_project, model_options
+
+
+def main() -> None:
+    paths = get_paths()
+    paths.models_dir.mkdir(parents=True, exist_ok=True)
+    opts = model_options()
+
+    print(f"Downloading {len(opts)} model snapshots into: {paths.models_dir}")
+    failed: list[str] = []
+    for opt in opts:
+        print(f"- {opt.kind}: {opt.repo_id} ({opt.speed})")
+        try:
+            local = download_model_to_project(opt.repo_id, models_dir=paths.models_dir)
+            print(f"  -> {local}")
+        except Exception as e:
+            msg = f"{opt.repo_id}: {e}"
+            failed.append(msg)
+            print(f"  !! FAILED: {e}")
+
+    print("Done.")
+    if failed:
+        print("\nSome downloads failed:")
+        for f in failed:
+            print(f"- {f}")
+        print("\nIf the failure is a gated model, set HF_TOKEN (or login) and re-run.")
+
+
+if __name__ == "__main__":
+    main()
+
