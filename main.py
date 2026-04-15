@@ -164,6 +164,7 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
     prompts = [s.visual_prompt for s in pkg.segments][:10]
     out_final = video_dir / "final.mp4"
     music = Path(app.background_music_path).resolve() if app.background_music_path else None
+    branding = getattr(app, "branding", None)
 
     if video_settings.use_image_slideshow:
         img_dir = assets_dir / "images"
@@ -183,6 +184,7 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
             out_final_mp4=out_final,
             out_assets_dir=assets_dir,
             background_music=music,
+            branding=branding,
         )
     else:
         # For img→vid clip models, first generate keyframe images (using the image model),
@@ -216,6 +218,7 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
             out_final_mp4=out_final,
             out_assets_dir=assets_dir,
             background_music=music,
+            branding=branding,
         )
 
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts)

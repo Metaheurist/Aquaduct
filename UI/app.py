@@ -9,7 +9,8 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 
 from UI.main_window import MainWindow
-from UI.theme import TIKTOK_QSS
+from UI.theme import TIKTOK_QSS, build_qss, resolve_palette
+from src.ui_settings import load_settings
 
 
 def _ensure_project_root_on_path() -> None:
@@ -33,7 +34,13 @@ def main() -> None:
     except Exception:
         pass
     app = QApplication(sys.argv)
-    app.setStyleSheet(TIKTOK_QSS)
+    # Apply saved branding theme if enabled (fallback to default).
+    try:
+        settings = load_settings()
+        pal = resolve_palette(getattr(settings, "branding", None))
+        app.setStyleSheet(build_qss(pal))
+    except Exception:
+        app.setStyleSheet(TIKTOK_QSS)
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .config import AppSettings, VideoSettings
+from .config import AppSettings, BrandingSettings, VideoSettings
 
 
 def _root() -> Path:
@@ -57,6 +57,32 @@ def load_settings() -> AppSettings:
         clip_seconds=float(video_raw.get("clip_seconds", 4.0)),
     )
 
+    branding_raw = data.get("branding", {}) if isinstance(data, dict) else {}
+    branding = BrandingSettings(
+        theme_enabled=bool(branding_raw.get("theme_enabled", False)),
+        palette_id=str(branding_raw.get("palette_id", "default")),
+        bg_enabled=bool(branding_raw.get("bg_enabled", False)),
+        bg_hex=str(branding_raw.get("bg_hex", "#0F0F10")),
+        panel_enabled=bool(branding_raw.get("panel_enabled", False)),
+        panel_hex=str(branding_raw.get("panel_hex", "#0B0B0F")),
+        text_enabled=bool(branding_raw.get("text_enabled", False)),
+        text_hex=str(branding_raw.get("text_hex", "#FFFFFF")),
+        muted_enabled=bool(branding_raw.get("muted_enabled", False)),
+        muted_hex=str(branding_raw.get("muted_hex", "#B7B7C2")),
+        accent_enabled=bool(branding_raw.get("accent_enabled", False)),
+        accent_hex=str(branding_raw.get("accent_hex", "#25F4EE")),
+        danger_enabled=bool(branding_raw.get("danger_enabled", False)),
+        danger_hex=str(branding_raw.get("danger_hex", "#FE2C55")),
+        watermark_enabled=bool(branding_raw.get("watermark_enabled", False)),
+        watermark_path=str(branding_raw.get("watermark_path", "")),
+        watermark_opacity=float(branding_raw.get("watermark_opacity", 0.22)),
+        watermark_scale=float(branding_raw.get("watermark_scale", 0.18)),
+        watermark_position=str(branding_raw.get("watermark_position", "top_right"))
+        if str(branding_raw.get("watermark_position", "top_right"))
+        in ("top_left", "top_right", "bottom_left", "bottom_right", "center")
+        else "top_right",
+    )
+
     return AppSettings(
         topic_tags=_sanitize_tags(data.get("topic_tags", [])) if isinstance(data, dict) else [],
         prefer_gpu=bool(data.get("prefer_gpu", True)) if isinstance(data, dict) else True,
@@ -69,6 +95,7 @@ def load_settings() -> AppSettings:
         video_model_id=str(data.get("video_model_id", "")) if isinstance(data, dict) else "",
         voice_model_id=str(data.get("voice_model_id", "")) if isinstance(data, dict) else "",
         video=video,
+        branding=branding,
     )
 
 
