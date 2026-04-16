@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QLabel, QFormLayout, QFrame, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from src.hardware import get_hardware_info, rate_model_fit
+from src.hardware import get_hardware_info, rate_model_fit_for_repo
 from src.model_manager import model_options
 
 
@@ -83,7 +83,14 @@ def attach_my_pc_tab(win) -> None:
     table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
 
     for r, opt in enumerate(opts):
-        marker, why = rate_model_fit(kind=opt.kind, speed=opt.speed, vram_gb=info.vram_gb, ram_gb=info.ram_gb)
+        marker, why = rate_model_fit_for_repo(
+            kind=opt.kind,
+            speed=opt.speed,
+            repo_id=opt.repo_id,
+            pair_image_repo_id=getattr(opt, "pair_image_repo_id", "") or "",
+            vram_gb=info.vram_gb,
+            ram_gb=info.ram_gb,
+        )
         bg, fg = _fit_colors(marker)
         table.setItem(r, 0, QTableWidgetItem(opt.kind))
         table.setItem(r, 1, QTableWidgetItem(opt.repo_id))

@@ -183,3 +183,59 @@ def vram_requirement_hint(
 
     return "—"
 
+
+def rate_model_fit_for_repo(
+    *,
+    kind: str,
+    speed: str,
+    repo_id: str,
+    pair_image_repo_id: str = "",
+    vram_gb: float | None,
+    ram_gb: float | None,
+) -> tuple[str, str]:
+    """
+    Like `rate_model_fit`, but can take the actual repo_id (and optional paired image repo)
+    to estimate fit more accurately for video/image models.
+    """
+    if vram_gb is None:
+        return "UNKNOWN", "GPU VRAM not detected (will fall back to CPU / placeholders where possible)."
+
+    k = (kind or "").strip().lower()
+    rid = (repo_id or "").strip().lower()
+    pair = (pair_image_repo_id or "").strip()
+
+    if k == "video":
+        # Convert repo choice into a rough VRAM band. This is a heuristic, not a guarantee.
+        if pair:
+            need_ok = 12.0
+            need_ex = 16.0
+            why = "Paired pipeline (keyframes + img→vid) is heavier; unloading between stages helps."
+        elif "stable-diffusion-v1-5" in rid or "v1-5" in rid:
+            need_ok = 6.0
+            need_ex = 8.0
+            why = "SD 1.5 is relatively light."
+        elif "stable-diffusion-xl-base" in rid and "turbo" not in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "SDXL Base is heavier than SDXL Turbo."
+        elif "stable-video-diffusion" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "Video diffusion models are heavier than image-only."
+        else:
+            # Default to SDXL Turbo-ish expectation.
+            need_ok = 8.0
+            need_ex = 10.0
+            why = "SDXL Turbo class expectation."
+
+        if vram_gb >= need_ex:
+            return "EXCELLENT", f"{why} VRAM looks comfortable."
+        if vram_gb >= need_ok:
+            return "OK", f"{why} Should run if models are unloaded between stages."
+        if vram_gb >= max(4.0, need_ok - 2.0):
+            return "RISKY", f"{why} Tight headroom; may OOM depending on drivers/settings."
+        return "NO_GPU", f"{why} Likely too little VRAM; will use placeholders or fail to load."
+
+    # For script/voice, keep the existing heuristic (speed-based).
+    return rate_model_fit(kind=kind, speed=speed, vram_gb=vram_gb, ram_gb=ram_gb)
+

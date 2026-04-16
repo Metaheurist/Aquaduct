@@ -253,12 +253,21 @@ def _generate_with_transformers(model_id: str, prompt: str) -> str:
         bnb_4bit_compute_dtype=torch.float16,
     )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=bnb,
-        device_map="auto",
-        torch_dtype=torch.float16,
-    )
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+        )
+    except TypeError:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb,
+            device_map="auto",
+            torch_dtype=torch.float16,
+        )
 
     # Simple chat-ish formatting without requiring tokenizer chat template support.
     full = f"### Instruction:\n{prompt}\n\n### Response:\n"

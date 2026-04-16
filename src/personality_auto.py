@@ -108,12 +108,21 @@ def _llm_tiebreak(
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.float16,
         )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            quantization_config=bnb,
-            device_map="auto",
-            torch_dtype=torch.float16,
-        )
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                quantization_config=bnb,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+            )
+        except TypeError:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                quantization_config=bnb,
+                device_map="auto",
+                torch_dtype=torch.float16,
+            )
 
         inputs = tok(prompt, return_tensors="pt").to(model.device)
         with torch.inference_mode():

@@ -9,6 +9,8 @@ def cleanup_vram() -> None:
     Release references and return GPU memory to the allocator.
     Call between major stages (LLM → TTS → diffusion) to reduce peak VRAM; slightly slower.
     """
+    # Multiple GC passes helps release large graphs sooner (CPU RAM + VRAM).
+    gc.collect()
     gc.collect()
     try:
         import torch
@@ -23,7 +25,10 @@ def cleanup_vram() -> None:
 
 
 def prepare_for_next_model() -> None:
-    """Alias for explicit stage boundaries (same as cleanup_vram)."""
+    """
+    Explicit stage boundary between big model loads.
+    This prefers lower peak VRAM/RAM over speed.
+    """
     cleanup_vram()
 
 
