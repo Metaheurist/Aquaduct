@@ -58,9 +58,17 @@ if ($UI) {
 }
 
 # Note: models + ffmpeg are downloaded at runtime into .cache/
-$extra = @()
+# Bundle the full app tree + repo files the UI reads (e.g. requirements.txt next to the frozen tree).
+$extra = @(
+  "--collect-submodules", "src",
+  "--add-data", "requirements.txt;.",
+  "--hidden-import", "soundfile",
+  "--collect-all", "soundfile"
+)
 if ($UI) {
   $extra += @(
+    "--collect-submodules", "UI",
+    "--hidden-import", "main",
     "--hidden-import", "UI",
     "--hidden-import", "UI.ui_app",
     "--hidden-import", "UI.app",
@@ -68,17 +76,49 @@ if ($UI) {
     "--hidden-import", "UI.theme",
     "--hidden-import", "UI.workers",
     "--hidden-import", "UI.paths",
-    "--hidden-import", "UI.tabs"
+    "--hidden-import", "UI.tabs",
+    # moviepy / imageio (often missed by static analysis)
+    "--hidden-import", "imageio_ffmpeg",
+    "--hidden-import", "imageio.plugins.ffmpeg",
+    "--hidden-import", "imageio.plugins.pillow",
+    # optional: main.py
+    "--hidden-import", "dotenv"
   )
+}
+
+$uiQt = @()
+if ($UI) {
+  $uiQt = @("--collect-all", "PyQt6")
+}
+
+# UI builds: no console window (use `ai-news-factory-ui.exe -debug` for a console; see UI/ui_app.py).
+$uiWindowed = @()
+if ($UI) {
+  $uiWindowed = @("--noconsole")
 }
 
 pyinstaller $mode `
   --name $name `
   --clean `
   --noconfirm `
+  @uiWindowed `
+  --copy-metadata "imageio" `
+  --copy-metadata "imageio-ffmpeg" `
+  --copy-metadata "moviepy" `
+  --copy-metadata "proglog" `
+  --copy-metadata "decorator" `
+  --copy-metadata "tqdm" `
+  --copy-metadata "torch" `
+  --copy-metadata "transformers" `
+  --copy-metadata "diffusers" `
+  --copy-metadata "huggingface_hub" `
+  --copy-metadata "accelerate" `
+  --copy-metadata "safetensors" `
+  --copy-metadata "bitsandbytes" `
   --collect-all "moviepy" `
+  --collect-all "imageio" `
   --collect-all "imageio_ffmpeg" `
-  --collect-all "PyQt6" `
+  @uiQt `
   --hidden-import "PIL" `
   @extra `
   $entry

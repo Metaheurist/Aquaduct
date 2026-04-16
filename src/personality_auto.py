@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 
@@ -70,92 +69,6 @@ def _top2(scores: dict[str, int]) -> tuple[tuple[str, int], tuple[str, int]]:
     return a, b
 
 
-def _llm_tiebreak(
-    *,
-    model_id: str,
-    titles: list[str],
-    candidates: list[PersonalityPreset],
-) -> str | None:
-    """
-    Best-effort: ask local LLM to choose a preset id among candidates.
-    Returns preset id or None.
-    """
-    try:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    except Exception:
-        return None
-
-    from .utils_vram import cleanup_vram
-
-    cand_ids = [c.id for c in candidates]
-    cand_labels = {c.id: c.label for c in candidates}
-
-    prompt = (
-        "Pick the best personality preset id for a short AI news video script.\n"
-        f"Candidates: {json.dumps(cand_labels, ensure_ascii=False)}\n"
-        f"Headlines: {json.dumps(titles[:6], ensure_ascii=False)}\n"
-        "Output ONLY one of these ids exactly (no extra text): " + ", ".join(cand_ids) + "\n"
-    )
-
-    model = None
-    tok = None
-    try:
-        tok = AutoTokenizer.from_pretrained(model_id, use_fast=True)
-        bnb = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-        )
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                quantization_config=bnb,
-                device_map="auto",
-                torch_dtype=torch.float16,
-                low_cpu_mem_usage=True,
-            )
-        except TypeError:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                quantization_config=bnb,
-                device_map="auto",
-                torch_dtype=torch.float16,
-            )
-
-        inputs = tok(prompt, return_tensors="pt").to(model.device)
-        with torch.inference_mode():
-            out = model.generate(
-                **inputs,
-                max_new_tokens=8,
-                do_sample=False,
-                eos_token_id=tok.eos_token_id,
-            )
-        text = tok.decode(out[0], skip_special_tokens=True)
-
-        # Extract last token-ish
-        tail = text.strip().split()[-1].strip().lower()
-        if tail in cand_ids:
-            return tail
-        # Sometimes model echoes prompt; search for an id
-        for cid in cand_ids:
-            if re.search(rf"\b{re.escape(cid)}\b", text.lower()):
-                return cid
-        return None
-    except Exception:
-        return None
-    finally:
-        try:
-            if model is not None:
-                del model
-            if tok is not None:
-                del tok
-            cleanup_vram()
-        except Exception:
-            pass
-
-
 def auto_pick_personality(
     *,
     requested_id: str,
@@ -164,8 +77,13 @@ def auto_pick_personality(
     topic_tags: list[str],
 ) -> AutoPickResult:
     """
-    Hybrid: rules first; if close tie, try LLM to decide among top candidates.
+    Rules-based auto personality. ``llm_model_id`` is kept for call-site compatibility only.
+
+    We intentionally do **not** call the LLM here: a previous design used a "tie-break"
+    generation step that loaded the full model before ``generate_script``, which duplicated
+    work and could stall the UI for minutes at "Choosing personality…".
     """
+    _ = llm_model_id
     rid = (requested_id or "").strip().lower()
     if rid and rid != "auto":
         p = get_personality_by_id(rid)
@@ -174,18 +92,10 @@ def auto_pick_personality(
     scores = _score_rules(titles=titles, topic_tags=topic_tags)
     (a_id, a_score), (b_id, b_score) = _top2(scores)
 
-    # If tie band is small, ask LLM to pick between top candidates.
     tie_band = 1
-    chosen_id = a_id
-    reason = f"Rules: {a_id} ({a_score})"
     if abs(a_score - b_score) <= tie_band:
-        cands = [get_personality_by_id(a_id), get_personality_by_id(b_id)]
-        picked = _llm_tiebreak(model_id=llm_model_id, titles=titles, candidates=cands)
-        if picked:
-            chosen_id = picked
-            reason = f"LLM tie-break: {picked} (rules were close)"
-        else:
-            reason = f"Rules tie: {a_id} ({a_score}) vs {b_id} ({b_score})"
+        reason = f"Rules (close tie): {a_id} ({a_score}) vs {b_id} ({b_score}); picked top"
+    else:
+        reason = f"Rules: {a_id} ({a_score})"
 
-    return AutoPickResult(preset=get_personality_by_id(chosen_id), reason=reason)
-
+    return AutoPickResult(preset=get_personality_by_id(a_id), reason=reason)

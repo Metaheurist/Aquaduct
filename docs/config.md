@@ -9,7 +9,7 @@ Central place for:
 
 ## Paths
 `get_paths()` defines:
-- `data/news_cache/`
+- `data/news_cache/` (`seen.json` and `seen_titles.json` are local-only; not committed)
 - `runs/`
 - `videos/`
 - `.cache/ffmpeg/`

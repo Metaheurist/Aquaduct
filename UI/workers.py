@@ -7,7 +7,12 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from src.config import AppSettings
 from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item
 from src.topic_discovery import discover_topics_from_items
-from src.model_manager import download_model_to_project
+from src.model_manager import (
+    download_model_to_project,
+    load_hf_size_cache,
+    probe_hf_model,
+    save_hf_size_cache,
+)
 
 import main as pipeline_main
 from src.brain import VideoPackage, generate_script
@@ -15,6 +20,25 @@ from src.branding_video import apply_palette_to_prompts
 from src.personality_auto import auto_pick_personality
 from src.storyboard import build_storyboard, render_preview_grid, write_manifest
 from src.utils_vram import prepare_for_next_model
+
+
+def _fmt_bytes(n: int | float | None) -> str:
+    if n is None:
+        return "—"
+    try:
+        x = float(n)
+    except Exception:
+        return "—"
+    if x < 0:
+        return "—"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    u = 0
+    while x >= 1024.0 and u < len(units) - 1:
+        x /= 1024.0
+        u += 1
+    if u == 0:
+        return f"{int(x)} {units[u]}"
+    return f"{x:.1f} {units[u]}"
 
 
 class PipelineWorker(QThread):
@@ -121,11 +145,19 @@ class ModelDownloadWorker(QThread):
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
 
-    def __init__(self, *, repo_ids: list[str], models_dir, title: str = "Downloading"):
+    def __init__(
+        self,
+        *,
+        repo_ids: list[str],
+        models_dir,
+        title: str = "Downloading",
+        remote_bytes_by_repo: dict[str, int] | None = None,
+    ):
         super().__init__()
         self.repo_ids = [r for r in repo_ids if r]
         self.models_dir = models_dir
         self.title = title
+        self._remote_bytes_by_repo = dict(remote_bytes_by_repo or {})
         self._stop_requested = False
         self._stop_reason: str = "cancelled"  # "cancelled" | "paused"
         self.current_index: int = 0  # 1-based index into repo_ids while running
@@ -190,6 +222,14 @@ class ModelDownloadWorker(QThread):
                         total = getattr(self, "total", None)
                         n = getattr(self, "n", 0) or 0
                         pct = int((n / float(total)) * 100) if total else 0
+                        cur_i = max(1, int(worker.current_index or 1))
+                        n_r = max(1, len(worker.repo_ids))
+                        if total and float(total) > 0:
+                            frac_repo = float(n) / float(total)
+                        else:
+                            frac_repo = 0.0
+                        overall_pct = int((((cur_i - 1) + frac_repo) / float(n_r)) * 100)
+                        overall_pct = max(0, min(100, overall_pct))
 
                         # rate (bytes/sec) if known
                         rate = None
@@ -219,7 +259,19 @@ class ModelDownloadWorker(QThread):
                             n_s = _human_bytes(n)
                             total_s = _human_bytes(total) if total else "?"
                             rate_s = (_human_bytes(rate) + "/s") if rate else "?/s"
-                            worker.progress.emit(pct, f"{desc}\n{n_s}/{total_s} • {rate_s}")
+                            rid = str(worker.current_repo_id or "").strip() or "?"
+                            probe_b = worker._remote_bytes_by_repo.get(rid)
+                            probe_s = _human_bytes(probe_b) if probe_b else "—"
+                            # tqdm total is byte-sum for THIS repo's snapshot (all files), not "2.9+4.8+1.9" from dropdowns.
+                            msg = (
+                                f"[{cur_i}/{n_r}] {rid}\n"
+                                f"{desc}\n"
+                                f"{n_s} / {total_s}  •  {rate_s}  ·  file progress {pct}%\n"
+                                f"Overall download queue: {overall_pct}%. "
+                                f"Single-repo Hub total above is not added with your other dropdown sizes. "
+                                f"Probe total for this repo: ~{probe_s}."
+                            )
+                            worker.progress.emit(overall_pct, msg)
                     except Exception:
                         pass
                     return super().refresh(*args, **kwargs)
@@ -232,7 +284,14 @@ class ModelDownloadWorker(QThread):
                     self.done.emit("Paused" if self._stop_reason == "paused" else "Cancelled")
                     return
                 base = int(((i - 1) / total_models) * 100)
-                self.progress.emit(base, f"[{i}/{total_models}] {repo_id}")
+                pb = self._remote_bytes_by_repo.get(str(repo_id).strip())
+                ps = _fmt_bytes(pb) if pb else "—"
+                self.progress.emit(
+                    base,
+                    f"[{i}/{total_models}] Starting {repo_id}\n"
+                    f"Next snapshot total comes from Hugging Face (all listed files in this repo). "
+                    f"Probe ~{ps}. This is not the sum of your three model dropdown lines.",
+                )
                 try:
                     download_model_to_project(repo_id, models_dir=self.models_dir, tqdm_class=QtTqdm)
                 except _CancelledDownload:
@@ -241,6 +300,51 @@ class ModelDownloadWorker(QThread):
                 self.progress.emit(int((i / total_models) * 100), f"Downloaded: {repo_id}")
 
             self.done.emit("Done")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class ModelSizePingWorker(QThread):
+    """
+    On UI startup: probe each curated repo on Hugging Face (reachability + precise total size).
+
+    Emits ``{repo_id: {"ok": bool, "bytes": int|None, "error": str}}}``.
+    Old call sites merged sizes from this; we still persist successful bytes to hf_model_sizes.json.
+    """
+
+    done = pyqtSignal(dict)  # {repo_id: {"ok": bool, "bytes": int | None, "error": str}}
+    failed = pyqtSignal(str)
+
+    def __init__(self, *, repo_ids: list[str], cache_path):
+        super().__init__()
+        self.repo_ids = [str(r).strip() for r in (repo_ids or []) if str(r).strip()]
+        self.cache_path = cache_path
+
+    def run(self) -> None:
+        try:
+            merged: dict[str, int] = {}
+            try:
+                merged = load_hf_size_cache(self.cache_path)
+            except Exception:
+                merged = {}
+
+            probe: dict[str, dict] = {}
+            for rid in self.repo_ids:
+                ok, b, err = probe_hf_model(rid)
+                probe[str(rid)] = {
+                    "ok": bool(ok),
+                    "bytes": (int(b) if ok and b is not None else None),
+                    "error": (err or "") if not ok else "",
+                }
+                if ok and b is not None:
+                    merged[str(rid)] = int(b)
+
+            try:
+                save_hf_size_cache(self.cache_path, merged)
+            except Exception:
+                pass
+            self.done.emit(probe)
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")

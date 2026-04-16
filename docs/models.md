@@ -24,6 +24,18 @@ This is implemented in:
 Notes:
 - Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
 - In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.
+- The UI treats a repo as **already installed** when `models/<repo>/` exists and has enough bytes on disk (not an empty or partial folder). **Download selected**, **download all selected**, and **download all** then **skip** that repo and move on—nothing is re-fetched unless you delete the folder or pick a different repo.
+- Some video presets use **two** Hub repos (image + video). **Download all selected** queues **both** so both snapshots are present.
+
+## Portable downloader (optional)
+For machines without running the full app, you can snapshot the same repos into `./models`:
+
+```powershell
+pip install huggingface_hub tqdm
+python scripts/download_hf_models.py
+```
+
+See `scripts/download_hf_models.py` for `--out`, tokens, and repo lists.
 
 ## Model overrides
 Selected model repo IDs are persisted in `ui_settings.json` and passed into the pipeline through:

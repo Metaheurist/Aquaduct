@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from PyQt6.QtGui import QDesktopServices
@@ -12,6 +14,9 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QDialog,
+    QDialogButtonBox,
+    QLineEdit,
     QTabWidget,
     QPushButton,
     QVBoxLayout,
@@ -20,7 +25,7 @@ from PyQt6.QtWidgets import (
 
 from src.config import AppSettings, BrandingSettings, VideoSettings, get_paths
 from src.fs_delete import rmtree_robust, unlink_file
-from src.model_manager import download_model_to_project
+from src.model_manager import download_model_to_project, model_has_local_snapshot
 from src.preflight import preflight_check
 from src.ui_settings import load_settings, save_settings, settings_path
 from src.personalities import get_personality_by_id
@@ -55,6 +60,7 @@ class MainWindow(QMainWindow):
 
         self.paths = get_paths()
         self.settings = load_settings()
+        self._apply_saved_hf_token_to_env()
 
         self.tabs = QTabWidget()
         # Custom title bar (frameless window needs its own controls)
@@ -100,6 +106,8 @@ class MainWindow(QMainWindow):
         # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
         self.tabs.currentChanged.connect(lambda _idx: self._resize_to_current_tab())
         QTimer.singleShot(0, self._resize_to_current_tab)
+        # Prompt for HF token once the window is ready (if needed).
+        QTimer.singleShot(0, self._maybe_prompt_hf_token)
         if hasattr(self, "personality_combo"):
             self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
             self._update_personality_hint()
@@ -120,6 +128,81 @@ class MainWindow(QMainWindow):
         self._last_storyboard_grid = None
 
         self._reset_run_session_state()
+
+    def _apply_saved_hf_token_to_env(self) -> None:
+        """
+        If user saved an HF token in ui_settings.json, expose it to huggingface_hub via env var
+        for the current app session (unless the user already provided one via env).
+        """
+        try:
+            if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
+                return
+            t = str(getattr(self.settings, "hf_token", "") or "").strip()
+            if not t:
+                return
+            os.environ["HF_TOKEN"] = t
+        except Exception:
+            pass
+
+    def _maybe_prompt_hf_token(self) -> None:
+        """
+        If no token is available (env or saved settings), prompt user to paste one.
+        """
+        try:
+            if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
+                return
+            saved = str(getattr(self.settings, "hf_token", "") or "").strip()
+            if saved:
+                os.environ["HF_TOKEN"] = saved
+                return
+        except Exception:
+            pass
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Hugging Face token (recommended)")
+        dlg.setModal(True)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(10)
+
+        hint = QLabel(
+            "Some models and size lookups require a Hugging Face access token.\n\n"
+            "How to get one:\n"
+            "- Go to https://huggingface.co/settings/tokens\n"
+            "- Create a token (a standard read-only token is enough)\n"
+            "- Paste it below\n\n"
+            "We will store it in ui_settings.json and use it for authenticated Hub requests."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #B7B7C2;")
+        lay.addWidget(hint)
+
+        inp = QLineEdit()
+        inp.setPlaceholderText("hf_... (paste your token here)")
+        inp.setEchoMode(QLineEdit.EchoMode.Password)
+        lay.addWidget(inp)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        lay.addWidget(btns)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        token = str(inp.text() or "").strip()
+        if not token:
+            return
+
+        # Persist to ui_settings.json + env for current session
+        try:
+            self.settings = replace(self.settings, hf_token=token)
+            save_settings(self.settings)
+        except Exception:
+            pass
+        try:
+            os.environ["HF_TOKEN"] = token
+        except Exception:
+            pass
 
     def _reset_run_session_state(self) -> None:
         """
@@ -540,6 +623,7 @@ class MainWindow(QMainWindow):
             try_llm_4bit=bool(self.try_llm_chk.isChecked()),
             try_sdxl_turbo=bool(self.try_sdxl_chk.isChecked()),
             background_music_path=str(self.music_path.text()).strip(),
+            hf_token=str(getattr(self.settings, "hf_token", "") or ""),
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
             image_model_id=image_model_id,
@@ -643,22 +727,76 @@ class MainWindow(QMainWindow):
                     pass
             self._append_log(f"Install failed: {e}")
 
+    def _repos_still_need_download(self, repo_ids: list[str]) -> tuple[list[str], list[str]]:
+        """
+        Returns (repos_missing_on_disk, repos_already_present), de-duplicated in order.
+        """
+        need: list[str] = []
+        have: list[str] = []
+        seen: set[str] = set()
+        models_dir = self.paths.models_dir
+        for r in repo_ids:
+            r = str(r).strip()
+            if not r or r in seen:
+                continue
+            seen.add(r)
+            if model_has_local_snapshot(r, models_dir=models_dir):
+                have.append(r)
+            else:
+                need.append(r)
+        return need, have
+
     def _download_selected(self, kind: str) -> None:
         if kind == "script":
-            repo_id = str(self.llm_combo.currentData())
+            repo_ids = [str(self.llm_combo.currentData())]
         elif kind == "video":
-            repo_id = str(self.img_combo.currentData())
+            d = self.img_combo.currentData()
+            if isinstance(d, tuple) and len(d) == 2:
+                repo_ids = [str(d[0]), str(d[1])]
+            else:
+                repo_ids = [str(d)]
         else:
-            repo_id = str(self.voice_combo.currentData())
-        self._start_download([repo_id], title="Downloading model")
+            repo_ids = [str(self.voice_combo.currentData())]
+        repo_ids = [r for r in repo_ids if r and str(r).strip()]
+        if not repo_ids:
+            return
+        need, have = self._repos_still_need_download(repo_ids)
+        if have:
+            preview = ", ".join(have[:4])
+            if len(have) > 4:
+                preview += f", … (+{len(have) - 4} more)"
+            self._append_log(f"Skipping {len(have)} already downloaded: {preview}")
+        if not need:
+            self._append_log("Nothing to download — selected model(s) are already on disk.")
+            return
+        self._start_download(need, title="Downloading model")
 
     def _download_all_selected(self) -> None:
-        repo_ids = [
-            str(self.llm_combo.currentData()),
-            str(self.img_combo.currentData()),
-            str(self.voice_combo.currentData()),
-        ]
-        self._start_download(repo_ids, title="Downloading selected models")
+        repo_ids: list[str] = [str(self.llm_combo.currentData())]
+        img_d = self.img_combo.currentData()
+        if isinstance(img_d, tuple) and len(img_d) == 2:
+            repo_ids.extend([str(img_d[0]), str(img_d[1])])
+        else:
+            repo_ids.append(str(img_d))
+        repo_ids.append(str(self.voice_combo.currentData()))
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for r in repo_ids:
+            r = str(r).strip()
+            if not r or r in seen:
+                continue
+            seen.add(r)
+            deduped.append(r)
+        need, have = self._repos_still_need_download(deduped)
+        if have:
+            preview = ", ".join(have[:4])
+            if len(have) > 4:
+                preview += f", … (+{len(have) - 4} more)"
+            self._append_log(f"Skipping {len(have)} already downloaded: {preview}")
+        if not need:
+            self._append_log("All selected models are already on disk — nothing to download.")
+            return
+        self._start_download(need, title="Downloading selected models")
 
     def _download_all_models(self) -> None:
         """
@@ -676,7 +814,13 @@ class MainWindow(QMainWindow):
             seen.add(rid)
             repo_ids.append(rid)
 
-        self._start_download(repo_ids, title=f"Downloading ALL models ({len(repo_ids)})")
+        need, have = self._repos_still_need_download(repo_ids)
+        if have:
+            self._append_log(f"Skipping {len(have)} model(s) already on disk (download-all queue).")
+        if not need:
+            self._append_log("All curated models are already on disk.")
+            return
+        self._start_download(need, title=f"Downloading ALL models ({len(need)} remaining)")
 
     def _start_download(self, repo_ids: list[str], *, title: str) -> None:
         if self.download_worker and self.download_worker.isRunning():
@@ -696,7 +840,13 @@ class MainWindow(QMainWindow):
         popup = DownloadPopup(self, title=title)
         self._download_popup = popup
 
-        self.download_worker = ModelDownloadWorker(repo_ids=repo_ids, models_dir=self.paths.models_dir, title=title)
+        remote_sizes = dict(getattr(self, "_hf_remote_sizes", None) or {})
+        self.download_worker = ModelDownloadWorker(
+            repo_ids=repo_ids,
+            models_dir=self.paths.models_dir,
+            title=title,
+            remote_bytes_by_repo=remote_sizes,
+        )
 
         # If user closes the popup, cancel the background worker so app can exit cleanly.
         popup.cancel_requested.connect(lambda: self.download_worker.cancel() if self.download_worker else None)
@@ -745,6 +895,11 @@ class MainWindow(QMainWindow):
                 popup.bar.setValue(100)
                 self._paused_download_repo_ids = None
                 self._paused_download_title = None
+                try:
+                    if hasattr(self, "_refresh_settings_model_combos"):
+                        self._refresh_settings_model_combos()
+                except Exception:
+                    pass
             popup.accept()
 
         def on_failed(err: str) -> None:

@@ -42,12 +42,11 @@ python UI/ui_app.py
   - Background music picker
   - Clear `data/news_cache/seen.json`
 - **Branding**
-  - Optional full-theme palette overrides (presets or custom hex + color picker)
+  - Optional full-theme palette overrides (presets or custom hex + color picker). Changing the **Palette** dropdown updates the hex swatches and fields for that preset (Custom unlocks per-row overrides).
   - Optional logo watermark on generated videos
 - **Settings**
-  - Dependency check (import test)
-  - Dependency install (runs `pip install -r requirements.txt`)
-  - Model selection + download buttons
+  - **Download ▾** menu: download the currently selected model(s), **download all selected** (script + image/video + voice choices in one queue), **download all models** (full curated list), plus **check Python dependencies** / **install dependencies** from `requirements.txt`.
+  - Model dropdowns show local install status and Hub probe hints; downloads **skip** repos that already have a valid snapshot under `models/` and continue with the rest.
 - **My PC**
   - Hardware summary (CPU/RAM/GPU/VRAM, best-effort)
   - Minimum requirements guidance

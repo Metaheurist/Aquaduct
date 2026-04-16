@@ -142,6 +142,7 @@ class AppSettings:
     try_llm_4bit: bool = True
     try_sdxl_turbo: bool = True
     background_music_path: str = ""
+    hf_token: str = ""  # optional: Hugging Face access token for gated repos / API calls
     personality_id: str = "auto"
     llm_model_id: str = ""
     image_model_id: str = ""

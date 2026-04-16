@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QStandardItem, QStandardItemModel
+from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -14,7 +18,14 @@ from PyQt6.QtWidgets import (
 )
 
 from src.hardware import get_hardware_info, rate_model_fit_for_repo, vram_requirement_hint
-from src.model_manager import model_options
+from src.model_manager import (
+    best_model_size_label,
+    load_hf_size_cache,
+    local_model_size_label,
+    model_has_local_snapshot,
+    model_options,
+)
+from UI.workers import ModelSizePingWorker
 
 
 def _vram_label_style() -> str:
@@ -42,25 +53,66 @@ def attach_settings_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
-    dep_row = QHBoxLayout()
-    win.check_deps_btn = QPushButton("Check Python dependencies")
-    win.check_deps_btn.clicked.connect(win._check_deps)
-    dep_row.addWidget(win.check_deps_btn)
+    actions_row = QHBoxLayout()
+    actions_row.setSpacing(10)
 
-    win.install_deps_btn = QPushButton("Install missing dependencies")
+    win.dl_menu_btn = QPushButton("Download")
+    win.dl_menu_btn.setObjectName("primary")
+    dl_menu = QMenu(win.dl_menu_btn)
+    _a = QAction("Download script model", win)
+    _a.triggered.connect(lambda: win._download_selected("script"))
+    dl_menu.addAction(_a)
+    _a = QAction("Download video model", win)
+    _a.triggered.connect(lambda: win._download_selected("video"))
+    dl_menu.addAction(_a)
+    _a = QAction("Download voice model", win)
+    _a.triggered.connect(lambda: win._download_selected("voice"))
+    dl_menu.addAction(_a)
+    dl_menu.addSeparator()
+    _a = QAction("Download all selected", win)
+    _a.triggered.connect(win._download_all_selected)
+    dl_menu.addAction(_a)
+    _a = QAction("Download ALL models", win)
+    _a.triggered.connect(win._download_all_models)
+    dl_menu.addAction(_a)
+    dl_menu.addSeparator()
+    _a = QAction("Check Python dependencies", win)
+    _a.triggered.connect(win._check_deps)
+    dl_menu.addAction(_a)
+    win.dl_menu_btn.setMenu(dl_menu)
+    actions_row.addWidget(win.dl_menu_btn)
+
+    win.install_deps_btn = QPushButton("Install dependencies")
     win.install_deps_btn.setObjectName("primary")
+    win.install_deps_btn.setToolTip("pip install -r requirements.txt into the current Python environment")
     win.install_deps_btn.clicked.connect(win._install_deps)
-    dep_row.addWidget(win.install_deps_btn)
-    dep_row.addStretch(1)
-    lay.addLayout(dep_row)
+    actions_row.addWidget(win.install_deps_btn)
+
+    win.clear_data_btn = QPushButton("Clear data")
+    win.clear_data_btn.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+    win.clear_data_btn.setToolTip("Wipe settings, downloaded models, and cache.")
+    win.clear_data_btn.setObjectName("danger")
+    win.clear_data_btn.clicked.connect(win._clear_all_data)
+    actions_row.addWidget(win.clear_data_btn)
+
+    actions_row.addStretch(1)
+    lay.addLayout(actions_row)
 
     mheader = QLabel("Models (select + download)")
     mheader.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 10px;")
     lay.addWidget(mheader)
 
+    win._hub_status_lbl = QLabel("Checking Hugging Face for each model (sizes + availability)…")
+    win._hub_status_lbl.setStyleSheet("color:#9BB0C4;font-size:12px;padding:0 0 8px 0;")
+    win._hub_status_lbl.setWordWrap(True)
+    lay.addWidget(win._hub_status_lbl)
+
     win._model_opts = model_options()
     win._model_opt_by_repo = {o.repo_id: o for o in win._model_opts}
     win._hw_info = get_hardware_info()
+    win._hf_size_cache_path = win.paths.cache_dir / "hf_model_sizes.json"
+    win._hf_remote_sizes = load_hf_size_cache(Path(win._hf_size_cache_path))
+    win._hf_probe: dict[str, dict] = {}
 
     form = QFormLayout()
     form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -79,29 +131,165 @@ def attach_settings_tab(win) -> None:
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         combo.view().setMinimumWidth(480)
 
-    def fill(combo: QComboBox, kind: str) -> None:
-        combo.clear()
-        for opt in [o for o in win._model_opts if o.kind == kind]:
-            data = (opt.pair_image_repo_id, opt.repo_id) if (kind == "video" and getattr(opt, "pair_image_repo_id", "")) else opt.repo_id
-            combo.addItem(f"{opt.order:02d}. {opt.label}  [{opt.speed}]", data)
+    def _required_repos_for_option(opt, kind: str) -> list[str]:
+        if kind == "video" and getattr(opt, "pair_image_repo_id", ""):
+            return [str(opt.pair_image_repo_id).strip(), str(opt.repo_id).strip()]
+        return [str(opt.repo_id).strip()]
 
-    fill(win.llm_combo, "script")
-    fill(win.img_combo, "video")
-    fill(win.voice_combo, "voice")
-    _prep_combo(win.llm_combo)
-    _prep_combo(win.img_combo)
-    _prep_combo(win.voice_combo)
+    def _option_row_enabled(opt, kind: str) -> tuple[bool, str]:
+        if not win._hf_probe:
+            return True, ""
+        repos = _required_repos_for_option(opt, kind)
+        tips: list[str] = []
+        models_dir = win.paths.models_dir
+        for r in repos:
+            if model_has_local_snapshot(r, models_dir=models_dir):
+                continue
+            pr = win._hf_probe.get(r)
+            if pr is None:
+                return True, ""
+            if pr.get("ok"):
+                continue
+            err = (pr.get("error") or "Unavailable on Hugging Face").strip()
+            short = r.split("/")[-1] if "/" in r else r
+            tips.append(f"{short}: {err}")
+        if tips:
+            return False, "Not available from Hugging Face (and no local copy detected):\n" + "\n".join(tips)
+        return True, ""
+
+    def _combo_index_for_data(combo: QComboBox, data) -> int:
+        role = Qt.ItemDataRole.UserRole
+        for i in range(combo.count()):
+            if combo.itemData(i, role) == data:
+                return int(i)
+        return -1
+
+    def _pick_first_enabled(combo: QComboBox) -> None:
+        m = combo.model()
+        for i in range(combo.count()):
+            midx = m.index(i, 0)
+            try:
+                if midx.flags() & Qt.ItemFlag.ItemIsEnabled:
+                    combo.setCurrentIndex(i)
+                    return
+            except Exception:
+                continue
+
+    def fill_combo_model(combo: QComboBox, kind: str) -> None:
+        model = QStandardItemModel(combo)
+        for opt in [o for o in win._model_opts if o.kind == kind]:
+            data = (
+                (opt.pair_image_repo_id, opt.repo_id)
+                if (kind == "video" and getattr(opt, "pair_image_repo_id", ""))
+                else opt.repo_id
+            )
+            if kind == "video" and getattr(opt, "pair_image_repo_id", ""):
+                vid_sz = best_model_size_label(
+                    opt.repo_id,
+                    models_dir=win.paths.models_dir,
+                    remote_sizes=win._hf_remote_sizes,
+                    size_hint=getattr(opt, "size_hint", ""),
+                )
+                img_sz = best_model_size_label(
+                    opt.pair_image_repo_id,
+                    models_dir=win.paths.models_dir,
+                    remote_sizes=win._hf_remote_sizes,
+                    size_hint="≈6–8GB",
+                )
+                sz = f"{img_sz}+{vid_sz}"
+            else:
+                sz = best_model_size_label(
+                    opt.repo_id,
+                    models_dir=win.paths.models_dir,
+                    remote_sizes=win._hf_remote_sizes,
+                    size_hint=getattr(opt, "size_hint", ""),
+                )
+            en, tip = _option_row_enabled(opt, kind)
+            text = f"{opt.order:02d}. {opt.label}  [{sz} • {opt.speed}]"
+            item = QStandardItem(text)
+            item.setData(data, Qt.ItemDataRole.UserRole)
+            if en:
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            else:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setToolTip(tip)
+            model.appendRow(item)
+        combo.setModel(model)
+        _prep_combo(combo)
+
+    def _refresh_model_combos_keep_selection() -> None:
+        llm_data = win.llm_combo.currentData()
+        img_data = win.img_combo.currentData()
+        voice_data = win.voice_combo.currentData()
+
+        fill_combo_model(win.llm_combo, "script")
+        fill_combo_model(win.img_combo, "video")
+        fill_combo_model(win.voice_combo, "voice")
+
+        role = Qt.ItemDataRole.UserRole
+        try:
+            i = win.llm_combo.findData(llm_data, role)
+            if i >= 0:
+                win.llm_combo.setCurrentIndex(i)
+            elif llm_data is not None:
+                _pick_first_enabled(win.llm_combo)
+        except Exception:
+            _pick_first_enabled(win.llm_combo)
+        try:
+            i = win.img_combo.findData(img_data, role)
+            if i >= 0:
+                win.img_combo.setCurrentIndex(i)
+            elif img_data is not None:
+                _pick_first_enabled(win.img_combo)
+        except Exception:
+            _pick_first_enabled(win.img_combo)
+        try:
+            i = win.voice_combo.findData(voice_data, role)
+            if i >= 0:
+                win.voice_combo.setCurrentIndex(i)
+            elif voice_data is not None:
+                _pick_first_enabled(win.voice_combo)
+        except Exception:
+            _pick_first_enabled(win.voice_combo)
+
+        # If restored index points at a disabled row, move to first enabled
+        for combo in (win.llm_combo, win.img_combo, win.voice_combo):
+            idx = combo.currentIndex()
+            if idx < 0:
+                _pick_first_enabled(combo)
+                continue
+            try:
+                midx = combo.model().index(idx, 0)
+                if not (midx.flags() & Qt.ItemFlag.ItemIsEnabled):
+                    _pick_first_enabled(combo)
+            except Exception:
+                pass
+
+    fill_combo_model(win.llm_combo, "script")
+    fill_combo_model(win.img_combo, "video")
+    fill_combo_model(win.voice_combo, "voice")
+
+    win.llm_dl_badge = QLabel("")
+    win.img_dl_badge = QLabel("")
+    win.voice_dl_badge = QLabel("")
+    for _b in (win.llm_dl_badge, win.img_dl_badge, win.voice_dl_badge):
+        _b.setStyleSheet("color:#5DFFB0;font-size:12px;font-weight:700;min-width:6.5em;")
+        _b.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     if win.settings.llm_model_id:
-        idx = win.llm_combo.findData(win.settings.llm_model_id)
+        idx = _combo_index_for_data(win.llm_combo, win.settings.llm_model_id)
         if idx >= 0:
             win.llm_combo.setCurrentIndex(idx)
-    if win.settings.image_model_id:
-        idx = win.img_combo.findData(win.settings.image_model_id)
+    vm = str(getattr(win.settings, "video_model_id", "") or "").strip()
+    im = str(getattr(win.settings, "image_model_id", "") or "").strip()
+    if im:
+        idx = _combo_index_for_data(win.img_combo, (im, vm)) if vm else -1
+        if idx < 0:
+            idx = _combo_index_for_data(win.img_combo, im)
         if idx >= 0:
             win.img_combo.setCurrentIndex(idx)
     if win.settings.voice_model_id:
-        idx = win.voice_combo.findData(win.settings.voice_model_id)
+        idx = _combo_index_for_data(win.voice_combo, win.settings.voice_model_id)
         if idx >= 0:
             win.voice_combo.setCurrentIndex(idx)
 
@@ -121,6 +309,32 @@ def attach_settings_tab(win) -> None:
     win.voice_fit = QLabel("UNKNOWN")
 
     def _update_fit_badges() -> None:
+        def set_dl_badge(lbl: QLabel, repos: list[str]) -> None:
+            ms = win.paths.models_dir
+            uniq = [str(x).strip() for x in repos if str(x).strip()]
+            if not uniq:
+                lbl.setText("")
+                lbl.setToolTip("")
+                return
+            have = [r for r in uniq if model_has_local_snapshot(r, models_dir=ms)]
+            if len(have) == len(uniq):
+                lbl.setText("✓ On disk")
+                lbl.setToolTip("Downloaded in models/: " + " · ".join(f"{r}: {local_model_size_label(r, models_dir=ms)}" for r in uniq))
+            elif have:
+                lbl.setText("◐ Partial")
+                lbl.setToolTip(
+                    "Some weights on disk; others missing.\n"
+                    + "\n".join(
+                        f"{r}: {local_model_size_label(r, models_dir=ms)}"
+                        if model_has_local_snapshot(r, models_dir=ms)
+                        else f"{r}: not downloaded"
+                        for r in uniq
+                    )
+                )
+            else:
+                lbl.setText("")
+                lbl.setToolTip("No local copy detected under models/ yet.")
+
         def set_badge(lbl: QLabel, *, kind: str, repo_id: str, pair_image_repo_id: str = "") -> None:
             opt = win._model_opt_by_repo.get(repo_id)
             speed = opt.speed if opt else "slow"
@@ -141,6 +355,7 @@ def attach_settings_tab(win) -> None:
         llm_spd = llm_opt.speed if llm_opt else "slow"
         win.llm_vram_lbl.setText(vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd))
         set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
+        set_dl_badge(win.llm_dl_badge, [llm_repo])
 
         img_data = win.img_combo.currentData()
         if isinstance(img_data, tuple) and len(img_data) == 2:
@@ -155,12 +370,15 @@ def attach_settings_tab(win) -> None:
             vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
         )
         set_badge(win.img_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
+        img_repos = [pair_id, vid_repo] if pair_id and vid_repo else [vid_repo]
+        set_dl_badge(win.img_dl_badge, img_repos)
 
         voice_repo = str(win.voice_combo.currentData())
         voice_opt = win._model_opt_by_repo.get(voice_repo)
         voice_spd = voice_opt.speed if voice_opt else "slow"
         win.voice_vram_lbl.setText(vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd))
         set_badge(win.voice_fit, kind="voice", repo_id=voice_repo)
+        set_dl_badge(win.voice_dl_badge, [voice_repo])
 
     win.llm_combo.currentIndexChanged.connect(_update_fit_badges)
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
@@ -171,14 +389,17 @@ def attach_settings_tab(win) -> None:
 
     llm_row = QHBoxLayout()
     llm_row.addWidget(win.llm_combo, 1)
+    llm_row.addWidget(win.llm_dl_badge, 0)
     llm_row.addWidget(win.llm_vram_lbl, 0)
     llm_row.addWidget(win.llm_fit, 0)
     img_row = QHBoxLayout()
     img_row.addWidget(win.img_combo, 1)
+    img_row.addWidget(win.img_dl_badge, 0)
     img_row.addWidget(win.img_vram_lbl, 0)
     img_row.addWidget(win.img_fit, 0)
     voice_row = QHBoxLayout()
     voice_row.addWidget(win.voice_combo, 1)
+    voice_row.addWidget(win.voice_dl_badge, 0)
     voice_row.addWidget(win.voice_vram_lbl, 0)
     voice_row.addWidget(win.voice_fit, 0)
 
@@ -191,42 +412,50 @@ def attach_settings_tab(win) -> None:
     win.img_combo.setToolTip(win.img_combo.currentText())
     win.voice_combo.setToolTip(win.voice_combo.currentText())
 
-    dl_row = QHBoxLayout()
-    win.dl_script_btn = QPushButton("Download script model")
-    win.dl_script_btn.clicked.connect(lambda: win._download_selected("script"))
-    dl_row.addWidget(win.dl_script_btn)
+    # Ping HF for remote sizes on startup (auth via HF_TOKEN / cached login).
+    # This runs in the background and refreshes labels when complete.
+    try:
+        repo_ids = []
+        seen = set()
+        for opt in win._model_opts:
+            for rid in (opt.repo_id, getattr(opt, "pair_image_repo_id", "")):
+                rid = str(rid or "").strip()
+                if not rid or rid in seen:
+                    continue
+                seen.add(rid)
+                repo_ids.append(rid)
 
-    win.dl_video_btn = QPushButton("Download video model")
-    win.dl_video_btn.clicked.connect(lambda: win._download_selected("video"))
-    dl_row.addWidget(win.dl_video_btn)
+        win._size_ping_worker = ModelSizePingWorker(repo_ids=repo_ids, cache_path=win._hf_size_cache_path)
 
-    win.dl_voice_btn = QPushButton("Download voice model")
-    win.dl_voice_btn.clicked.connect(lambda: win._download_selected("voice"))
-    dl_row.addWidget(win.dl_voice_btn)
+        def _on_hub_probe_done(probe: dict) -> None:
+            try:
+                win._hf_probe = dict(probe or {})
+                for rid, info in (probe or {}).items():
+                    if isinstance(info, dict) and info.get("ok") and info.get("bytes") is not None:
+                        win._hf_remote_sizes[str(rid)] = int(info["bytes"])
+                bad = sum(1 for v in (probe or {}).values() if isinstance(v, dict) and not v.get("ok"))
+                win._hub_status_lbl.setText(
+                    f"Hub check done. Precise sizes updated. "
+                    f"Unavailable entries ({bad}) are grayed unless you already have them under models/."
+                )
+                _refresh_model_combos_keep_selection()
+                _update_fit_badges()
+            except Exception:
+                pass
 
-    win.dl_all_btn = QPushButton("Download all selected")
-    win.dl_all_btn.setObjectName("primary")
-    win.dl_all_btn.clicked.connect(win._download_all_selected)
-    dl_row.addWidget(win.dl_all_btn)
+        def _on_hub_probe_failed(_err: str) -> None:
+            win._hub_status_lbl.setText("Could not finish Hugging Face check (offline?). Sizes may be estimates only.")
 
-    win.dl_everything_btn = QPushButton("Download ALL models")
-    win.dl_everything_btn.clicked.connect(win._download_all_models)
-    dl_row.addWidget(win.dl_everything_btn)
-    dl_row.addStretch(1)
-    lay.addLayout(dl_row)
+        win._size_ping_worker.done.connect(_on_hub_probe_done)
+        win._size_ping_worker.failed.connect(_on_hub_probe_failed)
+        win._size_ping_worker.start()
+    except Exception:
+        pass
 
-    danger_header = QLabel("Danger zone")
-    danger_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 12px;")
-    lay.addWidget(danger_header)
+    def _refresh_settings_model_combos() -> None:
+        _refresh_model_combos_keep_selection()
+        _update_fit_badges()
 
-    danger_row = QHBoxLayout()
-    win.clear_data_btn = QPushButton("Clear data")
-    win.clear_data_btn.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
-    win.clear_data_btn.setToolTip("Wipe settings, downloaded models, and cache.")
-    win.clear_data_btn.setObjectName("danger")
-    win.clear_data_btn.clicked.connect(win._clear_all_data)
-    danger_row.addWidget(win.clear_data_btn)
-    danger_row.addStretch(1)
-    lay.addLayout(danger_row)
+    win._refresh_settings_model_combos = _refresh_settings_model_combos
 
     win.tabs.addTab(w, "Settings")
