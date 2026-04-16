@@ -165,16 +165,23 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(14, 14, 14, 14)
         lay.setSpacing(10)
 
+        _hf_tokens = "https://huggingface.co/settings/tokens"
         hint = QLabel(
-            "Some models and size lookups require a Hugging Face access token.\n\n"
-            "How to get one:\n"
-            "- Go to https://huggingface.co/settings/tokens\n"
-            "- Create a token (a standard read-only token is enough)\n"
-            "- Paste it below\n\n"
+            "Some models and size lookups require a Hugging Face access token.<br><br>"
+            "<b>How to get one:</b><br>"
+            f'- Go to <a href="{_hf_tokens}">{_hf_tokens}</a><br>'
+            "- Create a token (a standard read-only token is enough)<br>"
+            "- Paste it below<br><br>"
             "We will store it in ui_settings.json and use it for authenticated Hub requests."
         )
+        hint.setTextFormat(Qt.TextFormat.RichText)
+        hint.setOpenExternalLinks(True)
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #B7B7C2;")
+        hint.setStyleSheet(
+            "QLabel { color: #B7B7C2; } "
+            "QLabel a { color: #25F4EE; text-decoration: none; } "
+            "QLabel a:hover { text-decoration: underline; }"
+        )
         lay.addWidget(hint)
 
         inp = QLineEdit()
