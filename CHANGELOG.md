@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Naming
+- The application is branded **Aquaduct** everywhere user-visible (window title, header, scripts, docs). Windows EXE outputs are **`aquaduct.exe`** (CLI) and **`aquaduct-ui.exe`** (desktop); PyInstaller spec: `aquaduct-ui.spec`.
+
 ### Desktop UI (PyQt6)
 - **Settings**: Consolidated actions into a **Download ▾** menu (download selected / download all selected / download all models; dependency checks under the same menu). Cleaner models row and download flow.
 - **Model downloads**: If a repo is **already present** under `models/` (verified snapshot, not an empty/partial folder), **Download selected**, **Download all selected**, and **Download all models** **skip** it and continue with the next repo. Logs which repos were skipped.
@@ -17,7 +20,7 @@ All notable changes to this project will be documented in this file.
 - **Video model selection**: Image + video HF repos download together when the selection is a **pair** (both snapshots required).
 
 ### Packaging
-- **PyInstaller** (`ai-news-factory-ui.spec`, `build/build.ps1`): UI one-file build bundles `imageio` (and related) metadata, submodules for `src` / `UI`, `requirements.txt`, optional debug console via **`-debug` / `--debug`** on the UI EXE.
+- **PyInstaller** (`aquaduct-ui.spec`, `build/build.ps1`): UI one-file build bundles `imageio` (and related) metadata, submodules for `src` / `UI`, `requirements.txt`, optional debug console via **`-debug` / `--debug`** on the UI EXE.
 
 ### Scripts
 - **`scripts/download_hf_models.py`**: Portable HF snapshot downloader into `./models` (same layout as the app), with optional `--out` and token via env/CLI.

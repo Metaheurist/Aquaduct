@@ -14,7 +14,7 @@ Run from the repo root (e.g. your Aquaduct clone or a USB drive copy):
   # downloads to .\\models\\...
 
 Override the models folder:
-  python download_hf_models.py --out D:\\models
+  python scripts/download_hf_models.py --out D:\\models
 
 Gated models (e.g. meta-llama/*) require a token with access approved on huggingface.co.
 """

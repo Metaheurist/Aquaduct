@@ -18,7 +18,7 @@ Returns a list of `NewsItem`:
 Persisted in:
 - `data/news_cache/seen.json`
 
-URLs already in `seen.json` are skipped so the factory doesn’t regenerate the same story repeatedly.
+URLs already in `seen.json` are skipped so Aquaduct doesn’t regenerate the same story repeatedly.
 
 ## Key functions
 - `get_latest_items(news_cache_dir, limit=3, query=...)`

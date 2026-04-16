@@ -5,7 +5,7 @@
 - Launcher script: [`UI/ui_app.py`](../UI/ui_app.py) (same as `python -m UI`)
 
 ## Purpose
-Provide a desktop control panel for the factory with a **TikTok-style dark theme** and tabbed settings.
+Provide a desktop control panel for **Aquaduct** with a **TikTok-style dark theme** and tabbed settings.
 
 ## How to run
 

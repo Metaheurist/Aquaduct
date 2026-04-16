@@ -1,7 +1,7 @@
 """
 Delete everything under repo `videos/` and recreate an empty folder.
 
-Close AI News Factory and Explorer windows inside `videos/` first if you see WinError 32.
+Close Aquaduct and Explorer windows inside `videos/` first if you see WinError 32.
 
 Usage:
   python scripts/clear_videos.py

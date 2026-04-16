@@ -18,7 +18,7 @@ function Activate-Venv([string]$venvPath) {
   . $activate
 }
 
-Write-Host "== Local AI News Factory: Windows EXE build =="
+Write-Host "== Aquaduct: Windows EXE build =="
 Assert-Command $Python
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -28,8 +28,8 @@ if ($Clean) {
   if (Test-Path $VenvDir) { Remove-Item -Recurse -Force $VenvDir }
   if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
   # IMPORTANT: do NOT delete the repo's build/ folder (this script lives there).
-  if (Test-Path "build\\ai-news-factory") { Remove-Item -Recurse -Force "build\\ai-news-factory" }
-  if (Test-Path "build\\ai-news-factory-ui") { Remove-Item -Recurse -Force "build\\ai-news-factory-ui" }
+  if (Test-Path "build\\aquaduct") { Remove-Item -Recurse -Force "build\\aquaduct" }
+  if (Test-Path "build\\aquaduct-ui") { Remove-Item -Recurse -Force "build\\aquaduct-ui" }
 }
 
 Write-Host "Creating build venv at $VenvDir"
@@ -51,10 +51,10 @@ if ($OneFile) { $mode = "--onefile" }
 
 # Build entrypoint selection
 $entry = "main.py"
-$name = "ai-news-factory"
+$name = "aquaduct"
 if ($UI) {
   $entry = "UI\\ui_app.py"
-  $name = "ai-news-factory-ui"
+  $name = "aquaduct-ui"
 }
 
 # Note: models + ffmpeg are downloaded at runtime into .cache/
@@ -91,7 +91,7 @@ if ($UI) {
   $uiQt = @("--collect-all", "PyQt6")
 }
 
-# UI builds: no console window (use `ai-news-factory-ui.exe -debug` for a console; see UI/ui_app.py).
+# UI builds: no console window (use `aquaduct-ui.exe -debug` for a console; see UI/ui_app.py).
 $uiWindowed = @()
 if ($UI) {
   $uiWindowed = @("--noconsole")

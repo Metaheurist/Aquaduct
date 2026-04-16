@@ -1,7 +1,7 @@
 # `main.py` — Orchestrator / CLI
 
 ## Purpose
-Runs the full pipeline:
+**Aquaduct**’s orchestrator (`main.py`) runs the full pipeline:
 1. Crawl news (deduped)
 2. Generate a structured script package (LLM or fallback)
 3. TTS + captions
@@ -32,4 +32,7 @@ python main.py --interval-hours 2
 ```powershell
 python main.py --once --music "D:\path\to\music.mp3"
 ```
+
+### Desktop UI (default)
+With no `--once` and no `--cli`, `python main.py` launches the **Aquaduct** PyQt6 window. Use `python main.py --cli --once` (or `--cli` with the loop) for headless CLI-only runs.
 

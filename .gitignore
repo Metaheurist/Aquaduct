@@ -25,6 +25,7 @@ dist/
 *.egg-info/
 
 # PyInstaller build work dir (generated)
+build/aquaduct*/
 build/ai-news-factory*/
 
 # Hugging Face caches (often contain large blobs + auth state)
