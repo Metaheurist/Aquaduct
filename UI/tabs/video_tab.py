@@ -32,18 +32,20 @@ def attach_video_tab(win) -> None:
     # QFormLayout rows get vertically compressed and overlap.
     content = QWidget()
     lay = QVBoxLayout(content)
-    lay.setSpacing(0)
-    lay.setContentsMargins(0, 0, 0, 0)
+    # Give this tab more breathing room; scroll handles overflow.
+    lay.setSpacing(12)
+    lay.setContentsMargins(14, 12, 14, 14)
 
     header = QLabel("Video settings")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
+    lay.addSpacing(6)
 
     # --- Form 1: core video output (must be fully built before addLayout — avoids overlapping rows on Windows)
     form_video = QFormLayout()
     form_video.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-    form_video.setVerticalSpacing(10)
-    form_video.setHorizontalSpacing(14)
+    form_video.setVerticalSpacing(14)
+    form_video.setHorizontalSpacing(18)
     form_video.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     presets: list[tuple[str, int, int]] = [
@@ -130,6 +132,7 @@ def attach_video_tab(win) -> None:
     qh = QLabel("Quality / performance")
     qh.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 4px;")
     lay.addWidget(qh)
+    lay.addSpacing(2)
 
     win.prefer_gpu_chk = QCheckBox("Prefer GPU (when available)")
     win.prefer_gpu_chk.setChecked(bool(win.settings.prefer_gpu))
@@ -160,6 +163,7 @@ def attach_video_tab(win) -> None:
     lay.addWidget(win.prompt_cond_chk)
 
     seed_row = QHBoxLayout()
+    seed_row.setSpacing(10)
     seed_lbl = QLabel("Seed base (optional)")
     seed_lbl.setStyleSheet("color: #B7B7C2;")
     seed_row.addWidget(seed_lbl)
@@ -173,8 +177,8 @@ def attach_video_tab(win) -> None:
     # --- Form 2: motion / transitions / audio (separate form after middle section — stable layout)
     form_more = QFormLayout()
     form_more.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-    form_more.setVerticalSpacing(10)
-    form_more.setHorizontalSpacing(14)
+    form_more.setVerticalSpacing(14)
+    form_more.setHorizontalSpacing(18)
     form_more.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     win.quality_retries_spin = QSpinBox()
@@ -207,11 +211,12 @@ def attach_video_tab(win) -> None:
     ah2 = QLabel("Audio (professional mix)")
     ah2.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 4px;")
     lay.addWidget(ah2)
+    lay.addSpacing(2)
 
     form_audio = QFormLayout()
     form_audio.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-    form_audio.setVerticalSpacing(10)
-    form_audio.setHorizontalSpacing(14)
+    form_audio.setVerticalSpacing(14)
+    form_audio.setHorizontalSpacing(18)
     form_audio.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     win.audio_polish_combo = QComboBox()
@@ -276,6 +281,7 @@ def attach_video_tab(win) -> None:
     lay.addWidget(ah)
 
     row = QHBoxLayout()
+    row.setSpacing(10)
     win.music_path = QLineEdit()
     win.music_path.setPlaceholderText("Optional background music file path…")
     win.music_path.setText(win.settings.background_music_path or "")
@@ -287,6 +293,7 @@ def attach_video_tab(win) -> None:
     lay.addLayout(row)
 
     cache_row = QHBoxLayout()
+    cache_row.setSpacing(10)
     clear_seen = QPushButton("Clear seen URLs cache")
     clear_seen.setObjectName("danger")
     clear_seen.clicked.connect(win._clear_seen_cache)

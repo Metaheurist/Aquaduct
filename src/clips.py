@@ -36,7 +36,10 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
 
-    pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+    try:
+        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+    except TypeError:
+        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")
     else:
@@ -91,7 +94,10 @@ def _try_image_to_video(
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
 
-    pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+    try:
+        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+    except TypeError:
+        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
     pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 
     results: list[GeneratedClip] = []

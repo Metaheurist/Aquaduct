@@ -19,6 +19,9 @@ class DownloadPopup(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(720, 165)
         self._drag_pos: QPoint | None = None
+        # Track why we're closing. closeEvent treats an "X" click as cancel, but
+        # a deliberate Pause button should NOT also emit cancel.
+        self._closing_action: str | None = None  # None | "pause" | "cancel"
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 14, 14, 14)
@@ -55,19 +58,22 @@ class DownloadPopup(QDialog):
         lay.addWidget(self.bar)
 
     def _request_cancel(self) -> None:
+        self._closing_action = "cancel"
         self.cancel_requested.emit()
         self.reject()
 
     def _request_pause(self) -> None:
+        self._closing_action = "pause"
         self.pause_requested.emit()
         self.reject()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        # Treat window-close as cancel, too.
-        try:
-            self.cancel_requested.emit()
-        except Exception:
-            pass
+        # Treat user window-close as cancel, unless the close was initiated by the Pause button.
+        if self._closing_action != "pause":
+            try:
+                self.cancel_requested.emit()
+            except Exception:
+                pass
         return super().closeEvent(event)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]

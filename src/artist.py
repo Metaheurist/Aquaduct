@@ -34,11 +34,19 @@ def _try_sdxl_turbo(model_id: str, prompts: list[str], out_dir: Path, *, steps: 
     from diffusers import AutoPipelineForText2Image
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    pipe = AutoPipelineForText2Image.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16,
-        variant="fp16",
-    )
+    try:
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            variant="fp16",
+            low_cpu_mem_usage=True,
+        )
+    except TypeError:
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")
     else:
@@ -68,11 +76,19 @@ def _try_sdxl_turbo_seeded(model_id: str, prompts: list[str], seeds: list[int], 
     from diffusers import AutoPipelineForText2Image
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    pipe = AutoPipelineForText2Image.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16,
-        variant="fp16",
-    )
+    try:
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            variant="fp16",
+            low_cpu_mem_usage=True,
+        )
+    except TypeError:
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")
     else:

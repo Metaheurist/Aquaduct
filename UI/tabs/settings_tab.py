@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.hardware import get_hardware_info, rate_model_fit, vram_requirement_hint
+from src.hardware import get_hardware_info, rate_model_fit_for_repo, vram_requirement_hint
 from src.model_manager import model_options
 
 
@@ -121,12 +121,14 @@ def attach_settings_tab(win) -> None:
     win.voice_fit = QLabel("UNKNOWN")
 
     def _update_fit_badges() -> None:
-        def set_badge(lbl: QLabel, *, kind: str, repo_id: str) -> None:
+        def set_badge(lbl: QLabel, *, kind: str, repo_id: str, pair_image_repo_id: str = "") -> None:
             opt = win._model_opt_by_repo.get(repo_id)
             speed = opt.speed if opt else "slow"
-            marker, why = rate_model_fit(
+            marker, why = rate_model_fit_for_repo(
                 kind=kind,
                 speed=speed,
+                repo_id=repo_id,
+                pair_image_repo_id=pair_image_repo_id,
                 vram_gb=win._hw_info.vram_gb,
                 ram_gb=win._hw_info.ram_gb,
             )
@@ -152,7 +154,7 @@ def attach_settings_tab(win) -> None:
         win.img_vram_lbl.setText(
             vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
         )
-        set_badge(win.img_fit, kind="video", repo_id=str(vid_repo))
+        set_badge(win.img_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
 
         voice_repo = str(win.voice_combo.currentData())
         voice_opt = win._model_opt_by_repo.get(voice_repo)
