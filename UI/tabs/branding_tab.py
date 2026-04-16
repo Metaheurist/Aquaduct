@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -27,6 +28,18 @@ def _hex_or_default(text: str, default_hex: str) -> str:
     if not t:
         return default_hex
     return t
+
+
+def _qcolor_from_hex(text: str, default_hex: str) -> QColor:
+    t = (text or "").strip()
+    if not t:
+        t = default_hex
+    if not t.startswith("#"):
+        t = "#" + t
+    c = QColor(t)
+    if not c.isValid():
+        c = QColor(default_hex)
+    return c
 
 
 def attach_branding_tab(win) -> None:
@@ -74,27 +87,42 @@ def attach_branding_tab(win) -> None:
         edit.setText(str(value or default_hex))
         edit.setMaximumWidth(140)
 
+        chip = QLabel()
+        chip.setFixedSize(28, 28)
+        chip.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        def refresh_chip() -> None:
+            qc = _qcolor_from_hex(edit.text(), default_hex)
+            nm = qc.name()
+            chip.setStyleSheet(
+                f"QLabel {{ background-color: {nm}; border: 1px solid #3A3A44; border-radius: 6px; }}"
+            )
+            chip.setToolTip(f"{label}: {nm.upper()}")
+
         pick = QPushButton("Pick…")
         pick.setMaximumWidth(90)
 
         def pick_color() -> None:
-            c = QColor(edit.text().strip() or default_hex)
+            c = _qcolor_from_hex(edit.text(), default_hex)
             chosen = QColorDialog.getColor(c, win, f"Choose {label}")
             if chosen.isValid():
                 edit.setText(chosen.name().upper())
 
         pick.clicked.connect(pick_color)
+        edit.textChanged.connect(lambda _t: refresh_chip())
+        refresh_chip()
 
         row.addWidget(chk, 0)
+        row.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(edit, 0)
         row.addWidget(pick, 0)
         row.addStretch(1)
-        return chk, edit, pick, row
+        return chk, edit, pick, chip, row
 
     b = getattr(win.settings, "branding", BrandingSettings())
     defaults = PRESET_PALETTES["default"]
 
-    win.brand_bg_chk, win.brand_bg_hex, win.brand_bg_pick, bg_row = _make_color_row(
+    win.brand_bg_chk, win.brand_bg_hex, win.brand_bg_pick, win.brand_bg_chip, bg_row = _make_color_row(
         "Background",
         enabled=bool(getattr(b, "bg_enabled", False)),
         value=str(getattr(b, "bg_hex", defaults["bg"])),
@@ -102,7 +130,7 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("Theme color", bg_row)
 
-    win.brand_panel_chk, win.brand_panel_hex, win.brand_panel_pick, panel_row = _make_color_row(
+    win.brand_panel_chk, win.brand_panel_hex, win.brand_panel_pick, win.brand_panel_chip, panel_row = _make_color_row(
         "Panel",
         enabled=bool(getattr(b, "panel_enabled", False)),
         value=str(getattr(b, "panel_hex", defaults["panel"])),
@@ -110,7 +138,7 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("", panel_row)
 
-    win.brand_text_chk, win.brand_text_hex, win.brand_text_pick, text_row = _make_color_row(
+    win.brand_text_chk, win.brand_text_hex, win.brand_text_pick, win.brand_text_chip, text_row = _make_color_row(
         "Text",
         enabled=bool(getattr(b, "text_enabled", False)),
         value=str(getattr(b, "text_hex", defaults["text"])),
@@ -118,7 +146,7 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("", text_row)
 
-    win.brand_muted_chk, win.brand_muted_hex, win.brand_muted_pick, muted_row = _make_color_row(
+    win.brand_muted_chk, win.brand_muted_hex, win.brand_muted_pick, win.brand_muted_chip, muted_row = _make_color_row(
         "Muted text",
         enabled=bool(getattr(b, "muted_enabled", False)),
         value=str(getattr(b, "muted_hex", defaults["muted"])),
@@ -126,7 +154,7 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("", muted_row)
 
-    win.brand_accent_chk, win.brand_accent_hex, win.brand_accent_pick, accent_row = _make_color_row(
+    win.brand_accent_chk, win.brand_accent_hex, win.brand_accent_pick, win.brand_accent_chip, accent_row = _make_color_row(
         "Accent",
         enabled=bool(getattr(b, "accent_enabled", False)),
         value=str(getattr(b, "accent_hex", defaults["accent"])),
@@ -134,7 +162,7 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("", accent_row)
 
-    win.brand_danger_chk, win.brand_danger_hex, win.brand_danger_pick, danger_row = _make_color_row(
+    win.brand_danger_chk, win.brand_danger_hex, win.brand_danger_pick, win.brand_danger_chip, danger_row = _make_color_row(
         "Danger",
         enabled=bool(getattr(b, "danger_enabled", False)),
         value=str(getattr(b, "danger_hex", defaults["danger"])),
@@ -273,17 +301,20 @@ def attach_branding_tab(win) -> None:
         enabled_theme = bool(win.brand_theme_enable.isChecked())
         is_custom = str(win.brand_palette_combo.currentData() or "default") == "custom"
 
-        for chk, edit, btn in [
-            (win.brand_bg_chk, win.brand_bg_hex, win.brand_bg_pick),
-            (win.brand_panel_chk, win.brand_panel_hex, win.brand_panel_pick),
-            (win.brand_text_chk, win.brand_text_hex, win.brand_text_pick),
-            (win.brand_muted_chk, win.brand_muted_hex, win.brand_muted_pick),
-            (win.brand_accent_chk, win.brand_accent_hex, win.brand_accent_pick),
-            (win.brand_danger_chk, win.brand_danger_hex, win.brand_danger_pick),
+        for chk, edit, btn, chip in [
+            (win.brand_bg_chk, win.brand_bg_hex, win.brand_bg_pick, win.brand_bg_chip),
+            (win.brand_panel_chk, win.brand_panel_hex, win.brand_panel_pick, win.brand_panel_chip),
+            (win.brand_text_chk, win.brand_text_hex, win.brand_text_pick, win.brand_text_chip),
+            (win.brand_muted_chk, win.brand_muted_hex, win.brand_muted_pick, win.brand_muted_chip),
+            (win.brand_accent_chk, win.brand_accent_hex, win.brand_accent_pick, win.brand_accent_chip),
+            (win.brand_danger_chk, win.brand_danger_hex, win.brand_danger_pick, win.brand_danger_chip),
         ]:
-            chk.setEnabled(enabled_theme and is_custom)
-            edit.setEnabled(enabled_theme and is_custom and chk.isChecked())
-            btn.setEnabled(enabled_theme and is_custom and chk.isChecked())
+            show_custom = enabled_theme and is_custom
+            chk.setEnabled(show_custom)
+            row_on = show_custom and chk.isChecked()
+            edit.setEnabled(row_on)
+            btn.setEnabled(row_on)
+            chip.setEnabled(show_custom)
 
         enabled_wm = bool(win.brand_watermark_enable.isChecked())
         win.brand_watermark_path.setEnabled(enabled_wm)

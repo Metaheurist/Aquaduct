@@ -25,14 +25,40 @@ QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 8p
 QTabBar::tab {{ background: {control_bg}; color: {muted}; padding: 10px 14px; margin: 6px 6px 0 0;
                border-top-left-radius: 14px; border-top-right-radius: 14px; border: 1px solid {border}; }}
 QTabBar::tab:selected {{ color: {text}; border-bottom: 3px solid {accent}; }}
-QLineEdit, QTextEdit, QListWidget, QSpinBox, QComboBox {{
-  background: {control_bg}; border: 1px solid #2A2A33; border-radius: 12px; padding: 8px; color: {text};
+QLineEdit, QTextEdit, QPlainTextEdit, QListWidget {{
+  background: {control_bg}; border: 1px solid {border}; border-radius: 12px; padding: 8px; color: {text};
+  min-height: 30px;
 }}
-QLineEdit:focus, QTextEdit:focus, QListWidget:focus, QSpinBox:focus, QComboBox:focus {{
+QAbstractSpinBox, QSpinBox {{
+  background: {control_bg}; border: 1px solid {border}; border-radius: 12px; color: {text};
+  min-height: 32px; padding: 4px 8px; padding-right: 22px;
+}}
+QSpinBox QLineEdit {{
+  color: {text}; background: {control_bg}; border: none; padding: 2px 4px; min-height: 22px;
+  selection-background-color: {accent}; selection-color: {panel};
+}}
+QSpinBox::up-button, QSpinBox::down-button {{
+  width: 18px; border-left: 1px solid {border}; background: {control_bg};
+  border-top-right-radius: 10px; border-bottom-right-radius: 10px;
+}}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {{ background: {panel}; }}
+QComboBox {{
+  background: {control_bg}; border: 1px solid {border}; border-radius: 12px; color: {text};
+  min-height: 32px; padding: 6px 10px; padding-right: 28px;
+}}
+QComboBox QAbstractItemView {{
+  background: {control_bg}; color: {text}; border: 1px solid {border}; border-radius: 10px;
+  outline: none; padding: 4px; selection-background-color: {accent}; selection-color: {panel};
+}}
+QComboBox::drop-down {{
+  border: none; width: 26px; background: transparent;
+  border-top-right-radius: 12px; border-bottom-right-radius: 12px;
+}}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QListWidget:focus, QSpinBox:focus, QComboBox:focus {{
   border: 1px solid {accent};
 }}
 QPushButton {{
-  background: {control_bg}; border: 1px solid #2A2A33; border-radius: 12px; padding: 10px 12px; color: {text};
+  background: {control_bg}; border: 1px solid {border}; border-radius: 12px; padding: 10px 12px; color: {text};
 }}
 QPushButton:hover {{ border: 1px solid {accent}; }}
 QPushButton:pressed {{ border: 1px solid {danger}; }}
@@ -59,7 +85,7 @@ QPushButton#saveBtn {{
 QPushButton#saveBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
 QPushButton#saveBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
 QCheckBox {{ spacing: 10px; }}
-QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid #2A2A33; background: {control_bg}; }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid {border}; background: {control_bg}; }}
 QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}
 """.lstrip()
 

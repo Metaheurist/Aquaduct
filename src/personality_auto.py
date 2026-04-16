@@ -86,6 +86,8 @@ def _llm_tiebreak(
     except Exception:
         return None
 
+    from .utils_vram import cleanup_vram
+
     cand_ids = [c.id for c in candidates]
     cand_labels = {c.id: c.label for c in candidates}
 
@@ -96,39 +98,53 @@ def _llm_tiebreak(
         "Output ONLY one of these ids exactly (no extra text): " + ", ".join(cand_ids) + "\n"
     )
 
-    tok = AutoTokenizer.from_pretrained(model_id, use_fast=True)
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=bnb,
-        device_map="auto",
-        torch_dtype=torch.float16,
-    )
-
-    inputs = tok(prompt, return_tensors="pt").to(model.device)
-    with torch.inference_mode():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=8,
-            do_sample=False,
-            eos_token_id=tok.eos_token_id,
+    model = None
+    tok = None
+    try:
+        tok = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
         )
-    text = tok.decode(out[0], skip_special_tokens=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb,
+            device_map="auto",
+            torch_dtype=torch.float16,
+        )
 
-    # Extract last token-ish
-    tail = text.strip().split()[-1].strip().lower()
-    if tail in cand_ids:
-        return tail
-    # Sometimes model echoes prompt; search for an id
-    for cid in cand_ids:
-        if re.search(rf"\b{re.escape(cid)}\b", text.lower()):
-            return cid
-    return None
+        inputs = tok(prompt, return_tensors="pt").to(model.device)
+        with torch.inference_mode():
+            out = model.generate(
+                **inputs,
+                max_new_tokens=8,
+                do_sample=False,
+                eos_token_id=tok.eos_token_id,
+            )
+        text = tok.decode(out[0], skip_special_tokens=True)
+
+        # Extract last token-ish
+        tail = text.strip().split()[-1].strip().lower()
+        if tail in cand_ids:
+            return tail
+        # Sometimes model echoes prompt; search for an id
+        for cid in cand_ids:
+            if re.search(rf"\b{re.escape(cid)}\b", text.lower()):
+                return cid
+        return None
+    except Exception:
+        return None
+    finally:
+        try:
+            if model is not None:
+                del model
+            if tok is not None:
+                del tok
+            cleanup_vram()
+        except Exception:
+            pass
 
 
 def auto_pick_personality(

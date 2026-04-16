@@ -1,6 +1,7 @@
 """Tab builders attach widgets to MainWindow."""
 
 from UI.tabs.branding_tab import attach_branding_tab
+from UI.tabs.captions_tab import attach_captions_tab
 from UI.tabs.my_pc_tab import attach_my_pc_tab
 from UI.tabs.run_tab import attach_run_tab
 from UI.tabs.settings_tab import attach_settings_tab
@@ -11,6 +12,7 @@ __all__ = [
     "attach_run_tab",
     "attach_topics_tab",
     "attach_video_tab",
+    "attach_captions_tab",
     "attach_branding_tab",
     "attach_settings_tab",
     "attach_my_pc_tab",

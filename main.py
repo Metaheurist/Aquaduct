@@ -14,57 +14,33 @@ except Exception:  # optional dependency
     load_dotenv = None
 
 from src.artist import generate_images
-from src.brain import VideoPackage, generate_script
+from src.brain import VideoPackage, generate_script, enforce_arc
 from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
-from src.crawler import get_latest_items, pick_one_item
+from src.crawler import get_latest_items, get_scored_items, pick_one_item, fetch_article_text
 from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.clips import generate_clips
 from src.branding_video import apply_palette_to_prompts
+from src.factcheck import rewrite_with_uncertainty
+from src.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
+from src.storyboard import build_storyboard, write_manifest
+from src.frame_quality import is_reject, score_frame
 from src.voice import synthesize
+from src.tts_text import shape_tts_text
+from src.audio_fx import (
+    AudioPolishConfig,
+    MusicMixConfig,
+    build_sfx_mix_cmd,
+    duration_seconds,
+    ensure_builtin_sfx,
+    mix_voice_and_music,
+    process_voice_wav,
+    render_sfx_track,
+    schedule_sfx_events,
+)
 from src.preflight import preflight_check
 from src.personality_auto import auto_pick_personality
-
-
-def _single_instance_guard(name: str = "Aquaduct") -> None:
-    """
-    Prevent multiple instances from running at the same time.
-    On Windows, uses a named mutex. Else, uses an exclusive lock file in the project cache dir.
-    """
-    if os.name == "nt":
-        try:
-            import ctypes
-
-            kernel32 = ctypes.windll.kernel32
-            mutex = kernel32.CreateMutexW(None, True, f"Global\\{name}")
-            last_err = kernel32.GetLastError()
-            # 183 = ERROR_ALREADY_EXISTS
-            if mutex and int(last_err) == 183:
-                raise SystemExit(f"{name} is already running.")
-            return
-        except SystemExit:
-            raise
-        except Exception:
-            # Fall back to lock file below
-            pass
-
-    try:
-        import msvcrt  # type: ignore
-    except Exception:
-        msvcrt = None  # type: ignore
-
-    paths = get_paths()
-    lock_path = paths.cache_dir / f"{name}.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    f = open(lock_path, "a+", encoding="utf-8")
-    try:
-        if msvcrt:
-            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl  # type: ignore
-
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except Exception:
-        raise SystemExit(f"{name} is already running.")
+from src.single_instance import single_instance_guard
+from src.utils_vram import prepare_for_next_model
 
 
 def _now_run_id() -> str:
@@ -77,6 +53,7 @@ def _write_video_folder(
     video_dir: Path,
     sources: list[dict[str, str]],
     prompts: list[str],
+    preview: dict | None = None,
 ) -> None:
     video_dir.mkdir(parents=True, exist_ok=True)
 
@@ -100,8 +77,21 @@ def _write_video_folder(
     }
     (video_dir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    if preview is not None:
+        try:
+            (video_dir / "preview.json").write_text(json.dumps(preview, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
 
-def run_once(*, settings: AppSettings | None = None) -> Path | None:
+
+def run_once(
+    *,
+    settings: AppSettings | None = None,
+    prebuilt_pkg: VideoPackage | None = None,
+    prebuilt_sources: list[dict[str, str]] | None = None,
+    prebuilt_prompts: list[str] | None = None,
+    prebuilt_seeds: list[int] | None = None,
+) -> Path | None:
     paths = get_paths()
     models = get_models()
     app = settings or AppSettings(topic_tags=[])
@@ -120,32 +110,80 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
     if not pf.ok:
         raise RuntimeError("Preflight failed:\n- " + "\n- ".join(pf.errors))
 
-    items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
-    item = pick_one_item(items)
-    if not item:
-        return None
+    items = None
+    sources: list[dict[str, str]] = []
+    preview_blob: dict | None = None
+
+    if prebuilt_pkg is None:
+        # Prefer scored + diversified selection (better signals, fewer duplicates).
+        if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+            items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+        else:
+            items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+        item = pick_one_item(items)
+        if not item:
+            return None
+        sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+    else:
+        sources = list(prebuilt_sources or [])
+        if not sources:
+            # Best-effort fallback: we still want meta.json to contain something.
+            sources = []
+        preview_blob = {
+            "title": prebuilt_pkg.title,
+            "description": prebuilt_pkg.description,
+            "hashtags": list(prebuilt_pkg.hashtags),
+            "hook": prebuilt_pkg.hook,
+            "cta": prebuilt_pkg.cta,
+            "segments": [
+                {
+                    "narration": s.narration,
+                    "visual_prompt": s.visual_prompt,
+                    "on_screen_text": s.on_screen_text,
+                }
+                for s in (prebuilt_pkg.segments or [])
+            ],
+        }
 
     run_id = _now_run_id()
     run_dir = paths.runs_dir / run_id
     run_assets = run_dir / "assets"
     run_assets.mkdir(parents=True, exist_ok=True)
 
+    article_text = ""
+    if prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
+        try:
+            article_text = fetch_article_text(str(getattr(item, "url", "") or ""))
+            if article_text:
+                (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
+        except Exception:
+            article_text = ""
+
     # Brain
-    sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
-    titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
-    picked = auto_pick_personality(
-        requested_id=getattr(app, "personality_id", "auto"),
-        llm_model_id=llm_id,
-        titles=titles,
-        topic_tags=list(app.topic_tags),
-    )
-    pkg = generate_script(
-        model_id=llm_id,
-        items=sources,
-        topic_tags=app.topic_tags,
-        personality_id=picked.preset.id,
-        branding=getattr(app, "branding", None),
-    )
+    if prebuilt_pkg is None:
+        titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+        picked = auto_pick_personality(
+            requested_id=getattr(app, "personality_id", "auto"),
+            llm_model_id=llm_id,
+            titles=titles,
+            topic_tags=list(app.topic_tags),
+        )
+        pkg = generate_script(
+            model_id=llm_id,
+            items=sources,
+            topic_tags=app.topic_tags,
+            personality_id=picked.preset.id,
+            branding=getattr(app, "branding", None),
+        )
+        pkg = enforce_arc(pkg)
+        # Best-effort safety rewrite (uses article text snippet when available).
+        if bool(getattr(video_settings, "llm_factcheck", True)):
+            pkg = rewrite_with_uncertainty(pkg=pkg, article_text=article_text, sources=sources, model_id=llm_id)
+    else:
+        pkg = prebuilt_pkg
+
+    # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
+    prepare_for_next_model()
 
     safe_dir = safe_title_to_dirname(pkg.title)
     video_dir = paths.videos_dir / safe_dir
@@ -156,6 +194,13 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
     voice_wav = assets_dir / "voice.wav"
     captions_json = assets_dir / "captions.json"
     narration = pkg.narration_text()
+    shaped = shape_tts_text(narration, personality_id=str(getattr(app, "personality_id", "neutral") or "neutral"))
+    if shaped:
+        try:
+            (assets_dir / "narration_shaped.txt").write_text(shaped, encoding="utf-8")
+            narration = shaped
+        except Exception:
+            pass
     synthesize(
         kokoro_model_id=voice_id,
         text=narration,
@@ -163,44 +208,231 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
         out_captions_json=captions_json,
     )
 
+    prepare_for_next_model()
+
+    # Audio polish + mixing (FFmpeg best-effort)
+    final_voice_wav = voice_wav
+    try:
+        ap_mode = str(getattr(video_settings, "audio_polish", "basic") or "basic")
+        cfg = AudioPolishConfig(mode=ap_mode)
+        processed = assets_dir / "voice_processed.wav"
+        final_voice_wav = process_voice_wav(ffmpeg_dir=paths.ffmpeg_dir, in_wav=voice_wav, out_wav=processed, cfg=cfg)
+    except Exception:
+        final_voice_wav = voice_wav
+
     # Images
-    prompts = [s.visual_prompt for s in pkg.segments][:10]
+    prompts = list(prebuilt_prompts or []) if prebuilt_prompts is not None else [s.visual_prompt for s in pkg.segments][:10]
+    seeds = list(prebuilt_seeds or []) if prebuilt_seeds is not None else None
     out_final = video_dir / "final.mp4"
     music = Path(app.background_music_path).resolve() if app.background_music_path else None
     branding = getattr(app, "branding", None)
-    prompts = apply_palette_to_prompts(prompts, branding)
+    if prebuilt_pkg is None:
+        prompts = apply_palette_to_prompts(prompts, branding)
+
+    # Scene-type conditioning + variety (best-effort).
+    if bool(getattr(video_settings, "prompt_conditioning", True)):
+        try:
+            scene_types = assign_scene_types(prompts)
+            neg = default_negative_prompt()
+            prompts = [condition_prompt(p, scene_type=scene_types[i], idx=i, negatives=neg) for i, p in enumerate(prompts)]
+        except Exception:
+            pass
 
     if video_settings.use_image_slideshow:
         img_dir = assets_dir / "images"
+        if prebuilt_prompts is not None:
+            storyboard_prompts = prompts[: max(1, int(video_settings.images_per_video))]
+            storyboard_seeds = (seeds or [])[: len(storyboard_prompts)]
+            if len(storyboard_seeds) < len(storyboard_prompts):
+                base = getattr(video_settings, "seed_base", None)
+                base_i = int(base) if base is not None else 123
+                storyboard_seeds = storyboard_seeds + [base_i + (i + 1) * 9973 for i in range(len(storyboard_prompts) - len(storyboard_seeds))]
+            storyboard = build_storyboard(
+                pkg,
+                seed_base=getattr(video_settings, "seed_base", None),
+                branding=getattr(app, "branding", None),
+                max_scenes=len(storyboard_prompts),
+            )
+            # Persist approved prompt/seed into manifest scenes (best-effort)
+            try:
+                for i in range(min(len(storyboard.scenes), len(storyboard_prompts))):
+                    sc = storyboard.scenes[i]
+                    storyboard.scenes[i] = type(sc)(**{**sc.__dict__, "prompt": storyboard_prompts[i], "seed": int(storyboard_seeds[i])})  # type: ignore[misc]
+            except Exception:
+                pass
+        else:
+            storyboard = build_storyboard(
+                pkg,
+                seed_base=getattr(video_settings, "seed_base", None),
+                branding=getattr(app, "branding", None),
+                max_scenes=max(1, int(video_settings.images_per_video)),
+            )
+            storyboard_prompts = [s.prompt for s in storyboard.scenes]
+            storyboard_seeds = [s.seed for s in storyboard.scenes]
+        manifest_path = assets_dir / "manifest.json"
+        write_manifest(
+            manifest_path,
+            storyboard=storyboard,
+            settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "voice": voice_id}},
+        )
         gen = generate_images(
             sdxl_turbo_model_id=img_id,
-            prompts=prompts,
+            prompts=storyboard_prompts,
             out_dir=img_dir,
             max_images=max(1, int(video_settings.images_per_video)),
+            seeds=storyboard_seeds,
         )
         image_paths = [g.path for g in gen]
+
+        # Quality reject/regenerate (best-effort; re-inits model on retry).
+        retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
+        if retries > 0:
+            for si, (p, base_seed, out_path) in enumerate(zip(storyboard_prompts, storyboard_seeds, image_paths), start=1):
+                attempt = 0
+                while attempt < retries:
+                    try:
+                        q = score_frame(out_path)
+                        if not is_reject(q):
+                            break
+                    except Exception:
+                        break
+                    attempt += 1
+                    regen = generate_images(
+                        sdxl_turbo_model_id=img_id,
+                        prompts=[p],
+                        out_dir=img_dir,
+                        max_images=1,
+                        seeds=[int(base_seed) + attempt],
+                    )
+                    if regen:
+                        try:
+                            regen[0].path.replace(out_path)
+                        except Exception:
+                            pass
+
+        # Update manifest with image paths
+        try:
+            import json as _json
+
+            mp = assets_dir / "manifest.json"
+            m = _json.loads(mp.read_text(encoding="utf-8"))
+            for i, pth in enumerate(image_paths, start=1):
+                try:
+                    m["scenes"][i - 1]["image_path"] = str(pth)
+                except Exception:
+                    pass
+            mp.write_text(_json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+        # If music/SFX are enabled, pre-mix into a final wav and pass it as voice_wav, to avoid double-mixing.
+        mix_wav = final_voice_wav
+        try:
+            if music and music.exists():
+                mix_cfg = MusicMixConfig(
+                    enabled=True,
+                    ducking_enabled=bool(getattr(video_settings, "music_ducking", True)),
+                    ducking_amount=float(getattr(video_settings, "music_ducking_amount", 0.7)),
+                    fade_s=float(getattr(video_settings, "music_fade_s", 1.2)),
+                    music_volume=float(getattr(video_settings, "music_volume", 0.08)),
+                )
+                mixed = assets_dir / "audio_bed.wav"
+                mix_wav = mix_voice_and_music(ffmpeg_dir=paths.ffmpeg_dir, voice_wav=final_voice_wav, music_path=music, out_wav=mixed, cfg=mix_cfg)
+            if str(getattr(video_settings, "sfx_mode", "off") or "off") != "off":
+                sfx_paths = ensure_builtin_sfx(assets_dir / "sfx")
+                dur_s = float(duration_seconds(mix_wav))
+                events = schedule_sfx_events(duration_s=dur_s, clip_count=len(image_paths), sfx_paths=sfx_paths)
+                sfx_track = assets_dir / "sfx_track.wav"
+                render_sfx_track(sr=44100, duration_s=dur_s, events=events, out_wav=sfx_track)
+                import subprocess as _sub
+                from pathlib import Path as _Path
+                from src.utils_ffmpeg import ensure_ffmpeg
+
+                ffmpeg_bin = _Path(ensure_ffmpeg(paths.ffmpeg_dir))
+                out_final_wav = assets_dir / "final_audio.wav"
+                cmd = build_sfx_mix_cmd(ffmpeg=ffmpeg_bin, base_wav=mix_wav, sfx_wavs=[sfx_track], out_wav=out_final_wav)
+                _sub.run(cmd, check=True, capture_output=True, text=True)
+                mix_wav = out_final_wav
+        except Exception:
+            mix_wav = final_voice_wav
+
         assemble_microclips_then_concat(
             ffmpeg_dir=paths.ffmpeg_dir,
             settings=video_settings,
             images=image_paths,
-            voice_wav=voice_wav,
+            voice_wav=mix_wav,
             captions_json=captions_json,
             out_final_mp4=out_final,
             out_assets_dir=assets_dir,
-            background_music=music,
+            background_music=None,
             branding=branding,
+            article_text=article_text,
+            topic_tags=list(app.topic_tags),
         )
     else:
         # For img→vid clip models, first generate keyframe images (using the image model),
         # then animate them into clips with the selected clip model.
         key_dir = assets_dir / "keyframes"
+        storyboard = build_storyboard(pkg, seed_base=getattr(video_settings, "seed_base", None), max_scenes=max(1, int(video_settings.clips_per_video)))
+        storyboard_prompts = [s.prompt for s in storyboard.scenes]
+        storyboard_seeds = [s.seed for s in storyboard.scenes]
+        manifest_path = assets_dir / "manifest.json"
+        write_manifest(
+            manifest_path,
+            storyboard=storyboard,
+            settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "clip": (clip_id or img_id), "voice": voice_id}},
+        )
         key_gen = generate_images(
             sdxl_turbo_model_id=img_id,
-            prompts=prompts,
+            prompts=storyboard_prompts,
             out_dir=key_dir,
             max_images=max(1, int(video_settings.clips_per_video)),
+            seeds=storyboard_seeds,
         )
         keyframes = [g.path for g in key_gen]
+
+        retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
+        if retries > 0:
+            for si, (p, base_seed, out_path) in enumerate(zip(storyboard_prompts, storyboard_seeds, keyframes), start=1):
+                attempt = 0
+                while attempt < retries:
+                    try:
+                        q = score_frame(out_path)
+                        if not is_reject(q):
+                            break
+                    except Exception:
+                        break
+                    attempt += 1
+                    regen = generate_images(
+                        sdxl_turbo_model_id=img_id,
+                        prompts=[p],
+                        out_dir=key_dir,
+                        max_images=1,
+                        seeds=[int(base_seed) + attempt],
+                    )
+                    if regen:
+                        try:
+                            regen[0].path.replace(out_path)
+                        except Exception:
+                            pass
+
+        # Update manifest with keyframe paths
+        try:
+            import json as _json
+
+            mp = assets_dir / "manifest.json"
+            m = _json.loads(mp.read_text(encoding="utf-8"))
+            for i, pth in enumerate(keyframes, start=1):
+                try:
+                    m["scenes"][i - 1]["image_path"] = str(pth)
+                except Exception:
+                    pass
+            mp.write_text(_json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+        # Keyframe image model off GPU before loading the clip / video diffusion model.
+        prepare_for_next_model()
 
         clip_dir = assets_dir / "clips"
         gen_clips = generate_clips(
@@ -213,16 +445,33 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
             seconds_per_clip=float(video_settings.clip_seconds),
         )
         clip_paths = [c.path for c in gen_clips]
+        mix_wav = final_voice_wav
+        try:
+            if music and music.exists():
+                mix_cfg = MusicMixConfig(
+                    enabled=True,
+                    ducking_enabled=bool(getattr(video_settings, "music_ducking", True)),
+                    ducking_amount=float(getattr(video_settings, "music_ducking_amount", 0.7)),
+                    fade_s=float(getattr(video_settings, "music_fade_s", 1.2)),
+                    music_volume=float(getattr(video_settings, "music_volume", 0.08)),
+                )
+                mixed = assets_dir / "audio_bed.wav"
+                mix_wav = mix_voice_and_music(ffmpeg_dir=paths.ffmpeg_dir, voice_wav=final_voice_wav, music_path=music, out_wav=mixed, cfg=mix_cfg)
+        except Exception:
+            mix_wav = final_voice_wav
+
         assemble_generated_clips_then_concat(
             ffmpeg_dir=paths.ffmpeg_dir,
             settings=video_settings,
             clips=clip_paths,
-            voice_wav=voice_wav,
+            voice_wav=mix_wav,
             captions_json=captions_json,
             out_final_mp4=out_final,
             out_assets_dir=assets_dir,
-            background_music=music,
+            background_music=None,
             branding=branding,
+            article_text=article_text,
+            topic_tags=list(app.topic_tags),
         )
 
     # Optional cleanup: remove large image/keyframe folders to save disk space.
@@ -235,7 +484,7 @@ def run_once(*, settings: AppSettings | None = None) -> Path | None:
             except Exception:
                 pass
 
-    _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts)
+    _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
     return video_dir
 
 
@@ -243,7 +492,7 @@ def main() -> None:
     if load_dotenv:
         load_dotenv()
 
-    _single_instance_guard()
+    single_instance_guard()
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--ui", action="store_true", help="Launch the desktop UI.")

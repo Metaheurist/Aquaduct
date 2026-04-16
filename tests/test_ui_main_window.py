@@ -45,3 +45,25 @@ def test_save_button_calls_save_settings(qtbot, monkeypatch, patch_paths, write_
     w._save_settings()
     w._save_settings.assert_called_once()
 
+
+@pytest.mark.qt
+def test_storyboard_dialog_constructs(qtbot, tmp_path):
+    from UI.storyboard_dialog import StoryboardPreviewDialog
+
+    manifest = tmp_path / "manifest.json"
+    grid = tmp_path / "grid.png"
+    manifest.write_text('{"title":"t","scenes":[{"prompt":"p","seed":1}]}', encoding="utf-8")
+    grid.write_bytes(b"\x89PNG\r\n\x1a\n")  # minimal PNG signature (dialog will ignore load failure)
+
+    d = StoryboardPreviewDialog(
+        None,
+        manifest_path=manifest,
+        grid_png_path=grid,
+        on_regenerate_scene=lambda _i: None,
+        on_regenerate_all=lambda: None,
+        on_approve_render=lambda: None,
+    )
+    qtbot.addWidget(d)
+    d.show()
+    assert d is not None
+

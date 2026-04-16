@@ -8,12 +8,17 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
 
-from src.hardware import get_hardware_info, rate_model_fit
+from src.hardware import get_hardware_info, rate_model_fit, vram_requirement_hint
 from src.model_manager import model_options
+
+
+def _vram_label_style() -> str:
+    return "color:#9BB0C4;font-size:12px;padding:0 10px;min-width:7.5em;"
 
 
 def _fit_badge_style(marker: str) -> str:
@@ -59,18 +64,20 @@ def attach_settings_tab(win) -> None:
 
     form = QFormLayout()
     form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setVerticalSpacing(10)
+    form.setHorizontalSpacing(14)
     win.llm_combo = QComboBox()
     win.img_combo = QComboBox()
     win.voice_combo = QComboBox()
 
     def _prep_combo(combo: QComboBox) -> None:
-        combo.setSizePolicy(QSizePolicy.Policy.Expanding, combo.sizePolicy().verticalPolicy())
-        combo.setMinimumWidth(560)
+        combo.setSizePolicy(QSizePolicy.Policy.Preferred, combo.sizePolicy().verticalPolicy())
+        combo.setMinimumWidth(300)
+        combo.setMaximumWidth(700)
         combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         combo.setMinimumContentsLength(28)
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
-        # Ensure the popup is wide enough to read
-        combo.view().setMinimumWidth(720)
+        combo.view().setMinimumWidth(480)
 
     def fill(combo: QComboBox, kind: str) -> None:
         combo.clear()
@@ -98,6 +105,16 @@ def attach_settings_tab(win) -> None:
         if idx >= 0:
             win.voice_combo.setCurrentIndex(idx)
 
+    # Required VRAM (typical; heuristic) between combo and fit badge
+    win.llm_vram_lbl = QLabel("—")
+    win.img_vram_lbl = QLabel("—")
+    win.voice_vram_lbl = QLabel("—")
+    for _lbl in (win.llm_vram_lbl, win.img_vram_lbl, win.voice_vram_lbl):
+        _lbl.setStyleSheet(_vram_label_style())
+        _lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        _lbl.setWordWrap(False)
+        _lbl.setToolTip("Typical GPU VRAM for this model class (estimate only; CPU fallback may apply).")
+
     # Fit badges (based on detected hardware)
     win.llm_fit = QLabel("UNKNOWN")
     win.img_fit = QLabel("UNKNOWN")
@@ -117,11 +134,31 @@ def attach_settings_tab(win) -> None:
             lbl.setStyleSheet(_fit_badge_style(marker))
             lbl.setToolTip(why)
 
-        set_badge(win.llm_fit, kind="script", repo_id=str(win.llm_combo.currentData()))
+        llm_repo = str(win.llm_combo.currentData())
+        llm_opt = win._model_opt_by_repo.get(llm_repo)
+        llm_spd = llm_opt.speed if llm_opt else "slow"
+        win.llm_vram_lbl.setText(vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd))
+        set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
+
         img_data = win.img_combo.currentData()
-        vid_repo = img_data[1] if isinstance(img_data, tuple) and len(img_data) == 2 else str(img_data)
+        if isinstance(img_data, tuple) and len(img_data) == 2:
+            pair_id, vid_repo = str(img_data[0]), str(img_data[1])
+        else:
+            pair_id, vid_repo = "", str(img_data)
+        vid_opt = win._model_opt_by_repo.get(vid_repo)
+        vid_spd = vid_opt.speed if vid_opt else "slow"
+        if not pair_id and vid_opt and getattr(vid_opt, "pair_image_repo_id", ""):
+            pair_id = str(vid_opt.pair_image_repo_id)
+        win.img_vram_lbl.setText(
+            vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
+        )
         set_badge(win.img_fit, kind="video", repo_id=str(vid_repo))
-        set_badge(win.voice_fit, kind="voice", repo_id=str(win.voice_combo.currentData()))
+
+        voice_repo = str(win.voice_combo.currentData())
+        voice_opt = win._model_opt_by_repo.get(voice_repo)
+        voice_spd = voice_opt.speed if voice_opt else "slow"
+        win.voice_vram_lbl.setText(vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd))
+        set_badge(win.voice_fit, kind="voice", repo_id=voice_repo)
 
     win.llm_combo.currentIndexChanged.connect(_update_fit_badges)
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
@@ -132,12 +169,15 @@ def attach_settings_tab(win) -> None:
 
     llm_row = QHBoxLayout()
     llm_row.addWidget(win.llm_combo, 1)
+    llm_row.addWidget(win.llm_vram_lbl, 0)
     llm_row.addWidget(win.llm_fit, 0)
     img_row = QHBoxLayout()
     img_row.addWidget(win.img_combo, 1)
+    img_row.addWidget(win.img_vram_lbl, 0)
     img_row.addWidget(win.img_fit, 0)
     voice_row = QHBoxLayout()
     voice_row.addWidget(win.voice_combo, 1)
+    voice_row.addWidget(win.voice_vram_lbl, 0)
     voice_row.addWidget(win.voice_fit, 0)
 
     form.addRow("Script model (LLM)", llm_row)
@@ -172,5 +212,19 @@ def attach_settings_tab(win) -> None:
     dl_row.addWidget(win.dl_everything_btn)
     dl_row.addStretch(1)
     lay.addLayout(dl_row)
+
+    danger_header = QLabel("Danger zone")
+    danger_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 12px;")
+    lay.addWidget(danger_header)
+
+    danger_row = QHBoxLayout()
+    win.clear_data_btn = QPushButton("Clear data")
+    win.clear_data_btn.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+    win.clear_data_btn.setToolTip("Wipe settings, downloaded models, and cache.")
+    win.clear_data_btn.setObjectName("danger")
+    win.clear_data_btn.clicked.connect(win._clear_all_data)
+    danger_row.addWidget(win.clear_data_btn)
+    danger_row.addStretch(1)
+    lay.addLayout(danger_row)
 
     win.tabs.addTab(w, "Settings")

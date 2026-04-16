@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QTabWidget,
     QPushButton,
     QVBoxLayout,
@@ -18,14 +19,16 @@ from PyQt6.QtWidgets import (
 )
 
 from src.config import AppSettings, BrandingSettings, VideoSettings, get_paths
+from src.fs_delete import rmtree_robust, unlink_file
 from src.model_manager import download_model_to_project
 from src.preflight import preflight_check
-from src.ui_settings import load_settings, save_settings
+from src.ui_settings import load_settings, save_settings, settings_path
 from src.personalities import get_personality_by_id
 
 from UI.paths import project_root
 from UI.tabs import (
     attach_branding_tab,
+    attach_captions_tab,
     attach_my_pc_tab,
     attach_run_tab,
     attach_settings_tab,
@@ -33,8 +36,10 @@ from UI.tabs import (
     attach_video_tab,
 )
 from UI.download_popup import DownloadPopup
-from UI.workers import ModelDownloadWorker, PipelineBatchWorker, PipelineWorker
+from UI.workers import ModelDownloadWorker, PipelineBatchWorker, PipelineWorker, PreviewWorker, StoryboardWorker
 from UI.workers import TopicDiscoverWorker
+from UI.preview_dialog import PreviewDialog
+from UI.storyboard_dialog import StoryboardPreviewDialog
 
 
 class MainWindow(QMainWindow):
@@ -87,22 +92,178 @@ class MainWindow(QMainWindow):
         attach_run_tab(self)
         attach_topics_tab(self)
         attach_video_tab(self)
+        attach_captions_tab(self)
         attach_branding_tab(self)
         attach_settings_tab(self)
         attach_my_pc_tab(self)
+
+        # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
+        self.tabs.currentChanged.connect(lambda _idx: self._resize_to_current_tab())
+        QTimer.singleShot(0, self._resize_to_current_tab)
+        if hasattr(self, "personality_combo"):
+            self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
+            self._update_personality_hint()
 
         self.worker: PipelineWorker | None = None
         self.topic_worker: TopicDiscoverWorker | None = None
         self.download_worker: ModelDownloadWorker | None = None
         self._download_popup: DownloadPopup | None = None
+        self._paused_download_repo_ids: list[str] | None = None
+        self._paused_download_title: str | None = None
+        self.preview_worker: PreviewWorker | None = None
+        self.storyboard_worker: StoryboardWorker | None = None
+        self._last_preview_pkg = None
+        self._last_preview_sources = None
+        self._last_preview_prompts = None
+        self._last_preview_personality_id = "auto"
+        self._last_storyboard_manifest = None
+        self._last_storyboard_grid = None
+
+        self._reset_run_session_state()
+
+    def _reset_run_session_state(self) -> None:
+        """
+        Each app launch: clear Run tab progress, last-run scene #, and in-memory preview/storyboard
+        so the UI never shows a previous session's status (e.g. Preview failed / partial progress).
+        """
+        if hasattr(self, "run_status"):
+            self.run_status.setText("Idle")
+        if hasattr(self, "run_progress"):
+            self.run_progress.setValue(0)
+        if hasattr(self, "regen_scene_spin"):
+            self.regen_scene_spin.setValue(1)
+        if hasattr(self, "preview_btn"):
+            self.preview_btn.setEnabled(True)
+            self.preview_btn.setText("Preview")
+        if hasattr(self, "storyboard_btn"):
+            self.storyboard_btn.setEnabled(True)
+            self.storyboard_btn.setText("Storyboard Preview")
+        if hasattr(self, "run_btn"):
+            self.run_btn.setEnabled(True)
+        self._last_preview_pkg = None
+        self._last_preview_sources = None
+        self._last_preview_prompts = None
+        self._last_preview_personality_id = "auto"
+        self._last_storyboard_manifest = None
+        self._last_storyboard_grid = None
+
+    def _busy_background_jobs(self) -> list[str]:
+        """Human-readable labels for workers that may hold files open."""
+        out: list[str] = []
+        if self.worker and self.worker.isRunning():
+            out.append("video generation")
+        if self.topic_worker and self.topic_worker.isRunning():
+            out.append("topic discovery")
+        if self.preview_worker and self.preview_worker.isRunning():
+            out.append("preview")
+        if self.storyboard_worker and self.storyboard_worker.isRunning():
+            out.append("storyboard preview")
+        return out
+
+    def _clear_all_data(self) -> None:
+        """
+        Wipe local app state: settings, downloaded models, cache, and generated outputs.
+        """
+        reply = QMessageBox.question(
+            self,
+            "Clear all data?",
+            "This will delete:\n\n"
+            "- ui_settings.json (all saved settings)\n"
+            "- models/ (downloaded models)\n"
+            "- data/news_cache/ (topic cache)\n"
+            "- .cache/ (ffmpeg + other caches)\n"
+            "- runs/ and videos/ (generated outputs)\n\n"
+            "This cannot be undone. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Stop download thread first so we can delete models/ without WinError 32 on partial files.
+        try:
+            if self.download_worker and self.download_worker.isRunning():
+                self.download_worker.cancel()
+                self.download_worker.wait(3000)
+        except Exception:
+            pass
+        if self.download_worker and self.download_worker.isRunning():
+            QMessageBox.warning(
+                self,
+                "Clear data",
+                "The model download thread is still stopping. Wait a few seconds and try Clear again.",
+            )
+            return
+
+        busy = self._busy_background_jobs()
+        if busy:
+            QMessageBox.warning(
+                self,
+                "Clear data",
+                "Stop these before clearing data (they may lock files under this project):\n\n- "
+                + "\n- ".join(busy)
+                + "\n\nIf nothing is running, restart the app and try again.",
+            )
+            return
+        try:
+            if self._download_popup is not None:
+                self._download_popup.close()
+        except Exception:
+            pass
+
+        self._paused_download_repo_ids = None
+        self._paused_download_title = None
+
+        # Best-effort deletes; leave directories recreated.
+        errors: list[str] = []
+
+        # Settings file (repo root)
+        uerr = unlink_file(settings_path())
+        if uerr:
+            errors.append(uerr)
+
+        # Models, caches, and outputs (Windows: readonly bits + short lock retries)
+        for folder in (
+            self.paths.models_dir,
+            self.paths.news_cache_dir,
+            self.paths.cache_dir,
+            self.paths.runs_dir,
+            self.paths.videos_dir,
+        ):
+            rerr = rmtree_robust(folder)
+            if rerr:
+                errors.append(rerr)
+
+        # Recreate required folders so subsequent operations don't crash.
+        try:
+            self.paths.models_dir.mkdir(parents=True, exist_ok=True)
+            self.paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
+            self.paths.cache_dir.mkdir(parents=True, exist_ok=True)
+            self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
+            self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        # Reset to defaults and persist (fresh ui_settings.json).
+        self.settings = AppSettings(topic_tags=[])
+        try:
+            save_settings(self.settings)
+        except Exception:
+            pass
+
+        if errors:
+            tip = (
+                "\n\nTip: Close any Explorer windows inside this repo, pause antivirus for the folder, "
+                "wait a few seconds, then try Clear again."
+            )
+            QMessageBox.warning(self, "Clear data finished (with errors)", "\n".join(errors) + tip)
+        else:
+            QMessageBox.information(self, "Clear data finished", "All local data was cleared. Restart the app for a clean slate.")
 
         if hasattr(self, "personality_combo") and hasattr(self, "personality_hint"):
-            self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
             self._update_personality_hint()
 
-        # Resize window to match active tab content.
-        self.tabs.currentChanged.connect(lambda _idx: self._resize_to_current_tab())
-        QTimer.singleShot(0, self._resize_to_current_tab)
+        self._resize_to_current_tab()
 
     def _resize_to_current_tab(self) -> None:
         """
@@ -115,7 +276,11 @@ class MainWindow(QMainWindow):
         # Base: title bar + tab bar + current page content.
         title_h = self._title_bar.sizeHint().height() if hasattr(self, "_title_bar") else 40
         tabbar_h = self.tabs.tabBar().sizeHint().height()
-        page_h = page.sizeHint().height()
+        lay = page.layout()
+        if lay is not None:
+            page_h = int(lay.sizeHint().height())
+        else:
+            page_h = int(page.sizeHint().height())
 
         # Layout margins (top+bottom) + small padding inside tab pane.
         h = int(title_h + tabbar_h + page_h + 10 + 10 + 48)
@@ -285,6 +450,33 @@ class MainWindow(QMainWindow):
             clips_per_video=int(self.clips_spin.value()) if hasattr(self, "clips_spin") else 3,
             clip_seconds=float(self.clip_seconds_spin.value()) if hasattr(self, "clip_seconds_spin") else 4.0,
             cleanup_images_after_run=bool(self.cleanup_images_chk.isChecked()) if hasattr(self, "cleanup_images_chk") else False,
+            high_quality_topic_selection=bool(self.hq_topics_chk.isChecked()) if hasattr(self, "hq_topics_chk") else True,
+            fetch_article_text=bool(self.fetch_article_chk.isChecked()) if hasattr(self, "fetch_article_chk") else True,
+            llm_factcheck=bool(self.factcheck_chk.isChecked()) if hasattr(self, "factcheck_chk") else True,
+            prompt_conditioning=bool(self.prompt_cond_chk.isChecked()) if hasattr(self, "prompt_cond_chk") else True,
+            seed_base=int(str(self.seed_base_input.text()).strip())
+            if hasattr(self, "seed_base_input") and str(self.seed_base_input.text()).strip().lstrip("-").isdigit()
+            else None,
+            quality_retries=int(self.quality_retries_spin.value()) if hasattr(self, "quality_retries_spin") else 2,
+            enable_motion=bool(self.enable_motion_chk.isChecked()) if hasattr(self, "enable_motion_chk") else True,
+            transition_strength=str(self.transition_combo.currentData() or "low") if hasattr(self, "transition_combo") else "low",
+            audio_polish=str(self.audio_polish_combo.currentData() or "basic") if hasattr(self, "audio_polish_combo") else "basic",
+            music_ducking=bool(self.music_ducking_chk.isChecked()) if hasattr(self, "music_ducking_chk") else True,
+            music_ducking_amount=float(self.ducking_spin.value()) / 100.0 if hasattr(self, "ducking_spin") else float(getattr(self.settings.video, "music_ducking_amount", 0.7)),
+            music_fade_s=float(self.music_fade_spin.value()) if hasattr(self, "music_fade_spin") else 1.2,
+            sfx_mode=str(self.sfx_combo.currentData() or "off") if hasattr(self, "sfx_combo") else "off",
+            captions_enabled=bool(self.captions_enabled_chk.isChecked()) if hasattr(self, "captions_enabled_chk") else True,
+            caption_highlight_intensity=str(self.caption_highlight_combo.currentData() or "strong")
+            if hasattr(self, "caption_highlight_combo")
+            else "strong",
+            caption_max_words=int(self.caption_max_words_spin.value()) if hasattr(self, "caption_max_words_spin") else 8,
+            facts_card_enabled=bool(self.facts_card_chk.isChecked()) if hasattr(self, "facts_card_chk") else True,
+            facts_card_position=str(self.facts_card_pos_combo.currentData() or "top_left")
+            if hasattr(self, "facts_card_pos_combo")
+            else "top_left",
+            facts_card_duration=str(self.facts_card_dur_combo.currentData() or "short")
+            if hasattr(self, "facts_card_dur_combo")
+            else "short",
         )
 
         branding = getattr(self.settings, "branding", BrandingSettings())
@@ -493,6 +685,14 @@ class MainWindow(QMainWindow):
         if not repo_ids:
             return
 
+        # Resume if we have a paused queue that matches this request (common case: click Download again).
+        if self._paused_download_repo_ids:
+            paused_remaining = [r for r in (self._paused_download_repo_ids or []) if r and r.strip()]
+            requested = set(repo_ids)
+            if paused_remaining and set(paused_remaining).issubset(requested):
+                repo_ids = paused_remaining
+                title = self._paused_download_title or "Resuming download"
+
         popup = DownloadPopup(self, title=title)
         self._download_popup = popup
 
@@ -501,18 +701,50 @@ class MainWindow(QMainWindow):
         # If user closes the popup, cancel the background worker so app can exit cleanly.
         popup.cancel_requested.connect(lambda: self.download_worker.cancel() if self.download_worker else None)
 
+        def _pause_download() -> None:
+            if not self.download_worker:
+                return
+
+            # Compute remaining list (include current repo_id because it may be partial).
+            remaining: list[str] = []
+            try:
+                idx = int(getattr(self.download_worker, "current_index", 0) or 0)
+                cur = str(getattr(self.download_worker, "current_repo_id", "") or "").strip()
+                all_ids = list(getattr(self.download_worker, "repo_ids", []) or [])
+                if idx <= 0:
+                    remaining = [str(r) for r in all_ids if str(r).strip()]
+                else:
+                    tail = [str(r) for r in all_ids[idx:] if str(r).strip()]
+                    if cur:
+                        remaining = [cur] + tail
+                    else:
+                        remaining = [str(r) for r in all_ids[idx - 1 :] if str(r).strip()]
+            except Exception:
+                remaining = [str(r) for r in (repo_ids or []) if str(r).strip()]
+
+            self._paused_download_repo_ids = remaining or None
+            self._paused_download_title = title
+            self.download_worker.pause()
+
+        popup.pause_requested.connect(_pause_download)
+
         def on_progress(pct: int, status: str) -> None:
             popup.status.setText(status)
             popup.bar.setValue(max(0, min(100, int(pct))))
 
         def on_done(_msg: str) -> None:
             msg = str(_msg or "").strip().lower()
-            if "cancel" in msg:
+            if "pause" in msg:
+                popup.status.setText("Paused. You can close this window and resume later.")
+                # Don't force bar to 0; leave last visible state.
+            elif "cancel" in msg:
                 popup.status.setText("Cancelled. You can resume later.")
                 # Don't force bar to 0; leave last visible state.
             else:
                 popup.status.setText("Done.")
                 popup.bar.setValue(100)
+                self._paused_download_repo_ids = None
+                self._paused_download_title = None
             popup.accept()
 
         def on_failed(err: str) -> None:
@@ -593,6 +825,380 @@ class MainWindow(QMainWindow):
 
         self.worker.progress.connect(on_prog)
         self.worker.done.connect(on_done)
+        self.worker.failed.connect(self._on_failed)
+        self.worker.start()
+
+    def _on_preview(self) -> None:
+        if self.preview_worker and self.preview_worker.isRunning():
+            return
+
+        self._save_settings()
+        pf = preflight_check(settings=self.settings, strict=False)
+        for w in pf.warnings:
+            self._append_log(f"Warning: {w}")
+
+        if hasattr(self, "preview_btn"):
+            try:
+                self.preview_btn.setEnabled(False)
+                self.preview_btn.setText("Previewing…")
+            except Exception:
+                pass
+        if hasattr(self, "run_status"):
+            self.run_status.setText("Generating preview…")
+
+        self.preview_worker = PreviewWorker(self.settings)
+
+        def on_prog(pct: int, status: str) -> None:
+            if hasattr(self, "run_status"):
+                self.run_status.setText(status)
+            if hasattr(self, "run_progress"):
+                self.run_progress.setValue(max(0, min(100, int(pct))))
+            self._resize_to_current_tab()
+
+        def on_done(pkg, sources, prompts, personality_id: str, confidence: str) -> None:
+            if hasattr(self, "preview_btn"):
+                try:
+                    self.preview_btn.setEnabled(True)
+                    self.preview_btn.setText("Preview")
+                except Exception:
+                    pass
+            self._last_preview_pkg = pkg
+            self._last_preview_sources = sources
+            self._last_preview_prompts = prompts
+            self._last_preview_personality_id = str(personality_id or "auto")
+
+            segs = []
+            try:
+                for s in getattr(pkg, "segments", []) or []:
+                    segs.append(
+                        {
+                            "narration": getattr(s, "narration", ""),
+                            "visual_prompt": getattr(s, "visual_prompt", ""),
+                            "on_screen_text": getattr(s, "on_screen_text", "") or "",
+                        }
+                    )
+            except Exception:
+                segs = []
+
+            dlg = PreviewDialog(
+                self,
+                title=str(getattr(pkg, "title", "")),
+                personality_id=self._last_preview_personality_id,
+                confidence=str(confidence or ""),
+                hook=str(getattr(pkg, "hook", "")),
+                segments=segs,
+                cta=str(getattr(pkg, "cta", "")),
+                on_regenerate=self._on_preview,
+                on_approve_run=self._approve_preview_and_run,
+            )
+            dlg.exec()
+
+        def on_failed(err: str) -> None:
+            if hasattr(self, "preview_btn"):
+                try:
+                    self.preview_btn.setEnabled(True)
+                    self.preview_btn.setText("Preview")
+                except Exception:
+                    pass
+            self._append_log("Preview failed:")
+            self._append_log(err)
+            if hasattr(self, "run_status"):
+                self.run_status.setText("Preview failed.")
+
+        self.preview_worker.progress.connect(on_prog)
+        self.preview_worker.done.connect(on_done)
+        self.preview_worker.failed.connect(on_failed)
+        self.preview_worker.start()
+
+    def _approve_preview_and_run(self) -> None:
+        """
+        Run the pipeline using the last previewed script/storyboard, without re-generating the script.
+        """
+        if not self._last_preview_pkg:
+            return
+        if self.worker and self.worker.isRunning():
+            return
+
+        self._save_settings()
+        pf = preflight_check(settings=self.settings, strict=True)
+        for w in pf.warnings:
+            self._append_log(f"Warning: {w}")
+        if not pf.ok:
+            self._append_log("Preflight failed. Fix these issues before running:")
+            for e in pf.errors:
+                self._append_log(f"- {e}")
+            return
+
+        self.run_btn.setEnabled(False)
+        if hasattr(self, "run_status"):
+            self.run_status.setText("Starting…")
+        if hasattr(self, "run_progress"):
+            self.run_progress.setValue(0)
+
+        self.worker = PipelineWorker(
+            self.settings,
+            prebuilt_pkg=self._last_preview_pkg,
+            prebuilt_sources=self._last_preview_sources,
+            prebuilt_prompts=self._last_preview_prompts,
+        )
+        self.worker.done.connect(lambda out: self._on_done(out))
+        self.worker.failed.connect(self._on_failed)
+        self.worker.start()
+
+    def _regenerate_scene_from_last_run(self) -> None:
+        """
+        Regenerate a single storyboard scene from the latest video folder manifest, then re-render final.mp4.
+        """
+        try:
+            idx = int(self.regen_scene_spin.value()) if hasattr(self, "regen_scene_spin") else 1
+        except Exception:
+            idx = 1
+        idx = max(1, idx)
+
+        try:
+            # Find latest video dir with manifest.json
+            vids = list(self.paths.videos_dir.glob("*"))
+            vids = [p for p in vids if p.is_dir() and (p / "assets" / "manifest.json").exists()]
+            if not vids:
+                self._append_log("No manifest.json found yet. Run once to generate a storyboard first.")
+                return
+            vids.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            video_dir = vids[0]
+            manifest = video_dir / "assets" / "manifest.json"
+
+            import json
+
+            m = json.loads(manifest.read_text(encoding="utf-8"))
+            scenes = m.get("scenes", []) if isinstance(m, dict) else []
+            if not isinstance(scenes, list) or not scenes:
+                self._append_log("Manifest has no scenes.")
+                return
+            if idx > len(scenes):
+                self._append_log(f"Scene #{idx} out of range (1..{len(scenes)}).")
+                return
+            sc = scenes[idx - 1] if isinstance(scenes[idx - 1], dict) else {}
+            prompt = str(sc.get("prompt", "")).strip()
+            seed = int(sc.get("seed", 0) or 0)
+            img_path = str(sc.get("image_path", "")).strip()
+            if not prompt or not img_path:
+                self._append_log("Manifest missing prompt/image_path for that scene.")
+                return
+
+            from pathlib import Path
+            from src.artist import generate_images
+            from src.editor import assemble_microclips_then_concat
+            from src.config import get_paths, get_models
+
+            paths = get_paths()
+            models = get_models()
+            settings = self._collect_settings_from_ui()
+            img_id = settings.image_model_id.strip() or models.sdxl_turbo_id
+
+            out_path = Path(img_path)
+            out_dir = out_path.parent
+            self._append_log(f"Regenerating scene #{idx}…")
+            regen = generate_images(
+                sdxl_turbo_model_id=img_id,
+                prompts=[prompt],
+                out_dir=out_dir,
+                max_images=1,
+                seeds=[seed + 1],
+            )
+            if regen:
+                try:
+                    regen[0].path.replace(out_path)
+                except Exception:
+                    pass
+                sc["seed"] = seed + 1
+                sc["image_path"] = str(out_path)
+                scenes[idx - 1] = sc
+                m["scenes"] = scenes
+                manifest.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+
+            # Re-render final using current settings, reusing existing voice/captions.
+            voice_wav = video_dir / "assets" / "voice.wav"
+            captions_json = video_dir / "assets" / "captions.json"
+            final_mp4 = video_dir / "final.mp4"
+            images = [Path(str(s.get("image_path", ""))) for s in scenes if isinstance(s, dict) and str(s.get("image_path", "")).strip()]
+            images = [p for p in images if p.exists()]
+            assemble_microclips_then_concat(
+                ffmpeg_dir=paths.ffmpeg_dir,
+                settings=settings.video,
+                images=images,
+                voice_wav=voice_wav,
+                captions_json=captions_json,
+                out_final_mp4=final_mp4,
+                out_assets_dir=video_dir / "assets",
+                background_music=Path(settings.background_music_path).resolve() if settings.background_music_path else None,
+                branding=getattr(settings, "branding", None),
+            )
+            self._append_log(f"Re-rendered: {final_mp4}")
+        except Exception as e:
+            self._append_log(f"Regenerate failed: {e}")
+
+    def _on_storyboard_preview(self) -> None:
+        if self.storyboard_worker and self.storyboard_worker.isRunning():
+            return
+        self._save_settings()
+        if hasattr(self, "storyboard_btn"):
+            try:
+                self.storyboard_btn.setEnabled(False)
+                self.storyboard_btn.setText("Storyboard…")
+            except Exception:
+                pass
+        if hasattr(self, "run_status"):
+            self.run_status.setText("Generating storyboard preview…")
+
+        self.storyboard_worker = StoryboardWorker(self.settings)
+
+        def on_prog(pct: int, status: str) -> None:
+            if hasattr(self, "run_status"):
+                self.run_status.setText(status)
+            if hasattr(self, "run_progress"):
+                self.run_progress.setValue(max(0, min(100, int(pct))))
+            self._resize_to_current_tab()
+
+        def on_done(manifest_path, grid_png_path) -> None:
+            if hasattr(self, "storyboard_btn"):
+                try:
+                    self.storyboard_btn.setEnabled(True)
+                    self.storyboard_btn.setText("Storyboard Preview")
+                except Exception:
+                    pass
+            self._last_storyboard_manifest = manifest_path
+            self._last_storyboard_grid = grid_png_path
+            dlg = StoryboardPreviewDialog(
+                self,
+                manifest_path=manifest_path,
+                grid_png_path=grid_png_path,
+                on_regenerate_scene=self._storyboard_regenerate_scene,
+                on_regenerate_all=self._on_storyboard_preview,
+                on_approve_render=self._approve_storyboard_and_render,
+            )
+            dlg.exec()
+
+        def on_failed(err: str) -> None:
+            if hasattr(self, "storyboard_btn"):
+                try:
+                    self.storyboard_btn.setEnabled(True)
+                    self.storyboard_btn.setText("Storyboard Preview")
+                except Exception:
+                    pass
+            self._append_log("Storyboard preview failed:")
+            self._append_log(err)
+            if hasattr(self, "run_status"):
+                self.run_status.setText("Storyboard preview failed.")
+
+        self.storyboard_worker.progress.connect(on_prog)
+        self.storyboard_worker.done.connect(on_done)
+        self.storyboard_worker.failed.connect(on_failed)
+        self.storyboard_worker.start()
+
+    def _storyboard_regenerate_scene(self, scene_idx: int) -> None:
+        """
+        Regenerate a scene preview image in the current storyboard manifest and refresh grid.
+        """
+        import json
+        from pathlib import Path
+
+        if not self._last_storyboard_manifest or not self._last_storyboard_grid:
+            return
+        manifest = Path(str(self._last_storyboard_manifest))
+        grid = Path(str(self._last_storyboard_grid))
+        if not manifest.exists():
+            return
+
+        m = json.loads(manifest.read_text(encoding="utf-8"))
+        scenes = m.get("scenes", []) if isinstance(m, dict) else []
+        if not isinstance(scenes, list) or not scenes:
+            return
+        idx = max(1, int(scene_idx))
+        if idx > len(scenes):
+            return
+        sc = scenes[idx - 1] if isinstance(scenes[idx - 1], dict) else {}
+
+        prompt = str(sc.get("prompt", "")).strip()
+        seed = int(sc.get("seed", 0) or 0)
+        lock = bool(sc.get("lock_seed", False))
+        prev_path = str(sc.get("preview_image_path", "")).strip()
+        if not prev_path:
+            # default preview location
+            prev_path = str(manifest.parent / "previews" / f"scene_{idx:02d}.png")
+        out_path = Path(prev_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        from src.artist import generate_images
+        from src.config import get_models
+
+        models = get_models()
+        settings = self._collect_settings_from_ui()
+        img_id = settings.image_model_id.strip() or models.sdxl_turbo_id
+
+        new_seed = seed if lock else (seed + 1)
+        gen = generate_images(
+            sdxl_turbo_model_id=img_id,
+            prompts=[prompt],
+            out_dir=out_path.parent,
+            max_images=1,
+            seeds=[new_seed],
+            steps=4,
+        )
+        if gen:
+            try:
+                gen[0].path.replace(out_path)
+            except Exception:
+                pass
+
+        sc["seed"] = int(new_seed)
+        sc["preview_image_path"] = str(out_path)
+        sc["status"] = "regenerated"
+        scenes[idx - 1] = sc
+        m["scenes"] = scenes
+        manifest.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # Rebuild grid
+        try:
+            from src.storyboard import render_preview_grid
+
+            paths = [Path(str(s.get("preview_image_path", ""))) for s in scenes if isinstance(s, dict)]
+            paths = [p for p in paths if p.exists()]
+            render_preview_grid(scene_paths=paths, out_grid=grid, cols=4, thumb=256)
+        except Exception:
+            pass
+
+    def _approve_storyboard_and_render(self) -> None:
+        """
+        Run the full pipeline using the approved storyboard manifest prompts/seeds.
+        """
+        import json
+        from pathlib import Path
+
+        if not self._last_storyboard_manifest:
+            return
+        manifest = Path(str(self._last_storyboard_manifest))
+        if not manifest.exists():
+            return
+        m = json.loads(manifest.read_text(encoding="utf-8"))
+        scenes = m.get("scenes", []) if isinstance(m, dict) else []
+        if not isinstance(scenes, list) or not scenes:
+            return
+
+        prompts = [str(s.get("prompt", "")).strip() for s in scenes if isinstance(s, dict)]
+        seeds = [int(s.get("seed", 0) or 0) for s in scenes if isinstance(s, dict)]
+
+        # Store for worker run; use PipelineWorker to run_once with prebuilt prompts/seeds.
+        self._save_settings()
+        if self.worker and self.worker.isRunning():
+            return
+        self.run_btn.setEnabled(False)
+        if hasattr(self, "run_status"):
+            self.run_status.setText("Rendering approved storyboard…")
+        if hasattr(self, "run_progress"):
+            self.run_progress.setValue(0)
+
+        # Use a special attribute read by run_once (we'll add support) via PipelineWorker args.
+        self.worker = PipelineWorker(self.settings, prebuilt_pkg=None, prebuilt_sources=None, prebuilt_prompts=prompts, prebuilt_seeds=seeds)
+        self.worker.done.connect(lambda out: self._on_done(out))
         self.worker.failed.connect(self._on_failed)
         self.worker.start()
 

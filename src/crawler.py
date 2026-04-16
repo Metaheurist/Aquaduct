@@ -8,6 +8,7 @@ from typing import Iterable
 
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
@@ -180,6 +181,113 @@ def pick_one_item(items: Iterable[NewsItem]) -> NewsItem | None:
         return None
     # Simple: newest fetched first.
     return items[0]
+
+
+def _domain(url: str) -> str:
+    try:
+        return (urlparse(url).netloc or "").lower()
+    except Exception:
+        return ""
+
+
+def fetch_article_text(url: str, *, timeout_s: int = 35) -> str:
+    """
+    Best-effort article text extraction from a URL.
+    Intended for lightweight verification/summary; not perfect.
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+    r = requests.get(url, timeout=timeout_s, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    html = r.text or ""
+    soup = BeautifulSoup(html, "lxml")
+
+    # Drop obvious junk
+    for tag in soup(["script", "style", "noscript", "header", "footer", "nav", "aside"]):
+        try:
+            tag.decompose()
+        except Exception:
+            pass
+
+    candidates = []
+    for sel in ("article", "main", "div[itemprop='articleBody']", "div.article-content", "div.post-content"):
+        try:
+            el = soup.select_one(sel)
+            if el:
+                candidates.append(el.get_text(" ", strip=True))
+        except Exception:
+            continue
+
+    if not candidates:
+        candidates.append(soup.get_text(" ", strip=True))
+
+    # Pick the longest candidate
+    text = max(candidates, key=lambda s: len(s or "")) if candidates else ""
+    text = " ".join((text or "").split()).strip()
+    # Cap size to keep LLM prompts bounded
+    return text[:10000]
+
+
+def get_scored_items(
+    news_cache_dir: Path,
+    *,
+    limit: int = 3,
+    fetch_n: int = 16,
+    query: str = '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")',
+    topic_tags: list[str] | None = None,
+) -> list[NewsItem]:
+    """
+    Fetch more candidates, score them (novelty/impact/clarity/tag match), diversify across tags,
+    then return up to `limit` best items.
+    """
+    from .content_quality import diversify, load_seen_titles, save_seen_titles, score_item
+
+    fetch_n = max(fetch_n, limit)
+    # Fetch without seen-filter so novelty scoring can still pick the best; URL seen-filter is still applied below.
+    raw = fetch_latest_items(limit=fetch_n, query=query, topic_tags=topic_tags)
+
+    seen_titles_path = news_cache_dir / "seen_titles.json"
+    seen_titles = load_seen_titles(seen_titles_path)
+
+    # Source weights: can evolve later; keep simple now.
+    source_weights = {"GoogleNews": 0.25, "MarkTechPost": 0.15}
+
+    scored = []
+    for it in raw:
+        s = score_item(it, topic_tags=topic_tags, seen_titles=seen_titles, source_weights=source_weights)
+        scored.append((s.total, it))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    ranked = [it for _score, it in scored]
+    diversified = diversify(ranked, topic_tags=topic_tags, k=max(1, int(limit)))
+
+    # Maintain existing seen URL behavior (so repeated runs move forward).
+    # Reuse get_latest_items filtering by feeding it through the existing seen mechanism:
+    # we’ll manually filter URLs here and persist to seen.json.
+    seen_path = news_cache_dir / "seen.json"
+    seen = _load_seen(seen_path)
+    out: list[NewsItem] = []
+    for it in diversified:
+        if it.url in seen:
+            continue
+        out.append(it)
+        seen.add(it.url)
+        if len(out) >= limit:
+            break
+    _save_seen(seen_path, seen)
+
+    # Update seen titles list for novelty scoring next time
+    try:
+        for it in out:
+            t = (it.title or "").strip()
+            if t:
+                seen_titles.append(t)
+        save_seen_titles(seen_titles_path, seen_titles)
+    except Exception:
+        pass
+
+    return out
 
 
 def polite_sleep(min_s: float = 0.8, jitter_s: float = 0.6) -> None:

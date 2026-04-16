@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import math
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -13,35 +11,59 @@ from moviepy.editor import (
     VideoFileClip,
     concatenate_videoclips,
 )
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
+from .captions import CaptionWord, caption_window_for_time, load_captions_json, render_caption_overlay_rgba
 from .config import BrandingSettings, VideoSettings
+from .facts_card import extract_candidate_facts, facts_visible_until, pick_top_facts, render_facts_card_rgba
+from .ffmpeg_slideshow import build_motion_slideshow
 from .utils_ffmpeg import configure_moviepy_ffmpeg, ensure_ffmpeg
 
 
-@dataclass(frozen=True)
-class CaptionWord:
-    word: str
-    start: float
-    end: float
+def _build_overlay_make_frame(
+    *,
+    words: list[CaptionWord],
+    settings: VideoSettings,
+    branding: BrandingSettings | None,
+    topic_tags: list[str],
+    facts_lines: list[str] | None,
+    total_dur: float,
+):
+    facts_arr: np.ndarray | None = None
+    facts_end = 0.0
+    if facts_lines and bool(getattr(settings, "facts_card_enabled", True)):
+        pos = str(getattr(settings, "facts_card_position", "top_left") or "top_left")
+        facts_arr = render_facts_card_rgba(
+            lines=facts_lines,
+            w=int(settings.width),
+            h=int(settings.height),
+            branding=branding,
+            position=pos,
+        )
+        mode = str(getattr(settings, "facts_card_duration", "short") or "short")
+        facts_end = facts_visible_until(total_dur=total_dur, duration_mode=mode)
 
+    def make_frame(global_t: float) -> np.ndarray:
+        max_w = int(getattr(settings, "caption_max_words", 8))
+        ws, idxs, active = caption_window_for_time(words, global_t, max_w)
+        cap = render_caption_overlay_rgba(
+            word_strings=ws,
+            window_indices=idxs,
+            active_in_window=active,
+            all_words=words,
+            w=int(settings.width),
+            h=int(settings.height),
+            branding=branding,
+            settings=settings,
+            topic_tags=topic_tags,
+        )
+        if facts_arr is None or global_t >= facts_end:
+            return cap
+        base = Image.fromarray(facts_arr, mode="RGBA")
+        top = Image.fromarray(cap, mode="RGBA")
+        return np.array(Image.alpha_composite(base, top))
 
-def _load_captions(captions_json: Path) -> list[CaptionWord]:
-    data = json.loads(captions_json.read_text(encoding="utf-8"))
-    out: list[CaptionWord] = []
-    if isinstance(data, list):
-        for w in data:
-            if not isinstance(w, dict):
-                continue
-            word = str(w.get("word", "")).strip()
-            try:
-                start = float(w.get("start", 0.0))
-                end = float(w.get("end", 0.0))
-            except Exception:
-                continue
-            if word and end > start:
-                out.append(CaptionWord(word=word, start=start, end=end))
-    return out
+    return make_frame
 
 
 def _fit_crop_9x16(img_w: int, img_h: int, out_w: int, out_h: int) -> tuple[int, int, int, int]:
@@ -60,96 +82,6 @@ def _fit_crop_9x16(img_w: int, img_h: int, out_w: int, out_h: int) -> tuple[int,
         new_h = int(img_w / target)
         top = (img_h - new_h) // 2
         return 0, top, img_w, top + new_h
-
-
-def _caption_frame(
-    *,
-    words: list[str],
-    active_idx: int,
-    w: int,
-    h: int,
-    branding: BrandingSettings | None = None,
-) -> np.ndarray:
-    """
-    Renders a transparent RGBA caption frame with current word highlighted.
-    """
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("arialbd.ttf", 54)
-    except Exception:
-        try:
-            font = ImageFont.truetype("arial.ttf", 54)
-        except Exception:
-            font = ImageFont.load_default()
-
-    text = " ".join(words)
-    # Simple wrapping: split into 2 lines if too long
-    if len(text) > 38:
-        mid = max(1, len(words) // 2)
-        line1 = " ".join(words[:mid])
-        line2 = " ".join(words[mid:])
-        lines = [line1, line2]
-    else:
-        lines = [text]
-
-    y = int(h * 0.70)
-
-    # Default caption colors
-    text_fill = (255, 255, 255, 235)
-    stroke_fill = (0, 0, 0, 220)
-    bar_fill = (0, 255, 200, 45)
-    bar_outline = (0, 255, 200, 65)
-
-    # If enabled, apply palette colors to captions as well.
-    try:
-        if branding and bool(getattr(branding, "video_style_enabled", False)):
-            from UI.theme import resolve_palette
-
-            pal = resolve_palette(branding)
-
-            def _hex_to_rgb(s: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
-                s = str(s or "").strip()
-                if s.startswith("#"):
-                    s = s[1:]
-                if len(s) != 6:
-                    return fallback
-                try:
-                    return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
-                except Exception:
-                    return fallback
-
-            tr, tg, tb = _hex_to_rgb(pal.get("text", "#FFFFFF"), (255, 255, 255))
-            ar, ag, ab = _hex_to_rgb(pal.get("accent", "#25F4EE"), (0, 255, 200))
-            # Keep stroke dark for readability, regardless of palette.
-            text_fill = (tr, tg, tb, 235)
-            bar_fill = (ar, ag, ab, 45)
-            bar_outline = (ar, ag, ab, 65)
-    except Exception:
-        pass
-
-    for li, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        x = (w - tw) // 2
-        yy = y + li * (th + 10)
-        # stroke for readability
-        draw.text((x, yy), line, font=font, fill=text_fill, stroke_width=6, stroke_fill=stroke_fill)
-
-    # Active word highlight (best-effort): draw a glow bar behind active word on first line
-    if words and 0 <= active_idx < len(words):
-        # Approximate: highlight center area
-        bar_y = y - 18
-        bar_h = 70
-        draw.rounded_rectangle(
-            [int(w * 0.10), bar_y, int(w * 0.90), bar_y + bar_h],
-            radius=24,
-            fill=bar_fill,
-            outline=bar_outline,
-            width=2,
-        )
-    return np.array(img)
 
 
 def _watermark_position_xy(*, pos: str, w: int, h: int, wm_w: int, wm_h: int) -> tuple[int, int]:
@@ -211,6 +143,8 @@ def assemble_microclips_then_concat(
     out_assets_dir: Path,
     background_music: Path | None = None,
     branding: BrandingSettings | None = None,
+    article_text: str | None = None,
+    topic_tags: list[str] | None = None,
 ) -> None:
     """
     Builds 9:16 final video as concatenation of few-second micro-clips (one per image/beat).
@@ -223,11 +157,25 @@ def assemble_microclips_then_concat(
     configure_moviepy_ffmpeg(ffmpeg_exe)
 
     audio = AudioFileClip(str(voice_wav)).volumex(settings.voice_volume)
-    words = _load_captions(captions_json)
+    words = load_captions_json(captions_json)
 
     total_dur = float(audio.duration)
     if total_dur <= 0.2:
         total_dur = 5.0
+
+    tags = list(topic_tags or [])
+    facts_lines: list[str] | None = None
+    if (article_text or "").strip() and bool(getattr(settings, "facts_card_enabled", True)):
+        facts_lines = pick_top_facts(extract_candidate_facts(article_text or ""), n=2) or None
+
+    overlay_fn = _build_overlay_make_frame(
+        words=words,
+        settings=settings,
+        branding=branding,
+        topic_tags=tags,
+        facts_lines=facts_lines,
+        total_dur=total_dur,
+    )
 
     # Decide clip count/durations
     imgs = images[:] if images else []
@@ -251,6 +199,58 @@ def assemble_microclips_then_concat(
             end = start + settings.microclip_max_s
         clip_specs.append((start, end, imgs[i]))
 
+    # Optional FFmpeg motion+transitions path (then captions/watermark via MoviePy).
+    if bool(getattr(settings, "enable_motion", False)):
+        try:
+            durs = [max(0.25, float(t1 - t0)) for (t0, t1, _p) in clip_specs]
+            base_mp4 = out_assets_dir / "motion_base.mp4"
+            build_motion_slideshow(
+                ffmpeg_dir=ffmpeg_dir,
+                images=[p for (_t0, _t1, p) in clip_specs],
+                durations=durs,
+                out_mp4=base_mp4,
+                width=settings.width,
+                height=settings.height,
+                fps=int(settings.fps),
+                transition_strength=str(getattr(settings, "transition_strength", "low") or "low"),
+            )
+
+            base = VideoFileClip(str(base_mp4)).set_duration(total_dur).resize((settings.width, settings.height))
+
+            def caption_make_frame(global_t: float):
+                return overlay_fn(float(global_t))
+
+            cap = ImageClip(caption_make_frame(0)).set_duration(total_dur)
+            cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
+            wm = _make_watermark_clip(branding=branding, out_w=settings.width, out_h=settings.height, duration=total_dur)
+            layers = [base, cap] + ([wm] if wm is not None else [])
+            final = CompositeVideoClip(layers).set_audio(audio)
+
+            if background_music and background_music.exists():
+                try:
+                    music = AudioFileClip(str(background_music)).volumex(settings.music_volume)
+                    music = music.audio_loop(duration=final.duration)
+                    final = final.set_audio(final.audio.set_fps(44100).fx(lambda a: a) + music)
+                except Exception:
+                    pass
+
+            bitrate_map = {"low": "3500k", "med": "6000k", "high": "9000k"}
+            final_bitrate = bitrate_map.get(settings.bitrate_preset, "6000k")
+            final.write_videofile(
+                str(out_final_mp4),
+                fps=settings.fps,
+                codec="libx264",
+                audio_codec="aac",
+                bitrate=final_bitrate,
+                preset="medium",
+                threads=4,
+                logger=None,
+            )
+            return
+        except Exception:
+            # Fall back to the original MoviePy microclip path below.
+            pass
+
     clips = []
     bitrate_map = {"low": "3500k", "med": "6000k", "high": "9000k"}
     final_bitrate = bitrate_map.get(settings.bitrate_preset, "6000k")
@@ -268,20 +268,8 @@ def assemble_microclips_then_concat(
         # Audio segment
         a_seg = audio.subclip(t0, t0 + dur)
 
-        # Captions for this time window
-        w_in = [w for w in words if (w.end > t0 and w.start < t0 + dur)]
-        # Render a small rolling window (last 6 words)
         def caption_make_frame(local_t: float):
-            global_t = t0 + local_t
-            active = -1
-            seq = []
-            for i, ww in enumerate(w_in):
-                if ww.start <= global_t <= ww.end:
-                    active = i
-                seq.append(ww.word)
-            seq = seq[-6:] if len(seq) > 6 else seq
-            active_idx = min(len(seq) - 1, active) if active != -1 else -1
-            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height, branding=branding)
+            return overlay_fn(float(t0 + local_t))
 
         cap = ImageClip(caption_make_frame(0)).set_duration(dur)
         cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
@@ -339,6 +327,8 @@ def assemble_generated_clips_then_concat(
     out_assets_dir: Path,
     background_music: Path | None = None,
     branding: BrandingSettings | None = None,
+    article_text: str | None = None,
+    topic_tags: list[str] | None = None,
 ) -> None:
     """
     Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
@@ -351,11 +341,25 @@ def assemble_generated_clips_then_concat(
     configure_moviepy_ffmpeg(ffmpeg_exe)
 
     audio = AudioFileClip(str(voice_wav)).volumex(settings.voice_volume)
-    words = _load_captions(captions_json)
+    words = load_captions_json(captions_json)
 
     total_dur = float(audio.duration)
     if total_dur <= 0.2:
         total_dur = max(3.0, float(len(clips)))
+
+    tags = list(topic_tags or [])
+    facts_lines: list[str] | None = None
+    if (article_text or "").strip() and bool(getattr(settings, "facts_card_enabled", True)):
+        facts_lines = pick_top_facts(extract_candidate_facts(article_text or ""), n=2) or None
+
+    overlay_fn = _build_overlay_make_frame(
+        words=words,
+        settings=settings,
+        branding=branding,
+        topic_tags=tags,
+        facts_lines=facts_lines,
+        total_dur=total_dur,
+    )
 
     src = clips[:] if clips else []
     if not src:
@@ -375,19 +379,8 @@ def assemble_generated_clips_then_concat(
 
         a_seg = audio.subclip(t0, t0 + dur)
 
-        w_in = [w for w in words if (w.end > t0 and w.start < t0 + dur)]
-
         def caption_make_frame(local_t: float):
-            global_t = t0 + local_t
-            active = -1
-            seq = []
-            for i, ww in enumerate(w_in):
-                if ww.start <= global_t <= ww.end:
-                    active = i
-                seq.append(ww.word)
-            seq = seq[-6:] if len(seq) > 6 else seq
-            active_idx = min(len(seq) - 1, active) if active != -1 else -1
-            return _caption_frame(words=seq, active_idx=active_idx, w=settings.width, h=settings.height, branding=branding)
+            return overlay_fn(float(t0 + local_t))
 
         cap = ImageClip(caption_make_frame(0)).set_duration(dur)
         cap = cap.set_make_frame(caption_make_frame).set_position(("center", "center"))
