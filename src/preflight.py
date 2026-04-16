@@ -5,6 +5,7 @@ from typing import Iterable
 
 from .config import AppSettings
 from .utils_ffmpeg import find_ffmpeg
+from debug import dprint
 
 
 @dataclass(frozen=True)
@@ -108,11 +109,15 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         warnings.append("No HF_TOKEN set (downloads may be slower / rate-limited).")
 
     if strict:
-        return PreflightResult(ok=(len(errors) == 0), errors=errors, warnings=warnings)
+        result = PreflightResult(ok=(len(errors) == 0), errors=errors, warnings=warnings)
+        dprint("preflight", f"strict ok={result.ok}", f"errors={len(result.errors)}", f"warnings={len(result.warnings)}")
+        return result
 
     # Non-strict mode: downgrade errors into warnings (best-effort runs)
     if errors:
         warnings.extend(errors)
         errors = []
-    return PreflightResult(ok=True, errors=errors, warnings=warnings)
+    result = PreflightResult(ok=True, errors=errors, warnings=warnings)
+    dprint("preflight", f"non-strict ok={result.ok}", f"warnings={len(result.warnings)}")
+    return result
 

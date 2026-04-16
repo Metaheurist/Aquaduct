@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .brain import VideoPackage, ScriptSegment, _extract_json
+from .config import get_paths
+from .model_manager import resolve_pretrained_load_path
 
 
 @dataclass(frozen=True)
@@ -106,7 +108,8 @@ def rewrite_with_uncertainty(
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-        tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+        load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+        tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
         bnb = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
@@ -115,19 +118,31 @@ def rewrite_with_uncertainty(
         )
         try:
             model = AutoModelForCausalLM.from_pretrained(
-                model_id,
+                load_path,
                 quantization_config=bnb,
                 device_map="auto",
-                torch_dtype=torch.float16,
+                dtype=torch.float16,
                 low_cpu_mem_usage=True,
+                trust_remote_code=True,
             )
         except TypeError:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                quantization_config=bnb,
-                device_map="auto",
-                torch_dtype=torch.float16,
-            )
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    quantization_config=bnb,
+                    device_map="auto",
+                    torch_dtype=torch.float16,
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True,
+                )
+            except TypeError:
+                model = AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    quantization_config=bnb,
+                    device_map="auto",
+                    torch_dtype=torch.float16,
+                    trust_remote_code=True,
+                )
 
         src_line = json.dumps(sources[:3], ensure_ascii=False)
         article_snip = (article_text or "")[:2400]

@@ -13,7 +13,7 @@ def test_pipeline_batch_worker_emits_done_when_no_items(qtbot, monkeypatch):
 
     monkeypatch.setattr(wmod.pipeline_main, "run_once", lambda **kwargs: None)
 
-    w = PipelineBatchWorker(AppSettings(topic_tags=[]), quantity=2)
+    w = PipelineBatchWorker(AppSettings(), quantity=2)
     done_msgs = []
     w.done.connect(lambda msg: done_msgs.append(msg))
     w.start()
@@ -70,7 +70,7 @@ def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
     )
 
     out = pipeline_main.run_once(
-        settings=AppSettings(topic_tags=[]),
+        settings=AppSettings(),
         prebuilt_pkg=pkg,
         prebuilt_sources=[{"title": "x", "url": "u", "source": "s"}],
         prebuilt_prompts=["V"],

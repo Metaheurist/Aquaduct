@@ -75,7 +75,7 @@ python main.py --once
 - `main.py`: one-shot run (`--once`) or infinite loop (default)
 - `src/`: pipeline modules
 - `UI/`: PyQt6 desktop UI package (TikTok-style theme; tabs under `UI/tabs/`; launcher `UI/ui_app.py`)
-- `data/news_cache/seen.json`: URL dedupe cache
+- `data/news_cache/`: URL + title dedupe caches (`seen_<mode>.json`, `seen_titles_<mode>.json`; legacy `seen.json` may still appear until cleared or migrated)
 - `runs/`: intermediate working folders per run
 - `videos/`: final per-video folders
 
@@ -98,9 +98,10 @@ python -m UI
 ```
 
 Tabs:
-- **Run**: one-shot run + logs + open `videos/`
-- **Topics**: add/remove free-text topic tags
+- **Run**: one-shot run + **video format** (News / Cartoon / Explainer) + logs + open `videos/`
+- **Topics**: topic tags **per format** (mode selector); **Discover** uses the News list when editing News mode
 - **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
+- **API**: Firecrawl toggle and API key (optional; improves news fetch/scrape when configured)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
 - **Settings**: Download menu + dependency check/install + model select/download (script/video/voice); skips repos already under `models/`
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)

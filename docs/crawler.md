@@ -1,10 +1,11 @@
 # `src/crawler.py` — Crawler
 
 ## Purpose
-Fetch trending AI-tool news **without paid APIs**, returning a small list of new items.
+Fetch trending AI-tool news with a **free default path** (no paid news APIs), optionally using **Firecrawl** when configured in the app/API tab.
 
 ## Inputs
-- Google News RSS query (default in `get_latest_items`)
+- **Optional Firecrawl** (`firecrawl_enabled` + API key, or `FIRECRAWL_API_KEY` in the environment): v2 search for headlines; v1 scrape for article text when `fetch_article_text` is on. On failure or when disabled, Aquaduct falls back automatically.
+- Google News RSS query (default in `get_latest_items` / `fetch_latest_items`)
 - MarkTechPost homepage (fallback)
 
 ## Outputs
@@ -15,12 +16,16 @@ Returns a list of `NewsItem`:
 - `published_at` (RSS only, best-effort)
 
 ## Dedupe / caching
-Persisted in:
-- `data/news_cache/seen.json`
+Persisted under `data/news_cache/`:
+- **Per video format**: `seen_<mode>.json` (URLs already used) and `seen_titles_<mode>.json` (title novelty / scoring history), where `<mode>` is `news`, `cartoon`, or `explainer`. The active bucket matches `AppSettings.video_format` (`cache_mode` / `news_cache_mode_for_run()` in `src/topics.py`).
+- **Legacy migration**: if `seen_news.json` is missing but flat `seen.json` exists, **news** loads the legacy file once; new writes go to `seen_news.json`. Other formats do not read the legacy flat file.
 
-URLs already in `seen.json` are skipped so Aquaduct doesn’t regenerate the same story repeatedly.
+`fetch_latest_items()` does **not** consult the seen files (used for topic discovery “newest headlines” flows).
 
 ## Key functions
-- `get_latest_items(news_cache_dir, limit=3, query=...)`
+- `get_latest_items(..., cache_mode=...)` — fresh headlines with URL dedupe + persist
+- `get_scored_items(..., cache_mode=...)` — scored + diversified selection; updates seen URLs and seen titles for that mode
+- `clear_news_seen_cache_files(news_cache_dir)` — delete legacy + all per-mode `seen_*.json` / `seen_titles_*.json` (used by the UI “clear cache” action)
+- `news_seen_paths(news_cache_dir, mode)` — resolved paths for a mode’s seen files
 - `pick_one_item(items)` (currently selects the first fresh item)
 

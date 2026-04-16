@@ -27,7 +27,7 @@ If the local model fails to load (common on some Windows setups), it returns a d
 - `generate_script(model_id: str, items: list[dict[str,str]], topic_tags: list[str] | None) -> VideoPackage`
 
 ## Topic tags
-If `topic_tags` are provided (from the UI Topics tab), they are injected into the prompt to bias:
+If `topic_tags` are provided (from the UI Topics tab list for the **current video format**, via `effective_topic_tags()`), they are injected into the prompt to bias:
 - which tool release is selected
 - the angle of the script
 - the hashtag set

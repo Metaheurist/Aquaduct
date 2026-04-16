@@ -40,7 +40,16 @@ from src.audio_fx import (
 from src.preflight import preflight_check
 from src.personality_auto import auto_pick_personality
 from src.single_instance import single_instance_guard
+from src.topics import effective_topic_tags, news_cache_mode_for_run
 from src.utils_vram import prepare_for_next_model
+from debug import apply_cli_debug, dprint
+
+
+def _firecrawl_kwargs(app: AppSettings) -> dict:
+    return dict(
+        firecrawl_enabled=bool(getattr(app, "firecrawl_enabled", False)),
+        firecrawl_api_key=str(getattr(app, "firecrawl_api_key", "") or ""),
+    )
 
 
 def _now_run_id() -> str:
@@ -94,8 +103,14 @@ def run_once(
 ) -> Path | None:
     paths = get_paths()
     models = get_models()
-    app = settings or AppSettings(topic_tags=[])
+    app = settings or AppSettings()
     video_settings = app.video
+    dprint(
+        "pipeline",
+        "run_once start",
+        f"prebuilt_pkg={'yes' if prebuilt_pkg is not None else 'no'}",
+        f"slideshow={bool(video_settings.use_image_slideshow)}",
+    )
     llm_id = app.llm_model_id.strip() or models.llm_id
     img_id = app.image_model_id.strip() or models.sdxl_turbo_id
     clip_id = getattr(app, "video_model_id", "").strip()
@@ -108,6 +123,7 @@ def run_once(
 
     pf = preflight_check(settings=app, strict=True)
     if not pf.ok:
+        dprint("pipeline", "preflight blocked run", str(pf.errors))
         raise RuntimeError("Preflight failed:\n- " + "\n- ".join(pf.errors))
 
     items = None
@@ -116,13 +132,18 @@ def run_once(
 
     if prebuilt_pkg is None:
         # Prefer scored + diversified selection (better signals, fewer duplicates).
+        fc = _firecrawl_kwargs(app)
+        tags = effective_topic_tags(app)
+        cm = news_cache_mode_for_run(app)
         if bool(getattr(video_settings, "high_quality_topic_selection", True)):
-            items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+            items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
         else:
-            items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+            items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
         item = pick_one_item(items)
         if not item:
+            dprint("crawler", "no item picked — stopping run_once")
             return None
+        dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
         sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
     else:
         sources = list(prebuilt_sources or [])
@@ -146,6 +167,7 @@ def run_once(
         }
 
     run_id = _now_run_id()
+    dprint("pipeline", f"run_id={run_id}")
     run_dir = paths.runs_dir / run_id
     run_assets = run_dir / "assets"
     run_assets.mkdir(parents=True, exist_ok=True)
@@ -153,7 +175,10 @@ def run_once(
     article_text = ""
     if prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
         try:
-            article_text = fetch_article_text(str(getattr(item, "url", "") or ""))
+            article_text = fetch_article_text(
+                str(getattr(item, "url", "") or ""),
+                **_firecrawl_kwargs(app),
+            )
             if article_text:
                 (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
         except Exception:
@@ -166,12 +191,12 @@ def run_once(
             requested_id=getattr(app, "personality_id", "auto"),
             llm_model_id=llm_id,
             titles=titles,
-            topic_tags=list(app.topic_tags),
+            topic_tags=list(effective_topic_tags(app)),
         )
         pkg = generate_script(
             model_id=llm_id,
             items=sources,
-            topic_tags=app.topic_tags,
+            topic_tags=effective_topic_tags(app),
             personality_id=picked.preset.id,
             branding=getattr(app, "branding", None),
         )
@@ -179,8 +204,10 @@ def run_once(
         # Best-effort safety rewrite (uses article text snippet when available).
         if bool(getattr(video_settings, "llm_factcheck", True)):
             pkg = rewrite_with_uncertainty(pkg=pkg, article_text=article_text, sources=sources, model_id=llm_id)
+        dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
     else:
         pkg = prebuilt_pkg
+        dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")
 
     # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
     prepare_for_next_model()
@@ -217,6 +244,7 @@ def run_once(
         cfg = AudioPolishConfig(mode=ap_mode)
         processed = assets_dir / "voice_processed.wav"
         final_voice_wav = process_voice_wav(ffmpeg_dir=paths.ffmpeg_dir, in_wav=voice_wav, out_wav=processed, cfg=cfg)
+        dprint("audio", f"voice polish mode={ap_mode!r}")
     except Exception:
         final_voice_wav = voice_wav
 
@@ -228,6 +256,7 @@ def run_once(
     branding = getattr(app, "branding", None)
     if prebuilt_pkg is None:
         prompts = apply_palette_to_prompts(prompts, branding)
+        dprint("branding", "apply_palette_to_prompts", f"n={len(prompts)}")
 
     # Scene-type conditioning + variety (best-effort).
     if bool(getattr(video_settings, "prompt_conditioning", True)):
@@ -239,6 +268,7 @@ def run_once(
             pass
 
     if video_settings.use_image_slideshow:
+        dprint("pipeline", "mode=slideshow", f"images_per_video={video_settings.images_per_video}")
         img_dir = assets_dir / "images"
         if prebuilt_prompts is not None:
             storyboard_prompts = prompts[: max(1, int(video_settings.images_per_video))]
@@ -367,11 +397,12 @@ def run_once(
             background_music=None,
             branding=branding,
             article_text=article_text,
-            topic_tags=list(app.topic_tags),
+            topic_tags=list(effective_topic_tags(app)),
         )
     else:
         # For img→vid clip models, first generate keyframe images (using the image model),
         # then animate them into clips with the selected clip model.
+        dprint("pipeline", "mode=video_clips", f"clips_per_video={video_settings.clips_per_video}")
         key_dir = assets_dir / "keyframes"
         storyboard = build_storyboard(pkg, seed_base=getattr(video_settings, "seed_base", None), max_scenes=max(1, int(video_settings.clips_per_video)))
         storyboard_prompts = [s.prompt for s in storyboard.scenes]
@@ -471,7 +502,7 @@ def run_once(
             background_music=None,
             branding=branding,
             article_text=article_text,
-            topic_tags=list(app.topic_tags),
+            topic_tags=list(effective_topic_tags(app)),
         )
 
     # Optional cleanup: remove large image/keyframe folders to save disk space.
@@ -485,6 +516,7 @@ def run_once(
                 pass
 
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
+    dprint("pipeline", "run_once done", f"video_dir={video_dir}")
     return video_dir
 
 
@@ -500,7 +532,16 @@ def main() -> None:
     ap.add_argument("--once", action="store_true", help="Run a single generation cycle and exit.")
     ap.add_argument("--interval-hours", type=float, default=4.0, help="Polling interval in hours.")
     ap.add_argument("--music", type=str, default="", help="Optional background music file path.")
+    ap.add_argument(
+        "--debug",
+        type=str,
+        default="",
+        help="Debug categories (comma-separated) or 'all'. Merges with env AQUADUCT_DEBUG. See debug/debug_log.py.",
+    )
     args = ap.parse_args()
+
+    if args.debug:
+        apply_cli_debug(args.debug)
 
     music = Path(args.music).resolve() if args.music else None
 
@@ -512,7 +553,7 @@ def main() -> None:
         return
 
     if args.once:
-        app = AppSettings(topic_tags=[], background_music_path=str(music) if music else "")
+        app = AppSettings(background_music_path=str(music) if music else "")
         out = run_once(settings=app)
         if out:
             print(f"Created: {out}")
@@ -523,7 +564,7 @@ def main() -> None:
     interval_s = max(60.0, args.interval_hours * 3600.0)
     while True:
         try:
-            app = AppSettings(topic_tags=[], background_music_path=str(music) if music else "")
+            app = AppSettings(background_music_path=str(music) if music else "")
             out = run_once(settings=app)
             if out:
                 print(f"Created: {out}")

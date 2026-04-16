@@ -56,6 +56,7 @@ for pkg in ("moviepy", "imageio", "imageio_ffmpeg", "PyQt6", "soundfile"):
     hiddenimports += tmp_ret[2]
 
 hiddenimports += collect_submodules("src")
+hiddenimports += collect_submodules("debug")
 hiddenimports += collect_submodules("UI")
 
 a = Analysis(

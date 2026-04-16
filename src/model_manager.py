@@ -212,6 +212,23 @@ def remote_repo_size_bytes(repo_id: str, *, token: str | None = None, timeout_s:
         return None
 
 
+def resolve_pretrained_load_path(repo_id: str, *, models_dir: Path) -> str:
+    """
+    Path passed to ``transformers`` / ``diffusers`` ``from_pretrained``.
+
+    If the repo was saved under ``models_dir/<safe_repo>/`` (same layout as
+    ``download_model_to_project``), returns that **absolute** directory so weights load
+    from disk. Otherwise returns ``repo_id`` and Hugging Face will use the hub cache
+    (may download into the cache even when Settings shows a project snapshot path).
+    """
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return repo_id
+    if model_has_local_snapshot(rid, models_dir=models_dir):
+        return str((models_dir / project_model_dirname(rid)).resolve())
+    return rid
+
+
 def model_has_local_snapshot(repo_id: str, *, models_dir: Path, min_bytes: int = 256_000) -> bool:
     """
     True if ``models_dir/<repo_folder>/`` exists and has at least ``min_bytes`` on disk
@@ -344,9 +361,12 @@ def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None
     """
     from huggingface_hub import snapshot_download
 
+    from debug import dprint
+
     models_dir.mkdir(parents=True, exist_ok=True)
     local_dir = models_dir / _safe_repo_dirname(repo_id)
     local_dir.mkdir(parents=True, exist_ok=True)
+    dprint("models", "snapshot_download", f"repo={repo_id!r}", f"dest={local_dir.name}")
 
     token = _hf_token()
     max_workers = int(os.environ.get("HF_SNAPSHOT_MAX_WORKERS", "8"))

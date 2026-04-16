@@ -19,7 +19,7 @@ def test_cleanup_images_after_run_enabled(tmp_path):
     _touch(assets / "captions.json")
     _touch(tmp_path / "videos" / "v1" / "final.mp4")
 
-    s = AppSettings(topic_tags=[], video=VideoSettings(cleanup_images_after_run=True))
+    s = AppSettings(video=VideoSettings(cleanup_images_after_run=True))
 
     # Inline the expected cleanup behavior (mirrors main.py)
     if s.video.cleanup_images_after_run:
@@ -46,7 +46,7 @@ def test_cleanup_images_after_run_disabled(tmp_path):
     _touch(assets / "images" / "img_001.png")
     _touch(assets / "keyframes" / "img_001.png")
 
-    s = AppSettings(topic_tags=[], video=VideoSettings(cleanup_images_after_run=False))
+    s = AppSettings(video=VideoSettings(cleanup_images_after_run=False))
     assert not s.video.cleanup_images_after_run
 
     # No cleanup

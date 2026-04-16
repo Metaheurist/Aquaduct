@@ -5,6 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .config import get_paths
+from .model_manager import resolve_pretrained_load_path
 from .utils_vram import cleanup_vram, vram_guard
 
 
@@ -33,13 +35,14 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
     import torch
     from diffusers import DiffusionPipeline
 
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
 
     try:
-        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16, low_cpu_mem_usage=True)
     except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16)
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")
     else:
@@ -91,13 +94,14 @@ def _try_image_to_video(
     from diffusers import DiffusionPipeline
     from PIL import Image
 
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
 
     try:
-        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16, low_cpu_mem_usage=True)
     except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16)
     pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 
     results: list[GeneratedClip] = []
@@ -154,6 +158,15 @@ def generate_clips(
     Generates a small set of MP4 clips using a video generation model when possible.
     Falls back to placeholder clips if the model can't run.
     """
+    from debug import dprint
+
+    dprint(
+        "clips",
+        "generate_clips",
+        f"model={video_model_id!r}",
+        f"max={max_clips}",
+        f"img2vid={bool(init_images)}",
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     prompts = [p.strip() for p in prompts if p.strip()]
     if not prompts:
@@ -164,13 +177,17 @@ def generate_clips(
     with vram_guard():
         try:
             if init_images:
-                return _try_image_to_video(video_model_id, prompts, init_images, out_dir, fps=fps, seconds=seconds_per_clip)
-            return _try_text_to_video(video_model_id, prompts, out_dir, fps=fps, seconds=seconds_per_clip)
+                r = _try_image_to_video(video_model_id, prompts, init_images, out_dir, fps=fps, seconds=seconds_per_clip)
+            else:
+                r = _try_text_to_video(video_model_id, prompts, out_dir, fps=fps, seconds=seconds_per_clip)
+            dprint("clips", "generate_clips done", f"count={len(r)}")
+            return r
         except Exception:
             clips: list[GeneratedClip] = []
             for i, p in enumerate(prompts, start=1):
                 out_path = out_dir / f"clip_{i:03d}.mp4"
                 _fallback_clip_from_image(out_path, fps=fps, seconds=seconds_per_clip)
                 clips.append(GeneratedClip(path=out_path, prompt=p))
+            dprint("clips", "generate_clips fallback placeholders", f"count={len(clips)}")
             return clips
 

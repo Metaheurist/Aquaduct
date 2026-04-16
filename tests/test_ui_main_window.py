@@ -28,7 +28,7 @@ def test_remove_selected_tags_does_not_raise_frozen(qtbot, monkeypatch, patch_pa
     # select first item
     w.tag_list.setCurrentRow(0)
     w._remove_selected_tags()
-    assert "A" not in w.settings.topic_tags
+    assert "A" not in (w.settings.topic_tags_by_mode.get("news") or [])
 
 
 @pytest.mark.qt

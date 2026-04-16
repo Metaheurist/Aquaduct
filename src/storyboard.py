@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from .brain import VideoPackage
+from debug import dprint
 from .prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
 
 
@@ -94,6 +95,7 @@ def build_storyboard(
     """
     Convert VideoPackage beats into storyboarded scenes with roles/shot types/overlays and deterministic seeds.
     """
+    dprint("storyboard", "build_storyboard", f"title={pkg.title[:80]!r}", f"max_scenes={max_scenes}")
     segs = list(pkg.segments or [])[: max(1, int(max_scenes))]
     prompts = [s.visual_prompt for s in segs]
     roles = _rotate_no_repeat([_guess_role(p) for p in prompts])

@@ -109,6 +109,9 @@ def synthesize(
     """
     Generates `out_wav_path` and `out_captions_json` (word-level timestamps).
     """
+    from debug import dprint
+
+    dprint("voice", "synthesize", f"model={kokoro_model_id!r}", f"chars={len(text)}")
     out_wav_path.parent.mkdir(parents=True, exist_ok=True)
     out_captions_json.parent.mkdir(parents=True, exist_ok=True)
 
@@ -130,5 +133,6 @@ def synthesize(
 
     payload = [{"word": w.word, "start": w.start, "end": w.end} for w in words]
     out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    dprint("voice", "synthesize done", f"word_timestamps={len(words)}")
     return words
 

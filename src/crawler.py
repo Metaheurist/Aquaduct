@@ -10,6 +10,57 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
+from .topics import normalize_video_format
+
+# Per `video_format`: separate seen URL + seen-title history so e.g. cartoon runs
+# do not consume the same "fresh URL" budget as news (legacy flat files map to `news`).
+
+
+def _cache_mode_key(mode: str | None) -> str:
+    return normalize_video_format(mode or "news")
+
+
+def news_seen_paths(news_cache_dir: Path, mode: str | None) -> tuple[Path, Path]:
+    """Paths for `seen_<mode>.json` and `seen_titles_<mode>.json` under `news_cache_dir`."""
+    m = _cache_mode_key(mode)
+    return (
+        news_cache_dir / f"seen_{m}.json",
+        news_cache_dir / f"seen_titles_{m}.json",
+    )
+
+
+def clear_news_seen_cache_files(news_cache_dir: Path) -> int:
+    """
+    Remove legacy flat `seen.json` / `seen_titles.json` and all per-mode `seen_*.json` /
+    `seen_titles_*.json` files. Returns how many files were deleted.
+    """
+    removed = 0
+    for name in ("seen.json", "seen_titles.json"):
+        p = news_cache_dir / name
+        if p.exists():
+            p.unlink()
+            removed += 1
+    for pattern in ("seen_*.json", "seen_titles_*.json"):
+        for p in news_cache_dir.glob(pattern):
+            try:
+                p.unlink()
+                removed += 1
+            except Exception:
+                pass
+    return removed
+
+
+def _load_seen_migrated(news_cache_dir: Path, mode: str | None) -> tuple[Path, set[str]]:
+    """Load seen URL set; for `news`, fall back to legacy `seen.json` if per-mode file missing."""
+    path, _ = news_seen_paths(news_cache_dir, mode)
+    seen = _load_seen(path)
+    if seen:
+        return path, seen
+    if _cache_mode_key(mode) == "news":
+        legacy = news_cache_dir / "seen.json"
+        return path, _load_seen(legacy)
+    return path, set()
+
 
 @dataclass(frozen=True)
 class NewsItem:
@@ -57,6 +108,97 @@ def _google_news_rss(query: str, limit: int = 3, timeout_s: int = 30) -> list[Ne
     return items
 
 
+def _effective_query(*, query: str, topic_tags: list[str] | None) -> str:
+    if topic_tags:
+        tags = [t.strip() for t in topic_tags if t and t.strip()]
+        if tags:
+            tag_expr = " OR ".join(f'"{t}"' for t in tags[:12])
+            return (
+                f'({tag_expr}) (AI OR "AI tool" OR "AI app") '
+                f'(release OR launched OR introduces OR "new tool")'
+            )
+    return query
+
+
+def _fetch_headlines(
+    *,
+    limit: int,
+    query: str,
+    topic_tags: list[str] | None,
+    firecrawl_enabled: bool = False,
+    firecrawl_api_key: str | None = None,
+    timeout_s: int = 30,
+) -> list[NewsItem]:
+    """Try Firecrawl search when enabled + key; then Google News RSS; then MarkTechPost."""
+    q = _effective_query(query=query, topic_tags=topic_tags)
+    fetched: list[NewsItem] = []
+    key: str | None = None
+    if firecrawl_enabled:
+        try:
+            from .firecrawl_news import firecrawl_search_news, resolve_firecrawl_api_key
+
+            key = resolve_firecrawl_api_key(firecrawl_api_key)
+        except Exception:
+            key = None
+    if firecrawl_enabled and key:
+        try:
+            raw = firecrawl_search_news(
+                q,
+                limit=limit,
+                api_key=key,
+                timeout_s=min(120, max(int(timeout_s), 25)),
+            )
+            for d in raw:
+                if not isinstance(d, dict):
+                    continue
+                title = str(d.get("title") or "").strip()
+                url = str(d.get("url") or "").strip()
+                if not title or not url:
+                    continue
+                pub = d.get("published_at")
+                pa = str(pub).strip() if pub else None
+                fetched.append(
+                    NewsItem(
+                        title=title,
+                        url=url,
+                        source=str(d.get("source") or "Firecrawl"),
+                        published_at=pa,
+                    )
+                )
+        except Exception:
+            pass
+
+    need = max(1, int(limit))
+    if len(fetched) < need:
+        try:
+            more = _google_news_rss(query=q, limit=need, timeout_s=timeout_s)
+        except Exception:
+            more = []
+        have = {x.url for x in fetched}
+        for it in more:
+            if it.url in have:
+                continue
+            fetched.append(it)
+            have.add(it.url)
+            if len(fetched) >= need:
+                break
+    if len(fetched) < need:
+        try:
+            more = _marktechpost_latest(limit=need - len(fetched), timeout_s=timeout_s)
+        except Exception:
+            more = []
+        have = {x.url for x in fetched}
+        for it in more:
+            if it.url in have:
+                continue
+            fetched.append(it)
+            have.add(it.url)
+            if len(fetched) >= need:
+                break
+
+    return fetched[:need]
+
+
 def _marktechpost_latest(limit: int = 3, timeout_s: int = 30) -> list[NewsItem]:
     # Simple HTML scrape fallback
     r = requests.get(
@@ -91,33 +233,23 @@ def get_latest_items(
     limit: int = 3,
     query: str = '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")',
     topic_tags: list[str] | None = None,
+    firecrawl_enabled: bool = False,
+    firecrawl_api_key: str | None = None,
+    cache_mode: str | None = "news",
 ) -> list[NewsItem]:
     """
     Returns up to `limit` fresh items not seen before.
-    Dedupes by URL and persists `seen.json`.
+    Dedupes by URL and persists per-mode `seen_<mode>.json` (legacy `seen.json` seeds `news` only).
     """
-    seen_path = news_cache_dir / "seen.json"
-    seen = _load_seen(seen_path)
+    seen_path, seen = _load_seen_migrated(news_cache_dir, cache_mode)
 
-    fetched: list[NewsItem] = []
-
-    # If tags are provided, build a query that biases toward those topics/tools.
-    if topic_tags:
-        tags = [t.strip() for t in topic_tags if t and t.strip()]
-        if tags:
-            tag_expr = " OR ".join(f"\"{t}\"" for t in tags[:12])
-            query = f"({tag_expr}) (AI OR \"AI tool\" OR \"AI app\") (release OR launched OR introduces OR \"new tool\")"
-    # Try RSS first; if it fails, fall back to MarkTechPost.
-    try:
-        fetched = _google_news_rss(query=query, limit=limit)
-    except Exception:
-        fetched = []
-
-    if len(fetched) < limit:
-        try:
-            fetched.extend(_marktechpost_latest(limit=limit - len(fetched)))
-        except Exception:
-            pass
+    fetched = _fetch_headlines(
+        limit=limit,
+        query=query,
+        topic_tags=topic_tags,
+        firecrawl_enabled=firecrawl_enabled,
+        firecrawl_api_key=firecrawl_api_key,
+    )
 
     # Normalize and filter unseen
     fresh: list[NewsItem] = []
@@ -138,29 +270,20 @@ def fetch_latest_items(
     limit: int = 8,
     query: str = '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")',
     topic_tags: list[str] | None = None,
+    firecrawl_enabled: bool = False,
+    firecrawl_api_key: str | None = None,
 ) -> list[NewsItem]:
     """
     Fetches up to `limit` items from sources WITHOUT applying the seen-cache filter.
     Use this for UI discovery features where "newest headlines" matters more than "unseen".
     """
-    fetched: list[NewsItem] = []
-
-    if topic_tags:
-        tags = [t.strip() for t in topic_tags if t and t.strip()]
-        if tags:
-            tag_expr = " OR ".join(f"\"{t}\"" for t in tags[:12])
-            query = f"({tag_expr}) (AI OR \"AI tool\" OR \"AI app\") (release OR launched OR introduces OR \"new tool\")"
-
-    try:
-        fetched = _google_news_rss(query=query, limit=limit)
-    except Exception:
-        fetched = []
-
-    if len(fetched) < limit:
-        try:
-            fetched.extend(_marktechpost_latest(limit=limit - len(fetched)))
-        except Exception:
-            pass
+    fetched = _fetch_headlines(
+        limit=limit,
+        query=query,
+        topic_tags=topic_tags,
+        firecrawl_enabled=firecrawl_enabled,
+        firecrawl_api_key=firecrawl_api_key,
+    )
 
     # Basic dedupe by URL
     out: list[NewsItem] = []
@@ -190,7 +313,13 @@ def _domain(url: str) -> str:
         return ""
 
 
-def fetch_article_text(url: str, *, timeout_s: int = 35) -> str:
+def fetch_article_text(
+    url: str,
+    *,
+    timeout_s: int = 35,
+    firecrawl_enabled: bool = False,
+    firecrawl_api_key: str | None = None,
+) -> str:
     """
     Best-effort article text extraction from a URL.
     Intended for lightweight verification/summary; not perfect.
@@ -198,6 +327,17 @@ def fetch_article_text(url: str, *, timeout_s: int = 35) -> str:
     url = (url or "").strip()
     if not url:
         return ""
+    if firecrawl_enabled:
+        try:
+            from .firecrawl_news import firecrawl_scrape_markdown, resolve_firecrawl_api_key
+
+            k = resolve_firecrawl_api_key(firecrawl_api_key)
+            if k:
+                text = firecrawl_scrape_markdown(url, api_key=k, timeout_s=min(120, max(int(timeout_s), 20)))
+                if text.strip():
+                    return text[:10000]
+        except Exception:
+            pass
     r = requests.get(url, timeout=timeout_s, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     html = r.text or ""
@@ -236,6 +376,9 @@ def get_scored_items(
     fetch_n: int = 16,
     query: str = '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")',
     topic_tags: list[str] | None = None,
+    firecrawl_enabled: bool = False,
+    firecrawl_api_key: str | None = None,
+    cache_mode: str | None = "news",
 ) -> list[NewsItem]:
     """
     Fetch more candidates, score them (novelty/impact/clarity/tag match), diversify across tags,
@@ -245,13 +388,21 @@ def get_scored_items(
 
     fetch_n = max(fetch_n, limit)
     # Fetch without seen-filter so novelty scoring can still pick the best; URL seen-filter is still applied below.
-    raw = fetch_latest_items(limit=fetch_n, query=query, topic_tags=topic_tags)
+    raw = fetch_latest_items(
+        limit=fetch_n,
+        query=query,
+        topic_tags=topic_tags,
+        firecrawl_enabled=firecrawl_enabled,
+        firecrawl_api_key=firecrawl_api_key,
+    )
 
-    seen_titles_path = news_cache_dir / "seen_titles.json"
+    _, seen_titles_path = news_seen_paths(news_cache_dir, cache_mode)
     seen_titles = load_seen_titles(seen_titles_path)
+    if not seen_titles and _cache_mode_key(cache_mode) == "news":
+        seen_titles = load_seen_titles(news_cache_dir / "seen_titles.json")
 
     # Source weights: can evolve later; keep simple now.
-    source_weights = {"GoogleNews": 0.25, "MarkTechPost": 0.15}
+    source_weights = {"GoogleNews": 0.25, "MarkTechPost": 0.15, "Firecrawl": 0.25}
 
     scored = []
     for it in raw:
@@ -264,9 +415,8 @@ def get_scored_items(
 
     # Maintain existing seen URL behavior (so repeated runs move forward).
     # Reuse get_latest_items filtering by feeding it through the existing seen mechanism:
-    # we’ll manually filter URLs here and persist to seen.json.
-    seen_path = news_cache_dir / "seen.json"
-    seen = _load_seen(seen_path)
+    # we’ll manually filter URLs here and persist to seen_<mode>.json.
+    seen_path, seen = _load_seen_migrated(news_cache_dir, cache_mode)
     out: list[NewsItem] = []
     for it in diversified:
         if it.url in seen:
