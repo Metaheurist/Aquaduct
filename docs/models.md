@@ -59,3 +59,6 @@ Verification calls Hugging Face Hub (`huggingface_hub.HfApi.verify_repo_checksum
 
 Helpers live in `src/model_manager.py` (`verify_project_model_integrity`, `list_installed_repo_ids_from_disk`, `project_dirname_to_repo_id`). The UI runs checks in a background thread (`ModelIntegrityVerifyWorker` in `UI/workers.py`); large models can take several minutes.
 
+## Integrity status in the UI (badges)
+After verification, per-repo outcomes are merged into `data/model_integrity_status.json` (see `src/model_integrity_cache.py`). The **Model** tab uses that file to label each dropdown row (script / video / voice), so you can see **Verified** vs **Missing** / **Corrupt** without re-running the full scan. Clear **Clear data** removes the cache file alongside other local state.
+

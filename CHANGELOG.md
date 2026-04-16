@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Tasks: pipeline progress + pause/stop
+- **Tasks** tab **Status** column shows **stage + percent** (e.g. `Pipeline: Writing script (LLM)… — 22%`) during runs, not only “Running…”. Emitted from [`main.py`](main.py) `run_once(..., on_progress=)` → [`UI/workers.py`](UI/workers.py) `PipelineWorker.progress` / batch remapped `PipelineBatchWorker.progress`; labels in [`UI/progress_tasks.py`](UI/progress_tasks.py) (`pipeline_run`, `pipeline_video`).
+- **Pause** / **Resume** and **Stop** while a pipeline, batch run, Preview, or Storyboard job is active (cooperative cancel between steps via [`src/pipeline_control.py`](src/pipeline_control.py); `main.run_once` checkpoints). Stop also requests `QThread` interruption.
+- **`tests/test_pipeline_control.py`**: unit tests for pause/cancel behavior.
+
+### Model tab: integrity badges + result dialog
+- After **Download ▾ → Verify checksums**, results are stored in [`data/model_integrity_status.json`](data/model_integrity_status.json) (gitignored) and shown on each model row: **✓ Verified**, **✗ Missing files**, **✗ Corrupt**, **✗ Missing & corrupt**, **⚠ Verify error**, or **✓ On disk** when snapshots exist but checksums were never run. Helpers: [`src/model_integrity_cache.py`](src/model_integrity_cache.py).
+- Verification completion opens a **readable popup** (summary + “Show Details…” full log), not only the activity log ([`UI/main_window.py`](UI/main_window.py)).
+- **`tests/test_model_integrity.py`**: integrity cache classification; [`tests/test_brain_expand.py`](tests/test_brain_expand.py) covers `expand_custom_field_text` with mocked generation.
+
+### LLM “brain” on custom text fields
+- **`UI/brain_expand.py`**: 🧠 button on the corner of supported fields runs [`src/brain.py`](src/brain.py) **`expand_custom_field_text`** in [`UI/workers.py`](UI/workers.py) **`TextExpandWorker`** (uses **Script model (LLM)** from the Model tab).
+- Wired on **Characters** (identity, visual style, negatives), **Topics** tag input, and **Storyboard Preview** scene prompt (when the dialog has a main window parent).
+
+### Characters tab layout
+- Denser spacing, shorter list, horizontal Add/Duplicate/Delete row, capped text areas ([`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)).
+
 ### Characters + ElevenLabs TTS
 - **Characters** tab: create, edit, and delete user-defined **characters** (name, identity, visual style, negative prompts, per-character voice options). Persisted locally as `data/characters.json` (gitignored).
 - **Run** tab: **Character** dropdown; chosen character feeds **LLM script context** and optional **storyboard** character consistency ([docs/characters.md](docs/characters.md)).
@@ -70,9 +87,9 @@ All notable changes to this project will be documented in this file.
 - **`scripts/download_hf_models.py`**: Portable HF snapshot downloader into `./models` (same layout as the app), with optional `--out` and token via env/CLI.
 
 ### Docs & tests
-- Docs refreshed for UI downloads, branding palette behavior, models/skip semantics, **TikTok**, **YouTube**, **checksum verification**, **Characters**, and **ElevenLabs**.
+- Docs refreshed for UI (Tasks progress, Model integrity badges/dialog, **🧠** field expansion), **README**, [docs/ui.md](docs/ui.md), [docs/models.md](docs/models.md), [docs/characters.md](docs/characters.md), [docs/brain.md](docs/brain.md); branding palette behavior, models/skip semantics, **TikTok**, **YouTube**, **checksum verification**, **Characters**, and **ElevenLabs**.
 - **`tests/test_personality_auto.py`** updated for rules-only auto pick.
-- **`tests/test_upload_tasks.py`**, **`tests/test_tiktok_post.py`**, **`tests/test_model_integrity.py`** for tasks/TikTok/verification coverage. UI tests need **`pip install -r requirements-dev.txt`** (pytest-qt + PyQt6 for `qtbot`).
+- **`tests/test_upload_tasks.py`**, **`tests/test_tiktok_post.py`**, **`tests/test_model_integrity.py`**, **`tests/test_brain_expand.py`** (mocked LLM expand). UI tests need **`pip install -r requirements-dev.txt`** (pytest-qt + PyQt6 for `qtbot`).
 
 ## 0.1.0 — 2026-04-15
 - Initial MVP scaffold: crawler → local script generation → local TTS + captions → SDXL Turbo images → micro-clip editor → per-video outputs under `videos/`.

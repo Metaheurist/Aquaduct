@@ -25,6 +25,28 @@ def test_verify_skips_empty_or_missing(tmp_path):
     assert "not installed" in r2.error.lower()
 
 
+def test_integrity_classify_and_worst():
+    from src.model_integrity_cache import classify_integrity_status, merge_integrity_cache, worst_integrity_status
+    from src.model_manager import ModelIntegrityReport
+
+    assert classify_integrity_status(ModelIntegrityReport(repo_id="a/b", ok=True)) == "ok"
+    assert classify_integrity_status(ModelIntegrityReport(repo_id="a/b", ok=False, error="x")) == "error"
+    assert classify_integrity_status(ModelIntegrityReport(repo_id="a/b", ok=False, missing_paths=["a"])) == "missing"
+    assert classify_integrity_status(ModelIntegrityReport(repo_id="a/b", ok=False, mismatches=[{"path": "w"}])) == "corrupt"
+    assert (
+        classify_integrity_status(
+            ModelIntegrityReport(repo_id="a/b", ok=False, missing_paths=["a"], mismatches=[{"path": "w"}])
+        )
+        == "missing_and_corrupt"
+    )
+
+    assert worst_integrity_status(["missing", "corrupt"]) == "corrupt"
+    assert worst_integrity_status(["ok", "missing"]) == "missing"
+
+    m = merge_integrity_cache({"x": "ok"}, {"y": "missing"})
+    assert m["x"] == "ok" and m["y"] == "missing"
+
+
 def test_list_installed_repo_ids_from_disk(tmp_path, monkeypatch):
     from src import model_manager as mm
 

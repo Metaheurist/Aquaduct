@@ -9,6 +9,11 @@ VideoFormat = Literal["news", "cartoon", "explainer"]
 
 VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer")
 
+RunContentMode = Literal["preset", "custom"]
+
+# Max stored length for Run tab custom instructions (ui_settings + RAM)
+MAX_CUSTOM_VIDEO_INSTRUCTIONS: int = 8000
+
 
 def default_topic_tags_by_mode() -> dict[str, list[str]]:
     return {m: [] for m in VIDEO_FORMATS}
@@ -160,6 +165,8 @@ class AppSettings:
     elevenlabs_api_key: str = ""  # optional cloud TTS; see docs/elevenlabs.md
     personality_id: str = "auto"
     active_character_id: str = ""  # empty = no character; see data/characters.json
+    run_content_mode: RunContentMode = "preset"  # preset = news cache + topics; custom = user instructions
+    custom_video_instructions: str = ""  # used when run_content_mode == "custom"
     llm_model_id: str = ""
     image_model_id: str = ""
     video_model_id: str = ""  # optional: separate clip model (e.g., img→vid) when paired with keyframe image model

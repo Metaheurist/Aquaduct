@@ -24,15 +24,16 @@ python UI/ui_app.py
   - One-shot run button
   - **Video format** (News / Cartoon / Explainer): together with Topics, selects which tag list the pipeline uses (`video_format` + `topic_tags_by_mode`)
   - **Personality** (preset or Auto) and optional **Character** (see Characters tab) for script + storyboard consistency
-  - Live pipeline / preview / storyboard progress is shown as the **top row** on the **Tasks** tab (no progress bar on Run)
+  - Live pipeline / preview / storyboard progress is shown as the **top row** on the **Tasks** tab; the **Status** column shows **stage + percent** (e.g. script, voice, images, encode) for runs, not only “Running…”
   - Open `videos/` folder
   - Save settings
 - **Topics**
   - **Mode** combo matches video formats; each mode has its own tag list (stored in `ui_settings.json` under `topic_tags_by_mode`)
-  - Add/remove tags for the **selected mode** only
+  - Add/remove tags for the **selected mode** only; the tag line includes an optional **🧠** control to expand/improve text with the local **Script (LLM)** model ([`UI/brain_expand.py`](../UI/brain_expand.py))
   - **Discover**: fetches headline-based topic suggestions using the **current “Edit tags for”** mode’s tag list; approved items are added to that mode’s list
 - **Tasks**
   - Lists successful renders (`data/upload_tasks.json`): open folder, play `final.mp4`, copy caption from `meta.json` / `hashtags.txt`, mark posted manually, **Upload to TikTok** (inbox) and/or **Upload to YouTube** when the **API** tab is configured (separate toggles); optional auto-uploads per platform after each render
+  - While a **pipeline run**, **batch run**, **Preview**, or **Storyboard preview** is active (top row), **Pause** / **Resume** waits between major steps (`src/pipeline_control.py`); **Stop** cancels at the next checkpoint (does not interrupt mid–GPU generation)
 - **Video**
   - Images per video
   - Video format presets (resolution/aspect)
@@ -52,7 +53,7 @@ python UI/ui_app.py
   - Optional full-theme palette overrides (presets or custom hex + color picker). Changing the **Palette** dropdown updates the hex swatches and fields for that preset (Custom unlocks per-row overrides).
   - Optional logo watermark on generated videos
 - **Characters**
-  - Create, edit, and delete **characters** (name, identity, visual style, negative prompts, voice overrides). Stored in `data/characters.json` (local; not committed).
+  - Create, edit, and delete **characters** (name, identity, visual style, negative prompts, voice overrides). Stored in `data/characters.json` (local; not committed). Multi-line fields can use the **🧠** control to expand/improve text with the **Script (LLM)** model ([brain](brain.md), [`UI/brain_expand.py`](../UI/brain_expand.py)).
   - Optional **ElevenLabs voice** picker when **API → ElevenLabs** is enabled and a key is set ([ElevenLabs](elevenlabs.md), [Characters](characters.md)).
 - **API**
   - Hugging Face token (optional; helps Hub size checks and gated downloads) + optional **Firecrawl**
@@ -61,6 +62,7 @@ python UI/ui_app.py
   - **YouTube**: separate enable; OAuth client ID/secret, redirect + port (default **8888**), default visibility, optional **#Shorts** tagging, optional **auto-upload after render** — see [YouTube upload](youtube.md)
 - **Model** (tab label; model downloads + dependencies)
   - **Download ▾** menu: download the currently selected model(s), **download all selected** (script + image/video + voice choices in one queue), **download all models** (full curated list), **verify checksums** for installed snapshots (selected or all under `models/`), plus **check Python dependencies** / **install dependencies** from `requirements.txt`.
+  - Each model row shows a short **status badge**: **✓ On disk** (size-based), **✓ Verified** (after a good checksum run), or problem states such as **✗ Missing files** / **✗ Corrupt** / **⚠ Verify error**. Results persist in `data/model_integrity_status.json`. Verification also opens a **summary dialog** with expandable details ([models](models.md)).
   - Model dropdowns show local install status and Hub probe hints; downloads **skip** repos that already have a valid snapshot under `models/` and continue with the rest.
 - **My PC**
   - Hardware summary (CPU/RAM/GPU/VRAM, best-effort)

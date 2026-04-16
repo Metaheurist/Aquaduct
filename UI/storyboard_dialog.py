@@ -6,6 +6,7 @@ from typing import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
+from UI.brain_expand import wrap_editor_with_brain
 from PyQt6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -94,7 +95,11 @@ class StoryboardPreviewDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
         self.prompt_edit = QLineEdit()
-        form.addRow("Prompt", self.prompt_edit)
+        _mw = parent if parent is not None and hasattr(parent, "settings") else None
+        if _mw is not None:
+            form.addRow("Prompt", wrap_editor_with_brain(self.prompt_edit, "Scene image prompt", _mw))
+        else:
+            form.addRow("Prompt", self.prompt_edit)
 
         self.seed_spin = QSpinBox()
         self.seed_spin.setRange(0, 2_000_000_000)
