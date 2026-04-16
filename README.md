@@ -1,6 +1,6 @@
-# Local AI News Factory (MVP)
+# Aquaduct (MVP)
 
-This project builds a **fully local** “AI News Factory” that:
+This project builds **Aquaduct**, a **fully local** tool that:
 - scrapes AI tool news (no paid APIs)
 - writes a short vertical video script locally (LLM in 4-bit when possible)
 - generates images locally (SDXL Turbo, FP16)

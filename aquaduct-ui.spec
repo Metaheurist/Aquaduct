@@ -79,7 +79,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="ai-news-factory-ui",
+    name="aquaduct-ui",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

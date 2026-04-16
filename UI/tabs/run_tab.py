@@ -9,7 +9,7 @@ def attach_run_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
-    header = QLabel("Run the factory (one-shot)")
+    header = QLabel("Run Aquaduct (one-shot)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 

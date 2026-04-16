@@ -50,7 +50,7 @@ from UI.storyboard_dialog import StoryboardPreviewDialog
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("AI News Factory — TikTok Console")
+        self.setWindowTitle("Aquaduct")
 
         # Borderless + fixed size (non-resizable)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
         title_row = QHBoxLayout(self._title_bar)
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
-        title = QLabel("AI News Factory")
+        title = QLabel("Aquaduct")
         title.setStyleSheet("font-size: 14px; font-weight: 800; color: #FFFFFF;")
         title_row.addWidget(title, 1)
 
