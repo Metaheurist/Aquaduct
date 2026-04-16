@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import os
 import secrets
+from collections.abc import Callable
 import subprocess
 import sys
 import threading
 import webbrowser
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtGui import QDesktopServices, QGuiApplication
@@ -34,6 +36,7 @@ from src.topics import normalize_video_format
 from src.fs_delete import rmtree_robust, unlink_file
 from src.model_manager import download_model_to_project, list_installed_repo_ids_from_disk, model_has_local_snapshot
 from src.preflight import preflight_check
+from src.utils_ffmpeg import find_ffmpeg
 from src.ui_settings import load_settings, save_settings, settings_path
 from src.personalities import get_personality_by_id
 from debug import dprint
@@ -43,6 +46,7 @@ from UI.tabs import (
     attach_api_tab,
     attach_branding_tab,
     attach_captions_tab,
+    attach_characters_tab,
     attach_my_pc_tab,
     attach_run_tab,
     attach_settings_tab,
@@ -52,6 +56,7 @@ from UI.tabs import (
 )
 from UI.download_popup import DownloadPopup
 from UI.workers import (
+    FFmpegEnsureWorker,
     ModelDownloadWorker,
     ModelIntegrityVerifyWorker,
     PipelineBatchWorker,
@@ -65,6 +70,8 @@ from UI.workers import TopicDiscoverWorker
 from UI.preview_dialog import PreviewDialog
 from UI.storyboard_dialog import StoryboardPreviewDialog
 from UI.progress_tasks import format_status_line
+
+_TASKS_ACTIVE_JOB_TOKEN = "__active_job__"
 
 
 class _InternetStatusBridge(QObject):
@@ -136,6 +143,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._root)
 
         attach_run_tab(self)
+        attach_characters_tab(self)
         attach_topics_tab(self)
         attach_tasks_tab(self)
         attach_video_tab(self)
@@ -178,6 +186,9 @@ class MainWindow(QMainWindow):
         self.tiktok_upload_worker: TikTokUploadWorker | None = None
         self.youtube_upload_worker: YouTubeUploadWorker | None = None
         self._integrity_worker: ModelIntegrityVerifyWorker | None = None
+        self._ffmpeg_ensure_worker: FFmpegEnsureWorker | None = None
+        self._ffmpeg_run_after: Callable[[], None] | None = None
+        self._tasks_active_row: dict[str, str] | None = None
         self._last_preview_pkg = None
         self._last_preview_sources = None
         self._last_preview_prompts = None
@@ -303,10 +314,7 @@ class MainWindow(QMainWindow):
         Each app launch: clear Run tab progress, last-run scene #, and in-memory preview/storyboard
         so the UI never shows a previous session's status (e.g. Preview failed / partial progress).
         """
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Idle")
-        if hasattr(self, "run_progress"):
-            self.run_progress.setValue(0)
+        self._clear_tasks_active_row()
         if hasattr(self, "regen_scene_spin"):
             self.regen_scene_spin.setValue(1)
         if hasattr(self, "preview_btn"):
@@ -471,9 +479,34 @@ class MainWindow(QMainWindow):
         h = max(min_h, min(max_h, int(h)))
         self.setFixedSize(self.width(), h)
 
-    def _on_tab_changed(self, _idx: int) -> None:
+    def _on_tab_changed(self, idx: int) -> None:
         self._resize_to_current_tab()
         self._update_hf_api_warnings()
+        try:
+            if self.tabs.tabText(idx) == "Run":
+                self._refresh_character_combo()
+            if self.tabs.tabText(idx) == "Characters" and hasattr(self, "_characters_refresh_elevenlabs"):
+                self._characters_refresh_elevenlabs()
+        except Exception:
+            pass
+
+    def _refresh_character_combo(self) -> None:
+        if not hasattr(self, "character_combo"):
+            return
+        from src.characters_store import load_all
+
+        cur = self.character_combo.currentData()
+        self.character_combo.blockSignals(True)
+        self.character_combo.clear()
+        self.character_combo.addItem("(None)", "")
+        try:
+            for ch in load_all():
+                self.character_combo.addItem(ch.name, ch.id)
+        except Exception:
+            pass
+        idx = self.character_combo.findData(cur)
+        self.character_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.character_combo.blockSignals(False)
 
     def _on_internet_status(self, online: bool) -> None:
         self._internet_online = online
@@ -823,6 +856,16 @@ class MainWindow(QMainWindow):
             if hasattr(self, "api_fc_key_edit")
             else str(getattr(self.settings, "firecrawl_api_key", "") or "")
         )
+        el_en = (
+            bool(self.api_el_enabled_chk.isChecked())
+            if hasattr(self, "api_el_enabled_chk")
+            else bool(getattr(self.settings, "elevenlabs_enabled", False))
+        )
+        el_key = (
+            str(self.api_el_key_edit.text()).strip()
+            if hasattr(self, "api_el_key_edit")
+            else str(getattr(self.settings, "elevenlabs_api_key", "") or "")
+        )
 
         tt_en = bool(self.api_tt_enabled_chk.isChecked()) if hasattr(self, "api_tt_enabled_chk") else bool(getattr(self.settings, "tiktok_enabled", False))
         tt_ck = str(self.api_tt_client_key.text()).strip() if hasattr(self, "api_tt_client_key") else str(getattr(self.settings, "tiktok_client_key", "") or "")
@@ -874,6 +917,8 @@ class MainWindow(QMainWindow):
             hf_api_enabled=hf_en,
             firecrawl_enabled=fc_en,
             firecrawl_api_key=fc_key,
+            elevenlabs_enabled=el_en,
+            elevenlabs_api_key=el_key,
             tiktok_enabled=tt_en,
             tiktok_client_key=tt_ck,
             tiktok_client_secret=tt_cs,
@@ -897,6 +942,7 @@ class MainWindow(QMainWindow):
             youtube_add_shorts_hashtag=yt_shorts_tag,
             youtube_auto_upload_after_render=yt_auto,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
+            active_character_id=str(self.character_combo.currentData()) if hasattr(self, "character_combo") else str(getattr(self.settings, "active_character_id", "") or ""),
             llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
             image_model_id=image_model_id,
             video_model_id=video_model_id,
@@ -1273,11 +1319,53 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         try:
+            if self._ffmpeg_ensure_worker and self._ffmpeg_ensure_worker.isRunning():
+                self._ffmpeg_ensure_worker.wait(4000)
+        except Exception:
+            pass
+        try:
             if self._download_popup is not None:
                 self._download_popup.close()
         except Exception:
             pass
         return super().closeEvent(event)
+
+    def _run_when_ffmpeg_ready(self, then: Callable[[], None]) -> None:
+        """
+        If ``.cache/ffmpeg`` has no ``ffmpeg`` yet, download in a background thread, then run ``then``.
+        Otherwise call ``then`` immediately.
+        """
+        if find_ffmpeg(self.paths.ffmpeg_dir):
+            then()
+            return
+        if self._ffmpeg_ensure_worker and self._ffmpeg_ensure_worker.isRunning():
+            self._append_log(
+                'FFmpeg is still downloading — wait for "FFmpeg is ready" in the log, then click Run again.'
+            )
+            return
+        self._append_log(
+            "First-time setup: downloading FFmpeg to .cache/ffmpeg/ (needs internet; may take a few minutes)…"
+        )
+        self._ffmpeg_run_after = then
+        w = FFmpegEnsureWorker(self.paths.ffmpeg_dir)
+        self._ffmpeg_ensure_worker = w
+        w.finished_ok.connect(self._on_ffmpeg_install_done)
+        w.failed.connect(self._on_ffmpeg_install_failed)
+        w.start()
+
+    def _on_ffmpeg_install_done(self) -> None:
+        self._ffmpeg_ensure_worker = None
+        self._append_log("FFmpeg is ready.")
+        fn = self._ffmpeg_run_after
+        self._ffmpeg_run_after = None
+        if fn:
+            fn()
+
+    def _on_ffmpeg_install_failed(self, err: str) -> None:
+        self._ffmpeg_ensure_worker = None
+        self._ffmpeg_run_after = None
+        self._append_log("FFmpeg download failed:")
+        self._append_log(err[:4000])
 
     def _on_run(self) -> None:
         if self.worker and self.worker.isRunning():
@@ -1286,51 +1374,47 @@ class MainWindow(QMainWindow):
         self._save_settings()
         self._maybe_log_offline_notice()
 
-        pf = preflight_check(settings=self.settings, strict=True)
-        for w in pf.warnings:
-            self._append_log(f"Warning: {w}")
-        if not pf.ok:
-            self._append_log("Preflight failed. Fix these issues before running:")
-            for e in pf.errors:
-                self._append_log(f"- {e}")
-            return
+        def _continue() -> None:
+            pf = preflight_check(settings=self.settings, strict=True)
+            for w in pf.warnings:
+                self._append_log(f"Warning: {w}")
+            if not pf.ok:
+                self._append_log("Preflight failed. Fix these issues before running:")
+                for e in pf.errors:
+                    self._append_log(f"- {e}")
+                return
 
-        qty = int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1
+            qty = int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1
 
-        self.run_btn.setEnabled(False)
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Starting…")
-        if hasattr(self, "run_progress"):
-            self.run_progress.setValue(0)
+            self.run_btn.setEnabled(False)
 
-        if qty <= 1:
-            self.worker = PipelineWorker(self.settings)
-            self.worker.done.connect(lambda out: self._on_done(out))
+            if qty <= 1:
+                self._set_tasks_active_row("Pipeline run", "Running…", folder="In progress")
+                self.worker = PipelineWorker(self.settings)
+                self.worker.done.connect(lambda out: self._on_done(out))
+                self.worker.failed.connect(self._on_failed)
+                self.worker.start()
+                return
+
+            self._set_tasks_active_row(f"Batch pipeline ({qty} videos)", "Starting…", folder="Queued")
+            self.worker = PipelineBatchWorker(self.settings, quantity=qty)
+
+            def on_prog(task_id: str, pct: int, status: str) -> None:
+                self._update_tasks_active_progress(task_id, pct, status)
+                self._resize_to_current_tab()
+
+            def on_done(msg: str) -> None:
+                self._clear_tasks_active_row()
+                self.run_btn.setEnabled(True)
+                self._append_log(msg)
+                self._resize_to_current_tab()
+
+            self.worker.progress.connect(on_prog)
+            self.worker.done.connect(on_done)
             self.worker.failed.connect(self._on_failed)
             self.worker.start()
-            return
 
-        self.worker = PipelineBatchWorker(self.settings, quantity=qty)
-
-        def on_prog(task_id: str, pct: int, status: str) -> None:
-            if hasattr(self, "run_status"):
-                self.run_status.setText(format_status_line(task_id, pct, status))
-            if hasattr(self, "run_progress"):
-                self.run_progress.setValue(max(0, min(100, int(pct))))
-            self._resize_to_current_tab()
-
-        def on_done(msg: str) -> None:
-            self.run_btn.setEnabled(True)
-            if hasattr(self, "run_status"):
-                self.run_status.setText(msg)
-            if hasattr(self, "run_progress"):
-                self.run_progress.setValue(100 if msg.startswith("Created") else self.run_progress.value())
-            self._resize_to_current_tab()
-
-        self.worker.progress.connect(on_prog)
-        self.worker.done.connect(on_done)
-        self.worker.failed.connect(self._on_failed)
-        self.worker.start()
+        self._run_when_ffmpeg_ready(_continue)
 
     def _on_preview(self) -> None:
         if self.preview_worker and self.preview_worker.isRunning():
@@ -1349,19 +1433,16 @@ class MainWindow(QMainWindow):
                 self.preview_btn.setText("Previewing…")
             except Exception:
                 pass
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Generating preview…")
+        self._set_tasks_active_row("Preview script", "Starting…", folder="—")
 
         self.preview_worker = PreviewWorker(self.settings)
 
         def on_prog(task_id: str, pct: int, status: str) -> None:
-            if hasattr(self, "run_status"):
-                self.run_status.setText(format_status_line(task_id, pct, status))
-            if hasattr(self, "run_progress"):
-                self.run_progress.setValue(max(0, min(100, int(pct))))
+            self._update_tasks_active_progress(task_id, pct, status)
             self._resize_to_current_tab()
 
         def on_done(pkg, sources, prompts, personality_id: str, confidence: str) -> None:
+            self._clear_tasks_active_row()
             if hasattr(self, "preview_btn"):
                 try:
                     self.preview_btn.setEnabled(True)
@@ -1400,6 +1481,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         def on_failed(err: str) -> None:
+            self._clear_tasks_active_row()
             if hasattr(self, "preview_btn"):
                 try:
                     self.preview_btn.setEnabled(True)
@@ -1408,8 +1490,6 @@ class MainWindow(QMainWindow):
                     pass
             self._append_log("Preview failed:")
             self._append_log(err)
-            if hasattr(self, "run_status"):
-                self.run_status.setText("Preview failed.")
 
         self.preview_worker.progress.connect(on_prog)
         self.preview_worker.done.connect(on_done)
@@ -1427,30 +1507,31 @@ class MainWindow(QMainWindow):
 
         self._save_settings()
         self._maybe_log_offline_notice()
-        pf = preflight_check(settings=self.settings, strict=True)
-        for w in pf.warnings:
-            self._append_log(f"Warning: {w}")
-        if not pf.ok:
-            self._append_log("Preflight failed. Fix these issues before running:")
-            for e in pf.errors:
-                self._append_log(f"- {e}")
-            return
 
-        self.run_btn.setEnabled(False)
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Starting…")
-        if hasattr(self, "run_progress"):
-            self.run_progress.setValue(0)
+        def _continue() -> None:
+            pf = preflight_check(settings=self.settings, strict=True)
+            for w in pf.warnings:
+                self._append_log(f"Warning: {w}")
+            if not pf.ok:
+                self._append_log("Preflight failed. Fix these issues before running:")
+                for e in pf.errors:
+                    self._append_log(f"- {e}")
+                return
 
-        self.worker = PipelineWorker(
-            self.settings,
-            prebuilt_pkg=self._last_preview_pkg,
-            prebuilt_sources=self._last_preview_sources,
-            prebuilt_prompts=self._last_preview_prompts,
-        )
-        self.worker.done.connect(lambda out: self._on_done(out))
-        self.worker.failed.connect(self._on_failed)
-        self.worker.start()
+            self.run_btn.setEnabled(False)
+            self._set_tasks_active_row("Pipeline run", "Running (approved preview)…", folder="In progress")
+
+            self.worker = PipelineWorker(
+                self.settings,
+                prebuilt_pkg=self._last_preview_pkg,
+                prebuilt_sources=self._last_preview_sources,
+                prebuilt_prompts=self._last_preview_prompts,
+            )
+            self.worker.done.connect(lambda out: self._on_done(out))
+            self.worker.failed.connect(self._on_failed)
+            self.worker.start()
+
+        self._run_when_ffmpeg_ready(_continue)
 
     def _regenerate_scene_from_last_run(self) -> None:
         """
@@ -1554,19 +1635,16 @@ class MainWindow(QMainWindow):
                 self.storyboard_btn.setText("Storyboard…")
             except Exception:
                 pass
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Generating storyboard preview…")
+        self._set_tasks_active_row("Storyboard preview", "Starting…", folder="—")
 
         self.storyboard_worker = StoryboardWorker(self.settings)
 
         def on_prog(task_id: str, pct: int, status: str) -> None:
-            if hasattr(self, "run_status"):
-                self.run_status.setText(format_status_line(task_id, pct, status))
-            if hasattr(self, "run_progress"):
-                self.run_progress.setValue(max(0, min(100, int(pct))))
+            self._update_tasks_active_progress(task_id, pct, status)
             self._resize_to_current_tab()
 
         def on_done(manifest_path, grid_png_path) -> None:
+            self._clear_tasks_active_row()
             if hasattr(self, "storyboard_btn"):
                 try:
                     self.storyboard_btn.setEnabled(True)
@@ -1586,6 +1664,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         def on_failed(err: str) -> None:
+            self._clear_tasks_active_row()
             if hasattr(self, "storyboard_btn"):
                 try:
                     self.storyboard_btn.setEnabled(True)
@@ -1594,8 +1673,6 @@ class MainWindow(QMainWindow):
                     pass
             self._append_log("Storyboard preview failed:")
             self._append_log(err)
-            if hasattr(self, "run_status"):
-                self.run_status.setText("Storyboard preview failed.")
 
         self.storyboard_worker.progress.connect(on_prog)
         self.storyboard_worker.done.connect(on_done)
@@ -1699,10 +1776,7 @@ class MainWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             return
         self.run_btn.setEnabled(False)
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Rendering approved storyboard…")
-        if hasattr(self, "run_progress"):
-            self.run_progress.setValue(0)
+        self._set_tasks_active_row("Pipeline run", "Running (approved storyboard)…", folder="In progress")
 
         # Use a special attribute read by run_once (we'll add support) via PipelineWorker args.
         self.worker = PipelineWorker(self.settings, prebuilt_pkg=None, prebuilt_sources=None, prebuilt_prompts=prompts, prebuilt_seeds=seeds)
@@ -1711,12 +1785,10 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def _on_done(self, out_dir: str) -> None:
+        self._clear_tasks_active_row()
         self.run_btn.setEnabled(True)
-        if hasattr(self, "run_status"):
-            self.run_status.setText("Done" if out_dir else "No new items found.")
-        if hasattr(self, "run_progress"):
-            self.run_progress.setValue(100 if out_dir else 0)
         if not out_dir:
+            self._append_log("No new items found.")
             return
         self._append_log(f"Completed: {out_dir}")
         try:
@@ -1774,6 +1846,37 @@ class MainWindow(QMainWindow):
         self._append_log("Starting YouTube upload (auto)…")
         self._start_youtube_upload_worker(task_id)
 
+    def _set_tasks_active_row(
+        self,
+        title: str,
+        status: str,
+        *,
+        youtube: str = "",
+        created: str | None = None,
+        folder: str = "—",
+    ) -> None:
+        c = created or (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M") + " UTC")
+        self._tasks_active_row = {
+            "title": title,
+            "status": status,
+            "youtube": youtube,
+            "created": c,
+            "folder": folder,
+        }
+        self._tasks_refresh()
+
+    def _update_tasks_active_progress(self, task_id: str, pct: int, message: str) -> None:
+        if not self._tasks_active_row:
+            return
+        self._tasks_active_row["status"] = format_status_line(task_id, pct, message)[:300]
+        self._tasks_refresh()
+
+    def _clear_tasks_active_row(self) -> None:
+        if self._tasks_active_row is None:
+            return
+        self._tasks_active_row = None
+        self._tasks_refresh()
+
     def _tasks_refresh(self) -> None:
         if not hasattr(self, "tasks_table"):
             return
@@ -1782,6 +1885,16 @@ class MainWindow(QMainWindow):
         from src.upload_tasks import load_tasks
 
         self.tasks_table.setRowCount(0)
+        if self._tasks_active_row:
+            ar = self._tasks_active_row
+            self.tasks_table.insertRow(0)
+            t0 = QTableWidgetItem(str(ar.get("title", "Working…"))[:120])
+            t0.setData(Qt.ItemDataRole.UserRole, _TASKS_ACTIVE_JOB_TOKEN)
+            self.tasks_table.setItem(0, 0, t0)
+            self.tasks_table.setItem(0, 1, QTableWidgetItem(str(ar.get("status", "running"))[:200]))
+            self.tasks_table.setItem(0, 2, QTableWidgetItem(str(ar.get("youtube", ""))[:80]))
+            self.tasks_table.setItem(0, 3, QTableWidgetItem(str(ar.get("created", ""))[:24]))
+            self.tasks_table.setItem(0, 4, QTableWidgetItem(str(ar.get("folder", "—"))[:120]))
         for t in load_tasks():
             r = self.tasks_table.rowCount()
             self.tasks_table.insertRow(r)
@@ -1813,6 +1926,8 @@ class MainWindow(QMainWindow):
         if it is None:
             return None
         tid = it.data(Qt.ItemDataRole.UserRole)
+        if tid == _TASKS_ACTIVE_JOB_TOKEN:
+            return None
         return str(tid) if tid else None
 
     def _tasks_open_folder(self) -> None:
@@ -2119,6 +2234,7 @@ class MainWindow(QMainWindow):
             self._append_log(f"Failed to save YouTube tokens: {e}")
 
     def _on_failed(self, err: str) -> None:
+        self._clear_tasks_active_row()
         self.run_btn.setEnabled(True)
         self._append_log("Run failed:")
         self._append_log(err)

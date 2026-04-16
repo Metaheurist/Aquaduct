@@ -32,8 +32,16 @@ pip install -r requirements.txt
 
 ```powershell
 pip install -r requirements.txt -r requirements-dev.txt
+pytest -q -m "not qt"
+```
+
+Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt):
+
+```powershell
 pytest -q
 ```
+
+If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set.
 
 ### 2) Run once (recommended for first test)
 
@@ -76,6 +84,7 @@ python main.py --once
 - `src/`: pipeline modules
 - `UI/`: PyQt6 desktop UI package (TikTok-style theme; tabs under `UI/tabs/`; launcher `UI/ui_app.py`)
 - `data/upload_tasks.json`: local queue for finished renders (Tasks tab); gitignored
+- `data/characters.json`: Character Builder profiles (Tasks/Run); gitignored
 - `data/news_cache/`: URL + title dedupe caches (`seen_<mode>.json`, `seen_titles_<mode>.json`; legacy `seen.json` may still appear until cleared or migrated)
 - `runs/`: intermediate working folders per run
 - `videos/`: final per-video folders
@@ -99,11 +108,12 @@ python -m UI
 ```
 
 Tabs:
-- **Run**: one-shot run + **video format** (News / Cartoon / Explainer) + logs + open `videos/`
+- **Run**: one-shot run + **video format** (News / Cartoon / Explainer) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
+- **Characters**: create/edit **characters** (identity, visuals, voice); optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
 - **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
-- **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
+- **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
 - **Model**: Download menu (including **verify checksums** for local snapshots), dependency check/install, model select/download (script/video/voice); skips repos already under `models/`
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
@@ -136,6 +146,8 @@ Example:
 - [VRAM / cleanup utilities](docs/vram.md)
 - [TikTok upload (Tasks + API)](docs/tiktok.md)
 - [YouTube upload (Tasks + API)](docs/youtube.md)
+- [Characters (Character Builder)](docs/characters.md)
+- [ElevenLabs TTS (optional)](docs/elevenlabs.md)
 
 ## Notes
 - First run will download models from Hugging Face (can be large).

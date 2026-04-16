@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -115,6 +116,40 @@ def attach_api_tab(win) -> None:
     fc_lay.addWidget(win.api_fc_key_hint)
 
     il.addWidget(fc_box)
+
+    # ---- ElevenLabs (optional cloud TTS) ----
+    el_box = QGroupBox("ElevenLabs (optional TTS)")
+    el_lay = QVBoxLayout(el_box)
+
+    win.api_el_enabled_chk = QCheckBox("Enable ElevenLabs voices for Character Builder + narration")
+    win.api_el_enabled_chk.setChecked(bool(getattr(win.settings, "elevenlabs_enabled", False)))
+    el_lay.addWidget(win.api_el_enabled_chk)
+
+    el_doc = QLabel(
+        "API keys: "
+        '<a href="https://elevenlabs.io/docs/api-reference/">elevenlabs.io/docs</a>. '
+        "You can set <b>ELEVENLABS_API_KEY</b> in the environment instead of saving here (env wins). "
+        "Requires internet; on failure narration falls back to local TTS. See docs/elevenlabs.md."
+    )
+    el_doc.setTextFormat(Qt.TextFormat.RichText)
+    el_doc.setOpenExternalLinks(True)
+    el_doc.setWordWrap(True)
+    el_doc.setStyleSheet(
+        "QLabel { color: #9BB0C4; font-size: 12px; } "
+        "QLabel a { color: #25F4EE; text-decoration: none; } "
+        "QLabel a:hover { text-decoration: underline; }"
+    )
+    el_lay.addWidget(el_doc)
+
+    form_el = QFormLayout()
+    win.api_el_key_edit = QLineEdit()
+    win.api_el_key_edit.setPlaceholderText("xi-api-key (optional paste)")
+    win.api_el_key_edit.setText(str(getattr(win.settings, "elevenlabs_api_key", "") or ""))
+    win.api_el_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+    form_el.addRow("API key", win.api_el_key_edit)
+    el_lay.addLayout(form_el)
+
+    il.addWidget(el_box)
 
     # ---- TikTok (optional upload) ----
     tt_box = QGroupBox("TikTok (Content Posting API)")

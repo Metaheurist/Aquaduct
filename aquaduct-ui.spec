@@ -1,67 +1,44 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Kept in sync with build/build.ps1 (-UI). Prefer .\build\build.ps1 for reproducible builds.
-import os
+from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import copy_metadata
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
-
-# PyInstaller injects SPECPATH (directory containing this spec).
-try:
-    _root = SPECPATH  # type: ignore[name-defined]
-except NameError:  # pragma: no cover
-    _root = os.path.abspath('.')
-
-datas = []
+datas = [('requirements.txt', '.'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\artist.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\brain.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\branding.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\characters.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\config.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\crawler.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\editor.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\elevenlabs.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\ffmpeg.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\hardware.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\main.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\models.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\model_youtube_demos.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\tiktok.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\ui.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\voice.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\vram.md', 'docs'), ('C:\\Users\\OnceU\\OneDrive\\Documents\\GitHub\\Aquaduct\\docs\\youtube.md', 'docs')]
 binaries = []
-hiddenimports = [
-    "PIL",
-    "main",
-    "soundfile",
-    "dotenv",
-    "imageio_ffmpeg",
-    "imageio.plugins.ffmpeg",
-    "imageio.plugins.pillow",
-    "UI",
-    "UI.ui_app",
-    "UI.app",
-    "UI.main_window",
-    "UI.theme",
-    "UI.workers",
-    "UI.paths",
-    "UI.tabs",
-]
+hiddenimports = ['PIL', 'soundfile', 'pyttsx3', 'requests', 'charset_normalizer', 'urllib3', 'certifi', 'src.elevenlabs_tts', 'src.characters_store', 'main', 'UI', 'UI.ui_app', 'UI.app', 'UI.main_window', 'UI.theme', 'UI.workers', 'UI.paths', 'UI.tabs', 'UI.tabs.characters_tab', 'UI.tabs.api_tab', 'UI.tabs.run_tab', 'imageio_ffmpeg', 'imageio.plugins.ffmpeg', 'imageio.plugins.pillow', 'dotenv']
+datas += copy_metadata('imageio')
+datas += copy_metadata('imageio-ffmpeg')
+datas += copy_metadata('moviepy')
+datas += copy_metadata('proglog')
+datas += copy_metadata('decorator')
+datas += copy_metadata('tqdm')
+datas += copy_metadata('torch')
+datas += copy_metadata('transformers')
+datas += copy_metadata('diffusers')
+datas += copy_metadata('huggingface_hub')
+datas += copy_metadata('accelerate')
+datas += copy_metadata('safetensors')
+datas += copy_metadata('bitsandbytes')
+hiddenimports += collect_submodules('src')
+hiddenimports += collect_submodules('debug')
+hiddenimports += collect_submodules('UI')
+tmp_ret = collect_all('moviepy')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('imageio')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('imageio_ffmpeg')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('PyQt6')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('soundfile')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('certifi')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-for pkg in (
-    "imageio",
-    "imageio-ffmpeg",
-    "moviepy",
-    "proglog",
-    "decorator",
-    "tqdm",
-    "torch",
-    "transformers",
-    "diffusers",
-    "huggingface_hub",
-    "accelerate",
-    "safetensors",
-    "bitsandbytes",
-):
-    datas += copy_metadata(pkg)
-
-datas.append((os.path.join(_root, "requirements.txt"), "."))
-
-for pkg in ("moviepy", "imageio", "imageio_ffmpeg", "PyQt6", "soundfile"):
-    tmp_ret = collect_all(pkg)
-    datas += tmp_ret[0]
-    binaries += tmp_ret[1]
-    hiddenimports += tmp_ret[2]
-
-hiddenimports += collect_submodules("src")
-hiddenimports += collect_submodules("debug")
-hiddenimports += collect_submodules("UI")
 
 a = Analysis(
-    [os.path.join(_root, "UI", "ui_app.py")],
-    pathex=[_root],
+    ['UI\\ui_app.py'],
+    pathex=[],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -80,7 +57,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="aquaduct-ui",
+    name='aquaduct-ui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

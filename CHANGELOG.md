@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Characters + ElevenLabs TTS
+- **Characters** tab: create, edit, and delete user-defined **characters** (name, identity, visual style, negative prompts, per-character voice options). Persisted locally as `data/characters.json` (gitignored).
+- **Run** tab: **Character** dropdown; chosen character feeds **LLM script context** and optional **storyboard** character consistency ([docs/characters.md](docs/characters.md)).
+- **API** tab: **ElevenLabs** — enable + API key (optional `ELEVENLABS_API_KEY` env). When enabled and a character has an **ElevenLabs voice** selected, **cloud TTS** is used (MP3 → WAV via FFmpeg); on failure or missing key, the pipeline falls back to Kokoro/pyttsx3 ([docs/elevenlabs.md](docs/elevenlabs.md)).
+- Implementation: [`src/characters_store.py`](src/characters_store.py), [`src/elevenlabs_tts.py`](src/elevenlabs_tts.py), [`src/voice.py`](src/voice.py) `synthesize`, [`main.py`](main.py) run wiring, [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py), [`UI/workers.py`](UI/workers.py) async voice list refresh.
+- **Tests**: [`tests/test_characters_store.py`](tests/test_characters_store.py), [`tests/test_elevenlabs_tts.py`](tests/test_elevenlabs_tts.py) (mocked HTTP); settings/preflight tests extended for new fields.
+
+### Packaging (Windows one-file EXE)
+- [`build/build.ps1`](build/build.ps1) and [`aquaduct-ui.spec`](aquaduct-ui.spec): extra `--hidden-import` / `collect_all` for HTTPS (`requests`, `urllib3`, `certifi`, `charset_normalizer`), `pyttsx3`, `src.elevenlabs_tts`, `src.characters_store`, and UI tab modules; bundle `docs/*.md` for UI builds. Still bundles `imageio`/related metadata and submodules for `src` / `UI`; UI EXE supports **`-debug` / `--debug`** for a console. See [build/README.md](build/README.md).
+
+### Fixes
+- [`main.py`](main.py): removed a redundant inner `import ensure_ffmpeg` inside `run_once` that shadowed the top-level import and caused `UnboundLocalError` when FFmpeg was missing at startup.
+
 ### Tasks + TikTok
 - **Tasks** tab: queued finished videos (`data/upload_tasks.json`), open/play, copy caption, manual “posted”, remove; auto-listed after each successful run.
 - **API** tab: **TikTok** section (OAuth PKCE + local callback, inbox upload via Content Posting API). Optional **auto-start TikTok upload** when a render completes.
@@ -53,16 +66,13 @@ All notable changes to this project will be documented in this file.
 - **`src/model_manager`**: `model_has_local_snapshot()`, `probe_hf_model()`, `remote_repo_size_bytes()`, Hub-backed **integrity verification** helpers for local snapshots.
 - **Video model selection**: Image + video HF repos download together when the selection is a **pair** (both snapshots required).
 
-### Packaging
-- **PyInstaller** (`aquaduct-ui.spec`, `build/build.ps1`): UI one-file build bundles `imageio` (and related) metadata, submodules for `src` / `UI`, `requirements.txt`, optional debug console via **`-debug` / `--debug`** on the UI EXE.
-
 ### Scripts
 - **`scripts/download_hf_models.py`**: Portable HF snapshot downloader into `./models` (same layout as the app), with optional `--out` and token via env/CLI.
 
 ### Docs & tests
-- Docs refreshed for UI downloads, branding palette behavior, models/skip semantics, **TikTok**, **YouTube**, and **checksum verification**.
+- Docs refreshed for UI downloads, branding palette behavior, models/skip semantics, **TikTok**, **YouTube**, **checksum verification**, **Characters**, and **ElevenLabs**.
 - **`tests/test_personality_auto.py`** updated for rules-only auto pick.
-- **`tests/test_upload_tasks.py`**, **`tests/test_tiktok_post.py`**, **`tests/test_model_integrity.py`** for tasks/TikTok/verification coverage.
+- **`tests/test_upload_tasks.py`**, **`tests/test_tiktok_post.py`**, **`tests/test_model_integrity.py`** for tasks/TikTok/verification coverage. UI tests need **`pip install -r requirements-dev.txt`** (pytest-qt + PyQt6 for `qtbot`).
 
 ## 0.1.0 — 2026-04-15
 - Initial MVP scaffold: crawler → local script generation → local TTS + captions → SDXL Turbo images → micro-clip editor → per-video outputs under `videos/`.

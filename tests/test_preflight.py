@@ -23,7 +23,7 @@ def test_preflight_strict_requires_ffmpeg(monkeypatch):
     monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
     r = preflight_check(settings=AppSettings(), strict=True)
     assert not r.ok
-    assert any("FFmpeg is not installed" in e for e in r.errors)
+    assert any("FFmpeg is not under" in e for e in r.errors)
 
 
 def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):

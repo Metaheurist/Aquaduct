@@ -20,6 +20,8 @@ from src.crawler import get_latest_items, get_scored_items, pick_one_item, fetch
 from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.clips import generate_clips
 from src.branding_video import apply_palette_to_prompts
+from src.characters_store import character_context_for_brain, resolve_active_character
+from src.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.factcheck import rewrite_with_uncertainty
 from src.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
 from src.storyboard import build_storyboard, write_manifest
@@ -38,6 +40,7 @@ from src.audio_fx import (
     schedule_sfx_events,
 )
 from src.preflight import preflight_check
+from src.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
 from src.personality_auto import auto_pick_personality
 from src.single_instance import single_instance_guard
 from src.topics import effective_topic_tags, news_cache_mode_for_run
@@ -104,6 +107,8 @@ def run_once(
     paths = get_paths()
     models = get_models()
     app = settings or AppSettings()
+    active_character = resolve_active_character(app)
+    char_ctx = character_context_for_brain(active_character) if active_character else None
     video_settings = app.video
     dprint(
         "pipeline",
@@ -120,6 +125,10 @@ def run_once(
     paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
     paths.runs_dir.mkdir(parents=True, exist_ok=True)
     paths.videos_dir.mkdir(parents=True, exist_ok=True)
+
+    if not find_ffmpeg(paths.ffmpeg_dir):
+        dprint("pipeline", "Downloading FFmpeg to .cache/ffmpeg/ (first run; needs internet; may take several minutes)…")
+        ensure_ffmpeg(paths.ffmpeg_dir)
 
     pf = preflight_check(settings=app, strict=True)
     if not pf.ok:
@@ -199,6 +208,7 @@ def run_once(
             topic_tags=effective_topic_tags(app),
             personality_id=picked.preset.id,
             branding=getattr(app, "branding", None),
+            character_context=char_ctx,
         )
         pkg = enforce_arc(pkg)
         # Best-effort safety rewrite (uses article text snippet when available).
@@ -228,11 +238,38 @@ def run_once(
             narration = shaped
         except Exception:
             pass
+    py_tts_voice: str | None = None
+    kokoro_sp: str | None = None
+    el_vid: str | None = None
+    el_key: str | None = None
+    ffmpeg_exe = None
+    if active_character is not None and not active_character.use_default_voice:
+        if (active_character.pyttsx3_voice_id or "").strip():
+            py_tts_voice = active_character.pyttsx3_voice_id.strip()
+        if (active_character.kokoro_voice or "").strip():
+            kokoro_sp = active_character.kokoro_voice.strip()
+        if (
+            (active_character.elevenlabs_voice_id or "").strip()
+            and elevenlabs_available_for_app(app)
+        ):
+            el_vid = active_character.elevenlabs_voice_id.strip()
+            el_key = effective_elevenlabs_api_key(app)
+            try:
+                ffmpeg_exe = ensure_ffmpeg(paths.ffmpeg_dir)
+            except Exception:
+                ffmpeg_exe = None
+                el_vid = None
+                el_key = None
     synthesize(
         kokoro_model_id=voice_id,
         text=narration,
         out_wav_path=voice_wav,
         out_captions_json=captions_json,
+        pyttsx3_voice_id=py_tts_voice,
+        kokoro_speaker=kokoro_sp,
+        elevenlabs_voice_id=el_vid,
+        elevenlabs_api_key=el_key,
+        ffmpeg_executable=ffmpeg_exe,
     )
 
     prepare_for_next_model()
@@ -258,11 +295,21 @@ def run_once(
         prompts = apply_palette_to_prompts(prompts, branding)
         dprint("branding", "apply_palette_to_prompts", f"n={len(prompts)}")
 
+    # Prebuilt image prompts: apply character visuals here (storyboard path for fresh runs uses build_storyboard).
+    if prebuilt_prompts is not None and active_character is not None and (active_character.visual_style or "").strip():
+        vs = active_character.visual_style.strip()
+        prompts = [f"{vs}, {p}" if (p or "").strip() else vs for p in prompts]
+
     # Scene-type conditioning + variety (best-effort).
     if bool(getattr(video_settings, "prompt_conditioning", True)):
         try:
             scene_types = assign_scene_types(prompts)
             neg = default_negative_prompt()
+            if prebuilt_prompts is not None and active_character is not None and (active_character.negatives or "").strip():
+                extra = active_character.negatives.strip()
+                neg = f"{neg}, {extra}" if neg else extra
+                if len(neg) > 3000:
+                    neg = neg[:3000]
             prompts = [condition_prompt(p, scene_type=scene_types[i], idx=i, negatives=neg) for i, p in enumerate(prompts)]
         except Exception:
             pass
@@ -282,6 +329,7 @@ def run_once(
                 seed_base=getattr(video_settings, "seed_base", None),
                 branding=getattr(app, "branding", None),
                 max_scenes=len(storyboard_prompts),
+                character=active_character,
             )
             # Persist approved prompt/seed into manifest scenes (best-effort)
             try:
@@ -296,6 +344,7 @@ def run_once(
                 seed_base=getattr(video_settings, "seed_base", None),
                 branding=getattr(app, "branding", None),
                 max_scenes=max(1, int(video_settings.images_per_video)),
+                character=active_character,
             )
             storyboard_prompts = [s.prompt for s in storyboard.scenes]
             storyboard_seeds = [s.seed for s in storyboard.scenes]
@@ -376,7 +425,6 @@ def run_once(
                 render_sfx_track(sr=44100, duration_s=dur_s, events=events, out_wav=sfx_track)
                 import subprocess as _sub
                 from pathlib import Path as _Path
-                from src.utils_ffmpeg import ensure_ffmpeg
 
                 ffmpeg_bin = _Path(ensure_ffmpeg(paths.ffmpeg_dir))
                 out_final_wav = assets_dir / "final_audio.wav"
@@ -404,7 +452,13 @@ def run_once(
         # then animate them into clips with the selected clip model.
         dprint("pipeline", "mode=video_clips", f"clips_per_video={video_settings.clips_per_video}")
         key_dir = assets_dir / "keyframes"
-        storyboard = build_storyboard(pkg, seed_base=getattr(video_settings, "seed_base", None), max_scenes=max(1, int(video_settings.clips_per_video)))
+        storyboard = build_storyboard(
+            pkg,
+            seed_base=getattr(video_settings, "seed_base", None),
+            branding=getattr(app, "branding", None),
+            max_scenes=max(1, int(video_settings.clips_per_video)),
+            character=active_character,
+        )
         storyboard_prompts = [s.prompt for s in storyboard.scenes]
         storyboard_seeds = [s.seed for s in storyboard.scenes]
         manifest_path = assets_dir / "manifest.json"

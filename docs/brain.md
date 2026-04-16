@@ -26,6 +26,9 @@ If the local model fails to load (common on some Windows setups), it returns a d
 ## Main entrypoint
 - `generate_script(model_id: str, items: list[dict[str,str]], topic_tags: list[str] | None) -> VideoPackage`
 
+## Character context
+When the Run tab selects a **character** (see [Characters](characters.md)), an extra block is added so narration and on-screen text stay consistent with that host identity (layered on top of **Personality** presets).
+
 ## Topic tags
 If `topic_tags` are provided (from the UI Topics tab list for the **current video format**, via `effective_topic_tags()`), they are injected into the prompt to bias:
 - which tool release is selected

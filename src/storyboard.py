@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from .brain import VideoPackage
+from .characters_store import Character
 from debug import dprint
 from .prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
 
@@ -91,18 +92,29 @@ def build_storyboard(
     seed_base: int | None,
     branding=None,
     max_scenes: int = 10,
+    character: Character | None = None,
 ) -> Storyboard:
     """
     Convert VideoPackage beats into storyboarded scenes with roles/shot types/overlays and deterministic seeds.
     """
     dprint("storyboard", "build_storyboard", f"title={pkg.title[:80]!r}", f"max_scenes={max_scenes}")
     segs = list(pkg.segments or [])[: max(1, int(max_scenes))]
-    prompts = [s.visual_prompt for s in segs]
+    raw_prompts = [s.visual_prompt for s in segs]
+    if character is not None and (character.visual_style or "").strip():
+        vs = character.visual_style.strip()
+        prompts = [f"{vs}, {p}" if (p or "").strip() else vs for p in raw_prompts]
+    else:
+        prompts = list(raw_prompts)
     roles = _rotate_no_repeat([_guess_role(p) for p in prompts])
     # Apply scene-type prompt conditioning (includes negatives suffix)
     try:
         scene_types = assign_scene_types(prompts)
         neg = default_negative_prompt()
+        if character is not None and (character.negatives or "").strip():
+            extra = character.negatives.strip()
+            neg = f"{neg}, {extra}" if neg else extra
+            if len(neg) > 3000:
+                neg = neg[:3000]
         prompts = [condition_prompt(p, scene_type=scene_types[i], idx=i, negatives=neg) for i, p in enumerate(prompts)]
     except Exception:
         pass

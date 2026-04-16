@@ -23,6 +23,8 @@ python UI/ui_app.py
 - **Run**
   - One-shot run button
   - **Video format** (News / Cartoon / Explainer): together with Topics, selects which tag list the pipeline uses (`video_format` + `topic_tags_by_mode`)
+  - **Personality** (preset or Auto) and optional **Character** (see Characters tab) for script + storyboard consistency
+  - Live pipeline / preview / storyboard progress is shown as the **top row** on the **Tasks** tab (no progress bar on Run)
   - Open `videos/` folder
   - Save settings
 - **Topics**
@@ -49,8 +51,12 @@ python UI/ui_app.py
 - **Branding**
   - Optional full-theme palette overrides (presets or custom hex + color picker). Changing the **Palette** dropdown updates the hex swatches and fields for that preset (Custom unlocks per-row overrides).
   - Optional logo watermark on generated videos
+- **Characters**
+  - Create, edit, and delete **characters** (name, identity, visual style, negative prompts, voice overrides). Stored in `data/characters.json` (local; not committed).
+  - Optional **ElevenLabs voice** picker when **API → ElevenLabs** is enabled and a key is set ([ElevenLabs](elevenlabs.md), [Characters](characters.md)).
 - **API**
   - Hugging Face token (optional; helps Hub size checks and gated downloads) + optional **Firecrawl**
+  - **ElevenLabs** (optional): enable + API key for cloud TTS when a character selects an ElevenLabs voice — see [ElevenLabs](elevenlabs.md)
   - **TikTok**: client key/secret, redirect URI + OAuth port, publishing mode (inbox vs direct; inbox is supported for upload), optional **auto-upload after each render** — see [TikTok upload](tiktok.md)
   - **YouTube**: separate enable; OAuth client ID/secret, redirect + port (default **8888**), default visibility, optional **#Shorts** tagging, optional **auto-upload after render** — see [YouTube upload](youtube.md)
 - **Model** (tab label; model downloads + dependencies)
