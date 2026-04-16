@@ -135,6 +135,7 @@ def _prompt_for_items(
     topic_tags: list[str] | None,
     personality: PersonalityPreset,
     branding: BrandingSettings | None = None,
+    character_context: str | None = None,
 ) -> str:
     # Keep it stable for JSON parsing.
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
@@ -160,6 +161,13 @@ def _prompt_for_items(
                 f"- Strength: {strength}\n"
                 f"- {suf}\n"
             )
+    char_block = ""
+    cc = (character_context or "").strip()
+    if cc:
+        char_block = (
+            "Character / host identity (layer on top of tone/personality; stay consistent in narration and on-screen cues):\n"
+            f"{cc}\n\n"
+        )
     return (
         "You are a viral short-form scriptwriter focused on AI tool reviews.\n"
         "Write a ~50 second vertical video script with 6-10 few-second beats.\n"
@@ -180,6 +188,7 @@ def _prompt_for_items(
         "- avoid markdown except optional ```json fence\n"
         "\n"
         f"{personality_block}"
+        f"{char_block}"
         f"{style_suffix}"
         f"{tag_line}"
         f"Headlines (pick ONE main tool release to review): {json.dumps(headlines, ensure_ascii=False)}\n"
@@ -395,6 +404,7 @@ def generate_script(
     topic_tags: list[str] | None = None,
     personality_id: str = "neutral",
     branding: BrandingSettings | None = None,
+    character_context: str | None = None,
     on_llm_task: Callable[[str, int, str], None] | None = None,
 ) -> VideoPackage:
     """
@@ -402,7 +412,7 @@ def generate_script(
     Tries local 4-bit transformers; falls back to a deterministic template if the model fails to load.
     """
     personality = get_personality_by_id(personality_id)
-    prompt = _prompt_for_items(items, topic_tags, personality, branding=branding)
+    prompt = _prompt_for_items(items, topic_tags, personality, branding=branding, character_context=character_context)
     dprint("brain", "generate_script start", f"model_id={model_id!r}", f"items={len(items)}", f"personality={personality_id!r}")
 
     with vram_guard():

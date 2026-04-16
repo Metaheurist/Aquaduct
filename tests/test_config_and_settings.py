@@ -11,6 +11,7 @@ def test_ui_settings_roundtrip_defaults(write_ui_settings):
     s = load_settings()
     assert isinstance(s, AppSettings)
     assert s.personality_id == "auto"
+    assert getattr(s, "active_character_id", "") == ""
     assert isinstance(s.video, VideoSettings)
 
 
@@ -29,10 +30,14 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
         voice_model_id="v",
         background_music_path="C:\\music.mp3",
         video=VideoSettings(width=720, height=1280, fps=24, images_per_video=5, cleanup_images_after_run=True),
+        elevenlabs_enabled=True,
+        elevenlabs_api_key="el_test_key",
     )
     save_settings(s)
     s2 = load_settings()
     assert s2.personality_id == "analytical"
+    assert s2.elevenlabs_enabled is True
+    assert s2.elevenlabs_api_key == "el_test_key"
     assert s2.topic_tags_by_mode.get("news") == ["AI video editor", "agentic workflow"]
     assert s2.video_format == "news"
     assert s2.hf_api_enabled is True

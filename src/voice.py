@@ -59,7 +59,29 @@ def _simple_word_timestamps(text: str, total_s: float) -> list[WordTimestamp]:
     return ts
 
 
-def _try_kokoro_tts(_model_id: str, _text: str, _out_wav: Path) -> bool:
+def list_pyttsx3_voices() -> list[tuple[str, str]]:
+    """Return [(label, voice_id), ...] for installed system TTS voices (pyttsx3)."""
+    try:
+        import pyttsx3
+
+        engine = pyttsx3.init()
+        out: list[tuple[str, str]] = []
+        for v in engine.getProperty("voices") or []:
+            vid = str(getattr(v, "id", "") or "")
+            if not vid:
+                continue
+            name = str(getattr(v, "name", "") or vid)
+            out.append((name, vid))
+        try:
+            engine.stop()
+        except Exception:
+            pass
+        return out
+    except Exception:
+        return []
+
+
+def _try_kokoro_tts(_model_id: str, _text: str, _out_wav: Path, _speaker: str | None = None) -> bool:
     """
     Kokoro-82M integration target.
 
@@ -77,7 +99,7 @@ def _try_kokoro_tts(_model_id: str, _text: str, _out_wav: Path) -> bool:
         return False
 
 
-def _pyttsx3_tts(text: str, out_wav: Path) -> None:
+def _pyttsx3_tts(text: str, out_wav: Path, pyttsx3_voice_id: str | None = None) -> None:
     """
     Offline fallback TTS using Windows SAPI via pyttsx3.
     Produces WAV on most Windows installs.
@@ -86,6 +108,15 @@ def _pyttsx3_tts(text: str, out_wav: Path) -> None:
 
     out_wav.parent.mkdir(parents=True, exist_ok=True)
     engine = pyttsx3.init()
+    if pyttsx3_voice_id and str(pyttsx3_voice_id).strip():
+        vid = str(pyttsx3_voice_id).strip()
+        try:
+            for v in engine.getProperty("voices") or []:
+                if str(getattr(v, "id", "") or "") == vid:
+                    engine.setProperty("voice", v.id)
+                    break
+        except Exception:
+            pass
     # Slightly faster, “shorts” pacing.
     try:
         engine.setProperty("rate", 185)
@@ -105,6 +136,11 @@ def synthesize(
     text: str,
     out_wav_path: Path,
     out_captions_json: Path,
+    pyttsx3_voice_id: str | None = None,
+    kokoro_speaker: str | None = None,
+    elevenlabs_voice_id: str | None = None,
+    elevenlabs_api_key: str | None = None,
+    ffmpeg_executable: Path | None = None,
 ) -> list[WordTimestamp]:
     """
     Generates `out_wav_path` and `out_captions_json` (word-level timestamps).
@@ -116,9 +152,26 @@ def synthesize(
     out_captions_json.parent.mkdir(parents=True, exist_ok=True)
 
     with vram_guard():
-        ok = _try_kokoro_tts(kokoro_model_id, text, out_wav_path)
-        if not ok:
-            _pyttsx3_tts(text, out_wav_path)
+        el_ok = False
+        ev = (elevenlabs_voice_id or "").strip()
+        ek = (elevenlabs_api_key or "").strip()
+        if ev and ek and ffmpeg_executable is not None:
+            try:
+                from .elevenlabs_tts import synthesize_to_wav
+
+                el_ok = synthesize_to_wav(
+                    api_key=ek,
+                    voice_id=ev,
+                    text=text,
+                    out_wav=out_wav_path,
+                    ffmpeg_bin=ffmpeg_executable,
+                )
+            except Exception:
+                el_ok = False
+        if not el_ok:
+            ok = _try_kokoro_tts(kokoro_model_id, text, out_wav_path, _speaker=kokoro_speaker)
+            if not ok:
+                _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
 
     # Ensure there is audio; if pyttsx3 fails, create a short beep track as last resort.
     if not out_wav_path.exists() or out_wav_path.stat().st_size < 1024:

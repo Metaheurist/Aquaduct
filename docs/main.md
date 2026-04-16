@@ -3,8 +3,8 @@
 ## Purpose
 **Aquaduct**’s orchestrator (`main.py`) runs the full pipeline:
 1. Crawl news (deduped per `video_format`; see [Crawler](crawler.md))
-2. Generate a structured script package (LLM or fallback)
-3. TTS + captions
+2. Generate a structured script package (LLM or fallback); optional **character** context from settings ([Characters](characters.md))
+3. TTS + captions ([Voice](voice.md): Kokoro target, `pyttsx3` fallback, optional ElevenLabs when configured)
 4. Images
 5. Edit micro-clips + final MP4
 6. Write per-video outputs under `videos/<safe_video_title>/`

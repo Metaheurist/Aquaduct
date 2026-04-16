@@ -19,6 +19,7 @@ from src.model_manager import (
 
 import main as pipeline_main
 from src.brain import VideoPackage, generate_script
+from src.characters_store import character_context_for_brain, resolve_active_character
 from src.branding_video import apply_palette_to_prompts
 from src.personality_auto import auto_pick_personality
 from src.storyboard import build_storyboard, render_preview_grid, write_manifest
@@ -165,6 +166,33 @@ class TopicDiscoverWorker(QThread):
             )
             topics = discover_topics_from_items(items, limit=40)
             self.done.emit(topics)
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class FFmpegEnsureWorker(QThread):
+    """
+    Download static FFmpeg into ``.cache/ffmpeg`` on first use. Keeps the UI responsive
+    (runs off the GUI thread).
+    """
+
+    finished_ok = pyqtSignal()
+    failed = pyqtSignal(str)
+
+    def __init__(self, ffmpeg_dir: Path):
+        super().__init__()
+        self.ffmpeg_dir = ffmpeg_dir
+
+    def run(self) -> None:
+        try:
+            from src.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
+
+            if find_ffmpeg(self.ffmpeg_dir):
+                self.finished_ok.emit()
+                return
+            ensure_ffmpeg(self.ffmpeg_dir)
+            self.finished_ok.emit()
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
@@ -601,6 +629,9 @@ class PreviewWorker(QThread):
             )
             self.progress.emit("personality", 100, f"{picked.preset.label}")
 
+            active_ch = resolve_active_character(app)
+            char_ctx = character_context_for_brain(active_ch) if active_ch else None
+
             def _llm_task(task: str, pct: int, msg: str) -> None:
                 if task == "llm_load":
                     self.progress.emit("script_llm_load", pct, msg)
@@ -613,6 +644,7 @@ class PreviewWorker(QThread):
                 topic_tags=effective_topic_tags(app),
                 personality_id=picked.preset.id,
                 branding=getattr(app, "branding", None),
+                character_context=char_ctx,
                 on_llm_task=_llm_task,
             )
 
@@ -675,6 +707,9 @@ class StoryboardWorker(QThread):
             )
             self.progress.emit("personality", 100, f"{picked.preset.label}")
 
+            active_ch = resolve_active_character(app)
+            char_ctx = character_context_for_brain(active_ch) if active_ch else None
+
             def _llm_task(task: str, pct: int, msg: str) -> None:
                 if task == "llm_load":
                     self.progress.emit("script_llm_load", pct, msg)
@@ -687,6 +722,7 @@ class StoryboardWorker(QThread):
                 topic_tags=effective_topic_tags(app),
                 personality_id=picked.preset.id,
                 branding=getattr(app, "branding", None),
+                character_context=char_ctx,
                 on_llm_task=_llm_task,
             )
 
@@ -699,7 +735,13 @@ class StoryboardWorker(QThread):
             previews_dir.mkdir(parents=True, exist_ok=True)
 
             self.progress.emit("storyboard_build", 0, "Laying out scenes…")
-            sb = build_storyboard(pkg, seed_base=getattr(app.video, "seed_base", None), branding=getattr(app, "branding", None), max_scenes=8)
+            sb = build_storyboard(
+                pkg,
+                seed_base=getattr(app.video, "seed_base", None),
+                branding=getattr(app, "branding", None),
+                max_scenes=8,
+                character=active_ch,
+            )
             self.progress.emit("storyboard_build", 100, "Storyboard structured")
 
             from src.artist import generate_images

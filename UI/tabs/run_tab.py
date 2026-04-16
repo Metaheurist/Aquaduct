@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
 
 from src.config import VIDEO_FORMATS
+from src.characters_store import load_all
 from src.personalities import get_personality_presets
 
 
@@ -72,14 +73,30 @@ def attach_run_tab(win) -> None:
     win.personality_hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
     lay.addWidget(win.personality_hint)
 
-    win.run_status = QLabel("Idle")
-    win.run_status.setStyleSheet("color: #B7B7C2;")
-    lay.addWidget(win.run_status)
+    c_row = QHBoxLayout()
+    c_lbl = QLabel("Character")
+    c_lbl.setStyleSheet("color: #B7B7C2;")
+    c_row.addWidget(c_lbl)
+    win.character_combo = QComboBox()
+    win.character_combo.addItem("(None)", "")
+    try:
+        for ch in load_all():
+            win.character_combo.addItem(ch.name, ch.id)
+    except Exception:
+        pass
+    cur_cid = str(getattr(win.settings, "active_character_id", "") or "").strip()
+    if cur_cid:
+        idx_c = win.character_combo.findData(cur_cid)
+        if idx_c >= 0:
+            win.character_combo.setCurrentIndex(idx_c)
+    c_row.addWidget(win.character_combo, 1)
+    c_row.addStretch(1)
+    lay.addLayout(c_row)
 
-    win.run_progress = QProgressBar()
-    win.run_progress.setRange(0, 100)
-    win.run_progress.setValue(0)
-    lay.addWidget(win.run_progress)
+    run_hint = QLabel("While a job runs, live status appears as the top row on the **Tasks** tab.")
+    run_hint.setWordWrap(True)
+    run_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    lay.addWidget(run_hint)
 
     row = QHBoxLayout()
     win.run_btn = QPushButton("Run")

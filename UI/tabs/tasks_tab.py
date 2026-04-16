@@ -22,8 +22,8 @@ def attach_tasks_tab(win) -> None:
     lay.addWidget(header)
 
     sub = QLabel(
-        "Each successful run adds a row. Open or copy captions for manual posting, or upload to TikTok / YouTube when "
-        "enabled and connected in the API tab (separate toggles)."
+        "In-progress renders appear at the top while running; each finished run adds a row. Open or copy captions, or "
+        "upload to TikTok / YouTube when enabled in the API tab (separate toggles)."
     )
     sub.setWordWrap(True)
     sub.setStyleSheet("color: #8A96A3; font-size: 11px;")

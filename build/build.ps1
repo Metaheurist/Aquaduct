@@ -64,7 +64,16 @@ $extra = @(
   "--collect-submodules", "debug",
   "--add-data", "requirements.txt;.",
   "--hidden-import", "soundfile",
-  "--collect-all", "soundfile"
+  "--collect-all", "soundfile",
+  # TTS + cloud APIs (src.voice, src.elevenlabs_tts — explicit for one-file analysis)
+  "--hidden-import", "pyttsx3",
+  "--hidden-import", "requests",
+  "--hidden-import", "charset_normalizer",
+  "--hidden-import", "urllib3",
+  "--hidden-import", "certifi",
+  "--collect-all", "certifi",
+  "--hidden-import", "src.elevenlabs_tts",
+  "--hidden-import", "src.characters_store"
 )
 if ($UI) {
   $extra += @(
@@ -78,6 +87,9 @@ if ($UI) {
     "--hidden-import", "UI.workers",
     "--hidden-import", "UI.paths",
     "--hidden-import", "UI.tabs",
+    "--hidden-import", "UI.tabs.characters_tab",
+    "--hidden-import", "UI.tabs.api_tab",
+    "--hidden-import", "UI.tabs.run_tab",
     # moviepy / imageio (often missed by static analysis)
     "--hidden-import", "imageio_ffmpeg",
     "--hidden-import", "imageio.plugins.ffmpeg",
@@ -85,6 +97,13 @@ if ($UI) {
     # optional: main.py
     "--hidden-import", "dotenv"
   )
+  # Bundle markdown docs (e.g. characters.md, elevenlabs.md) next to frozen tree
+  $docsPath = Join-Path $root "docs"
+  if (Test-Path $docsPath) {
+    Get-ChildItem -Path $docsPath -Filter "*.md" -File -ErrorAction SilentlyContinue | ForEach-Object {
+      $extra += @("--add-data", "$($_.FullName);docs")
+    }
+  }
 }
 
 $uiQt = @()
