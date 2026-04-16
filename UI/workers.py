@@ -255,22 +255,11 @@ class ModelDownloadWorker(QThread):
                             self._last_n = n
                             self._last_emit_t = now
 
-                            desc = str(getattr(self, "desc", "") or "Downloading…").strip()
                             n_s = _human_bytes(n)
                             total_s = _human_bytes(total) if total else "?"
                             rate_s = (_human_bytes(rate) + "/s") if rate else "?/s"
                             rid = str(worker.current_repo_id or "").strip() or "?"
-                            probe_b = worker._remote_bytes_by_repo.get(rid)
-                            probe_s = _human_bytes(probe_b) if probe_b else "—"
-                            # tqdm total is byte-sum for THIS repo's snapshot (all files), not "2.9+4.8+1.9" from dropdowns.
-                            msg = (
-                                f"[{cur_i}/{n_r}] {rid}\n"
-                                f"{desc}\n"
-                                f"{n_s} / {total_s}  •  {rate_s}  ·  file progress {pct}%\n"
-                                f"Overall download queue: {overall_pct}%. "
-                                f"Single-repo Hub total above is not added with your other dropdown sizes. "
-                                f"Probe total for this repo: ~{probe_s}."
-                            )
+                            msg = f"[{cur_i}/{n_r}] {rid}\n{n_s} / {total_s}  ·  {rate_s}  ·  {pct}%"
                             worker.progress.emit(overall_pct, msg)
                     except Exception:
                         pass
@@ -285,13 +274,9 @@ class ModelDownloadWorker(QThread):
                     return
                 base = int(((i - 1) / total_models) * 100)
                 pb = self._remote_bytes_by_repo.get(str(repo_id).strip())
-                ps = _fmt_bytes(pb) if pb else "—"
-                self.progress.emit(
-                    base,
-                    f"[{i}/{total_models}] Starting {repo_id}\n"
-                    f"Next snapshot total comes from Hugging Face (all listed files in this repo). "
-                    f"Probe ~{ps}. This is not the sum of your three model dropdown lines.",
-                )
+                ps = _fmt_bytes(pb) if pb else ""
+                est = f" (~{ps})" if ps else ""
+                self.progress.emit(base, f"[{i}/{total_models}] {repo_id}{est}")
                 try:
                     download_model_to_project(repo_id, models_dir=self.models_dir, tqdm_class=QtTqdm)
                 except _CancelledDownload:
