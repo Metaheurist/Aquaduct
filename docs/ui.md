@@ -28,7 +28,9 @@ python UI/ui_app.py
 - **Topics**
   - **Mode** combo matches video formats; each mode has its own tag list (stored in `ui_settings.json` under `topic_tags_by_mode`)
   - Add/remove tags for the **selected mode** only
-  - **Discover**: fetches headline-based topic suggestions using the **News** tag list; enabled when the Topics mode is News
+  - **Discover**: fetches headline-based topic suggestions using the **current “Edit tags for”** mode’s tag list; approved items are added to that mode’s list
+- **Tasks**
+  - Lists successful renders (`data/upload_tasks.json`): open folder, play `final.mp4`, copy caption from `meta.json` / `hashtags.txt`, mark posted manually, **Upload to TikTok** (inbox) and/or **Upload to YouTube** when the **API** tab is configured (separate toggles); optional auto-uploads per platform after each render
 - **Video**
   - Images per video
   - Video format presets (resolution/aspect)
@@ -48,9 +50,11 @@ python UI/ui_app.py
   - Optional full-theme palette overrides (presets or custom hex + color picker). Changing the **Palette** dropdown updates the hex swatches and fields for that preset (Custom unlocks per-row overrides).
   - Optional logo watermark on generated videos
 - **API**
-  - Optional **Firecrawl** toggle and API key (or `FIRECRAWL_API_KEY` in the environment) for richer news search and article scrape when configured
-- **Settings**
-  - **Download ▾** menu: download the currently selected model(s), **download all selected** (script + image/video + voice choices in one queue), **download all models** (full curated list), plus **check Python dependencies** / **install dependencies** from `requirements.txt`.
+  - Hugging Face token (optional; helps Hub size checks and gated downloads) + optional **Firecrawl**
+  - **TikTok**: client key/secret, redirect URI + OAuth port, publishing mode (inbox vs direct; inbox is supported for upload), optional **auto-upload after each render** — see [TikTok upload](tiktok.md)
+  - **YouTube**: separate enable; OAuth client ID/secret, redirect + port (default **8888**), default visibility, optional **#Shorts** tagging, optional **auto-upload after render** — see [YouTube upload](youtube.md)
+- **Model** (tab label; model downloads + dependencies)
+  - **Download ▾** menu: download the currently selected model(s), **download all selected** (script + image/video + voice choices in one queue), **download all models** (full curated list), **verify checksums** for installed snapshots (selected or all under `models/`), plus **check Python dependencies** / **install dependencies** from `requirements.txt`.
   - Model dropdowns show local install status and Hub probe hints; downloads **skip** repos that already have a valid snapshot under `models/` and continue with the rest.
 - **My PC**
   - Hardware summary (CPU/RAM/GPU/VRAM, best-effort)

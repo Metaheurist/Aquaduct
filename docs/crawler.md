@@ -8,6 +8,14 @@ Fetch trending AI-tool news with a **free default path** (no paid news APIs), op
 - Google News RSS query (default in `get_latest_items` / `fetch_latest_items`)
 - MarkTechPost homepage (fallback)
 
+### Mode-aware search strings
+Headline search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode` = `news`, `cartoon`, or `explainer`):
+- **news** — AI product / release–style phrases.
+- **cartoon** — animation / character / series / trailer style (no forced “AI tool” wording).
+- **explainer** — explainer / tutorial / education / science slant.
+
+`fetch_latest_items(..., topic_mode=...)` and pipeline fetches pass the current mode so **Discover** and runs match the selected format.
+
 ## Outputs
 Returns a list of `NewsItem`:
 - `title`

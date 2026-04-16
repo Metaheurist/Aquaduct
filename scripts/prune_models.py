@@ -4,7 +4,7 @@ Delete everything under `models/` except folders for the Hugging Face repos you 
 Folder layout matches downloads: `models/<owner>__<name>/` (see `src/model_manager.py`).
 
 Examples:
-  # Match current Settings tab (reads ui_settings.json — close the app first if it locks files)
+  # Match current Model tab (reads ui_settings.json — close the app first if it locks files)
   python scripts/prune_models.py --from-settings --dry-run
   python scripts/prune_models.py --from-settings -y
 

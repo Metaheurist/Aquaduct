@@ -17,7 +17,7 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 - **torch**: GPU compute for LLM and diffusion (when available)
 - **transformers / accelerate / bitsandbytes**: local LLM inference (4-bit where supported)
 - **diffusers / safetensors**: SDXL Turbo image generation
-- **huggingface_hub**: “zero-touch” model download on first run
+- **huggingface_hub**: “zero-touch” model download on first run; also used by the desktop **verify checksums** action (compare local `models/` snapshots to the Hub)
 
 ## Media
 - **moviepy**: video editing/assembly

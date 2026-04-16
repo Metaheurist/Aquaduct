@@ -6,7 +6,7 @@
 - **Voice model (TTS)**: `src/voice.py` (Kokoro target; offline fallback)
 
 ## UI model selection
-In the UI **Settings** tab you can pick and download models separately for:
+In the UI **Model** tab you can pick and download models separately for:
 - Script
 - Video/images
 - Voice
@@ -49,4 +49,13 @@ If an override is blank, the pipeline falls back to `src/config.py:get_models()`
 Most public repos download without a token.
 
 If a repo is **gated** (common for some Llama checkpoints), you’ll need a Hugging Face access token via `HF_TOKEN` / login.
+
+## Verifying local snapshots (checksums)
+The desktop **Model** tab → **Download ▾** includes **Verify checksums**:
+- **Selected models (on disk)** — script / image / voice choices that already have a folder under `models/`
+- **All folders in models/** — discover `owner__name` directories and verify each
+
+Verification calls Hugging Face Hub (`huggingface_hub.HfApi.verify_repo_checksums` against the **main** tree): LFS weight files are checked with **SHA-256**; smaller files use the git **blob** id. **Missing** files and **hash mismatches** usually mean an incomplete or corrupted download (delete the folder and download again). Needs **internet**; gated repos need a token (same as downloads).
+
+Helpers live in `src/model_manager.py` (`verify_project_model_integrity`, `list_installed_repo_ids_from_disk`, `project_dirname_to_repo_id`). The UI runs checks in a background thread (`ModelIntegrityVerifyWorker` in `UI/workers.py`); large models can take several minutes.
 

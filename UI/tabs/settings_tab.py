@@ -49,7 +49,7 @@ def attach_settings_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
-    header = QLabel("Settings (dependencies + model downloads)")
+    header = QLabel("Model (dependencies + model downloads)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
@@ -74,6 +74,18 @@ def attach_settings_tab(win) -> None:
     dl_menu.addAction(_a)
     _a = QAction("Download ALL models", win)
     _a.triggered.connect(win._download_all_models)
+    dl_menu.addAction(_a)
+    dl_menu.addSeparator()
+    _a = QAction("Verify checksums — selected models (on disk)", win)
+    _a.setToolTip(
+        "Compare local files to Hugging Face Hub (SHA-256 for LFS weights, git blob ids for small files). "
+        "Needs internet. Large models can take several minutes."
+    )
+    _a.triggered.connect(win._verify_models_checksums_selected)
+    dl_menu.addAction(_a)
+    _a = QAction("Verify checksums — all folders in models/", win)
+    _a.setToolTip("Same as above, for every model-sized folder under models/.")
+    _a.triggered.connect(win._verify_models_checksums_all)
     dl_menu.addAction(_a)
     dl_menu.addSeparator()
     _a = QAction("Check Python dependencies", win)
@@ -471,4 +483,4 @@ def attach_settings_tab(win) -> None:
 
     win._refresh_settings_model_combos = _refresh_settings_model_combos
 
-    win.tabs.addTab(w, "Settings")
+    win.tabs.addTab(w, "Model")

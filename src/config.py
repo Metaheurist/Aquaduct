@@ -163,6 +163,31 @@ class AppSettings:
     voice_model_id: str = ""
     video: VideoSettings = VideoSettings()
     branding: BrandingSettings = BrandingSettings()
+    # TikTok Content Posting API (OAuth + optional upload). See docs/tiktok.md
+    tiktok_enabled: bool = False
+    tiktok_client_key: str = ""
+    tiktok_client_secret: str = ""
+    tiktok_redirect_uri: str = "http://127.0.0.1:8765/callback/"
+    tiktok_oauth_port: int = 8765
+    tiktok_access_token: str = ""
+    tiktok_refresh_token: str = ""
+    tiktok_token_expires_at: float = 0.0  # unix time; 0 = unknown/expired
+    tiktok_open_id: str = ""
+    # inbox = send to TikTok app inbox (video.upload); direct = publish (requires video.publish + review)
+    tiktok_publishing_mode: Literal["inbox", "direct"] = "inbox"
+    tiktok_auto_upload_after_render: bool = False
+    # YouTube Data API v3 (OAuth + optional upload / Shorts). See docs/youtube.md
+    youtube_enabled: bool = False
+    youtube_client_id: str = ""
+    youtube_client_secret: str = ""
+    youtube_redirect_uri: str = "http://127.0.0.1:8888/callback/"
+    youtube_oauth_port: int = 8888
+    youtube_access_token: str = ""
+    youtube_refresh_token: str = ""
+    youtube_token_expires_at: float = 0.0
+    youtube_privacy_status: Literal["public", "unlisted", "private"] = "private"
+    youtube_add_shorts_hashtag: bool = True
+    youtube_auto_upload_after_render: bool = False
 
 
 def safe_title_to_dirname(title: str) -> str:

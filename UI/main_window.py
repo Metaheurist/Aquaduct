@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
+import secrets
 import subprocess
 import sys
 import threading
+import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QDesktopServices, QGuiApplication
 from PyQt6.QtCore import QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -20,6 +23,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QTabWidget,
     QPushButton,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -28,7 +32,7 @@ from src.config import AppSettings, BrandingSettings, VideoSettings, VIDEO_FORMA
 from src.crawler import clear_news_seen_cache_files
 from src.topics import normalize_video_format
 from src.fs_delete import rmtree_robust, unlink_file
-from src.model_manager import download_model_to_project, model_has_local_snapshot
+from src.model_manager import download_model_to_project, list_installed_repo_ids_from_disk, model_has_local_snapshot
 from src.preflight import preflight_check
 from src.ui_settings import load_settings, save_settings, settings_path
 from src.personalities import get_personality_by_id
@@ -42,11 +46,21 @@ from UI.tabs import (
     attach_my_pc_tab,
     attach_run_tab,
     attach_settings_tab,
+    attach_tasks_tab,
     attach_topics_tab,
     attach_video_tab,
 )
 from UI.download_popup import DownloadPopup
-from UI.workers import ModelDownloadWorker, PipelineBatchWorker, PipelineWorker, PreviewWorker, StoryboardWorker
+from UI.workers import (
+    ModelDownloadWorker,
+    ModelIntegrityVerifyWorker,
+    PipelineBatchWorker,
+    PipelineWorker,
+    PreviewWorker,
+    StoryboardWorker,
+    TikTokUploadWorker,
+    YouTubeUploadWorker,
+)
 from UI.workers import TopicDiscoverWorker
 from UI.preview_dialog import PreviewDialog
 from UI.storyboard_dialog import StoryboardPreviewDialog
@@ -123,6 +137,7 @@ class MainWindow(QMainWindow):
 
         attach_run_tab(self)
         attach_topics_tab(self)
+        attach_tasks_tab(self)
         attach_video_tab(self)
         attach_captions_tab(self)
         attach_branding_tab(self)
@@ -133,6 +148,7 @@ class MainWindow(QMainWindow):
         # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
         self.tabs.currentChanged.connect(self._on_tab_changed)
         QTimer.singleShot(0, self._resize_to_current_tab)
+        QTimer.singleShot(0, self._tasks_refresh)
         # Prompt for HF token once the window is ready (if needed).
         QTimer.singleShot(0, self._maybe_prompt_hf_token)
         QTimer.singleShot(0, self._update_hf_api_warnings)
@@ -159,6 +175,9 @@ class MainWindow(QMainWindow):
         self._paused_download_title: str | None = None
         self.preview_worker: PreviewWorker | None = None
         self.storyboard_worker: StoryboardWorker | None = None
+        self.tiktok_upload_worker: TikTokUploadWorker | None = None
+        self.youtube_upload_worker: YouTubeUploadWorker | None = None
+        self._integrity_worker: ModelIntegrityVerifyWorker | None = None
         self._last_preview_pkg = None
         self._last_preview_sources = None
         self._last_preview_prompts = None
@@ -199,7 +218,7 @@ class MainWindow(QMainWindow):
             pass
 
     def _update_hf_api_warnings(self) -> None:
-        """Settings tab banner when Hugging Face token usage is disabled (soft)."""
+        """Model tab banner when Hugging Face token usage is disabled (soft)."""
         try:
             if not hasattr(self, "_settings_hf_banner"):
                 return
@@ -551,12 +570,10 @@ class MainWindow(QMainWindow):
     def _update_discover_for_topic_mode(self) -> None:
         if not hasattr(self, "discover_btn"):
             return
-        is_news = self._topics_bucket_key() == "news"
-        self.discover_btn.setEnabled(is_news)
+        self.discover_btn.setEnabled(True)
+        mode = self._topics_bucket_key()
         self.discover_btn.setToolTip(
-            "Find newest AI news topics and approve them before adding."
-            if is_news
-            else "Discovery adds to the News list only. Switch \"Edit tags for\" to News to enable."
+            f'Discover: fetch headlines biased by your "{mode}" tag list; approved phrases are added to this list.'
         )
 
     def _sync_tags_to_ui(self) -> None:
@@ -603,13 +620,18 @@ class MainWindow(QMainWindow):
         if self.topic_worker and self.topic_worker.isRunning():
             return
         self._maybe_log_offline_notice()
+        self._topic_discover_target_mode = self._topics_bucket_key()
         if hasattr(self, "discover_btn"):
             try:
                 self.discover_btn.setEnabled(False)
                 self.discover_btn.setText("Discovering…")
             except Exception:
                 pass
-        self.topic_worker = TopicDiscoverWorker(settings=self._collect_settings_from_ui(), limit=12)
+        self.topic_worker = TopicDiscoverWorker(
+            settings=self._collect_settings_from_ui(),
+            limit=12,
+            topic_mode=self._topic_discover_target_mode,
+        )
         self.topic_worker.done.connect(self._on_topics_discovered)
         self.topic_worker.failed.connect(self._on_topics_failed)
         self.topic_worker.start()
@@ -617,10 +639,10 @@ class MainWindow(QMainWindow):
     def _on_topics_discovered(self, topics: list[str]) -> None:
         if hasattr(self, "discover_btn"):
             try:
-                self.discover_btn.setEnabled(True)
                 self.discover_btn.setText("Discover")
             except Exception:
                 pass
+            self._update_discover_for_topic_mode()
         topics = [t for t in (topics or []) if isinstance(t, str)]
         if not topics:
             if hasattr(self, "_no_topics_dialog"):
@@ -637,26 +659,32 @@ class MainWindow(QMainWindow):
             return
 
         self._ensure_topic_modes()
-        news_bucket = self.settings.topic_tags_by_mode.setdefault("news", [])
+        key = normalize_video_format(
+            str(
+                getattr(self, "_topic_discover_target_mode", None)
+                or self._topics_bucket_key()
+            )
+        )
+        bucket = self.settings.topic_tags_by_mode.setdefault(key, [])
         added = 0
         for t in picked:
             t = " ".join(t.split()).strip()
             if not t:
                 continue
-            if t not in news_bucket:
-                news_bucket.append(t)
+            if t not in bucket:
+                bucket.append(t)
                 added += 1
         self._sync_tags_to_ui()
         self._save_settings()
-        self._append_log(f"Added {added} topic tag(s).")
+        self._append_log(f"Added {added} topic tag(s) to {key}.")
 
     def _on_topics_failed(self, err: str) -> None:
         if hasattr(self, "discover_btn"):
             try:
-                self.discover_btn.setEnabled(True)
                 self.discover_btn.setText("Discover")
             except Exception:
                 pass
+            self._update_discover_for_topic_mode()
         if hasattr(self, "_no_topics_dialog"):
             self._no_topics_dialog(self)
         else:
@@ -796,6 +824,38 @@ class MainWindow(QMainWindow):
             else str(getattr(self.settings, "firecrawl_api_key", "") or "")
         )
 
+        tt_en = bool(self.api_tt_enabled_chk.isChecked()) if hasattr(self, "api_tt_enabled_chk") else bool(getattr(self.settings, "tiktok_enabled", False))
+        tt_ck = str(self.api_tt_client_key.text()).strip() if hasattr(self, "api_tt_client_key") else str(getattr(self.settings, "tiktok_client_key", "") or "")
+        tt_cs = str(self.api_tt_client_secret.text()).strip() if hasattr(self, "api_tt_client_secret") else str(getattr(self.settings, "tiktok_client_secret", "") or "")
+        tt_ru = str(self.api_tt_redirect_uri.text()).strip() if hasattr(self, "api_tt_redirect_uri") else str(getattr(self.settings, "tiktok_redirect_uri", "") or "")
+        tt_port = int(self.api_tt_oauth_port.value()) if hasattr(self, "api_tt_oauth_port") else int(getattr(self.settings, "tiktok_oauth_port", 8765))
+        tt_at = str(self.settings.tiktok_access_token or "")  # refreshed via worker / OAuth only
+        tt_rt = str(self.settings.tiktok_refresh_token or "")
+        tt_exp = float(getattr(self.settings, "tiktok_token_expires_at", 0.0) or 0.0)
+        tt_oid = str(getattr(self.settings, "tiktok_open_id", "") or "")
+        tt_mode = (
+            str(self.api_tt_pub_mode.currentData() or "inbox") if hasattr(self, "api_tt_pub_mode") else str(getattr(self.settings, "tiktok_publishing_mode", "inbox"))
+        )
+        if tt_mode not in ("inbox", "direct"):
+            tt_mode = "inbox"
+        tt_auto = bool(self.api_tt_auto_upload_chk.isChecked()) if hasattr(self, "api_tt_auto_upload_chk") else bool(getattr(self.settings, "tiktok_auto_upload_after_render", False))
+
+        yt_en = bool(self.api_yt_enabled_chk.isChecked()) if hasattr(self, "api_yt_enabled_chk") else bool(getattr(self.settings, "youtube_enabled", False))
+        yt_cid = str(self.api_yt_client_id.text()).strip() if hasattr(self, "api_yt_client_id") else str(getattr(self.settings, "youtube_client_id", "") or "")
+        yt_sec = str(self.api_yt_client_secret.text()).strip() if hasattr(self, "api_yt_client_secret") else str(getattr(self.settings, "youtube_client_secret", "") or "")
+        yt_ru = str(self.api_yt_redirect_uri.text()).strip() if hasattr(self, "api_yt_redirect_uri") else str(getattr(self.settings, "youtube_redirect_uri", "") or "")
+        yt_port = int(self.api_yt_oauth_port.value()) if hasattr(self, "api_yt_oauth_port") else int(getattr(self.settings, "youtube_oauth_port", 8888))
+        yt_at = str(self.settings.youtube_access_token or "")
+        yt_rt = str(self.settings.youtube_refresh_token or "")
+        yt_exp = float(getattr(self.settings, "youtube_token_expires_at", 0.0) or 0.0)
+        yt_priv = (
+            str(self.api_yt_privacy.currentData() or "private") if hasattr(self, "api_yt_privacy") else str(getattr(self.settings, "youtube_privacy_status", "private"))
+        )
+        if yt_priv not in ("public", "unlisted", "private"):
+            yt_priv = "private"
+        yt_shorts_tag = bool(self.api_yt_shorts_tag_chk.isChecked()) if hasattr(self, "api_yt_shorts_tag_chk") else bool(getattr(self.settings, "youtube_add_shorts_hashtag", True))
+        yt_auto = bool(self.api_yt_auto_upload_chk.isChecked()) if hasattr(self, "api_yt_auto_upload_chk") else bool(getattr(self.settings, "youtube_auto_upload_after_render", False))
+
         vfmt = (
             normalize_video_format(str(self.video_format_combo.currentData() or "news"))
             if hasattr(self, "video_format_combo")
@@ -814,6 +874,28 @@ class MainWindow(QMainWindow):
             hf_api_enabled=hf_en,
             firecrawl_enabled=fc_en,
             firecrawl_api_key=fc_key,
+            tiktok_enabled=tt_en,
+            tiktok_client_key=tt_ck,
+            tiktok_client_secret=tt_cs,
+            tiktok_redirect_uri=tt_ru or "http://127.0.0.1:8765/callback/",
+            tiktok_oauth_port=tt_port,
+            tiktok_access_token=tt_at,
+            tiktok_refresh_token=tt_rt,
+            tiktok_token_expires_at=tt_exp,
+            tiktok_open_id=tt_oid,
+            tiktok_publishing_mode=tt_mode,  # type: ignore[arg-type]
+            tiktok_auto_upload_after_render=tt_auto,
+            youtube_enabled=yt_en,
+            youtube_client_id=yt_cid,
+            youtube_client_secret=yt_sec,
+            youtube_redirect_uri=yt_ru or "http://127.0.0.1:8888/callback/",
+            youtube_oauth_port=yt_port,
+            youtube_access_token=yt_at,
+            youtube_refresh_token=yt_rt,
+            youtube_token_expires_at=yt_exp,
+            youtube_privacy_status=yt_priv,  # type: ignore[arg-type]
+            youtube_add_shorts_hashtag=yt_shorts_tag,
+            youtube_auto_upload_after_render=yt_auto,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
             image_model_id=image_model_id,
@@ -1014,6 +1096,73 @@ class MainWindow(QMainWindow):
             return
         self._start_download(need, title=f"Downloading ALL models ({len(need)} remaining)")
 
+    def _repos_selected_installed_only(self) -> list[str]:
+        """Current LLM / image / voice selections, de-duplicated, only repos with a local snapshot."""
+        if not hasattr(self, "llm_combo"):
+            return []
+        repo_ids: list[str] = [str(self.llm_combo.currentData())]
+        img_d = self.img_combo.currentData()
+        if isinstance(img_d, tuple) and len(img_d) == 2:
+            repo_ids.extend([str(img_d[0]), str(img_d[1])])
+        else:
+            repo_ids.append(str(img_d))
+        repo_ids.append(str(self.voice_combo.currentData()))
+        seen: set[str] = set()
+        out: list[str] = []
+        for r in repo_ids:
+            r = str(r).strip()
+            if not r or r in seen:
+                continue
+            seen.add(r)
+            out.append(r)
+        models_dir = self.paths.models_dir
+        return [r for r in out if model_has_local_snapshot(r, models_dir=models_dir)]
+
+    def _verify_models_checksums_selected(self) -> None:
+        repo_ids = self._repos_selected_installed_only()
+        self._start_integrity_verify(repo_ids, scope_label="selected models")
+
+    def _verify_models_checksums_all(self) -> None:
+        repo_ids = list_installed_repo_ids_from_disk(self.paths.models_dir)
+        self._start_integrity_verify(repo_ids, scope_label="all folders in models/")
+
+    def _start_integrity_verify(self, repo_ids: list[str], *, scope_label: str) -> None:
+        if self._integrity_worker and self._integrity_worker.isRunning():
+            self._append_log("A checksum verification run is already in progress.")
+            return
+        if not repo_ids:
+            self._append_log(
+                "No installed model snapshots to verify. "
+                "Download a model first, or pick folders that exist under models/."
+            )
+            return
+        self._append_log(
+            "Verifying local files against Hugging Face (SHA-256 / git blob ids). "
+            "Large models can take several minutes."
+        )
+        self._integrity_worker = ModelIntegrityVerifyWorker(
+            repo_ids=repo_ids,
+            models_dir=self.paths.models_dir,
+            scope_label=scope_label,
+        )
+
+        def _on_prog(rid: str, msg: str) -> None:
+            self._append_log(f"{msg} {rid}")
+
+        self._integrity_worker.progress.connect(_on_prog)
+        self._integrity_worker.done.connect(self._on_integrity_verify_done)
+        self._integrity_worker.failed.connect(self._on_integrity_verify_failed)
+        self._integrity_worker.start()
+
+    def _on_integrity_verify_done(self, text: str) -> None:
+        self._append_log(text)
+        self._integrity_worker = None
+
+    def _on_integrity_verify_failed(self, err: str) -> None:
+        self._append_log("Model integrity check failed:")
+        self._append_log(err)
+        self._integrity_worker = None
+
     def _start_download(self, repo_ids: list[str], *, title: str) -> None:
         if self.download_worker and self.download_worker.isRunning():
             return
@@ -1116,6 +1265,11 @@ class MainWindow(QMainWindow):
                 self.download_worker.cancel()
                 # Best-effort: wait briefly so the thread can unwind.
                 self.download_worker.wait(1500)
+        except Exception:
+            pass
+        try:
+            if self._integrity_worker and self._integrity_worker.isRunning():
+                self._integrity_worker.wait(2000)
         except Exception:
             pass
         try:
@@ -1565,6 +1719,404 @@ class MainWindow(QMainWindow):
         if not out_dir:
             return
         self._append_log(f"Completed: {out_dir}")
+        try:
+            from pathlib import Path
+
+            from src.upload_tasks import append_task_for_video_dir
+
+            p = Path(str(out_dir).strip())
+            if p.is_dir() and (p / "final.mp4").is_file():
+                task = append_task_for_video_dir(p)
+                self._tasks_refresh()
+                if task:
+                    if bool(getattr(self.settings, "tiktok_auto_upload_after_render", False)):
+                        self._maybe_auto_tiktok_upload(task.id)
+                    if bool(getattr(self.settings, "youtube_auto_upload_after_render", False)):
+                        self._maybe_auto_youtube_upload(task.id)
+        except Exception as e:
+            dprint("tasks", "enqueue after run failed", str(e))
+
+    def _maybe_auto_tiktok_upload(self, task_id: str) -> None:
+        s = self.settings
+        if not bool(getattr(s, "tiktok_enabled", False)):
+            return
+        if not str(getattr(s, "tiktok_client_key", "") or "").strip():
+            return
+        if not str(getattr(s, "tiktok_refresh_token", "") or "").strip() and not str(
+            getattr(s, "tiktok_access_token", "") or ""
+        ).strip():
+            return
+        if getattr(s, "tiktok_publishing_mode", "inbox") != "inbox":
+            self._append_log("TikTok auto-upload skipped — set publishing mode to Inbox.")
+            return
+        if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
+            return
+        self._append_log("Starting TikTok upload (auto)…")
+        self._start_tiktok_upload_worker(task_id)
+
+    def _maybe_auto_youtube_upload(self, task_id: str) -> None:
+        s = self.settings
+        if not bool(getattr(s, "youtube_enabled", False)):
+            return
+        if not str(getattr(s, "youtube_client_id", "") or "").strip():
+            return
+        if not str(getattr(s, "youtube_client_secret", "") or "").strip():
+            return
+        if not str(getattr(s, "youtube_refresh_token", "") or "").strip() and not str(
+            getattr(s, "youtube_access_token", "") or ""
+        ).strip():
+            return
+        if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():
+            return
+        if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
+            # Avoid overlapping heavy uploads — user can retry YouTube from Tasks
+            return
+        self._append_log("Starting YouTube upload (auto)…")
+        self._start_youtube_upload_worker(task_id)
+
+    def _tasks_refresh(self) -> None:
+        if not hasattr(self, "tasks_table"):
+            return
+        from pathlib import Path
+
+        from src.upload_tasks import load_tasks
+
+        self.tasks_table.setRowCount(0)
+        for t in load_tasks():
+            r = self.tasks_table.rowCount()
+            self.tasks_table.insertRow(r)
+            title_item = QTableWidgetItem(t.title[:120])
+            title_item.setData(Qt.ItemDataRole.UserRole, t.id)
+            self.tasks_table.setItem(r, 0, title_item)
+            self.tasks_table.setItem(r, 1, QTableWidgetItem(t.status))
+            yt_cell = ""
+            if str(getattr(t, "youtube_status", "") or "") == "posted" and str(getattr(t, "youtube_video_id", "") or ""):
+                yv = str(t.youtube_video_id)
+                yt_cell = yv if len(yv) <= 14 else yv[:12] + "…"
+            elif str(getattr(t, "youtube_status", "") or "") == "failed":
+                yt_cell = "failed"
+            elif str(getattr(t, "youtube_status", "") or ""):
+                yt_cell = str(t.youtube_status)
+            self.tasks_table.setItem(r, 2, QTableWidgetItem(yt_cell))
+            self.tasks_table.setItem(r, 3, QTableWidgetItem(t.created_at[:19] if t.created_at else ""))
+            vd = Path(t.video_dir).name
+            self.tasks_table.setItem(r, 4, QTableWidgetItem(vd))
+
+    def _tasks_selected_id(self) -> str | None:
+        if not hasattr(self, "tasks_table"):
+            return None
+        items = self.tasks_table.selectedItems()
+        if not items:
+            return None
+        row = items[0].row()
+        it = self.tasks_table.item(row, 0)
+        if it is None:
+            return None
+        tid = it.data(Qt.ItemDataRole.UserRole)
+        return str(tid) if tid else None
+
+    def _tasks_open_folder(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            return
+        from pathlib import Path
+
+        from src.upload_tasks import load_tasks
+
+        for t in load_tasks():
+            if t.id == tid:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(t.video_dir))))
+                return
+
+    def _tasks_play_video(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            return
+        from pathlib import Path
+
+        from src.upload_tasks import load_tasks
+
+        for t in load_tasks():
+            if t.id == tid:
+                p = Path(t.video_dir) / "final.mp4"
+                if p.is_file():
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
+                return
+
+    def _tasks_copy_caption(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            return
+        from pathlib import Path
+
+        from src.tiktok_post import build_caption_package
+        from src.upload_tasks import load_tasks
+
+        for t in load_tasks():
+            if t.id == tid:
+                _, cap = build_caption_package(Path(t.video_dir))
+                QGuiApplication.clipboard().setText(cap)
+                self._append_log("Caption copied to clipboard.")
+                return
+
+    def _tasks_mark_posted_manual(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            return
+        from src.upload_tasks import set_task_status
+
+        set_task_status(tid, "posted")
+        self._tasks_refresh()
+
+    def _tasks_remove_selected(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            return
+        from src.upload_tasks import remove_task
+
+        remove_task(tid)
+        self._tasks_refresh()
+
+    def _tasks_upload_tiktok(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            QMessageBox.information(self, "Tasks", "Select a task row first.")
+            return
+        self.settings = self._collect_settings_from_ui()
+        if not bool(getattr(self.settings, "tiktok_enabled", False)):
+            QMessageBox.information(self, "TikTok", "Enable TikTok in the API tab and connect your account.")
+            return
+        if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
+            return
+        self._start_tiktok_upload_worker(tid)
+
+    def _tasks_upload_youtube(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            QMessageBox.information(self, "Tasks", "Select a task row first.")
+            return
+        self.settings = self._collect_settings_from_ui()
+        if not bool(getattr(self.settings, "youtube_enabled", False)):
+            QMessageBox.information(self, "YouTube", "Enable YouTube in the API tab and connect your account.")
+            return
+        if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():
+            return
+        if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
+            QMessageBox.information(self, "Uploads", "Another upload is in progress — wait for it to finish.")
+            return
+        self._start_youtube_upload_worker(tid)
+
+    def _start_tiktok_upload_worker(self, task_id: str) -> None:
+        self.settings = self._collect_settings_from_ui()
+        self.tiktok_upload_worker = TikTokUploadWorker(self.settings, task_id)
+        self.tiktok_upload_worker.finished_ok.connect(self._on_tiktok_upload_ok)
+        self.tiktok_upload_worker.failed.connect(self._on_tiktok_upload_failed)
+        self.tiktok_upload_worker.start()
+
+    def _start_youtube_upload_worker(self, task_id: str) -> None:
+        self.settings = self._collect_settings_from_ui()
+        self.youtube_upload_worker = YouTubeUploadWorker(self.settings, task_id)
+        self.youtube_upload_worker.finished_ok.connect(self._on_youtube_upload_ok)
+        self.youtube_upload_worker.failed.connect(self._on_youtube_upload_failed)
+        self.youtube_upload_worker.start()
+
+    def _on_tiktok_upload_ok(self, message: str, access: str, refresh: str, exp: float) -> None:
+        self._append_log(message)
+        try:
+            self.settings = replace(
+                self.settings,
+                tiktok_access_token=str(access or ""),
+                tiktok_refresh_token=str(refresh or ""),
+                tiktok_token_expires_at=float(exp or 0),
+            )
+            save_settings(self.settings)
+        except Exception:
+            pass
+        self._tasks_refresh()
+
+    def _on_tiktok_upload_failed(self, err: str) -> None:
+        self._append_log("TikTok upload failed:")
+        self._append_log(err)
+        self._tasks_refresh()
+
+    def _on_youtube_upload_ok(self, message: str, access: str, refresh: str, exp: float) -> None:
+        self._append_log(message)
+        try:
+            prev_rt = str(getattr(self.settings, "youtube_refresh_token", "") or "").strip()
+            self.settings = replace(
+                self.settings,
+                youtube_access_token=str(access or ""),
+                youtube_refresh_token=str(refresh or "").strip() or prev_rt,
+                youtube_token_expires_at=float(exp or 0),
+            )
+            save_settings(self.settings)
+        except Exception:
+            pass
+        self._tasks_refresh()
+
+    def _on_youtube_upload_failed(self, err: str) -> None:
+        self._append_log("YouTube upload failed:")
+        self._append_log(err)
+        self._tasks_refresh()
+
+    def _tiktok_connect_clicked(self) -> None:
+        self.settings = self._collect_settings_from_ui()
+        ck = str(getattr(self.settings, "tiktok_client_key", "") or "").strip()
+        sec = str(getattr(self.settings, "tiktok_client_secret", "") or "").strip()
+        if not ck or not sec:
+            QMessageBox.warning(self, "TikTok", "Enter Client key and Client secret from developers.tiktok.com first, then Save or try again.")
+            return
+        port = int(getattr(self.settings, "tiktok_oauth_port", 8765) or 8765)
+        redirect = str(getattr(self.settings, "tiktok_redirect_uri", "") or "").strip()
+        if not redirect:
+            from src.tiktok_post import default_redirect_uri
+
+            redirect = default_redirect_uri(port)
+        state = secrets.token_urlsafe(24)
+        from src.tiktok_post import build_authorize_url, exchange_authorization_code, generate_pkce, parse_token_response
+
+        verifier, challenge = generate_pkce()
+        scopes = ["user.info.basic", "video.upload"]
+
+        def work() -> None:
+            import time
+
+            from src.tiktok_oauth_server import run_oauth_loopback
+
+            try:
+                code, oerr = run_oauth_loopback(port, state, timeout_s=300.0)
+                if oerr:
+                    QTimer.singleShot(0, lambda: self._tiktok_oauth_ui_failed(str(oerr)))
+                    return
+                if not code:
+                    QTimer.singleShot(0, lambda: self._tiktok_oauth_ui_failed("No authorization code (timeout or closed browser)."))
+                    return
+                raw = exchange_authorization_code(
+                    client_key=ck,
+                    client_secret=sec,
+                    code=code,
+                    redirect_uri=redirect,
+                    code_verifier=verifier,
+                )
+                p = parse_token_response(raw)
+                exp = time.time() + float(p.get("expires_in", 86400))
+                QTimer.singleShot(
+                    0,
+                    lambda: self._tiktok_oauth_ui_ok(str(p["access_token"]), str(p.get("refresh_token") or ""), exp, str(p.get("open_id") or "")),
+                )
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._tiktok_oauth_ui_failed(str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+        url = build_authorize_url(client_key=ck, redirect_uri=redirect, state=state, scopes=scopes, code_challenge=challenge)
+        QTimer.singleShot(350, lambda: webbrowser.open(url))
+        self._append_log("Opened browser for TikTok login — complete authorization in the browser.")
+
+    def _tiktok_oauth_ui_failed(self, err: str) -> None:
+        QMessageBox.warning(self, "TikTok OAuth", err[:800])
+        self._append_log(f"TikTok OAuth failed: {err}")
+
+    def _tiktok_oauth_ui_ok(self, access: str, refresh: str, exp: float, open_id: str) -> None:
+        try:
+            self.settings = replace(
+                self.settings,
+                tiktok_access_token=access,
+                tiktok_refresh_token=refresh,
+                tiktok_token_expires_at=float(exp),
+                tiktok_open_id=open_id,
+            )
+            save_settings(self.settings)
+            self._append_log("TikTok connected. Tokens saved locally.")
+            if hasattr(self, "api_tt_status_lbl"):
+                self.api_tt_status_lbl.setText("Status: connected (tokens saved)")
+        except Exception as e:
+            self._append_log(f"Failed to save TikTok tokens: {e}")
+
+    def _youtube_connect_clicked(self) -> None:
+        import time
+
+        self.settings = self._collect_settings_from_ui()
+        cid = str(getattr(self.settings, "youtube_client_id", "") or "").strip()
+        sec = str(getattr(self.settings, "youtube_client_secret", "") or "").strip()
+        if not cid or not sec:
+            QMessageBox.warning(
+                self,
+                "YouTube",
+                "Enter OAuth Client ID and Client secret from Google Cloud Console first, then Save or try again.",
+            )
+            return
+        port = int(getattr(self.settings, "youtube_oauth_port", 8888) or 8888)
+        redirect = str(getattr(self.settings, "youtube_redirect_uri", "") or "").strip()
+        if not redirect:
+            from src.youtube_upload import default_youtube_redirect_uri
+
+            redirect = default_youtube_redirect_uri(port)
+        state = secrets.token_urlsafe(24)
+        from src.youtube_upload import build_authorization_url, exchange_authorization_code, parse_token_response
+
+        def work() -> None:
+            from src.tiktok_oauth_server import run_oauth_loopback
+
+            try:
+                code, oerr = run_oauth_loopback(
+                    port,
+                    state,
+                    timeout_s=300.0,
+                    success_html_body="<html><body><p>YouTube authorization received. You can close this tab.</p></body></html>",
+                )
+                if oerr:
+                    QTimer.singleShot(0, lambda: self._youtube_oauth_ui_failed(str(oerr)))
+                    return
+                if not code:
+                    QTimer.singleShot(
+                        0,
+                        lambda: self._youtube_oauth_ui_failed("No authorization code (timeout or closed browser)."),
+                    )
+                    return
+                raw = exchange_authorization_code(
+                    client_id=cid,
+                    client_secret=sec,
+                    code=code,
+                    redirect_uri=redirect,
+                )
+                p = parse_token_response(raw)
+                exp = time.time() + float(p.get("expires_in", 3600))
+                rt_new = str(p.get("refresh_token") or "").strip()
+                QTimer.singleShot(
+                    0,
+                    lambda: self._youtube_oauth_ui_ok(
+                        str(p["access_token"]),
+                        rt_new,
+                        exp,
+                    ),
+                )
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._youtube_oauth_ui_failed(str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+        url = build_authorization_url(client_id=cid, redirect_uri=redirect, state=state)
+        QTimer.singleShot(350, lambda: webbrowser.open(url))
+        self._append_log("Opened browser for Google login — finish authorization to enable YouTube uploads.")
+
+    def _youtube_oauth_ui_failed(self, err: str) -> None:
+        QMessageBox.warning(self, "YouTube OAuth", err[:800])
+        self._append_log(f"YouTube OAuth failed: {err}")
+
+    def _youtube_oauth_ui_ok(self, access: str, refresh: str, exp: float) -> None:
+        try:
+            prev_rt = str(getattr(self.settings, "youtube_refresh_token", "") or "").strip()
+            self.settings = replace(
+                self.settings,
+                youtube_access_token=access,
+                youtube_refresh_token=refresh or prev_rt,
+                youtube_token_expires_at=float(exp),
+            )
+            save_settings(self.settings)
+            self._append_log("YouTube connected. Tokens saved locally.")
+            if hasattr(self, "api_yt_status_lbl"):
+                self.api_yt_status_lbl.setText("Status: connected (tokens saved)")
+        except Exception as e:
+            self._append_log(f"Failed to save YouTube tokens: {e}")
 
     def _on_failed(self, err: str) -> None:
         self.run_btn.setEnabled(True)

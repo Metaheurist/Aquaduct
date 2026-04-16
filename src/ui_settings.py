@@ -170,6 +170,40 @@ def load_settings() -> AppSettings:
         voice_model_id=str(data.get("voice_model_id", "")) if isinstance(data, dict) else "",
         video=video,
         branding=branding,
+        tiktok_enabled=bool(data.get("tiktok_enabled", False)) if isinstance(data, dict) else False,
+        tiktok_client_key=str(data.get("tiktok_client_key", "")) if isinstance(data, dict) else "",
+        tiktok_client_secret=str(data.get("tiktok_client_secret", "")) if isinstance(data, dict) else "",
+        tiktok_redirect_uri=str(data.get("tiktok_redirect_uri", "http://127.0.0.1:8765/callback/"))
+        if isinstance(data, dict)
+        else "http://127.0.0.1:8765/callback/",
+        tiktok_oauth_port=int(data.get("tiktok_oauth_port", 8765)) if isinstance(data, dict) else 8765,
+        tiktok_access_token=str(data.get("tiktok_access_token", "")) if isinstance(data, dict) else "",
+        tiktok_refresh_token=str(data.get("tiktok_refresh_token", "")) if isinstance(data, dict) else "",
+        tiktok_token_expires_at=float(data.get("tiktok_token_expires_at") or 0) if isinstance(data, dict) else 0.0,
+        tiktok_open_id=str(data.get("tiktok_open_id", "")) if isinstance(data, dict) else "",
+        tiktok_publishing_mode=str(data.get("tiktok_publishing_mode", "inbox"))
+        if isinstance(data, dict) and str(data.get("tiktok_publishing_mode")) in ("inbox", "direct")
+        else "inbox",
+        tiktok_auto_upload_after_render=bool(data.get("tiktok_auto_upload_after_render", False))
+        if isinstance(data, dict)
+        else False,
+        youtube_enabled=bool(data.get("youtube_enabled", False)) if isinstance(data, dict) else False,
+        youtube_client_id=str(data.get("youtube_client_id", "")) if isinstance(data, dict) else "",
+        youtube_client_secret=str(data.get("youtube_client_secret", "")) if isinstance(data, dict) else "",
+        youtube_redirect_uri=str(data.get("youtube_redirect_uri", "") or "http://127.0.0.1:8888/callback/")
+        if isinstance(data, dict)
+        else "http://127.0.0.1:8888/callback/",
+        youtube_oauth_port=int(data.get("youtube_oauth_port", 8888)) if isinstance(data, dict) else 8888,
+        youtube_access_token=str(data.get("youtube_access_token", "")) if isinstance(data, dict) else "",
+        youtube_refresh_token=str(data.get("youtube_refresh_token", "")) if isinstance(data, dict) else "",
+        youtube_token_expires_at=float(data.get("youtube_token_expires_at") or 0) if isinstance(data, dict) else 0.0,
+        youtube_privacy_status=str(data.get("youtube_privacy_status", "private"))
+        if isinstance(data, dict) and str(data.get("youtube_privacy_status")) in ("public", "unlisted", "private")
+        else "private",
+        youtube_add_shorts_hashtag=bool(data.get("youtube_add_shorts_hashtag", True)) if isinstance(data, dict) else True,
+        youtube_auto_upload_after_render=bool(data.get("youtube_auto_upload_after_render", False))
+        if isinstance(data, dict)
+        else False,
     )
 
 

@@ -108,16 +108,54 @@ def _google_news_rss(query: str, limit: int = 3, timeout_s: int = 30) -> list[Ne
     return items
 
 
-def _effective_query(*, query: str, topic_tags: list[str] | None) -> str:
-    if topic_tags:
-        tags = [t.strip() for t in topic_tags if t and t.strip()]
-        if tags:
-            tag_expr = " OR ".join(f'"{t}"' for t in tags[:12])
+def _default_headline_query(mode: str | None) -> str:
+    """RSS/search baseline when there are no user topic tags (per video format)."""
+    m = _cache_mode_key(mode)
+    if m == "cartoon":
+        return (
+            "(animation OR cartoon OR \"animated short\" OR series OR character OR comedy) "
+            "(premiere OR episode OR trailer OR festival OR reboot)"
+        )
+    if m == "explainer":
+        return (
+            "(explainer OR tutorial OR documentary OR guide) "
+            "(science OR technology OR education OR research OR breakthrough)"
+        )
+    # news
+    return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
+
+
+def _effective_query(
+    *,
+    query: str,
+    topic_tags: list[str] | None,
+    topic_mode: str | None = "news",
+) -> str:
+    """
+    Build a Google News / Firecrawl search string. Tags + mode pick different bias:
+    news → AI releases; cartoon → animation/character; explainer → education/science.
+    """
+    mode = _cache_mode_key(topic_mode)
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    if tags:
+        tag_expr = " OR ".join(f'"{t}"' for t in tags[:12])
+        if mode == "news":
             return (
-                f'({tag_expr}) (AI OR "AI tool" OR "AI app") '
-                f'(release OR launched OR introduces OR "new tool")'
+                f"({tag_expr}) (AI OR \"AI tool\" OR \"AI app\") "
+                f"(release OR launched OR introduces OR \"new tool\")"
             )
-    return query
+        if mode == "cartoon":
+            return (
+                f"({tag_expr}) (animation OR cartoon OR animated OR character OR comedy OR "
+                f"trailer OR series OR short OR film OR festival)"
+            )
+        if mode == "explainer":
+            return (
+                f"({tag_expr}) (explainer OR tutorial OR guide OR education OR science OR "
+                f'documentary OR "how it works" OR breakthrough)'
+            )
+        return f"({tag_expr}) {_default_headline_query(mode)}"
+    return _default_headline_query(mode)
 
 
 def _fetch_headlines(
@@ -125,12 +163,13 @@ def _fetch_headlines(
     limit: int,
     query: str,
     topic_tags: list[str] | None,
+    topic_mode: str | None = "news",
     firecrawl_enabled: bool = False,
     firecrawl_api_key: str | None = None,
     timeout_s: int = 30,
 ) -> list[NewsItem]:
     """Try Firecrawl search when enabled + key; then Google News RSS; then MarkTechPost."""
-    q = _effective_query(query=query, topic_tags=topic_tags)
+    q = _effective_query(query=query, topic_tags=topic_tags, topic_mode=topic_mode)
     fetched: list[NewsItem] = []
     key: str | None = None
     if firecrawl_enabled:
@@ -247,6 +286,7 @@ def get_latest_items(
         limit=limit,
         query=query,
         topic_tags=topic_tags,
+        topic_mode=cache_mode,
         firecrawl_enabled=firecrawl_enabled,
         firecrawl_api_key=firecrawl_api_key,
     )
@@ -272,6 +312,7 @@ def fetch_latest_items(
     topic_tags: list[str] | None = None,
     firecrawl_enabled: bool = False,
     firecrawl_api_key: str | None = None,
+    topic_mode: str | None = "news",
 ) -> list[NewsItem]:
     """
     Fetches up to `limit` items from sources WITHOUT applying the seen-cache filter.
@@ -281,6 +322,7 @@ def fetch_latest_items(
         limit=limit,
         query=query,
         topic_tags=topic_tags,
+        topic_mode=topic_mode,
         firecrawl_enabled=firecrawl_enabled,
         firecrawl_api_key=firecrawl_api_key,
     )
@@ -394,6 +436,7 @@ def get_scored_items(
         topic_tags=topic_tags,
         firecrawl_enabled=firecrawl_enabled,
         firecrawl_api_key=firecrawl_api_key,
+        topic_mode=cache_mode,
     )
 
     _, seen_titles_path = news_seen_paths(news_cache_dir, cache_mode)
