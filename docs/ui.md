@@ -22,10 +22,13 @@ python UI/ui_app.py
 ## Tabs
 - **Run**
   - One-shot run button
+  - **Video format** (News / Cartoon / Explainer): together with Topics, selects which tag list the pipeline uses (`video_format` + `topic_tags_by_mode`)
   - Open `videos/` folder
   - Save settings
 - **Topics**
-  - Add/remove free-text topic tags (stored in `ui_settings.json`)
+  - **Mode** combo matches video formats; each mode has its own tag list (stored in `ui_settings.json` under `topic_tags_by_mode`)
+  - Add/remove tags for the **selected mode** only
+  - **Discover**: fetches headline-based topic suggestions using the **News** tag list; enabled when the Topics mode is News
 - **Video**
   - Images per video
   - Video format presets (resolution/aspect)
@@ -40,10 +43,12 @@ python UI/ui_app.py
   - Try 4-bit LLM toggle (advisory; pipeline falls back if unavailable)
   - Try SDXL Turbo toggle (advisory; pipeline falls back if unavailable)
   - Background music picker
-  - Clear `data/news_cache/seen.json`
+  - Clear news URL/title cache: removes legacy `seen.json` / `seen_titles.json` and all `seen_*.json` / `seen_titles_*.json` under `data/news_cache/`
 - **Branding**
   - Optional full-theme palette overrides (presets or custom hex + color picker). Changing the **Palette** dropdown updates the hex swatches and fields for that preset (Custom unlocks per-row overrides).
   - Optional logo watermark on generated videos
+- **API**
+  - Optional **Firecrawl** toggle and API key (or `FIRECRAWL_API_KEY` in the environment) for richer news search and article scrape when configured
 - **Settings**
   - **Download ▾** menu: download the currently selected model(s), **download all selected** (script + image/video + voice choices in one queue), **download all models** (full curated list), plus **check Python dependencies** / **install dependencies** from `requirements.txt`.
   - Model dropdowns show local install status and Hub probe hints; downloads **skip** repos that already have a valid snapshot under `models/` and continue with the rest.

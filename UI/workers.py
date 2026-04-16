@@ -6,6 +6,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.config import AppSettings
 from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item
+from src.topics import effective_topic_tags, news_cache_mode_for_run, topic_tags_for_mode
 from src.topic_discovery import discover_topics_from_items
 from src.model_manager import (
     download_model_to_project,
@@ -20,6 +21,14 @@ from src.branding_video import apply_palette_to_prompts
 from src.personality_auto import auto_pick_personality
 from src.storyboard import build_storyboard, render_preview_grid, write_manifest
 from src.utils_vram import prepare_for_next_model
+from debug import dprint
+
+
+def _firecrawl_kwargs(app: AppSettings) -> dict:
+    return dict(
+        firecrawl_enabled=bool(getattr(app, "firecrawl_enabled", False)),
+        firecrawl_api_key=str(getattr(app, "firecrawl_api_key", "") or ""),
+    )
 
 
 def _fmt_bytes(n: int | float | None) -> str:
@@ -63,6 +72,7 @@ class PipelineWorker(QThread):
 
     def run(self) -> None:
         try:
+            dprint("workers", "PipelineWorker start", f"prebuilt={'yes' if self.prebuilt_pkg else 'no'}")
             out = pipeline_main.run_once(
                 settings=self.settings,
                 prebuilt_pkg=self.prebuilt_pkg,
@@ -80,7 +90,8 @@ class PipelineWorker(QThread):
 
 
 class PipelineBatchWorker(QThread):
-    progress = pyqtSignal(int, str)  # percent, status
+    # task_id, local 0–100 for that task, message (each pipeline_video run is its own 0–100)
+    progress = pyqtSignal(str, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
 
@@ -91,25 +102,33 @@ class PipelineBatchWorker(QThread):
 
     def run(self) -> None:
         try:
+            dprint("workers", "PipelineBatchWorker start", f"quantity={self.quantity}")
             created = 0
             attempts = 0
             max_attempts = self.quantity * 3  # avoid infinite loops when no new news exists
             while created < self.quantity and attempts < max_attempts:
                 attempts += 1
+                n = int(self.quantity)
                 self.progress.emit(
-                    int((created / self.quantity) * 100),
-                    f"Generating video {created + 1}/{self.quantity}…",
+                    "pipeline_video",
+                    0,
+                    f"Starting video {created + 1}/{n} (attempt {attempts})…",
                 )
                 out = pipeline_main.run_once(settings=self.settings)
                 if out is None:
                     # No new items; keep trying a bit in case another source yields something.
                     self.progress.emit(
-                        int((created / self.quantity) * 100),
-                        "No new items found. Trying again…",
+                        "pipeline_video",
+                        0,
+                        "No new items — retrying…",
                     )
                     continue
                 created += 1
-                self.progress.emit(int((created / self.quantity) * 100), f"Created {created}/{self.quantity}")
+                self.progress.emit(
+                    "pipeline_video",
+                    100,
+                    f"Finished video {created}/{n}",
+                )
 
             if created == 0:
                 self.done.emit("No new items found.")
@@ -126,13 +145,20 @@ class TopicDiscoverWorker(QThread):
     done = pyqtSignal(list)
     failed = pyqtSignal(str)
 
-    def __init__(self, *, limit: int = 12):
+    def __init__(self, settings: AppSettings, *, limit: int = 12):
         super().__init__()
+        self.settings = settings
         self.limit = limit
 
     def run(self) -> None:
         try:
-            items = fetch_latest_items(limit=max(5, int(self.limit)))
+            dprint("topics", "TopicDiscoverWorker", f"limit={self.limit}")
+            app = self.settings
+            items = fetch_latest_items(
+                limit=max(5, int(self.limit)),
+                topic_tags=topic_tags_for_mode(app, "news"),
+                **_firecrawl_kwargs(app),
+            )
             topics = discover_topics_from_items(items, limit=40)
             self.done.emit(topics)
         except Exception as e:
@@ -141,7 +167,8 @@ class TopicDiscoverWorker(QThread):
 
 
 class ModelDownloadWorker(QThread):
-    progress = pyqtSignal(int, str)  # percent, status
+    # task "download" — percent is 0–100 for the *current file* (per-TQDM bar)
+    progress = pyqtSignal(str, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
 
@@ -181,6 +208,7 @@ class ModelDownloadWorker(QThread):
 
     def run(self) -> None:
         try:
+            dprint("workers", "ModelDownloadWorker", f"repos={len(self.repo_ids)}", str(self.repo_ids[:5]))
             total_models = max(1, len(self.repo_ids))
 
             # TQDM bridge to Qt progress
@@ -224,12 +252,6 @@ class ModelDownloadWorker(QThread):
                         pct = int((n / float(total)) * 100) if total else 0
                         cur_i = max(1, int(worker.current_index or 1))
                         n_r = max(1, len(worker.repo_ids))
-                        if total and float(total) > 0:
-                            frac_repo = float(n) / float(total)
-                        else:
-                            frac_repo = 0.0
-                        overall_pct = int((((cur_i - 1) + frac_repo) / float(n_r)) * 100)
-                        overall_pct = max(0, min(100, overall_pct))
 
                         # rate (bytes/sec) if known
                         rate = None
@@ -259,8 +281,8 @@ class ModelDownloadWorker(QThread):
                             total_s = _human_bytes(total) if total else "?"
                             rate_s = (_human_bytes(rate) + "/s") if rate else "?/s"
                             rid = str(worker.current_repo_id or "").strip() or "?"
-                            msg = f"[{cur_i}/{n_r}] {rid}\n{n_s} / {total_s}  ·  {rate_s}  ·  {pct}%"
-                            worker.progress.emit(overall_pct, msg)
+                            msg = f"[{cur_i}/{n_r}] {rid}\n{n_s} / {total_s}  ·  {rate_s}  ·  file {pct}%"
+                            worker.progress.emit("download", pct, msg)
                     except Exception:
                         pass
                     return super().refresh(*args, **kwargs)
@@ -276,13 +298,13 @@ class ModelDownloadWorker(QThread):
                 pb = self._remote_bytes_by_repo.get(str(repo_id).strip())
                 ps = _fmt_bytes(pb) if pb else ""
                 est = f" (~{ps})" if ps else ""
-                self.progress.emit(base, f"[{i}/{total_models}] {repo_id}{est}")
+                self.progress.emit("download", 0, f"[{i}/{total_models}] {repo_id}{est}")
                 try:
                     download_model_to_project(repo_id, models_dir=self.models_dir, tqdm_class=QtTqdm)
                 except _CancelledDownload:
                     self.done.emit("Paused" if self._stop_reason == "paused" else "Cancelled")
                     return
-                self.progress.emit(int((i / total_models) * 100), f"Downloaded: {repo_id}")
+                self.progress.emit("download", 100, f"Downloaded: {repo_id}")
 
             self.done.emit("Done")
         except Exception as e:
@@ -336,7 +358,8 @@ class ModelSizePingWorker(QThread):
 
 
 class PreviewWorker(QThread):
-    progress = pyqtSignal(int, str)  # percent, status
+    # task_id, local 0–100 for that task, status text
+    progress = pyqtSignal(str, int, str)
     done = pyqtSignal(object, object, object, str, str)  # pkg, sources, prompts, personality_id, confidence
     failed = pyqtSignal(str)
 
@@ -346,16 +369,21 @@ class PreviewWorker(QThread):
 
     def run(self) -> None:
         try:
+            dprint("workers", "PreviewWorker start")
             paths = pipeline_main.get_paths()
             models = pipeline_main.get_models()
             app = self.settings
             llm_id = (app.llm_model_id or "").strip() or models.llm_id
 
-            self.progress.emit(5, "Fetching headlines…")
+            self.progress.emit("headlines", 0, "Reading news cache…")
+            fc = _firecrawl_kwargs(app)
+            tags = effective_topic_tags(app)
+            cm = news_cache_mode_for_run(app)
             if bool(getattr(app.video, "high_quality_topic_selection", True)):
-                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
             else:
-                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+            self.progress.emit("headlines", 60, "Choosing items…")
             item = pick_one_item(items)
             if not item:
                 self.failed.emit("No new items found.")
@@ -363,28 +391,36 @@ class PreviewWorker(QThread):
 
             sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
             titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+            self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
 
-            self.progress.emit(25, "Choosing personality…")
+            self.progress.emit("personality", 0, "Selecting tone…")
             picked = auto_pick_personality(
                 requested_id=getattr(app, "personality_id", "auto"),
                 llm_model_id=llm_id,
                 titles=titles,
-                topic_tags=list(app.topic_tags),
+                topic_tags=list(tags),
             )
+            self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-            self.progress.emit(45, "Generating script + storyboard…")
+            def _llm_task(task: str, pct: int, msg: str) -> None:
+                if task == "llm_load":
+                    self.progress.emit("script_llm_load", pct, msg)
+                elif task == "llm_generate":
+                    self.progress.emit("script_llm_gen", pct, msg)
+
             pkg = generate_script(
                 model_id=llm_id,
                 items=sources,
-                topic_tags=app.topic_tags,
+                topic_tags=effective_topic_tags(app),
                 personality_id=picked.preset.id,
                 branding=getattr(app, "branding", None),
+                on_llm_task=_llm_task,
             )
 
             prompts = [s.visual_prompt for s in pkg.segments][:10]
             prompts = apply_palette_to_prompts(prompts, getattr(app, "branding", None))
 
-            self.progress.emit(100, "Preview ready.")
+            self.progress.emit("preview", 100, "Preview ready.")
             # Minimal confidence signal: more sources = better; tag match tends to correlate with relevance.
             confidence = "High" if len(sources) >= 3 else ("Medium" if len(sources) == 2 else "Low")
             self.done.emit(pkg, sources, prompts, picked.preset.id, confidence)
@@ -394,7 +430,7 @@ class PreviewWorker(QThread):
 
 
 class StoryboardWorker(QThread):
-    progress = pyqtSignal(int, str)
+    progress = pyqtSignal(str, int, str)
     done = pyqtSignal(object, object)  # manifest_path, grid_png_path
     failed = pyqtSignal(str)
 
@@ -406,6 +442,7 @@ class StoryboardWorker(QThread):
         try:
             from pathlib import Path
 
+            dprint("workers", "StoryboardWorker start")
             paths = pipeline_main.get_paths()
             models = pipeline_main.get_models()
             app = self.settings
@@ -413,33 +450,45 @@ class StoryboardWorker(QThread):
             llm_id = (app.llm_model_id or "").strip() or models.llm_id
             img_id = (app.image_model_id or "").strip() or models.sdxl_turbo_id
 
-            self.progress.emit(5, "Fetching headlines…")
+            self.progress.emit("headlines", 0, "Reading news cache…")
+            fc = _firecrawl_kwargs(app)
+            tags = effective_topic_tags(app)
+            cm = news_cache_mode_for_run(app)
             if bool(getattr(app.video, "high_quality_topic_selection", True)):
-                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
             else:
-                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+            self.progress.emit("headlines", 60, "Choosing items…")
             item = pick_one_item(items)
             if not item:
                 self.failed.emit("No new items found.")
                 return
             sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
             titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+            self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
 
-            self.progress.emit(20, "Choosing personality…")
+            self.progress.emit("personality", 0, "Selecting tone…")
             picked = auto_pick_personality(
                 requested_id=getattr(app, "personality_id", "auto"),
                 llm_model_id=llm_id,
                 titles=titles,
-                topic_tags=list(app.topic_tags),
+                topic_tags=list(tags),
             )
+            self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-            self.progress.emit(35, "Generating script…")
+            def _llm_task(task: str, pct: int, msg: str) -> None:
+                if task == "llm_load":
+                    self.progress.emit("script_llm_load", pct, msg)
+                elif task == "llm_generate":
+                    self.progress.emit("script_llm_gen", pct, msg)
+
             pkg = generate_script(
                 model_id=llm_id,
                 items=sources,
-                topic_tags=app.topic_tags,
+                topic_tags=effective_topic_tags(app),
                 personality_id=picked.preset.id,
                 branding=getattr(app, "branding", None),
+                on_llm_task=_llm_task,
             )
 
             prepare_for_next_model()
@@ -450,15 +499,19 @@ class StoryboardWorker(QThread):
             previews_dir = assets_dir / "previews"
             previews_dir.mkdir(parents=True, exist_ok=True)
 
-            self.progress.emit(55, "Building storyboard…")
+            self.progress.emit("storyboard_build", 0, "Laying out scenes…")
             sb = build_storyboard(pkg, seed_base=getattr(app.video, "seed_base", None), branding=getattr(app, "branding", None), max_scenes=8)
+            self.progress.emit("storyboard_build", 100, "Storyboard structured")
 
             from src.artist import generate_images
 
             prompts = [s.prompt for s in sb.scenes]
             seeds = [s.seed for s in sb.scenes]
 
-            self.progress.emit(70, "Rendering first-frame previews…")
+            def _img_pct(pct: int, msg: str) -> None:
+                self.progress.emit("storyboard_images", pct, msg)
+
+            self.progress.emit("storyboard_images", 0, "Loading image model…")
             gen = generate_images(
                 sdxl_turbo_model_id=img_id,
                 prompts=prompts,
@@ -466,6 +519,7 @@ class StoryboardWorker(QThread):
                 max_images=len(prompts),
                 seeds=seeds,
                 steps=4,  # quality-first preview
+                on_image_progress=_img_pct,
             )
             scene_paths = [g.path for g in gen]
 
@@ -495,11 +549,12 @@ class StoryboardWorker(QThread):
             except Exception:
                 pass
 
-            self.progress.emit(88, "Building preview grid…")
+            self.progress.emit("storyboard_grid", 0, "Composing grid…")
             grid = previews_dir / "grid.png"
             render_preview_grid(scene_paths=scene_paths, out_grid=grid, cols=4, thumb=256)
+            self.progress.emit("storyboard_grid", 100, "Grid ready")
 
-            self.progress.emit(100, "Storyboard preview ready.")
+            self.progress.emit("storyboard", 100, "Storyboard preview ready.")
             self.done.emit(manifest, grid)
         except Exception as e:
             tb = traceback.format_exc()

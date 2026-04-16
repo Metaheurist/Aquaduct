@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -13,6 +14,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from src.config import VIDEO_FORMATS
 
 
 def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
@@ -99,9 +102,31 @@ def attach_topics_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
-    header = QLabel("Topic tags (used for discovery + scripting)")
+    header = QLabel("Topic tags (per video format)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
+
+    mode_row = QHBoxLayout()
+    mode_lbl = QLabel("Edit tags for")
+    mode_lbl.setStyleSheet("color: #B7B7C2;")
+    mode_row.addWidget(mode_lbl)
+    win.topics_mode_combo = QComboBox()
+    win.topics_mode_combo.addItem("News", "news")
+    win.topics_mode_combo.addItem("Cartoon", "cartoon")
+    win.topics_mode_combo.addItem("Explainer", "explainer")
+    tm = str(getattr(win.settings, "video_format", "news") or "news")
+    if tm not in VIDEO_FORMATS:
+        tm = "news"
+    tmi = win.topics_mode_combo.findData(tm)
+    win.topics_mode_combo.setCurrentIndex(tmi if tmi >= 0 else 0)
+    mode_row.addWidget(win.topics_mode_combo, 1)
+    mode_row.addStretch(1)
+    lay.addLayout(mode_row)
+
+    mode_hint = QLabel("Lists are separate per format. Discover pulls from the News list only.")
+    mode_hint.setWordWrap(True)
+    mode_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    lay.addWidget(mode_hint)
 
     row = QHBoxLayout()
     win.tag_input = QLineEdit()
@@ -134,7 +159,11 @@ def attach_topics_tab(win) -> None:
     btn_row.addStretch(1)
     lay.addLayout(btn_row)
 
+    win.topics_mode_combo.currentIndexChanged.connect(win._on_topics_mode_changed)
     win._sync_tags_to_ui()
+    win._last_topics_mode = str(win.topics_mode_combo.currentData() or "news")
+    win._update_discover_for_topic_mode()
+
     win._pick_topics_dialog = _pick_topics_dialog
     win._no_topics_dialog = _no_topics_dialog
     win.tabs.addTab(w, "Topics")

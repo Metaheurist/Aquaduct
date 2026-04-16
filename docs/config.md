@@ -9,7 +9,7 @@ Central place for:
 
 ## Paths
 `get_paths()` defines:
-- `data/news_cache/` (`seen.json` and `seen_titles.json` are local-only; not committed)
+- `data/news_cache/` — per-format dedupe files `seen_<mode>.json` and `seen_titles_<mode>.json` (plus optional legacy `seen.json` / `seen_titles.json` for migration); local-only, not committed
 - `runs/`
 - `videos/`
 - `.cache/ffmpeg/`
@@ -30,7 +30,8 @@ Central place for:
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
-- `topic_tags`: used to bias crawling + scripting
+- `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)
+- `topic_tags_by_mode`: per-format tag lists (bias crawling + scripting for the active format); use `src/topics.py` `effective_topic_tags()` for the current format
 - `background_music_path`
 - model overrides (repo IDs):
   - `llm_model_id`

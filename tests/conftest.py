@@ -35,6 +35,14 @@ def patch_paths(monkeypatch: pytest.MonkeyPatch, tmp_repo_root: Path):
         )
 
     monkeypatch.setattr(config_mod, "get_paths", _fake_get_paths)
+    # MainWindow does `from src.config import get_paths` — keep the same binding in sync.
+    try:
+        import importlib
+
+        mw = importlib.import_module("UI.main_window")
+        monkeypatch.setattr(mw, "get_paths", _fake_get_paths)
+    except Exception:
+        pass
     return _fake_get_paths
 
 

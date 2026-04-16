@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from dataclasses import replace
 from pathlib import Path
 
 from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtCore import QTimer, QUrl, Qt, QPoint
+from PyQt6.QtCore import QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -23,15 +24,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.config import AppSettings, BrandingSettings, VideoSettings, get_paths
+from src.config import AppSettings, BrandingSettings, VideoSettings, VIDEO_FORMATS, get_paths
+from src.crawler import clear_news_seen_cache_files
+from src.topics import normalize_video_format
 from src.fs_delete import rmtree_robust, unlink_file
 from src.model_manager import download_model_to_project, model_has_local_snapshot
 from src.preflight import preflight_check
 from src.ui_settings import load_settings, save_settings, settings_path
 from src.personalities import get_personality_by_id
+from debug import dprint
 
 from UI.paths import project_root
 from UI.tabs import (
+    attach_api_tab,
     attach_branding_tab,
     attach_captions_tab,
     attach_my_pc_tab,
@@ -45,6 +50,13 @@ from UI.workers import ModelDownloadWorker, PipelineBatchWorker, PipelineWorker,
 from UI.workers import TopicDiscoverWorker
 from UI.preview_dialog import PreviewDialog
 from UI.storyboard_dialog import StoryboardPreviewDialog
+from UI.progress_tasks import format_status_line
+
+
+class _InternetStatusBridge(QObject):
+    """Emit reachability from a worker thread (Qt delivers the slot on the GUI thread)."""
+
+    finished = pyqtSignal(bool)
 
 
 class MainWindow(QMainWindow):
@@ -55,7 +67,7 @@ class MainWindow(QMainWindow):
         # Borderless + fixed size (non-resizable)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
         # Fixed width, dynamic height (still non-resizable).
-        self.setFixedWidth(1080)
+        self.setFixedWidth(1000)
         self._drag_pos: QPoint | None = None
 
         self.paths = get_paths()
@@ -91,6 +103,20 @@ class MainWindow(QMainWindow):
         title_row.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
         root_lay.addWidget(self._title_bar, 0)
 
+        self._internet_online: bool | None = None
+        self._network_banner = QLabel()
+        self._network_banner.setVisible(False)
+        self._network_banner.setWordWrap(True)
+        self._network_banner.setStyleSheet(
+            "background-color: rgba(255, 160, 72, 0.12); color: #E8C080; padding: 8px 10px; "
+            "border-radius: 8px; border: 1px solid rgba(255, 190, 120, 0.28); font-size: 12px;"
+        )
+        self._network_banner.setText(
+            "No internet connection detected. Headlines and new model downloads need a network. "
+            "Preview and full runs still work when your chosen models are already saved on disk."
+        )
+        root_lay.addWidget(self._network_banner, 0)
+
         # Don't force the tab widget to expand; we'll size the window to its active page.
         root_lay.addWidget(self.tabs, 0)
         self.setCentralWidget(self._root)
@@ -100,17 +126,30 @@ class MainWindow(QMainWindow):
         attach_video_tab(self)
         attach_captions_tab(self)
         attach_branding_tab(self)
+        attach_api_tab(self)
         attach_settings_tab(self)
         attach_my_pc_tab(self)
 
         # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
-        self.tabs.currentChanged.connect(lambda _idx: self._resize_to_current_tab())
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         QTimer.singleShot(0, self._resize_to_current_tab)
         # Prompt for HF token once the window is ready (if needed).
         QTimer.singleShot(0, self._maybe_prompt_hf_token)
+        QTimer.singleShot(0, self._update_hf_api_warnings)
         if hasattr(self, "personality_combo"):
             self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
             self._update_personality_hint()
+
+        self._internet_bridge = _InternetStatusBridge()
+        self._internet_bridge.finished.connect(self._on_internet_status)
+
+        def _probe_internet() -> None:
+            from src.network_status import is_internet_likely_reachable
+
+            ok = is_internet_likely_reachable()
+            self._internet_bridge.finished.emit(ok)
+
+        threading.Thread(target=_probe_internet, daemon=True).start()
 
         self.worker: PipelineWorker | None = None
         self.topic_worker: TopicDiscoverWorker | None = None
@@ -137,10 +176,37 @@ class MainWindow(QMainWindow):
         try:
             if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
                 return
+            if not bool(getattr(self.settings, "hf_api_enabled", True)):
+                return
             t = str(getattr(self.settings, "hf_token", "") or "").strip()
             if not t:
                 return
             os.environ["HF_TOKEN"] = t
+        except Exception:
+            pass
+
+    def _apply_hf_token_from_current_settings(self) -> None:
+        """After save or dialog: sync HF_TOKEN from settings when user enabled HF API."""
+        try:
+            if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
+                return
+            if not bool(getattr(self.settings, "hf_api_enabled", True)):
+                return
+            t = str(getattr(self.settings, "hf_token", "") or "").strip()
+            if t:
+                os.environ["HF_TOKEN"] = t
+        except Exception:
+            pass
+
+    def _update_hf_api_warnings(self) -> None:
+        """Settings tab banner when Hugging Face token usage is disabled (soft)."""
+        try:
+            if not hasattr(self, "_settings_hf_banner"):
+                return
+            hf_on = bool(getattr(self.settings, "hf_api_enabled", True))
+            if hasattr(self, "api_hf_enabled_chk"):
+                hf_on = bool(self.api_hf_enabled_chk.isChecked())
+            self._settings_hf_banner.setVisible(not hf_on)
         except Exception:
             pass
 
@@ -149,6 +215,8 @@ class MainWindow(QMainWindow):
         If no token is available (env or saved settings), prompt user to paste one.
         """
         try:
+            if not bool(getattr(self.settings, "hf_api_enabled", True)):
+                return
             if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
                 return
             saved = str(getattr(self.settings, "hf_token", "") or "").strip()
@@ -202,7 +270,7 @@ class MainWindow(QMainWindow):
 
         # Persist to ui_settings.json + env for current session
         try:
-            self.settings = replace(self.settings, hf_token=token)
+            self.settings = replace(self.settings, hf_token=token, hf_api_enabled=True)
             save_settings(self.settings)
         except Exception:
             pass
@@ -335,7 +403,7 @@ class MainWindow(QMainWindow):
             pass
 
         # Reset to defaults and persist (fresh ui_settings.json).
-        self.settings = AppSettings(topic_tags=[])
+        self.settings = AppSettings()
         try:
             save_settings(self.settings)
         except Exception:
@@ -363,8 +431,11 @@ class MainWindow(QMainWindow):
         if page is None:
             return
 
-        # Base: title bar + tab bar + current page content.
+        # Base: title bar + optional offline banner + tab bar + current page content.
         title_h = self._title_bar.sizeHint().height() if hasattr(self, "_title_bar") else 40
+        banner_h = 0
+        if hasattr(self, "_network_banner") and self._network_banner.isVisible():
+            banner_h = int(self._network_banner.sizeHint().height()) + 8
         tabbar_h = self.tabs.tabBar().sizeHint().height()
         lay = page.layout()
         if lay is not None:
@@ -373,13 +444,29 @@ class MainWindow(QMainWindow):
             page_h = int(page.sizeHint().height())
 
         # Layout margins (top+bottom) + small padding inside tab pane.
-        h = int(title_h + tabbar_h + page_h + 10 + 10 + 48)
+        h = int(title_h + banner_h + tabbar_h + page_h + 10 + 10 + 48)
 
         # Clamp so it doesn't get too tiny or exceed the screen.
         min_h = 360
         max_h = 980
         h = max(min_h, min(max_h, int(h)))
         self.setFixedSize(self.width(), h)
+
+    def _on_tab_changed(self, _idx: int) -> None:
+        self._resize_to_current_tab()
+        self._update_hf_api_warnings()
+
+    def _on_internet_status(self, online: bool) -> None:
+        self._internet_online = online
+        if hasattr(self, "_network_banner"):
+            self._network_banner.setVisible(not online)
+        self._resize_to_current_tab()
+
+    def _maybe_log_offline_notice(self) -> None:
+        if getattr(self, "_internet_online", None) is False:
+            self._append_log(
+                "Offline: news fetch and new downloads need the internet; local models on disk can still run."
+            )
 
     def _update_personality_hint(self) -> None:
         if not hasattr(self, "personality_combo") or not hasattr(self, "personality_hint"):
@@ -424,19 +511,74 @@ class MainWindow(QMainWindow):
                 pass
         print(msg)
 
+    def _ensure_topic_modes(self) -> None:
+        d = self.settings.topic_tags_by_mode
+        for m in VIDEO_FORMATS:
+            if m not in d:
+                d[m] = []
+
+    def _topics_bucket_key(self) -> str:
+        if hasattr(self, "topics_mode_combo"):
+            return normalize_video_format(str(self.topics_mode_combo.currentData() or "news"))
+        return normalize_video_format(str(getattr(self.settings, "video_format", "news")))
+
+    def _flush_topic_list_to_mode(self, mode: str) -> None:
+        if not hasattr(self, "tag_list"):
+            return
+        mode = normalize_video_format(mode)
+        tags: list[str] = []
+        for i in range(self.tag_list.count()):
+            it = self.tag_list.item(i)
+            if it is None:
+                continue
+            t = it.text().strip()
+            if t:
+                tags.append(t)
+        self._ensure_topic_modes()
+        self.settings.topic_tags_by_mode[mode] = tags
+
+    def _on_topics_mode_changed(self, _idx: int) -> None:
+        if not hasattr(self, "topics_mode_combo"):
+            return
+        old = getattr(self, "_last_topics_mode", None)
+        new = normalize_video_format(str(self.topics_mode_combo.currentData() or "news"))
+        if old is not None and old != new:
+            self._flush_topic_list_to_mode(old)
+        self._last_topics_mode = new
+        self._sync_tags_to_ui()
+        self._update_discover_for_topic_mode()
+
+    def _update_discover_for_topic_mode(self) -> None:
+        if not hasattr(self, "discover_btn"):
+            return
+        is_news = self._topics_bucket_key() == "news"
+        self.discover_btn.setEnabled(is_news)
+        self.discover_btn.setToolTip(
+            "Find newest AI news topics and approve them before adding."
+            if is_news
+            else "Discovery adds to the News list only. Switch \"Edit tags for\" to News to enable."
+        )
+
     def _sync_tags_to_ui(self) -> None:
         from PyQt6.QtWidgets import QListWidgetItem
 
+        if not hasattr(self, "tag_list"):
+            return
+        self._ensure_topic_modes()
         self.tag_list.clear()
-        for t in self.settings.topic_tags:
+        key = self._topics_bucket_key()
+        for t in self.settings.topic_tags_by_mode.get(key, []):
             self.tag_list.addItem(QListWidgetItem(t))
 
     def _add_tag(self) -> None:
+        self._ensure_topic_modes()
         t = " ".join(self.tag_input.text().split()).strip()
         if not t:
             return
-        if t not in self.settings.topic_tags:
-            self.settings.topic_tags.append(t)
+        key = self._topics_bucket_key()
+        bucket = self.settings.topic_tags_by_mode.setdefault(key, [])
+        if t not in bucket:
+            bucket.append(t)
             self._sync_tags_to_ui()
         self.tag_input.clear()
 
@@ -444,26 +586,30 @@ class MainWindow(QMainWindow):
         selected = self.tag_list.selectedItems()
         if not selected:
             return
+        self._ensure_topic_modes()
         remove = {it.text() for it in selected}
-        # AppSettings is a frozen dataclass; mutate the list in-place.
-        self.settings.topic_tags[:] = [t for t in self.settings.topic_tags if t not in remove]
+        key = self._topics_bucket_key()
+        bucket = self.settings.topic_tags_by_mode.setdefault(key, [])
+        self.settings.topic_tags_by_mode[key] = [x for x in bucket if x not in remove]
         self._sync_tags_to_ui()
 
     def _clear_tags(self) -> None:
-        # AppSettings is a frozen dataclass; mutate the list in-place.
-        self.settings.topic_tags.clear()
+        self._ensure_topic_modes()
+        key = self._topics_bucket_key()
+        self.settings.topic_tags_by_mode[key] = []
         self._sync_tags_to_ui()
 
     def _discover_topics(self) -> None:
         if self.topic_worker and self.topic_worker.isRunning():
             return
+        self._maybe_log_offline_notice()
         if hasattr(self, "discover_btn"):
             try:
                 self.discover_btn.setEnabled(False)
                 self.discover_btn.setText("Discovering…")
             except Exception:
                 pass
-        self.topic_worker = TopicDiscoverWorker(limit=12)
+        self.topic_worker = TopicDiscoverWorker(settings=self._collect_settings_from_ui(), limit=12)
         self.topic_worker.done.connect(self._on_topics_discovered)
         self.topic_worker.failed.connect(self._on_topics_failed)
         self.topic_worker.start()
@@ -490,13 +636,15 @@ class MainWindow(QMainWindow):
             self._append_log("Topic discovery cancelled.")
             return
 
+        self._ensure_topic_modes()
+        news_bucket = self.settings.topic_tags_by_mode.setdefault("news", [])
         added = 0
         for t in picked:
             t = " ".join(t.split()).strip()
             if not t:
                 continue
-            if t not in self.settings.topic_tags:
-                self.settings.topic_tags.append(t)
+            if t not in news_bucket:
+                news_bucket.append(t)
                 added += 1
         self._sync_tags_to_ui()
         self._save_settings()
@@ -516,6 +664,9 @@ class MainWindow(QMainWindow):
             self._append_log(err)
 
     def _collect_settings_from_ui(self) -> AppSettings:
+        if hasattr(self, "topics_mode_combo"):
+            self._flush_topic_list_to_mode(str(self.topics_mode_combo.currentData() or "news"))
+
         fmt = (self.settings.video.width, self.settings.video.height)
         if hasattr(self, "format_combo"):
             try:
@@ -624,13 +775,45 @@ class MainWindow(QMainWindow):
             image_model_id = str(img_data)
             video_model_id = ""
 
+        hf_tok = (
+            str(self.api_hf_token_edit.text()).strip()
+            if hasattr(self, "api_hf_token_edit")
+            else str(getattr(self.settings, "hf_token", "") or "")
+        )
+        hf_en = (
+            bool(self.api_hf_enabled_chk.isChecked())
+            if hasattr(self, "api_hf_enabled_chk")
+            else bool(getattr(self.settings, "hf_api_enabled", True))
+        )
+        fc_en = (
+            bool(self.api_fc_enabled_chk.isChecked())
+            if hasattr(self, "api_fc_enabled_chk")
+            else bool(getattr(self.settings, "firecrawl_enabled", False))
+        )
+        fc_key = (
+            str(self.api_fc_key_edit.text()).strip()
+            if hasattr(self, "api_fc_key_edit")
+            else str(getattr(self.settings, "firecrawl_api_key", "") or "")
+        )
+
+        vfmt = (
+            normalize_video_format(str(self.video_format_combo.currentData() or "news"))
+            if hasattr(self, "video_format_combo")
+            else normalize_video_format(str(getattr(self.settings, "video_format", "news")))
+        )
+        topic_map = {str(k): list(v) for k, v in (self.settings.topic_tags_by_mode or {}).items()}
+
         return AppSettings(
-            topic_tags=list(self.settings.topic_tags),
+            topic_tags_by_mode=topic_map,
+            video_format=vfmt,
             prefer_gpu=bool(self.prefer_gpu_chk.isChecked()),
             try_llm_4bit=bool(self.try_llm_chk.isChecked()),
             try_sdxl_turbo=bool(self.try_sdxl_chk.isChecked()),
             background_music_path=str(self.music_path.text()).strip(),
-            hf_token=str(getattr(self.settings, "hf_token", "") or ""),
+            hf_token=hf_tok,
+            hf_api_enabled=hf_en,
+            firecrawl_enabled=fc_en,
+            firecrawl_api_key=fc_key,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
             image_model_id=image_model_id,
@@ -643,6 +826,8 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         self.settings = self._collect_settings_from_ui()
         save_settings(self.settings)
+        self._apply_hf_token_from_current_settings()
+        self._update_hf_api_warnings()
         self._append_log("Saved settings.")
 
     def _open_videos(self) -> None:
@@ -657,11 +842,11 @@ class MainWindow(QMainWindow):
             self.music_path.setText(path)
 
     def _clear_seen_cache(self) -> None:
-        seen = self.paths.news_cache_dir / "seen.json"
+        d = self.paths.news_cache_dir
         try:
-            if seen.exists():
-                seen.unlink()
-                self._append_log("Cleared seen.json cache.")
+            removed = clear_news_seen_cache_files(d)
+            if removed:
+                self._append_log(f"Cleared news URL/title cache ({removed} file(s)).")
         except Exception as e:
             self._append_log(f"Failed to clear cache: {e}")
 
@@ -835,6 +1020,7 @@ class MainWindow(QMainWindow):
         repo_ids = [r for r in repo_ids if r and r.strip()]
         if not repo_ids:
             return
+        dprint("ui", "_start_download", title, f"repos={len(repo_ids)}")
 
         # Resume if we have a paused queue that matches this request (common case: click Download again).
         if self._paused_download_repo_ids:
@@ -885,8 +1071,8 @@ class MainWindow(QMainWindow):
 
         popup.pause_requested.connect(_pause_download)
 
-        def on_progress(pct: int, status: str) -> None:
-            popup.status.setText(status)
+        def on_progress(task_id: str, pct: int, status: str) -> None:
+            popup.status.setText(format_status_line(task_id, pct, status))
             popup.bar.setValue(max(0, min(100, int(pct))))
 
         def on_done(_msg: str) -> None:
@@ -942,7 +1128,9 @@ class MainWindow(QMainWindow):
     def _on_run(self) -> None:
         if self.worker and self.worker.isRunning():
             return
+        dprint("ui", "_on_run")
         self._save_settings()
+        self._maybe_log_offline_notice()
 
         pf = preflight_check(settings=self.settings, strict=True)
         for w in pf.warnings:
@@ -970,9 +1158,9 @@ class MainWindow(QMainWindow):
 
         self.worker = PipelineBatchWorker(self.settings, quantity=qty)
 
-        def on_prog(pct: int, status: str) -> None:
+        def on_prog(task_id: str, pct: int, status: str) -> None:
             if hasattr(self, "run_status"):
-                self.run_status.setText(status)
+                self.run_status.setText(format_status_line(task_id, pct, status))
             if hasattr(self, "run_progress"):
                 self.run_progress.setValue(max(0, min(100, int(pct))))
             self._resize_to_current_tab()
@@ -994,7 +1182,9 @@ class MainWindow(QMainWindow):
         if self.preview_worker and self.preview_worker.isRunning():
             return
 
+        dprint("ui", "_on_preview")
         self._save_settings()
+        self._maybe_log_offline_notice()
         pf = preflight_check(settings=self.settings, strict=False)
         for w in pf.warnings:
             self._append_log(f"Warning: {w}")
@@ -1010,9 +1200,9 @@ class MainWindow(QMainWindow):
 
         self.preview_worker = PreviewWorker(self.settings)
 
-        def on_prog(pct: int, status: str) -> None:
+        def on_prog(task_id: str, pct: int, status: str) -> None:
             if hasattr(self, "run_status"):
-                self.run_status.setText(status)
+                self.run_status.setText(format_status_line(task_id, pct, status))
             if hasattr(self, "run_progress"):
                 self.run_progress.setValue(max(0, min(100, int(pct))))
             self._resize_to_current_tab()
@@ -1082,6 +1272,7 @@ class MainWindow(QMainWindow):
             return
 
         self._save_settings()
+        self._maybe_log_offline_notice()
         pf = preflight_check(settings=self.settings, strict=True)
         for w in pf.warnings:
             self._append_log(f"Warning: {w}")
@@ -1202,6 +1393,7 @@ class MainWindow(QMainWindow):
         if self.storyboard_worker and self.storyboard_worker.isRunning():
             return
         self._save_settings()
+        self._maybe_log_offline_notice()
         if hasattr(self, "storyboard_btn"):
             try:
                 self.storyboard_btn.setEnabled(False)
@@ -1213,9 +1405,9 @@ class MainWindow(QMainWindow):
 
         self.storyboard_worker = StoryboardWorker(self.settings)
 
-        def on_prog(pct: int, status: str) -> None:
+        def on_prog(task_id: str, pct: int, status: str) -> None:
             if hasattr(self, "run_status"):
-                self.run_status.setText(status)
+                self.run_status.setText(format_status_line(task_id, pct, status))
             if hasattr(self, "run_progress"):
                 self.run_progress.setValue(max(0, min(100, int(pct))))
             self._resize_to_current_tab()

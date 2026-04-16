@@ -102,6 +102,19 @@ def attach_settings_tab(win) -> None:
     mheader.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 10px;")
     lay.addWidget(mheader)
 
+    win._settings_hf_banner = QLabel(
+        "Hugging Face token use is off: remote size checks and gated model downloads may fail or be rate-limited. "
+        "Enable it under the API tab."
+    )
+    win._settings_hf_banner.setWordWrap(True)
+    win._settings_hf_banner.setStyleSheet(
+        "color: #E8C080; background-color: rgba(255, 160, 72, 0.10); "
+        "padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255, 190, 120, 0.25); font-size: 12px;"
+    )
+    hf_on = bool(getattr(win.settings, "hf_api_enabled", True))
+    win._settings_hf_banner.setVisible(not hf_on)
+    lay.addWidget(win._settings_hf_banner)
+
     win._hub_status_lbl = QLabel("Checking Hugging Face for each model (sizes + availability)…")
     win._hub_status_lbl.setStyleSheet("color:#9BB0C4;font-size:12px;padding:0 0 8px 0;")
     win._hub_status_lbl.setWordWrap(True)

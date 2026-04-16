@@ -5,7 +5,14 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .config import AppSettings, BrandingSettings, VideoSettings
+from .config import (
+    AppSettings,
+    BrandingSettings,
+    VideoSettings,
+    VIDEO_FORMATS,
+    VideoFormat,
+    default_topic_tags_by_mode,
+)
 
 
 def _root() -> Path:
@@ -31,14 +38,33 @@ def _sanitize_tags(tags: Any) -> list[str]:
     return out[:50]
 
 
+def _norm_video_format(s: Any) -> VideoFormat:
+    t = str(s or "news").strip().lower()
+    return t if t in VIDEO_FORMATS else "news"
+
+
+def _sanitize_topic_tags_map(raw: Any) -> dict[str, list[str]]:
+    merged = default_topic_tags_by_mode()
+    if not isinstance(raw, dict):
+        return merged
+    for k, v in raw.items():
+        if not isinstance(k, str):
+            continue
+        kk = k.strip().lower()
+        if kk not in VIDEO_FORMATS:
+            continue
+        merged[kk] = _sanitize_tags(v)
+    return merged
+
+
 def load_settings() -> AppSettings:
     p = settings_path()
     if not p.exists():
-        return AppSettings(topic_tags=[])
+        return AppSettings()
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return AppSettings(topic_tags=[])
+        return AppSettings()
 
     video_raw = data.get("video", {}) if isinstance(data, dict) else {}
     video = VideoSettings(
@@ -117,13 +143,26 @@ def load_settings() -> AppSettings:
         else "subtle",
     )
 
+    topic_map = (
+        _sanitize_topic_tags_map(data.get("topic_tags_by_mode")) if isinstance(data, dict) else default_topic_tags_by_mode()
+    )
+    legacy_flat = _sanitize_tags(data.get("topic_tags", [])) if isinstance(data, dict) else []
+    if legacy_flat and not (topic_map.get("news") or []):
+        topic_map = {**topic_map, "news": legacy_flat}
+
+    video_format = _norm_video_format(data.get("video_format")) if isinstance(data, dict) else "news"
+
     return AppSettings(
-        topic_tags=_sanitize_tags(data.get("topic_tags", [])) if isinstance(data, dict) else [],
+        topic_tags_by_mode=topic_map,
+        video_format=video_format,
         prefer_gpu=bool(data.get("prefer_gpu", True)) if isinstance(data, dict) else True,
         try_llm_4bit=bool(data.get("try_llm_4bit", True)) if isinstance(data, dict) else True,
         try_sdxl_turbo=bool(data.get("try_sdxl_turbo", True)) if isinstance(data, dict) else True,
         background_music_path=str(data.get("background_music_path", "")) if isinstance(data, dict) else "",
         hf_token=str(data.get("hf_token", "")) if isinstance(data, dict) else "",
+        hf_api_enabled=bool(data.get("hf_api_enabled", True)) if isinstance(data, dict) else True,
+        firecrawl_enabled=bool(data.get("firecrawl_enabled", False)) if isinstance(data, dict) else False,
+        firecrawl_api_key=str(data.get("firecrawl_api_key", "")) if isinstance(data, dict) else "",
         personality_id=str(data.get("personality_id", "auto")) if isinstance(data, dict) else "auto",
         llm_model_id=str(data.get("llm_model_id", "")) if isinstance(data, dict) else "",
         image_model_id=str(data.get("image_model_id", "")) if isinstance(data, dict) else "",
@@ -135,7 +174,10 @@ def load_settings() -> AppSettings:
 
 
 def save_settings(settings: AppSettings) -> None:
+    from debug import dprint
+
     p = settings_path()
     payload = asdict(settings)
     p.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    dprint("config", "save_settings", str(p))
 

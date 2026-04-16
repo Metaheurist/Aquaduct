@@ -2,7 +2,7 @@
 
 ## Purpose
 **Aquaduct**’s orchestrator (`main.py`) runs the full pipeline:
-1. Crawl news (deduped)
+1. Crawl news (deduped per `video_format`; see [Crawler](crawler.md))
 2. Generate a structured script package (LLM or fallback)
 3. TTS + captions
 4. Images

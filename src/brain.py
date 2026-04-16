@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from .utils_vram import cleanup_vram, vram_guard
 from .personalities import PersonalityPreset, get_personality_by_id
-from .config import BrandingSettings
+from .config import BrandingSettings, get_paths
+from .model_manager import resolve_pretrained_load_path
 from .branding_video import palette_prompt_suffix, video_style_strength
+from debug import dprint
 
 
 @dataclass(frozen=True)
@@ -240,11 +243,35 @@ def enforce_arc(pkg: VideoPackage) -> VideoPackage:
     )
 
 
-def _generate_with_transformers(model_id: str, prompt: str) -> str:
+def _emit_llm(
+    on_llm_task: Callable[[str, int, str], None] | None, task: str, pct: int, msg: str
+) -> None:
+    if on_llm_task:
+        on_llm_task(task, max(0, min(100, int(pct))), msg)
+
+
+def _generate_with_transformers(
+    model_id: str,
+    prompt: str,
+    *,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 650,
+) -> str:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+    def _stderr(msg: str) -> None:
+        if not on_llm_task:
+            import sys
+
+            print(f"[Aquaduct] {msg}", file=sys.stderr, flush=True)
+
+    # Load from project `models/<repo>/` when present; plain repo id uses HF cache (extra downloads).
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+
+    _emit_llm(on_llm_task, "llm_load", 0, "Loading tokenizer…")
+    tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
+    _emit_llm(on_llm_task, "llm_load", 25, "Tokenizer ready")
 
     bnb = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -253,41 +280,106 @@ def _generate_with_transformers(model_id: str, prompt: str) -> str:
         bnb_4bit_compute_dtype=torch.float16,
     )
 
+    _emit_llm(on_llm_task, "llm_load", 30, "Loading model weights…")
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            model_id,
+            load_path,
             quantization_config=bnb,
             device_map="auto",
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             low_cpu_mem_usage=True,
+            trust_remote_code=True,
         )
     except TypeError:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            quantization_config=bnb,
-            device_map="auto",
-            torch_dtype=torch.float16,
-        )
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                load_path,
+                quantization_config=bnb,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+            )
+        except TypeError:
+            model = AutoModelForCausalLM.from_pretrained(
+                load_path,
+                quantization_config=bnb,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                trust_remote_code=True,
+            )
+    _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")
 
     # Simple chat-ish formatting without requiring tokenizer chat template support.
     full = f"### Instruction:\n{prompt}\n\n### Response:\n"
     inputs = tokenizer(full, return_tensors="pt").to(model.device)
 
-    with torch.inference_mode():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=650,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-            repetition_penalty=1.08,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+    _emit_llm(on_llm_task, "llm_generate", 0, "Starting generation…")
+    _stderr("LLM inference starting (streamed progress when supported).")
+    dprint("brain", "generate() starting")
 
-    text = tokenizer.decode(out[0], skip_special_tokens=True)
-    # Strip prompt echo if present
-    if "### Response:" in text:
-        text = text.split("### Response:", 1)[1].strip()
+    raw_new: str | None = None
+
+    try:
+        from threading import Thread
+
+        from transformers import TextIteratorStreamer
+
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        generation_kwargs = {
+            **inputs,
+            "streamer": streamer,
+            "max_new_tokens": max_new_tokens,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "repetition_penalty": 1.08,
+            "eos_token_id": tokenizer.eos_token_id,
+        }
+
+        def _run_gen() -> None:
+            with torch.inference_mode():
+                model.generate(**generation_kwargs)
+
+        th = Thread(target=_run_gen, daemon=True)
+        th.start()
+        chunks: list[str] = []
+        n_tok = 0
+        for text in streamer:
+            chunks.append(text)
+            n_tok += 1
+            pct = min(99, int(100 * n_tok / max(1, max_new_tokens)))
+            _emit_llm(
+                on_llm_task,
+                "llm_generate",
+                pct,
+                f"Generating tokens ({n_tok}/{max_new_tokens})",
+            )
+        th.join(timeout=7200)
+        raw_new = "".join(chunks)
+        _emit_llm(on_llm_task, "llm_generate", 100, "Generation finished")
+    except Exception as e:
+        dprint("brain", "streamed generation failed, falling back", str(e))
+        _emit_llm(on_llm_task, "llm_generate", 10, "Fallback: one-shot generate…")
+        with torch.inference_mode():
+            out = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.08,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+        _emit_llm(on_llm_task, "llm_generate", 100, "Decoding…")
+        text_full = tokenizer.decode(out[0], skip_special_tokens=True)
+        if "### Response:" in text_full:
+            raw_new = text_full.split("### Response:", 1)[1].strip()
+        else:
+            raw_new = text_full
+
+    assert raw_new is not None
+    text = raw_new
 
     # Cleanup aggressively (VRAM limited)
     del model
@@ -303,6 +395,7 @@ def generate_script(
     topic_tags: list[str] | None = None,
     personality_id: str = "neutral",
     branding: BrandingSettings | None = None,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links.
@@ -310,12 +403,15 @@ def generate_script(
     """
     personality = get_personality_by_id(personality_id)
     prompt = _prompt_for_items(items, topic_tags, personality, branding=branding)
+    dprint("brain", "generate_script start", f"model_id={model_id!r}", f"items={len(items)}", f"personality={personality_id!r}")
 
     with vram_guard():
         try:
-            raw = _generate_with_transformers(model_id=model_id, prompt=prompt)
+            raw = _generate_with_transformers(model_id=model_id, prompt=prompt, on_llm_task=on_llm_task)
             data = _extract_json(raw)
-            return _to_package(data)
+            pkg = _to_package(data)
+            dprint("brain", "generate_script ok (transformers)", f"title={pkg.title[:100]!r}")
+            return pkg
         except Exception:
             # Fallback: minimal structured script without the LLM (keeps pipeline running).
             tool_title = (items[0].get("title") if items else "") or "New AI Tool"
@@ -427,5 +523,6 @@ def generate_script(
                     segments=pkg.segments,
                     cta=pkg.cta,
                 )
+            dprint("brain", "generate_script ok (fallback template)", f"title={pkg.title[:100]!r}")
             return pkg
 

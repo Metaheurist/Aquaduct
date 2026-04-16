@@ -61,6 +61,7 @@ if ($UI) {
 # Bundle the full app tree + repo files the UI reads (e.g. requirements.txt next to the frozen tree).
 $extra = @(
   "--collect-submodules", "src",
+  "--collect-submodules", "debug",
   "--add-data", "requirements.txt;.",
   "--hidden-import", "soundfile",
   "--collect-all", "soundfile"

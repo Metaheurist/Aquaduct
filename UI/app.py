@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -12,6 +13,18 @@ from UI.main_window import MainWindow
 from UI.theme import TIKTOK_QSS, build_qss, resolve_palette
 from src.single_instance import single_instance_guard
 from src.ui_settings import load_settings
+
+
+def _strip_debug_cli_args() -> None:
+    """Parse ``--debug CATS`` (or ``--debug=CATS``) then remove from argv so Qt does not see it."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--debug", type=str, default="")
+    args, rest = parser.parse_known_args(sys.argv[1:])
+    sys.argv = [sys.argv[0]] + rest
+    if args.debug:
+        from debug import apply_cli_debug
+
+        apply_cli_debug(args.debug)
 
 
 def _ensure_project_root_on_path() -> None:
@@ -26,6 +39,7 @@ def _ensure_project_root_on_path() -> None:
 
 
 def main() -> None:
+    _strip_debug_cli_args()
     _ensure_project_root_on_path()
     single_instance_guard()
     # Load HF_TOKEN (and other env vars) from repo `.env` for authenticated downloads.

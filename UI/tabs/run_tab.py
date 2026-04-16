@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
 
+from src.config import VIDEO_FORMATS
 from src.personalities import get_personality_presets
 
 
@@ -23,6 +24,28 @@ def attach_run_tab(win) -> None:
     qty_row.addWidget(win.run_qty_spin)
     qty_row.addStretch(1)
     lay.addLayout(qty_row)
+
+    fmt_row = QHBoxLayout()
+    fmt_lbl = QLabel("Video format")
+    fmt_lbl.setStyleSheet("color: #B7B7C2;")
+    fmt_row.addWidget(fmt_lbl)
+    win.video_format_combo = QComboBox()
+    win.video_format_combo.addItem("News (headlines)", "news")
+    win.video_format_combo.addItem("Cartoon", "cartoon")
+    win.video_format_combo.addItem("Explainer", "explainer")
+    cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
+    if cur_vf not in VIDEO_FORMATS:
+        cur_vf = "news"
+    idx_vf = win.video_format_combo.findData(cur_vf)
+    win.video_format_combo.setCurrentIndex(idx_vf if idx_vf >= 0 else 0)
+    fmt_row.addWidget(win.video_format_combo, 1)
+    fmt_row.addStretch(1)
+    lay.addLayout(fmt_row)
+
+    vf_hint = QLabel("Tags for the run come from the Topics tab list for this format.")
+    vf_hint.setWordWrap(True)
+    vf_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    lay.addWidget(vf_hint)
 
     # Personality selection
     p_row = QHBoxLayout()

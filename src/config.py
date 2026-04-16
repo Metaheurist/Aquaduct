@@ -1,8 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+# Pipeline + per-mode topic lists use the same IDs.
+VideoFormat = Literal["news", "cartoon", "explainer"]
+
+VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer")
+
+
+def default_topic_tags_by_mode() -> dict[str, list[str]]:
+    return {m: [] for m in VIDEO_FORMATS}
 
 
 @dataclass(frozen=True)
@@ -137,12 +146,16 @@ class BrandingSettings:
 
 @dataclass(frozen=True)
 class AppSettings:
-    topic_tags: list[str]
+    topic_tags_by_mode: dict[str, list[str]] = field(default_factory=default_topic_tags_by_mode)
+    video_format: VideoFormat = "news"
     prefer_gpu: bool = True
     try_llm_4bit: bool = True
     try_sdxl_turbo: bool = True
     background_music_path: str = ""
     hf_token: str = ""  # optional: Hugging Face access token for gated repos / API calls
+    hf_api_enabled: bool = True  # when False, saved token is not applied to HF_TOKEN (soft opt-out)
+    firecrawl_enabled: bool = False
+    firecrawl_api_key: str = ""
     personality_id: str = "auto"
     llm_model_id: str = ""
     image_model_id: str = ""

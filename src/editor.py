@@ -150,6 +150,9 @@ def assemble_microclips_then_concat(
     Builds 9:16 final video as concatenation of few-second micro-clips (one per image/beat).
     Captioning is word-by-word using timestamps over the whole audio.
     """
+    from debug import dprint
+
+    dprint("editor", "assemble_microclips_then_concat", f"images={len(images)}", f"out={out_final_mp4.name}")
     out_final_mp4.parent.mkdir(parents=True, exist_ok=True)
     out_assets_dir.mkdir(parents=True, exist_ok=True)
 
@@ -334,6 +337,9 @@ def assemble_generated_clips_then_concat(
     Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
     and syncing each clip to a slice of the narration audio.
     """
+    from debug import dprint
+
+    dprint("editor", "assemble_generated_clips_then_concat", f"clips={len(clips)}", f"out={out_final_mp4.name}")
     out_final_mp4.parent.mkdir(parents=True, exist_ok=True)
     out_assets_dir.mkdir(parents=True, exist_ok=True)
 

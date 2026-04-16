@@ -90,7 +90,7 @@ def main() -> None:
     except OSError as e:
         errors.append(f"Recreate folders: {e}")
 
-    fresh = AppSettings(topic_tags=[])
+    fresh = AppSettings()
     try:
         save_settings(fresh)
     except OSError as e:
