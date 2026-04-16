@@ -161,6 +161,12 @@ def _prompt_for_items(
         "You are a viral short-form scriptwriter focused on AI tool reviews.\n"
         "Write a ~50 second vertical video script with 6-10 few-second beats.\n"
         "Style: punchy, factual, no fluff. Visual style: high-contrast cyberpunk.\n"
+        "Enforce this structure (keep it tight):\n"
+        "- Hook (0-2s): one punchy line\n"
+        "- Context (2-6s): what it is / what's new\n"
+        "- Key points (6-20s): 2-3 concrete points\n"
+        "- Why it matters (20-30s): practical impact / who should care\n"
+        "- Close/CTA (last 2s): short follow/subscribe style line\n"
         "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
         "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
         "Constraints:\n"
@@ -174,6 +180,63 @@ def _prompt_for_items(
         f"{style_suffix}"
         f"{tag_line}"
         f"Headlines (pick ONE main tool release to review): {json.dumps(headlines, ensure_ascii=False)}\n"
+    )
+
+
+def enforce_arc(pkg: VideoPackage) -> VideoPackage:
+    """
+    Best-effort post-processor to ensure the script includes context + why-it-matters beats.
+    We don't require the model to label beats; we inject minimal beats if missing.
+    """
+    try:
+        segs = list(pkg.segments or [])
+    except Exception:
+        return pkg
+
+    # Heuristics: look for context/why language.
+    all_text = " ".join([(pkg.hook or "")] + [s.narration for s in segs] + [(pkg.cta or "")]).lower()
+    has_context = any(k in all_text for k in ("here’s what it is", "what it is", "it lets you", "it helps you", "it does", "context"))
+    has_why = any(k in all_text for k in ("why it matters", "so what", "this matters because", "impact", "useful because", "the takeaway"))
+
+    insertions: list[ScriptSegment] = []
+    if not has_context:
+        insertions.append(
+            ScriptSegment(
+                narration="Quick context: here’s what it is and what just changed.",
+                visual_prompt="clean cyberpunk infographic panel, clear labels, high contrast, 9:16",
+                on_screen_text="CONTEXT",
+            )
+        )
+    if not has_why:
+        insertions.append(
+            ScriptSegment(
+                narration="Why it matters: it saves time on a real workflow—if you use it the right way.",
+                visual_prompt="cyberpunk timeline + impact icons, neon accents, high contrast, 9:16",
+                on_screen_text="WHY IT MATTERS",
+            )
+        )
+
+    if not insertions:
+        return pkg
+
+    # Place insertions after first segment if possible.
+    out: list[ScriptSegment] = []
+    if segs:
+        out.append(segs[0])
+        out.extend(insertions)
+        out.extend(segs[1:])
+    else:
+        out = insertions
+
+    # Keep overall beat count sane.
+    out = out[: max(6, min(10, len(out)))]
+    return VideoPackage(
+        title=pkg.title,
+        description=pkg.description,
+        hashtags=list(pkg.hashtags),
+        hook=pkg.hook,
+        segments=out,
+        cta=pkg.cta,
     )
 
 

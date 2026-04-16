@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
 
 @dataclass(frozen=True)
@@ -71,8 +72,6 @@ def download_model(repo_id: str, *, cache_dir: Path) -> Path:
         repo_id=repo_id,
         cache_dir=str(cache_dir),
         local_dir=None,
-        local_dir_use_symlinks=False,
-        resume_download=True,
     )
     return Path(local_dir)
 
@@ -82,6 +81,20 @@ def _safe_repo_dirname(repo_id: str) -> str:
     s = repo_id.strip().replace("/", "__")
     s = re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
     return s[:120] or "model"
+
+
+def project_model_dirname(repo_id: str) -> str:
+    """Folder name under `models/` for a Hugging Face repo id (matches `download_model_to_project`)."""
+    return _safe_repo_dirname(repo_id)
+
+
+def _hf_token() -> str | bool | None:
+    """Prefer explicit token from env (HF_TOKEN / HUGGINGFACEHUB_API_TOKEN); else let hub use defaults."""
+    for key in ("HF_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+        t = os.environ.get(key)
+        if t and str(t).strip():
+            return str(t).strip()
+    return None  # huggingface_hub falls back to cached login / env
 
 
 def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None) -> Path:
@@ -95,12 +108,17 @@ def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None
     local_dir = models_dir / _safe_repo_dirname(repo_id)
     local_dir.mkdir(parents=True, exist_ok=True)
 
+    token = _hf_token()
+    max_workers = int(os.environ.get("HF_SNAPSHOT_MAX_WORKERS", "8"))
+    max_workers = max(1, min(32, max_workers))
+
     snapshot_download(
         repo_id=repo_id,
         local_dir=str(local_dir),
-        local_dir_use_symlinks=False,
-        resume_download=True,
         tqdm_class=tqdm_class,
+        token=token,
+        max_workers=max_workers,
+        etag_timeout=float(os.environ.get("HF_ETAG_TIMEOUT", "30")),
     )
     return local_dir
 

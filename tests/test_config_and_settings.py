@@ -36,4 +36,6 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     assert s2.video.fps == 24
     assert s2.video.images_per_video == 5
     assert s2.video.cleanup_images_after_run is True
+    # Audio defaults/persistence should not break loading
+    assert s2.video.audio_polish in {"off", "basic", "strong"}
 

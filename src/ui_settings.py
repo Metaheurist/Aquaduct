@@ -56,6 +56,35 @@ def load_settings() -> AppSettings:
         clips_per_video=int(video_raw.get("clips_per_video", 3)),
         clip_seconds=float(video_raw.get("clip_seconds", 4.0)),
         cleanup_images_after_run=bool(video_raw.get("cleanup_images_after_run", False)),
+        high_quality_topic_selection=bool(video_raw.get("high_quality_topic_selection", True)),
+        fetch_article_text=bool(video_raw.get("fetch_article_text", True)),
+        llm_factcheck=bool(video_raw.get("llm_factcheck", True)),
+        prompt_conditioning=bool(video_raw.get("prompt_conditioning", True)),
+        seed_base=(int(video_raw.get("seed_base")) if str(video_raw.get("seed_base", "")).strip().lstrip("-").isdigit() else None),
+        quality_retries=int(video_raw.get("quality_retries", 2)),
+        enable_motion=bool(video_raw.get("enable_motion", True)),
+        transition_strength=str(video_raw.get("transition_strength", "low"))
+        if str(video_raw.get("transition_strength", "low")) in ("off", "low", "med")
+        else "low",
+        audio_polish=str(video_raw.get("audio_polish", "basic"))
+        if str(video_raw.get("audio_polish", "basic")) in ("off", "basic", "strong")
+        else "basic",
+        music_ducking=bool(video_raw.get("music_ducking", True)),
+        music_ducking_amount=float(video_raw.get("music_ducking_amount", 0.7)),
+        music_fade_s=float(video_raw.get("music_fade_s", 1.2)),
+        sfx_mode=str(video_raw.get("sfx_mode", "off")) if str(video_raw.get("sfx_mode", "off")) in ("off", "subtle") else "off",
+        captions_enabled=bool(video_raw.get("captions_enabled", True)),
+        caption_highlight_intensity=str(video_raw.get("caption_highlight_intensity", "strong"))
+        if str(video_raw.get("caption_highlight_intensity", "strong")) in ("subtle", "strong")
+        else "strong",
+        caption_max_words=int(video_raw.get("caption_max_words", 8)),
+        facts_card_enabled=bool(video_raw.get("facts_card_enabled", True)),
+        facts_card_position=str(video_raw.get("facts_card_position", "top_left"))
+        if str(video_raw.get("facts_card_position", "top_left")) in ("top_left", "top_right")
+        else "top_left",
+        facts_card_duration=str(video_raw.get("facts_card_duration", "short"))
+        if str(video_raw.get("facts_card_duration", "short")) in ("short", "long")
+        else "short",
     )
 
     branding_raw = data.get("branding", {}) if isinstance(data, dict) else {}

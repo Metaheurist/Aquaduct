@@ -36,3 +36,13 @@ def test_auto_pick_tiebreak_llm_failure_falls_back(monkeypatch):
     )
     assert r.preset.id in {"neutral", "hype", "analytical", "urgent", "cozy", "skeptical", "contrarian", "comedic"}
 
+
+def test_factcheck_extract_claims_finds_numbers_and_superlatives():
+    from src.factcheck import extract_claims
+
+    claims = extract_claims("It is 30% faster and the best tool ever. It always works.")
+    kinds = {c.kind for c in claims}
+    assert "number" in kinds
+    assert "superlative" in kinds
+    assert "absolute" in kinds
+

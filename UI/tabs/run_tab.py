@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
 
 from src.personalities import get_personality_presets
 
@@ -46,6 +46,7 @@ def attach_run_tab(win) -> None:
 
     win.personality_hint = QLabel("")
     win.personality_hint.setStyleSheet("color: #B7B7C2;")
+    win.personality_hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
     lay.addWidget(win.personality_hint)
 
     win.run_status = QLabel("Idle")
@@ -63,6 +64,14 @@ def attach_run_tab(win) -> None:
     win.run_btn.clicked.connect(win._on_run)
     row.addWidget(win.run_btn)
 
+    win.preview_btn = QPushButton("Preview")
+    win.preview_btn.clicked.connect(win._on_preview)
+    row.addWidget(win.preview_btn)
+
+    win.storyboard_btn = QPushButton("Storyboard Preview")
+    win.storyboard_btn.clicked.connect(win._on_storyboard_preview)
+    row.addWidget(win.storyboard_btn)
+
     win.open_videos_btn = QPushButton("Open videos folder")
     win.open_videos_btn.clicked.connect(win._open_videos)
     row.addWidget(win.open_videos_btn)
@@ -73,5 +82,23 @@ def attach_run_tab(win) -> None:
 
     row.addStretch(1)
     lay.addLayout(row)
+
+    regen_header = QLabel("Regenerate a scene (last run)")
+    regen_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 10px;")
+    lay.addWidget(regen_header)
+
+    regen_row = QHBoxLayout()
+    regen_lbl = QLabel("Scene #")
+    regen_lbl.setStyleSheet("color: #B7B7C2;")
+    regen_row.addWidget(regen_lbl)
+    win.regen_scene_spin = QSpinBox()
+    win.regen_scene_spin.setRange(1, 12)
+    win.regen_scene_spin.setValue(1)
+    regen_row.addWidget(win.regen_scene_spin)
+    win.regen_scene_btn = QPushButton("Regenerate scene")
+    win.regen_scene_btn.clicked.connect(win._regenerate_scene_from_last_run)
+    regen_row.addWidget(win.regen_scene_btn)
+    regen_row.addStretch(1)
+    lay.addLayout(regen_row)
 
     win.tabs.addTab(w, "Run")

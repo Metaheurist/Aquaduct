@@ -72,6 +72,31 @@ class VideoSettings:
     clips_per_video: int = 3
     clip_seconds: float = 4.0
     cleanup_images_after_run: bool = False
+    # Content-quality toggles (v1 defaults on)
+    high_quality_topic_selection: bool = True
+    fetch_article_text: bool = True
+    llm_factcheck: bool = True
+    prompt_conditioning: bool = True
+    # Visual quality controls
+    seed_base: int | None = None
+    quality_retries: int = 2
+    enable_motion: bool = True
+    transition_strength: Literal["off", "low", "med"] = "low"
+
+    # Audio polish (v1)
+    audio_polish: Literal["off", "basic", "strong"] = "basic"
+    music_ducking: bool = True
+    music_ducking_amount: float = 0.7
+    music_fade_s: float = 1.2
+    sfx_mode: Literal["off", "subtle"] = "off"
+
+    # Captions + on-screen facts (retention / clarity)
+    captions_enabled: bool = True
+    caption_highlight_intensity: Literal["subtle", "strong"] = "strong"
+    caption_max_words: int = 8
+    facts_card_enabled: bool = True
+    facts_card_position: Literal["top_left", "top_right"] = "top_left"
+    facts_card_duration: Literal["short", "long"] = "short"
 
 
 @dataclass(frozen=True)

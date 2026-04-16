@@ -137,3 +137,49 @@ def rate_model_fit(*, kind: str, speed: str, vram_gb: float | None, ram_gb: floa
 
     return "UNKNOWN", "Unknown model kind."
 
+
+def vram_requirement_hint(
+    *,
+    kind: str,
+    repo_id: str,
+    speed: str,
+    pair_image_repo_id: str = "",
+) -> str:
+    """
+    Short UI label for typical GPU VRAM needs (heuristic, not a guarantee).
+    Shown next to OK/RISKY badges in Settings.
+    """
+    rid = (repo_id or "").strip()
+    spd = (speed or "slow").lower()
+    pair = (pair_image_repo_id or "").strip()
+
+    if kind == "voice":
+        if "xtts" in rid.lower() or "coqui" in rid.lower():
+            return "≈ 4–6 GB VRAM"
+        return "CPU OK"
+
+    if kind == "script":
+        if spd == "fastest":
+            return "≈ 3 GB VRAM"
+        if spd == "faster":
+            return "≈ 4 GB VRAM"
+        return "≈ 6–8 GB VRAM"
+
+    if kind == "video":
+        if pair:
+            return "≈ 10–12 GB VRAM"
+        rl = rid.lower()
+        if "stable-diffusion-xl-base" in rl and "turbo" not in rl:
+            return "≈ 8–10 GB VRAM"
+        if "sdxl-turbo" in rl or rl.endswith("sdxl-turbo"):
+            return "≈ 6–8 GB VRAM"
+        if "stable-diffusion-v1-5" in rl or "v1-5" in rl:
+            return "≈ 4–6 GB VRAM"
+        if "zeroscope" in rl:
+            return "≈ 6–8 GB VRAM"
+        if "stable-video-diffusion" in rl:
+            return "≈ 8–10 GB VRAM"
+        return "≈ 6–8 GB VRAM"
+
+    return "—"
+

@@ -11,6 +11,7 @@ class DownloadPopup(QDialog):
     """
 
     cancel_requested = pyqtSignal()
+    pause_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, title: str = "Downloading models") -> None:
         super().__init__(parent)
@@ -27,6 +28,13 @@ class DownloadPopup(QDialog):
         self.title = QLabel(title)
         self.title.setStyleSheet("font-size: 14px; font-weight: 800;")
         top.addWidget(self.title, 1)
+
+        pause = QPushButton("⏸")
+        pause.setObjectName("pauseBtn")
+        pause.setFixedSize(44, 32)
+        pause.setToolTip("Pause (you can resume later)")
+        pause.clicked.connect(self._request_pause)
+        top.addWidget(pause, 0, Qt.AlignmentFlag.AlignRight)
 
         close = QPushButton("✕")
         close.setObjectName("closeBtn")
@@ -48,6 +56,10 @@ class DownloadPopup(QDialog):
 
     def _request_cancel(self) -> None:
         self.cancel_requested.emit()
+        self.reject()
+
+    def _request_pause(self) -> None:
+        self.pause_requested.emit()
         self.reject()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]

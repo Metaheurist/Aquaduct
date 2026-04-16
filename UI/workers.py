@@ -5,24 +5,47 @@ import traceback
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.config import AppSettings
-from src.crawler import fetch_latest_items
+from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item
 from src.topic_discovery import discover_topics_from_items
 from src.model_manager import download_model_to_project
 
 import main as pipeline_main
+from src.brain import VideoPackage, generate_script
+from src.branding_video import apply_palette_to_prompts
+from src.personality_auto import auto_pick_personality
+from src.storyboard import build_storyboard, render_preview_grid, write_manifest
+from src.utils_vram import prepare_for_next_model
 
 
 class PipelineWorker(QThread):
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
 
-    def __init__(self, settings: AppSettings):
+    def __init__(
+        self,
+        settings: AppSettings,
+        *,
+        prebuilt_pkg: VideoPackage | None = None,
+        prebuilt_sources=None,
+        prebuilt_prompts=None,
+        prebuilt_seeds=None,
+    ):
         super().__init__()
         self.settings = settings
+        self.prebuilt_pkg = prebuilt_pkg
+        self.prebuilt_sources = prebuilt_sources
+        self.prebuilt_prompts = prebuilt_prompts
+        self.prebuilt_seeds = prebuilt_seeds
 
     def run(self) -> None:
         try:
-            out = pipeline_main.run_once(settings=self.settings)
+            out = pipeline_main.run_once(
+                settings=self.settings,
+                prebuilt_pkg=self.prebuilt_pkg,
+                prebuilt_sources=self.prebuilt_sources,
+                prebuilt_prompts=self.prebuilt_prompts,
+                prebuilt_seeds=self.prebuilt_seeds,
+            )
             if out is None:
                 self.done.emit("")
             else:
@@ -103,14 +126,26 @@ class ModelDownloadWorker(QThread):
         self.repo_ids = [r for r in repo_ids if r]
         self.models_dir = models_dir
         self.title = title
-        self._cancel_requested = False
+        self._stop_requested = False
+        self._stop_reason: str = "cancelled"  # "cancelled" | "paused"
+        self.current_index: int = 0  # 1-based index into repo_ids while running
+        self.current_repo_id: str = ""
 
     def cancel(self) -> None:
         """
         Best-effort cancellation.
         We signal our progress bridge to abort; partial files are left in place so a later run can resume.
         """
-        self._cancel_requested = True
+        self._stop_requested = True
+        self._stop_reason = "cancelled"
+
+    def pause(self) -> None:
+        """
+        Best-effort pause.
+        Same mechanics as cancel, but reported as "Paused" so UI can offer resume semantics.
+        """
+        self._stop_requested = True
+        self._stop_reason = "paused"
 
     def run(self) -> None:
         try:
@@ -134,8 +169,8 @@ class ModelDownloadWorker(QThread):
 
                 def refresh(self, *args, **kwargs):  # noqa: D401
                     try:
-                        if worker._cancel_requested:
-                            raise _CancelledDownload("Cancelled")
+                        if worker._stop_requested:
+                            raise _CancelledDownload(worker._stop_reason)
 
                         def _human_bytes(x: float | int | None) -> str:
                             if x is None:
@@ -190,19 +225,193 @@ class ModelDownloadWorker(QThread):
                     return super().refresh(*args, **kwargs)
 
             for i, repo_id in enumerate(self.repo_ids, start=1):
-                if self._cancel_requested:
-                    self.done.emit("Cancelled")
+                self.current_index = int(i)
+                self.current_repo_id = str(repo_id or "")
+
+                if self._stop_requested:
+                    self.done.emit("Paused" if self._stop_reason == "paused" else "Cancelled")
                     return
                 base = int(((i - 1) / total_models) * 100)
                 self.progress.emit(base, f"[{i}/{total_models}] {repo_id}")
                 try:
                     download_model_to_project(repo_id, models_dir=self.models_dir, tqdm_class=QtTqdm)
                 except _CancelledDownload:
-                    self.done.emit("Cancelled")
+                    self.done.emit("Paused" if self._stop_reason == "paused" else "Cancelled")
                     return
                 self.progress.emit(int((i / total_models) * 100), f"Downloaded: {repo_id}")
 
             self.done.emit("Done")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class PreviewWorker(QThread):
+    progress = pyqtSignal(int, str)  # percent, status
+    done = pyqtSignal(object, object, object, str, str)  # pkg, sources, prompts, personality_id, confidence
+    failed = pyqtSignal(str)
+
+    def __init__(self, settings: AppSettings):
+        super().__init__()
+        self.settings = settings
+
+    def run(self) -> None:
+        try:
+            paths = pipeline_main.get_paths()
+            models = pipeline_main.get_models()
+            app = self.settings
+            llm_id = (app.llm_model_id or "").strip() or models.llm_id
+
+            self.progress.emit(5, "Fetching headlines…")
+            if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+            else:
+                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+            item = pick_one_item(items)
+            if not item:
+                self.failed.emit("No new items found.")
+                return
+
+            sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+            titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+
+            self.progress.emit(25, "Choosing personality…")
+            picked = auto_pick_personality(
+                requested_id=getattr(app, "personality_id", "auto"),
+                llm_model_id=llm_id,
+                titles=titles,
+                topic_tags=list(app.topic_tags),
+            )
+
+            self.progress.emit(45, "Generating script + storyboard…")
+            pkg = generate_script(
+                model_id=llm_id,
+                items=sources,
+                topic_tags=app.topic_tags,
+                personality_id=picked.preset.id,
+                branding=getattr(app, "branding", None),
+            )
+
+            prompts = [s.visual_prompt for s in pkg.segments][:10]
+            prompts = apply_palette_to_prompts(prompts, getattr(app, "branding", None))
+
+            self.progress.emit(100, "Preview ready.")
+            # Minimal confidence signal: more sources = better; tag match tends to correlate with relevance.
+            confidence = "High" if len(sources) >= 3 else ("Medium" if len(sources) == 2 else "Low")
+            self.done.emit(pkg, sources, prompts, picked.preset.id, confidence)
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class StoryboardWorker(QThread):
+    progress = pyqtSignal(int, str)
+    done = pyqtSignal(object, object)  # manifest_path, grid_png_path
+    failed = pyqtSignal(str)
+
+    def __init__(self, settings: AppSettings):
+        super().__init__()
+        self.settings = settings
+
+    def run(self) -> None:
+        try:
+            from pathlib import Path
+
+            paths = pipeline_main.get_paths()
+            models = pipeline_main.get_models()
+            app = self.settings
+
+            llm_id = (app.llm_model_id or "").strip() or models.llm_id
+            img_id = (app.image_model_id or "").strip() or models.sdxl_turbo_id
+
+            self.progress.emit(5, "Fetching headlines…")
+            if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+            else:
+                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=app.topic_tags)
+            item = pick_one_item(items)
+            if not item:
+                self.failed.emit("No new items found.")
+                return
+            sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+            titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+
+            self.progress.emit(20, "Choosing personality…")
+            picked = auto_pick_personality(
+                requested_id=getattr(app, "personality_id", "auto"),
+                llm_model_id=llm_id,
+                titles=titles,
+                topic_tags=list(app.topic_tags),
+            )
+
+            self.progress.emit(35, "Generating script…")
+            pkg = generate_script(
+                model_id=llm_id,
+                items=sources,
+                topic_tags=app.topic_tags,
+                personality_id=picked.preset.id,
+                branding=getattr(app, "branding", None),
+            )
+
+            prepare_for_next_model()
+
+            safe_dir = pipeline_main.safe_title_to_dirname(pkg.title)
+            video_dir = paths.videos_dir / safe_dir
+            assets_dir = video_dir / "assets"
+            previews_dir = assets_dir / "previews"
+            previews_dir.mkdir(parents=True, exist_ok=True)
+
+            self.progress.emit(55, "Building storyboard…")
+            sb = build_storyboard(pkg, seed_base=getattr(app.video, "seed_base", None), branding=getattr(app, "branding", None), max_scenes=8)
+
+            from src.artist import generate_images
+
+            prompts = [s.prompt for s in sb.scenes]
+            seeds = [s.seed for s in sb.scenes]
+
+            self.progress.emit(70, "Rendering first-frame previews…")
+            gen = generate_images(
+                sdxl_turbo_model_id=img_id,
+                prompts=prompts,
+                out_dir=previews_dir,
+                max_images=len(prompts),
+                seeds=seeds,
+                steps=4,  # quality-first preview
+            )
+            scene_paths = [g.path for g in gen]
+
+            # Persist manifest with preview paths
+            for i, pth in enumerate(scene_paths, start=1):
+                try:
+                    sb.scenes[i - 1].preview_image_path  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+
+            manifest = assets_dir / "manifest.json"
+            # write_manifest handles dataclasses; we also add preview_image_path fields
+            write_manifest(
+                manifest,
+                storyboard=sb,
+                settings={"video": dict(vars(app.video)), "models": {"llm": llm_id, "img": img_id}},
+            )
+            try:
+                import json as _json
+
+                m = _json.loads(manifest.read_text(encoding="utf-8"))
+                for i, pth in enumerate(scene_paths, start=1):
+                    if i - 1 < len(m.get("scenes", [])):
+                        m["scenes"][i - 1]["preview_image_path"] = str(pth)
+                        m["scenes"][i - 1]["status"] = "pending"
+                manifest.write_text(_json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+            except Exception:
+                pass
+
+            self.progress.emit(88, "Building preview grid…")
+            grid = previews_dir / "grid.png"
+            render_preview_grid(scene_paths=scene_paths, out_grid=grid, cols=4, thumb=256)
+
+            self.progress.emit(100, "Storyboard preview ready.")
+            self.done.emit(manifest, grid)
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")

@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QApplication
 
 from UI.main_window import MainWindow
 from UI.theme import TIKTOK_QSS, build_qss, resolve_palette
+from src.single_instance import single_instance_guard
 from src.ui_settings import load_settings
 
 
@@ -26,6 +27,7 @@ def _ensure_project_root_on_path() -> None:
 
 def main() -> None:
     _ensure_project_root_on_path()
+    single_instance_guard()
     # Load HF_TOKEN (and other env vars) from repo `.env` for authenticated downloads.
     try:
         from dotenv import load_dotenv
@@ -34,6 +36,8 @@ def main() -> None:
     except Exception:
         pass
     app = QApplication(sys.argv)
+    # Windows native style often ignores QSS colors inside QSpinBox/QComboBox; Fusion paints consistently.
+    app.setStyle("Fusion")
     # Apply saved branding theme if enabled (fallback to default).
     try:
         settings = load_settings()
