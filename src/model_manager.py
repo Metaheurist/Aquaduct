@@ -4,7 +4,7 @@ import os
 import re
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -101,6 +101,140 @@ def _safe_repo_dirname(repo_id: str) -> str:
 def project_model_dirname(repo_id: str) -> str:
     """Folder name under `models/` for a Hugging Face repo id (matches `download_model_to_project`)."""
     return _safe_repo_dirname(repo_id)
+
+
+def project_dirname_to_repo_id(dirname: str) -> str | None:
+    """
+    Reverse of ``project_model_dirname``: ``owner__repo-name`` -> ``owner/repo-name``.
+    Uses the first ``__`` only (matches how we encode ``/``).
+    """
+    d = str(dirname or "").strip()
+    if "__" not in d:
+        return None
+    a, b = d.split("__", 1)
+    a, b = a.strip(), b.strip()
+    if not a or not b:
+        return None
+    return f"{a}/{b}"
+
+
+@dataclass(frozen=True)
+class ModelIntegrityReport:
+    """Result of comparing a local ``models/<encoded-repo>/`` tree to the Hugging Face Hub."""
+
+    repo_id: str
+    ok: bool
+    revision: str = ""
+    checked_files: int = 0
+    missing_paths: list[str] = field(default_factory=list)
+    extra_paths: list[str] = field(default_factory=list)
+    mismatches: list[dict[str, str]] = field(default_factory=list)
+    error: str = ""
+    warning: str = ""
+
+
+def verify_project_model_integrity(
+    repo_id: str,
+    *,
+    models_dir: Path,
+    token: str | bool | None = None,
+) -> ModelIntegrityReport:
+    """
+    Verify a project-local snapshot using Hugging Face Hub metadata.
+
+    Uses ``huggingface_hub.HfApi.verify_repo_checksums``: LFS files are checked with SHA-256,
+    non-LFS files with the git blob id (SHA-1). Requires network access.
+
+    A report with ``ok=False`` means missing files, hash mismatches (corruption), or an error
+    (e.g. offline, wrong token for a gated repo).
+    """
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return ModelIntegrityReport(repo_id=repo_id, ok=False, error="empty repo id")
+
+    local_dir = models_dir / project_model_dirname(rid)
+    if not local_dir.is_dir():
+        return ModelIntegrityReport(repo_id=rid, ok=False, error="not installed under models/")
+
+    if _dir_size_bytes(local_dir) < int(min_bytes_for_snapshot()):
+        return ModelIntegrityReport(repo_id=rid, ok=False, error="folder too small — looks incomplete or empty")
+
+    try:
+        from huggingface_hub import HfApi  # type: ignore
+
+        tok = _hf_token() if token is None else token
+        api = HfApi(token=tok)
+        fv = api.verify_repo_checksums(rid, local_dir=str(local_dir.resolve()))
+    except Exception as e:
+        msg = str(e).strip() or type(e).__name__
+        if len(msg) > 500:
+            msg = msg[:497] + "..."
+        return ModelIntegrityReport(repo_id=rid, ok=False, error=msg)
+
+    mismatches: list[dict[str, str]] = []
+    for m in fv.mismatches:
+        if isinstance(m, dict):
+            mismatches.append(
+                {
+                    "path": str(m.get("path", "")),
+                    "expected": str(m.get("expected", "")),
+                    "actual": str(m.get("actual", "")),
+                    "algorithm": str(m.get("algorithm", "")),
+                }
+            )
+
+    missing = list(fv.missing_paths)
+    extra = list(fv.extra_paths)
+    failed = len(missing) > 0 or len(mismatches) > 0
+    warn = ""
+    if extra:
+        n = len(extra)
+        preview = ", ".join(extra[:5])
+        if n > 5:
+            preview += f", … (+{n - 5} more)"
+        warn = f"{n} unexpected extra file(s) on disk (not on Hub main tree): {preview}"
+
+    return ModelIntegrityReport(
+        repo_id=rid,
+        ok=not failed,
+        revision=str(fv.revision or ""),
+        checked_files=int(fv.checked_count),
+        missing_paths=missing,
+        extra_paths=extra,
+        mismatches=mismatches,
+        error="",
+        warning=warn,
+    )
+
+
+def min_bytes_for_snapshot() -> int:
+    """Minimum on-disk bytes to treat a folder as a plausible model snapshot (see ``model_has_local_snapshot``)."""
+    return 256_000
+
+
+def list_installed_repo_ids_from_disk(models_dir: Path) -> list[str]:
+    """
+    Discover ``repo_id`` values that have a non-trivial folder under ``models_dir/``.
+    """
+    models_dir = Path(models_dir)
+    if not models_dir.is_dir():
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    try:
+        for p in sorted(models_dir.iterdir()):
+            if not p.is_dir():
+                continue
+            rid = project_dirname_to_repo_id(p.name)
+            if not rid:
+                continue
+            if model_has_local_snapshot(rid, models_dir=models_dir, min_bytes=min_bytes_for_snapshot()):
+                if rid not in seen:
+                    seen.add(rid)
+                    out.append(rid)
+    except Exception:
+        return out
+    return out
 
 
 def _iter_files(root: Path) -> Iterable[Path]:
@@ -229,7 +363,7 @@ def resolve_pretrained_load_path(repo_id: str, *, models_dir: Path) -> str:
     return rid
 
 
-def model_has_local_snapshot(repo_id: str, *, models_dir: Path, min_bytes: int = 256_000) -> bool:
+def model_has_local_snapshot(repo_id: str, *, models_dir: Path, min_bytes: int | None = None) -> bool:
     """
     True if ``models_dir/<repo_folder>/`` exists and has at least ``min_bytes`` on disk
     (avoids counting empty/partial folders as "installed").
@@ -240,7 +374,8 @@ def model_has_local_snapshot(repo_id: str, *, models_dir: Path, min_bytes: int =
     p = models_dir / project_model_dirname(rid)
     if not p.is_dir():
         return False
-    return _dir_size_bytes(p) >= int(min_bytes)
+    mb = int(min_bytes) if min_bytes is not None else min_bytes_for_snapshot()
+    return _dir_size_bytes(p) >= mb
 
 
 def probe_hf_model(

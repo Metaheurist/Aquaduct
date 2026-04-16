@@ -38,6 +38,7 @@ models/
 
 # Local app state (do not commit)
 ui_settings.json
+data/upload_tasks.json
 data/news_cache/seen.json
 data/news_cache/seen_titles.json
 data/news_cache/seen_*.json

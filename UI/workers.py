@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -13,6 +14,7 @@ from src.model_manager import (
     load_hf_size_cache,
     probe_hf_model,
     save_hf_size_cache,
+    verify_project_model_integrity,
 )
 
 import main as pipeline_main
@@ -145,24 +147,147 @@ class TopicDiscoverWorker(QThread):
     done = pyqtSignal(list)
     failed = pyqtSignal(str)
 
-    def __init__(self, settings: AppSettings, *, limit: int = 12):
+    def __init__(self, settings: AppSettings, *, limit: int = 12, topic_mode: str = "news"):
         super().__init__()
         self.settings = settings
         self.limit = limit
+        self.topic_mode = topic_mode
 
     def run(self) -> None:
         try:
-            dprint("topics", "TopicDiscoverWorker", f"limit={self.limit}")
+            dprint("topics", "TopicDiscoverWorker", f"limit={self.limit}", f"mode={self.topic_mode}")
             app = self.settings
             items = fetch_latest_items(
                 limit=max(5, int(self.limit)),
-                topic_tags=topic_tags_for_mode(app, "news"),
+                topic_tags=topic_tags_for_mode(app, self.topic_mode),
+                topic_mode=self.topic_mode,
                 **_firecrawl_kwargs(app),
             )
             topics = discover_topics_from_items(items, limit=40)
             self.done.emit(topics)
         except Exception as e:
             tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class TikTokUploadWorker(QThread):
+    """Upload final.mp4 for a Tasks row to TikTok inbox (Content Posting API)."""
+
+    finished_ok = pyqtSignal(str, str, str, float)  # message, access_token, refresh_token, expires_at_unix
+    failed = pyqtSignal(str)
+
+    def __init__(self, settings: AppSettings, task_id: str):
+        super().__init__()
+        self.settings = settings
+        self.task_id = task_id
+
+    def run(self) -> None:
+        from pathlib import Path
+
+        from src.tiktok_post import ensure_fresh_access_token, upload_local_video_to_inbox
+        from src.upload_tasks import load_tasks, set_task_status
+
+        try:
+            tasks = load_tasks()
+            t = next((x for x in tasks if x.id == self.task_id), None)
+            if not t:
+                self.failed.emit("Task not found")
+                return
+            if getattr(self.settings, "tiktok_publishing_mode", "inbox") != "inbox":
+                self.failed.emit("Direct publish is not implemented — use Inbox mode in the API tab (video.upload).")
+                return
+            s = self.settings
+            access, refresh, exp = ensure_fresh_access_token(
+                str(s.tiktok_client_key),
+                str(s.tiktok_client_secret),
+                str(s.tiktok_access_token or ""),
+                str(s.tiktok_refresh_token or ""),
+                float(s.tiktok_token_expires_at or 0),
+            )
+            vid = Path(t.video_dir) / "final.mp4"
+            _pid, msg = upload_local_video_to_inbox(access, vid)
+            set_task_status(self.task_id, "posted", "")
+            self.finished_ok.emit(msg, access, refresh, exp)
+        except Exception as e:
+            tb = traceback.format_exc()
+            try:
+                from src.upload_tasks import set_task_status
+
+                set_task_status(self.task_id, "failed", str(e))
+            except Exception:
+                pass
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class YouTubeUploadWorker(QThread):
+    """Upload final.mp4 for a Tasks row via YouTube Data API (resumable upload)."""
+
+    finished_ok = pyqtSignal(str, str, str, float)  # message, access_token, refresh_token, expires_at_unix
+    failed = pyqtSignal(str)
+
+    def __init__(self, settings: AppSettings, task_id: str):
+        super().__init__()
+        self.settings = settings
+        self.task_id = task_id
+
+    def run(self) -> None:
+        from pathlib import Path
+
+        from src.upload_tasks import load_tasks, set_task_status, set_youtube_upload_result
+        from src.youtube_upload import (
+            build_shorts_title_description,
+            ensure_youtube_access_token,
+            upload_mp4_resumable,
+        )
+
+        try:
+            tasks = load_tasks()
+            t = next((x for x in tasks if x.id == self.task_id), None)
+            if not t:
+                self.failed.emit("Task not found")
+                return
+            s = self.settings
+            if not bool(getattr(s, "youtube_enabled", False)):
+                self.failed.emit("YouTube uploads are disabled — enable YouTube in the API tab.")
+                return
+            access, refresh, exp = ensure_youtube_access_token(
+                str(s.youtube_client_id or ""),
+                str(s.youtube_client_secret or ""),
+                str(s.youtube_access_token or ""),
+                str(s.youtube_refresh_token or ""),
+                float(s.youtube_token_expires_at or 0),
+            )
+            vid_path = Path(t.video_dir) / "final.mp4"
+            title, desc = build_shorts_title_description(
+                Path(t.video_dir),
+                add_shorts_hashtag=bool(getattr(s, "youtube_add_shorts_hashtag", True)),
+            )
+            priv = str(getattr(s, "youtube_privacy_status", "private") or "private")
+            if priv not in ("public", "unlisted", "private"):
+                priv = "private"
+            yid = upload_mp4_resumable(
+                access,
+                vid_path,
+                title=title,
+                description=desc,
+                privacy_status=priv,
+            )
+            set_youtube_upload_result(self.task_id, video_id=yid, error="")
+            set_task_status(self.task_id, "posted", "")
+            self.finished_ok.emit(
+                f"Uploaded to YouTube — video id {yid} (open studio.youtube.com to manage).",
+                access,
+                refresh,
+                exp,
+            )
+        except Exception as e:
+            tb = traceback.format_exc()
+            try:
+                from src.upload_tasks import set_youtube_upload_result
+
+                set_youtube_upload_result(self.task_id, video_id="", error=str(e))
+            except Exception:
+                pass
             self.failed.emit(f"{e}\n\n{tb}")
 
 
@@ -307,6 +432,80 @@ class ModelDownloadWorker(QThread):
                 self.progress.emit("download", 100, f"Downloaded: {repo_id}")
 
             self.done.emit("Done")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class ModelIntegrityVerifyWorker(QThread):
+    """
+    Compare local ``models/<repo>/`` files to Hugging Face Hub (per-file checksums).
+
+    Large models can take several minutes (reads full weight files).
+    """
+
+    progress = pyqtSignal(str, str)  # repo_id, status line
+    done = pyqtSignal(str)  # multiline summary for the log
+    failed = pyqtSignal(str)
+
+    def __init__(self, *, repo_ids: list[str], models_dir, scope_label: str = ""):
+        super().__init__()
+        self.repo_ids = [str(r).strip() for r in (repo_ids or []) if str(r).strip()]
+        self.models_dir = models_dir
+        self.scope_label = str(scope_label or "").strip()
+
+    def run(self) -> None:
+        try:
+            lines: list[str] = []
+            hdr = "Model integrity check (Hugging Face Hub checksums)"
+            if self.scope_label:
+                hdr += f" — {self.scope_label}"
+            lines.append(hdr)
+
+            if not self.repo_ids:
+                lines.append("No repository ids to verify.")
+                self.done.emit("\n".join(lines))
+                return
+
+            n = len(self.repo_ids)
+            ok_n = 0
+            bad_n = 0
+            for i, rid in enumerate(self.repo_ids):
+                self.progress.emit(rid, f"[{i + 1}/{n}] Verifying…")
+                rpt = verify_project_model_integrity(rid, models_dir=Path(self.models_dir))
+                lines.append(f"--- {rpt.repo_id} ---")
+                if rpt.error:
+                    lines.append(f"  ERROR: {rpt.error}")
+                    bad_n += 1
+                    continue
+                if rpt.ok:
+                    rev = rpt.revision or ""
+                    if len(rev) > 12:
+                        rev_s = f" (rev {rev[:12]}…)"
+                    elif rev:
+                        rev_s = f" (rev {rev})"
+                    else:
+                        rev_s = ""
+                    lines.append(f"  OK — {rpt.checked_files} file(s) matched{rev_s}")
+                    ok_n += 1
+                else:
+                    bad_n += 1
+                    if rpt.missing_paths:
+                        lines.append(f"  Missing on disk ({len(rpt.missing_paths)}): " + ", ".join(rpt.missing_paths[:8]))
+                        if len(rpt.missing_paths) > 8:
+                            lines.append(f"    … +{len(rpt.missing_paths) - 8} more")
+                    if rpt.mismatches:
+                        lines.append(f"  Hash mismatch / corruption ({len(rpt.mismatches)} file(s)):")
+                        for mm in rpt.mismatches[:5]:
+                            lines.append(f"    - {mm.get('path','?')} ({mm.get('algorithm','?')})")
+                        if len(rpt.mismatches) > 5:
+                            lines.append(f"    … +{len(rpt.mismatches) - 5} more")
+                    lines.append("  Re-download this model from the Download menu if corruption is suspected.")
+                if rpt.warning:
+                    lines.append(f"  Note: {rpt.warning}")
+
+            lines.append(f"Summary: {ok_n} ok, {bad_n} failed, {n} total.")
+            self.done.emit("\n".join(lines))
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")

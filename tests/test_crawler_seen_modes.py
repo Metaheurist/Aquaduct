@@ -142,6 +142,25 @@ def test_clear_news_seen_cache_files_removes_legacy_and_per_mode(tmp_path) -> No
     assert (d / "other_cache.json").exists()
 
 
+def test_effective_query_mode_tailors_search_bias() -> None:
+    from src.crawler import _default_headline_query, _effective_query
+
+    n = _effective_query(query="", topic_tags=["Acme"], topic_mode="news")
+    assert "Acme" in n and ("AI" in n or "ai" in n)
+
+    c = _effective_query(query="", topic_tags=["slapstick"], topic_mode="cartoon")
+    assert "slapstick" in c
+    assert "AI tool" not in c
+    assert "animation" in c.lower() or "cartoon" in c.lower()
+
+    e = _effective_query(query="", topic_tags=["physics"], topic_mode="explainer")
+    assert "physics" in e
+    assert "explainer" in e.lower() or "tutorial" in e.lower()
+
+    assert "AI tool" in _default_headline_query("news") or "AI" in _default_headline_query("news")
+    assert "cartoon" in _default_headline_query("cartoon").lower()
+
+
 def test_clear_news_seen_cache_files_empty_dir(tmp_path) -> None:
     from src.crawler import clear_news_seen_cache_files
 

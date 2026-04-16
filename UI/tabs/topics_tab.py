@@ -123,7 +123,9 @@ def attach_topics_tab(win) -> None:
     mode_row.addStretch(1)
     lay.addLayout(mode_row)
 
-    mode_hint = QLabel("Lists are separate per format. Discover pulls from the News list only.")
+    mode_hint = QLabel(
+        "Lists are separate per format. Discover fetches headline ideas using this format’s tag list; picks are added here."
+    )
     mode_hint.setWordWrap(True)
     mode_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
     lay.addWidget(mode_hint)
@@ -144,7 +146,7 @@ def attach_topics_tab(win) -> None:
 
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
-    win.discover_btn.setToolTip("Find newest AI news topics and approve them before adding.")
+    win.discover_btn.setToolTip("Fetch headline ideas biased by this format’s tags; approve phrases to add them to this list.")
     win.discover_btn.clicked.connect(win._discover_topics)
     btn_row.addWidget(win.discover_btn)
 

@@ -75,6 +75,7 @@ python main.py --once
 - `main.py`: one-shot run (`--once`) or infinite loop (default)
 - `src/`: pipeline modules
 - `UI/`: PyQt6 desktop UI package (TikTok-style theme; tabs under `UI/tabs/`; launcher `UI/ui_app.py`)
+- `data/upload_tasks.json`: local queue for finished renders (Tasks tab); gitignored
 - `data/news_cache/`: URL + title dedupe caches (`seen_<mode>.json`, `seen_titles_<mode>.json`; legacy `seen.json` may still appear until cleared or migrated)
 - `runs/`: intermediate working folders per run
 - `videos/`: final per-video folders
@@ -99,11 +100,12 @@ python -m UI
 
 Tabs:
 - **Run**: one-shot run + **video format** (News / Cartoon / Explainer) + logs + open `videos/`
-- **Topics**: topic tags **per format** (mode selector); **Discover** uses the News list when editing News mode
+- **Topics**: topic tags **per format** (mode selector); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
+- **Tasks**: finished videos queue; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
 - **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
-- **API**: Firecrawl toggle and API key (optional; improves news fetch/scrape when configured)
+- **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
-- **Settings**: Download menu + dependency check/install + model select/download (script/video/voice); skips repos already under `models/`
+- **Model**: Download menu (including **verify checksums** for local snapshots), dependency check/install, model select/download (script/video/voice); skips repos already under `models/`
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
 
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
@@ -132,6 +134,8 @@ Example:
 - [Hardware + model fit rules](docs/hardware.md)
 - [FFmpeg auto-download](docs/ffmpeg.md)
 - [VRAM / cleanup utilities](docs/vram.md)
+- [TikTok upload (Tasks + API)](docs/tiktok.md)
+- [YouTube upload (Tasks + API)](docs/youtube.md)
 
 ## Notes
 - First run will download models from Hugging Face (can be large).
