@@ -195,6 +195,203 @@ def _prompt_for_items(
     )
 
 
+def _vf_hint(video_format: str) -> str:
+    f = (video_format or "news").strip().lower()
+    if f == "cartoon":
+        return "playful / exaggerated visuals ok; keep pacing snappy"
+    if f == "explainer":
+        return "teach clearly: define terms, use simple on-screen labels"
+    return "timely angle; connect to current AI tooling news when plausible"
+
+
+def _prompt_for_creative_brief(
+    *,
+    expanded_brief: str,
+    topic_tags: list[str] | None,
+    video_format: str,
+    personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
+    character_context: str | None = None,
+) -> str:
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_line = (
+        f"Topic tags (optional; bias hashtags and angle if relevant): {json.dumps(tags, ensure_ascii=False)}\n"
+        if tags
+        else ""
+    )
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
+    char_block = ""
+    cc = (character_context or "").strip()
+    if cc:
+        char_block = (
+            "Character / host identity (layer on top of tone/personality; stay consistent in narration and on-screen cues):\n"
+            f"{cc}\n\n"
+        )
+    vf = _vf_hint(video_format)
+    return (
+        "You are a viral short-form scriptwriter for vertical video (9:16).\n"
+        "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
+        "Turn it into a complete script package — you may interpret and tighten, but stay faithful to the user's intent.\n"
+        f"Video format mode: {video_format!r}. Aim for: {vf}\n"
+        "Write a ~50 second vertical video script with 6-10 few-second beats.\n"
+        "Style: punchy, factual where needed, no fluff. Default visual style: high-contrast cyberpunk unless the brief says otherwise.\n"
+        "Enforce this structure (keep it tight):\n"
+        "- Hook (0-2s): one punchy line\n"
+        "- Context (2-6s): what it is / setup\n"
+        "- Key points (6-20s): 2-3 concrete points\n"
+        "- Why it matters (20-30s): practical impact / who should care\n"
+        "- Close/CTA (last 2s): short follow/subscribe style line\n"
+        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+        "Constraints:\n"
+        "- narration total ~120-150 words\n"
+        "- title <= 80 chars\n"
+        "- hashtags: 15-30 items, each like \"#AITools\"\n"
+        "- avoid markdown except optional ```json fence\n"
+        "\n"
+        f"{personality_block}"
+        f"{char_block}"
+        f"{style_suffix}"
+        f"{tag_line}"
+        "Creative brief (primary — follow this):\n"
+        f"{expanded_brief.strip()}\n"
+    )
+
+
+def expand_custom_video_instructions(
+    *,
+    model_id: str,
+    raw_instructions: str,
+    video_format: str,
+    personality_id: str,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+) -> str:
+    """
+    First LLM pass for custom Run mode: expand the user's rough notes into a structured creative brief (plain text).
+    """
+    personality = get_personality_by_id(personality_id)
+    vf = _vf_hint(video_format)
+    prompt = (
+        "You are a creative director for short-form vertical video (9:16).\n"
+        "The user wrote rough notes. Expand them into a structured creative brief. "
+        "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+        f"Video format mode: {video_format!r}. Target style: {vf}\n"
+        f"Tone anchor — {personality.label}: {personality.description}\n"
+        "Style rules to respect:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\n\nUser's raw notes:\n"
+        f"{raw_instructions.strip()}\n\n"
+        "Output sections (use headings):\n"
+        "1) Working title (one line)\n"
+        "2) Core angle / hook\n"
+        "3) Beat-by-beat outline (6–10 beats for ~50 seconds total)\n"
+        "4) Visual motifs (default high-contrast cyberpunk unless notes say otherwise)\n"
+        "5) Short on-screen text keywords per beat\n"
+        "6) Hashtag theme words (no # prefixes)\n"
+        "7) CTA idea\n"
+        "Keep it tight and actionable.\n"
+    )
+    with vram_guard():
+        raw = _generate_with_transformers(
+            model_id=model_id,
+            prompt=prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=900,
+        )
+    return raw.strip()
+
+
+def _fallback_package_custom(
+    *,
+    creative_brief: str,
+    items: list[dict[str, str]],
+    personality_id: str,
+    topic_tags: list[str] | None,
+    branding: BrandingSettings | None = None,
+) -> VideoPackage:
+    personality = get_personality_by_id(personality_id)
+    title_seed = (items[0].get("title") if items else "") or creative_brief.strip().splitlines()[0]
+    title = (title_seed or "Custom video")[:80]
+    blurb = creative_brief.strip()
+    if len(blurb) > 280:
+        blurb = blurb[:277] + "…"
+    hook = title_seed[:120] if title_seed else "Here’s the rundown you asked for—fast and sharp."
+    hashtags = ["#AI", "#Shorts", "#TechTok", "#Video", "#Creator", "#Storytelling", "#Tips", "#LearnOnTikTok"]
+    for t in topic_tags or []:
+        t2 = re.sub(r"[^A-Za-z0-9]+", "", (t or "").strip())
+        if t2:
+            hashtags.append("#" + t2[:28])
+    hashtags = _normalize_hashtags(hashtags)[:30]
+    segs = [
+        ScriptSegment(
+            narration=creative_brief[:320] + ("…" if len(creative_brief) > 320 else ""),
+            visual_prompt="high-contrast cyberpunk cityscape, neon accents, vertical 9:16, cinematic",
+            on_screen_text="HOOK",
+        ),
+        ScriptSegment(
+            narration="Breaking it down: the key ideas from your brief, in plain language.",
+            visual_prompt="clean cyberpunk infographic panels, glowing UI, 9:16, sharp contrast",
+            on_screen_text="BREAKDOWN",
+        ),
+        ScriptSegment(
+            narration="Why it lands: quick payoff for viewers who want clarity—not filler.",
+            visual_prompt="neon timeline icons, futuristic HUD elements, 9:16",
+            on_screen_text="WHY IT MATTERS",
+        ),
+        ScriptSegment(
+            narration=f"Closing thought—keep it {personality.label.lower()} and actionable.",
+            visual_prompt="close-up holographic interface, subtle glitch, 9:16",
+            on_screen_text="OUTRO",
+        ),
+    ]
+    pkg = VideoPackage(
+        title=title,
+        description=blurb or "Custom brief video generated from your instructions.",
+        hashtags=hashtags,
+        hook=hook,
+        segments=segs,
+        cta="Follow for more shorts like this.",
+    )
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            pkg = VideoPackage(
+                title=pkg.title,
+                description=pkg.description,
+                hashtags=pkg.hashtags,
+                hook=pkg.hook,
+                segments=[
+                    ScriptSegment(
+                        narration=s.narration,
+                        visual_prompt=(s.visual_prompt if "Palette:" in s.visual_prompt else f"{s.visual_prompt}, {suf}"),
+                        on_screen_text=s.on_screen_text,
+                    )
+                    for s in pkg.segments
+                ],
+                cta=pkg.cta,
+            )
+    return pkg
+
+
 def enforce_arc(pkg: VideoPackage) -> VideoPackage:
     """
     Best-effort post-processor to ensure the script includes context + why-it-matters beats.
@@ -406,14 +603,27 @@ def generate_script(
     branding: BrandingSettings | None = None,
     character_context: str | None = None,
     on_llm_task: Callable[[str, int, str], None] | None = None,
+    creative_brief: str | None = None,
+    video_format: str = "news",
 ) -> VideoPackage:
     """
-    Generates a structured video package from scraped headlines/links.
+    Generates a structured video package from scraped headlines/links, or from a pre-expanded custom creative brief.
     Tries local 4-bit transformers; falls back to a deterministic template if the model fails to load.
     """
     personality = get_personality_by_id(personality_id)
-    prompt = _prompt_for_items(items, topic_tags, personality, branding=branding, character_context=character_context)
-    dprint("brain", "generate_script start", f"model_id={model_id!r}", f"items={len(items)}", f"personality={personality_id!r}")
+    if creative_brief is not None and str(creative_brief).strip():
+        prompt = _prompt_for_creative_brief(
+            expanded_brief=str(creative_brief),
+            topic_tags=topic_tags,
+            video_format=str(video_format or "news"),
+            personality=personality,
+            branding=branding,
+            character_context=character_context,
+        )
+    else:
+        prompt = _prompt_for_items(items, topic_tags, personality, branding=branding, character_context=character_context)
+    mode = "custom_brief" if (creative_brief is not None and str(creative_brief).strip()) else "headlines"
+    dprint("brain", "generate_script start", f"model_id={model_id!r}", f"mode={mode!r}", f"items={len(items)}", f"personality={personality_id!r}")
 
     with vram_guard():
         try:
@@ -423,6 +633,16 @@ def generate_script(
             dprint("brain", "generate_script ok (transformers)", f"title={pkg.title[:100]!r}")
             return pkg
         except Exception:
+            if creative_brief is not None and str(creative_brief).strip():
+                pkg = _fallback_package_custom(
+                    creative_brief=str(creative_brief),
+                    items=items,
+                    personality_id=personality_id,
+                    topic_tags=topic_tags,
+                    branding=branding,
+                )
+                dprint("brain", "generate_script ok (fallback custom)", f"title={pkg.title[:100]!r}")
+                return pkg
             # Fallback: minimal structured script without the LLM (keeps pipeline running).
             tool_title = (items[0].get("title") if items else "") or "New AI Tool"
             title = tool_title[:80]
@@ -535,4 +755,53 @@ def generate_script(
                 )
             dprint("brain", "generate_script ok (fallback template)", f"title={pkg.title[:100]!r}")
             return pkg
+
+
+def expand_custom_field_text(
+    *,
+    model_id: str,
+    field_label: str,
+    seed: str,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 512,
+) -> str:
+    """
+    Use the local LLM to expand or improve free-form UI text (character fields, topics, prompts, etc.).
+    """
+    fl = (field_label or "text field").strip() or "text field"
+    seed_stripped = (seed or "").strip()
+    if not seed_stripped:
+        user_part = (
+            "The user has not written anything yet. Invent concise, usable starter text appropriate for this field."
+        )
+    else:
+        user_part = f"The user's notes or draft:\n---\n{seed_stripped}\n---"
+    prompt = (
+        f"You help users of a desktop video production app. Improve or expand text for the field «{fl}».\n\n"
+        f"{user_part}\n\n"
+        "Rules:\n"
+        "- Output ONLY the final text for that field.\n"
+        "- No preamble, title line, or explanation.\n"
+        "- No markdown code fences.\n"
+        "- Match the expected style: short for tags/negatives; richer for persona/visual prompts.\n"
+    )
+    with vram_guard():
+        raw = _generate_with_transformers(
+            model_id,
+            prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=max_new_tokens,
+        )
+    out = (raw or "").strip()
+    # Trim common wrappers
+    if out.startswith("```"):
+        lines = out.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        out = "\n".join(lines).strip()
+    if (out.startswith('"') and out.endswith('"')) or (out.startswith("'") and out.endswith("'")):
+        out = out[1:-1].strip()
+    return out
 

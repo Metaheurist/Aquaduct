@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import (
+    MAX_CUSTOM_VIDEO_INSTRUCTIONS,
     AppSettings,
     BrandingSettings,
     VideoSettings,
@@ -41,6 +42,17 @@ def _sanitize_tags(tags: Any) -> list[str]:
 def _norm_video_format(s: Any) -> VideoFormat:
     t = str(s or "news").strip().lower()
     return t if t in VIDEO_FORMATS else "news"
+
+
+def _norm_run_content_mode(s: Any) -> str:
+    t = str(s or "preset").strip().lower()
+    return t if t in ("preset", "custom") else "preset"
+
+
+def _sanitize_custom_instructions(s: Any) -> str:
+    if not isinstance(s, str):
+        return ""
+    return s[:MAX_CUSTOM_VIDEO_INSTRUCTIONS]
 
 
 def _sanitize_topic_tags_map(raw: Any) -> dict[str, list[str]]:
@@ -167,6 +179,10 @@ def load_settings() -> AppSettings:
         elevenlabs_api_key=str(data.get("elevenlabs_api_key", "")) if isinstance(data, dict) else "",
         personality_id=str(data.get("personality_id", "auto")) if isinstance(data, dict) else "auto",
         active_character_id=str(data.get("active_character_id", "")) if isinstance(data, dict) else "",
+        run_content_mode=_norm_run_content_mode(data.get("run_content_mode")) if isinstance(data, dict) else "preset",  # type: ignore[arg-type]
+        custom_video_instructions=_sanitize_custom_instructions(data.get("custom_video_instructions"))
+        if isinstance(data, dict)
+        else "",
         llm_model_id=str(data.get("llm_model_id", "")) if isinstance(data, dict) else "",
         image_model_id=str(data.get("image_model_id", "")) if isinstance(data, dict) else "",
         video_model_id=str(data.get("video_model_id", "")) if isinstance(data, dict) else "",

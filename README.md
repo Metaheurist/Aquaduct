@@ -109,13 +109,13 @@ python -m UI
 
 Tabs:
 - **Run**: one-shot run + **video format** (News / Cartoon / Explainer) + **Personality** + optional **Character** + open `videos/`
-- **Topics**: topic tags **per format** (mode selector); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
-- **Characters**: create/edit **characters** (identity, visuals, voice); optional **ElevenLabs** voice when API is enabled
-- **Tasks**: finished videos queue; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
+- **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
+- **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
+- **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
 - **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
-- **Model**: Download menu (including **verify checksums** for local snapshots), dependency check/install, model select/download (script/video/voice); skips repos already under `models/`
+- **Model**: Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; dependency check/install; model select/download (script/video/voice); skips repos already under `models/`
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
 
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).

@@ -16,8 +16,12 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").lower()).strip()
 
 
-def _score_rules(*, titles: list[str], topic_tags: list[str]) -> dict[str, int]:
-    text = " ".join([_norm(t) for t in titles] + [_norm(t) for t in topic_tags])
+def _score_rules(*, titles: list[str], topic_tags: list[str], extra_scoring_text: str = "") -> dict[str, int]:
+    parts = [_norm(t) for t in titles] + [_norm(t) for t in topic_tags]
+    ex = _norm(extra_scoring_text)
+    if ex:
+        parts.append(ex)
+    text = " ".join(parts)
 
     scores = {p.id: 0 for p in get_personality_presets()}
 
@@ -75,6 +79,7 @@ def auto_pick_personality(
     llm_model_id: str,
     titles: list[str],
     topic_tags: list[str],
+    extra_scoring_text: str = "",
 ) -> AutoPickResult:
     """
     Rules-based auto personality. ``llm_model_id`` is kept for call-site compatibility only.
@@ -89,7 +94,7 @@ def auto_pick_personality(
         p = get_personality_by_id(rid)
         return AutoPickResult(preset=p, reason="Manual selection")
 
-    scores = _score_rules(titles=titles, topic_tags=topic_tags)
+    scores = _score_rules(titles=titles, topic_tags=topic_tags, extra_scoring_text=extra_scoring_text)
     (a_id, a_score), (b_id, b_score) = _top2(scores)
 
     tie_band = 1

@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.hardware import get_hardware_info, rate_model_fit_for_repo, vram_requirement_hint
+from src.model_integrity_cache import worst_integrity_status
 from src.model_manager import (
     best_model_size_label,
     load_hf_size_cache,
@@ -298,7 +299,7 @@ def attach_settings_tab(win) -> None:
     win.img_dl_badge = QLabel("")
     win.voice_dl_badge = QLabel("")
     for _b in (win.llm_dl_badge, win.img_dl_badge, win.voice_dl_badge):
-        _b.setStyleSheet("color:#5DFFB0;font-size:12px;font-weight:700;min-width:6.5em;")
+        _b.setStyleSheet("color:#5DFFB0;font-size:12px;font-weight:700;min-width:8.5em;")
         _b.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     if win.settings.llm_model_id:
@@ -334,19 +335,32 @@ def attach_settings_tab(win) -> None:
     win.voice_fit = QLabel("UNKNOWN")
 
     def _update_fit_badges() -> None:
+        def _dl_badge_base_style() -> str:
+            return "font-size:12px;font-weight:700;min-width:8.5em;"
+
         def set_dl_badge(lbl: QLabel, repos: list[str]) -> None:
             ms = win.paths.models_dir
-            uniq = [str(x).strip() for x in repos if str(x).strip()]
+            cache = getattr(win, "_model_integrity_by_repo", {}) or {}
+            uniq: list[str] = []
+            seen: set[str] = set()
+            for x in repos:
+                r = str(x).strip()
+                if not r or r in seen:
+                    continue
+                seen.add(r)
+                uniq.append(r)
             if not uniq:
                 lbl.setText("")
                 lbl.setToolTip("")
                 return
+
+            def sizes_tooltip() -> str:
+                return " · ".join(f"{r}: {local_model_size_label(r, models_dir=ms)}" for r in uniq)
+
             have = [r for r in uniq if model_has_local_snapshot(r, models_dir=ms)]
-            if len(have) == len(uniq):
-                lbl.setText("✓ On disk")
-                lbl.setToolTip("Downloaded in models/: " + " · ".join(f"{r}: {local_model_size_label(r, models_dir=ms)}" for r in uniq))
-            elif have:
+            if len(have) < len(uniq):
                 lbl.setText("◐ Partial")
+                lbl.setStyleSheet(_dl_badge_base_style() + "color:#6EC8FF;")
                 lbl.setToolTip(
                     "Some weights on disk; others missing.\n"
                     + "\n".join(
@@ -356,9 +370,68 @@ def attach_settings_tab(win) -> None:
                         for r in uniq
                     )
                 )
-            else:
+                return
+            if not have:
                 lbl.setText("")
+                lbl.setStyleSheet(_dl_badge_base_style() + "color:#9BB0C4;")
                 lbl.setToolTip("No local copy detected under models/ yet.")
+                return
+
+            integ = [cache.get(r) for r in uniq]
+            known = [s for s in integ if s is not None]
+            unknown_repos = [uniq[i] for i, s in enumerate(integ) if s is None]
+
+            if not known:
+                lbl.setText("✓ On disk")
+                lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
+                lbl.setToolTip(
+                    f"Downloaded in models/: {sizes_tooltip()}\n\n"
+                    "Checksum status unknown — use Download → Verify checksums to confirm files."
+                )
+                return
+
+            bad_known = [s for s in known if str(s) != "ok"]
+            if bad_known:
+                w = worst_integrity_status(bad_known)
+                tips = {
+                    "missing": "Reported files are missing locally (incomplete download or wrong tree). Re-download if needed.",
+                    "corrupt": "Checksum mismatch — one or more files are wrong or damaged. Re-download this model.",
+                    "missing_and_corrupt": "Missing files and checksum failures. Re-download the affected model.",
+                    "error": "Verification failed (offline, auth, gated repo, or Hub error). Retry when online.",
+                }
+                labels = {
+                    "missing": "✗ Missing files",
+                    "corrupt": "✗ Corrupt",
+                    "missing_and_corrupt": "✗ Missing & corrupt",
+                    "error": "⚠ Verify error",
+                }
+                colors = {
+                    "missing": "#FFB0A0",
+                    "corrupt": "#FF7B7B",
+                    "missing_and_corrupt": "#FF9088",
+                    "error": "#E8C080",
+                }
+                lbl.setText(labels.get(w, "✗ Issue"))
+                lbl.setStyleSheet(_dl_badge_base_style() + f"color:{colors.get(w, '#FFB0A0')};")
+                extra = ""
+                if unknown_repos:
+                    extra = f"\n\nNot verified yet: {', '.join(unknown_repos)}."
+                lbl.setToolTip(f"{tips.get(w, '')}\n\n{sizes_tooltip()}{extra}")
+                return
+
+            if unknown_repos:
+                lbl.setText("✓ On disk")
+                lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
+                ok_rs = [uniq[i] for i, s in enumerate(integ) if s == "ok"]
+                lbl.setToolTip(
+                    f"Checksum OK for: {', '.join(ok_rs)}.\n"
+                    f"Not verified yet: {', '.join(unknown_repos)}.\n\n{sizes_tooltip()}"
+                )
+                return
+
+            lbl.setText("✓ Verified")
+            lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
+            lbl.setToolTip("Local files matched Hugging Face checksums.\n\n" + sizes_tooltip())
 
         def set_badge(lbl: QLabel, *, kind: str, repo_id: str, pair_image_repo_id: str = "") -> None:
             opt = win._model_opt_by_repo.get(repo_id)

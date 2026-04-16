@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from UI.brain_expand import wrap_editor_with_brain
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -133,7 +134,7 @@ def attach_topics_tab(win) -> None:
     row = QHBoxLayout()
     win.tag_input = QLineEdit()
     win.tag_input.setPlaceholderText("Add a topic tag, e.g. “AI video editor”, “agentic workflow”, “LLM IDE”…")
-    row.addWidget(win.tag_input, 1)
+    row.addWidget(wrap_editor_with_brain(win.tag_input, "Topic tag / discovery hints", win), 1)
 
     add_btn = QPushButton("Add tag")
     add_btn.setObjectName("primary")

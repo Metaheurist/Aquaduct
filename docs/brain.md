@@ -35,3 +35,6 @@ If `topic_tags` are provided (from the UI Topics tab list for the **current vide
 - the angle of the script
 - the hashtag set
 
+## UI field expansion (`expand_custom_field_text`)
+For free-form text in the desktop app (character fields, topic tag line, storyboard scene prompt), the **🧠** button calls **`expand_custom_field_text`** with the user’s draft (or empty) and a short field label. It reuses the same local transformer path as script generation (`_generate_with_transformers`), then strips common markdown wrappers from the reply. Implemented in [`src/brain.py`](../src/brain.py); runs off the GUI thread via **`TextExpandWorker`** in [`UI/workers.py`](../UI/workers.py).
+

@@ -40,6 +40,7 @@ models/
 ui_settings.json
 data/upload_tasks.json
 data/characters.json
+data/model_integrity_status.json
 data/news_cache/seen.json
 data/news_cache/seen_titles.json
 data/news_cache/seen_*.json
@@ -47,6 +48,9 @@ data/news_cache/seen_titles_*.json
 
 # Firecrawl CLI output (search/scrape artifacts; may include large JSON)
 .firecrawl/
+
+# Generated pipeline outputs (local)
+runs/
 
 # Repo-root cache / build logs (local)
 .cache/

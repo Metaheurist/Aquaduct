@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 from collections.abc import Callable
 import subprocess
@@ -31,11 +32,18 @@ from PyQt6.QtWidgets import (
 )
 
 from src.config import AppSettings, BrandingSettings, VideoSettings, VIDEO_FORMATS, get_paths
+from src.model_integrity_cache import (
+    integrity_cache_path,
+    load_integrity_cache,
+    merge_integrity_cache,
+    save_integrity_cache,
+)
 from src.crawler import clear_news_seen_cache_files
 from src.topics import normalize_video_format
 from src.fs_delete import rmtree_robust, unlink_file
 from src.model_manager import download_model_to_project, list_installed_repo_ids_from_disk, model_has_local_snapshot
 from src.preflight import preflight_check
+from src.pipeline_control import PipelineRunControl
 from src.utils_ffmpeg import find_ffmpeg
 from src.ui_settings import load_settings, save_settings, settings_path
 from src.personalities import get_personality_by_id
@@ -93,6 +101,7 @@ class MainWindow(QMainWindow):
 
         self.paths = get_paths()
         self.settings = load_settings()
+        self._model_integrity_by_repo: dict[str, str] = load_integrity_cache(self.paths.data_dir)
         self._apply_saved_hf_token_to_env()
 
         self.tabs = QTabWidget()
@@ -189,6 +198,7 @@ class MainWindow(QMainWindow):
         self._ffmpeg_ensure_worker: FFmpegEnsureWorker | None = None
         self._ffmpeg_run_after: Callable[[], None] | None = None
         self._tasks_active_row: dict[str, str] | None = None
+        self._pipeline_control: PipelineRunControl | None = None
         self._last_preview_pkg = None
         self._last_preview_sources = None
         self._last_preview_prompts = None
@@ -428,6 +438,14 @@ class MainWindow(QMainWindow):
             self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
+
+        try:
+            ic = integrity_cache_path(self.paths.data_dir)
+            if ic.is_file():
+                ic.unlink()
+        except Exception:
+            pass
+        self._model_integrity_by_repo = {}
 
         # Reset to defaults and persist (fresh ui_settings.json).
         self.settings = AppSettings()
@@ -1200,14 +1218,114 @@ class MainWindow(QMainWindow):
         self._integrity_worker.failed.connect(self._on_integrity_verify_failed)
         self._integrity_worker.start()
 
-    def _on_integrity_verify_done(self, text: str) -> None:
+    def _on_integrity_verify_done(self, text: str, status_by_repo: object = None) -> None:
         self._append_log(text)
         self._integrity_worker = None
+        if isinstance(status_by_repo, dict):
+            self._model_integrity_by_repo = merge_integrity_cache(
+                self._model_integrity_by_repo,
+                {str(k): str(v) for k, v in status_by_repo.items() if str(k).strip()},
+            )
+            try:
+                save_integrity_cache(self.paths.data_dir, self._model_integrity_by_repo)
+            except Exception:
+                pass
+        if hasattr(self, "_refresh_settings_model_combos"):
+            self._refresh_settings_model_combos()
+        self._show_integrity_check_result_popup(text)
 
     def _on_integrity_verify_failed(self, err: str) -> None:
         self._append_log("Model integrity check failed:")
         self._append_log(err)
         self._integrity_worker = None
+        self._show_integrity_check_error_popup(err)
+
+    def _show_integrity_check_result_popup(self, report_text: str) -> None:
+        """
+        Human-readable summary + expandable full report (same content as the activity log).
+        """
+        raw = (report_text or "").strip()
+        box = QMessageBox(self)
+        box.setWindowTitle("Model integrity check")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+
+        if "No repository ids to verify." in raw:
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText("There were no model folders to check.")
+            box.setInformativeText(
+                "Download a model first, or use “selected” when at least one folder exists under models/."
+            )
+        else:
+            m = re.search(
+                r"Summary:\s*(\d+)\s*ok,\s*(\d+)\s*failed,\s*(\d+)\s+total",
+                raw,
+                flags=re.IGNORECASE,
+            )
+            if m:
+                ok_n, bad_n, total = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if bad_n == 0:
+                    box.setIcon(QMessageBox.Icon.Information)
+                    box.setText(
+                        f"All {total} checked model(s) passed. "
+                        "Local files match Hugging Face checksums for the checked snapshot."
+                    )
+                    box.setInformativeText(
+                        "Open “Show Details…” below if you need the per-model breakdown."
+                    )
+                elif ok_n == 0:
+                    box.setIcon(QMessageBox.Icon.Warning)
+                    box.setText(
+                        f"None of the {total} checked model(s) passed verification."
+                    )
+                    box.setInformativeText(
+                        "That usually means downloads never finished, weights are missing, or only Hub cache "
+                        "metadata exists. Re-download from the Download tab when you need that model.\n\n"
+                        "Seeing extra paths under “.cache/huggingface” is normal for incomplete or cached downloads."
+                    )
+                else:
+                    box.setIcon(QMessageBox.Icon.Warning)
+                    box.setText(
+                        f"{ok_n} of {total} model(s) look good; {bad_n} need attention."
+                    )
+                    box.setInformativeText(
+                        "Failed checks mean missing weight files or checksum mismatches. "
+                        "Re-download affected models from the Download tab.\n\n"
+                        "“Unexpected extra files” often includes Hub cache — focus on missing files first."
+                    )
+            else:
+                box.setIcon(QMessageBox.Icon.Information)
+                box.setText("Verification finished.")
+                box.setInformativeText("Expand “Show Details…” for the full report.")
+
+        box.setDetailedText(raw)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        try:
+            box.setDefaultButton(QMessageBox.StandardButton.Ok)
+        except Exception:
+            pass
+        try:
+            box.setMinimumWidth(520)
+        except Exception:
+            pass
+        box.exec()
+
+    def _show_integrity_check_error_popup(self, err: str) -> None:
+        e = (err or "").strip()
+        box = QMessageBox(self)
+        box.setWindowTitle("Model integrity check")
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.setText("The verification run failed or was interrupted.")
+        box.setInformativeText(
+            "You can copy the details below for troubleshooting or bug reports."
+        )
+        box.setDetailedText(e)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        try:
+            box.setMinimumWidth(520)
+        except Exception:
+            pass
+        box.exec()
 
     def _start_download(self, repo_ids: list[str], *, title: str) -> None:
         if self.download_worker and self.download_worker.isRunning():
@@ -1389,21 +1507,35 @@ class MainWindow(QMainWindow):
             self.run_btn.setEnabled(False)
 
             if qty <= 1:
-                self._set_tasks_active_row("Pipeline run", "Running…", folder="In progress")
-                self.worker = PipelineWorker(self.settings)
+                self._set_tasks_active_row(
+                    "Pipeline run",
+                    format_status_line("pipeline_run", 0, "Queued…"),
+                    folder="In progress",
+                )
+                self._pipeline_control = PipelineRunControl()
+                self.worker = PipelineWorker(self.settings, run_control=self._pipeline_control)
+
+                def on_prog(tid: str, pct: int, status: str) -> None:
+                    self._update_tasks_active_progress(tid, pct, status)
+                    self._resize_to_current_tab()
+
+                self.worker.progress.connect(on_prog)
                 self.worker.done.connect(lambda out: self._on_done(out))
                 self.worker.failed.connect(self._on_failed)
+                self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
                 self.worker.start()
                 return
 
             self._set_tasks_active_row(f"Batch pipeline ({qty} videos)", "Starting…", folder="Queued")
-            self.worker = PipelineBatchWorker(self.settings, quantity=qty)
+            self._pipeline_control = PipelineRunControl()
+            self.worker = PipelineBatchWorker(self.settings, quantity=qty, run_control=self._pipeline_control)
 
             def on_prog(task_id: str, pct: int, status: str) -> None:
                 self._update_tasks_active_progress(task_id, pct, status)
                 self._resize_to_current_tab()
 
             def on_done(msg: str) -> None:
+                self._release_run_control()
                 self._clear_tasks_active_row()
                 self.run_btn.setEnabled(True)
                 self._append_log(msg)
@@ -1412,6 +1544,7 @@ class MainWindow(QMainWindow):
             self.worker.progress.connect(on_prog)
             self.worker.done.connect(on_done)
             self.worker.failed.connect(self._on_failed)
+            self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
 
         self._run_when_ffmpeg_ready(_continue)
@@ -1435,13 +1568,15 @@ class MainWindow(QMainWindow):
                 pass
         self._set_tasks_active_row("Preview script", "Starting…", folder="—")
 
-        self.preview_worker = PreviewWorker(self.settings)
+        self._pipeline_control = PipelineRunControl()
+        self.preview_worker = PreviewWorker(self.settings, run_control=self._pipeline_control)
 
         def on_prog(task_id: str, pct: int, status: str) -> None:
             self._update_tasks_active_progress(task_id, pct, status)
             self._resize_to_current_tab()
 
         def on_done(pkg, sources, prompts, personality_id: str, confidence: str) -> None:
+            self._release_run_control()
             self._clear_tasks_active_row()
             if hasattr(self, "preview_btn"):
                 try:
@@ -1481,6 +1616,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         def on_failed(err: str) -> None:
+            self._release_run_control()
             self._clear_tasks_active_row()
             if hasattr(self, "preview_btn"):
                 try:
@@ -1494,6 +1630,7 @@ class MainWindow(QMainWindow):
         self.preview_worker.progress.connect(on_prog)
         self.preview_worker.done.connect(on_done)
         self.preview_worker.failed.connect(on_failed)
+        self.preview_worker.cancelled.connect(self._on_preview_worker_cancelled)
         self.preview_worker.start()
 
     def _approve_preview_and_run(self) -> None:
@@ -1519,16 +1656,29 @@ class MainWindow(QMainWindow):
                 return
 
             self.run_btn.setEnabled(False)
-            self._set_tasks_active_row("Pipeline run", "Running (approved preview)…", folder="In progress")
+            self._set_tasks_active_row(
+                "Pipeline run",
+                format_status_line("pipeline_run", 0, "Queued (approved preview)…"),
+                folder="In progress",
+            )
 
+            self._pipeline_control = PipelineRunControl()
             self.worker = PipelineWorker(
                 self.settings,
                 prebuilt_pkg=self._last_preview_pkg,
                 prebuilt_sources=self._last_preview_sources,
                 prebuilt_prompts=self._last_preview_prompts,
+                run_control=self._pipeline_control,
             )
+
+            def on_prog(tid: str, pct: int, status: str) -> None:
+                self._update_tasks_active_progress(tid, pct, status)
+                self._resize_to_current_tab()
+
+            self.worker.progress.connect(on_prog)
             self.worker.done.connect(lambda out: self._on_done(out))
             self.worker.failed.connect(self._on_failed)
+            self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
 
         self._run_when_ffmpeg_ready(_continue)
@@ -1637,13 +1787,15 @@ class MainWindow(QMainWindow):
                 pass
         self._set_tasks_active_row("Storyboard preview", "Starting…", folder="—")
 
-        self.storyboard_worker = StoryboardWorker(self.settings)
+        self._pipeline_control = PipelineRunControl()
+        self.storyboard_worker = StoryboardWorker(self.settings, run_control=self._pipeline_control)
 
         def on_prog(task_id: str, pct: int, status: str) -> None:
             self._update_tasks_active_progress(task_id, pct, status)
             self._resize_to_current_tab()
 
         def on_done(manifest_path, grid_png_path) -> None:
+            self._release_run_control()
             self._clear_tasks_active_row()
             if hasattr(self, "storyboard_btn"):
                 try:
@@ -1664,6 +1816,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         def on_failed(err: str) -> None:
+            self._release_run_control()
             self._clear_tasks_active_row()
             if hasattr(self, "storyboard_btn"):
                 try:
@@ -1677,6 +1830,7 @@ class MainWindow(QMainWindow):
         self.storyboard_worker.progress.connect(on_prog)
         self.storyboard_worker.done.connect(on_done)
         self.storyboard_worker.failed.connect(on_failed)
+        self.storyboard_worker.cancelled.connect(self._on_storyboard_worker_cancelled)
         self.storyboard_worker.start()
 
     def _storyboard_regenerate_scene(self, scene_idx: int) -> None:
@@ -1776,15 +1930,35 @@ class MainWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             return
         self.run_btn.setEnabled(False)
-        self._set_tasks_active_row("Pipeline run", "Running (approved storyboard)…", folder="In progress")
+        self._set_tasks_active_row(
+            "Pipeline run",
+            format_status_line("pipeline_run", 0, "Queued (approved storyboard)…"),
+            folder="In progress",
+        )
 
         # Use a special attribute read by run_once (we'll add support) via PipelineWorker args.
-        self.worker = PipelineWorker(self.settings, prebuilt_pkg=None, prebuilt_sources=None, prebuilt_prompts=prompts, prebuilt_seeds=seeds)
+        self._pipeline_control = PipelineRunControl()
+        self.worker = PipelineWorker(
+            self.settings,
+            prebuilt_pkg=None,
+            prebuilt_sources=None,
+            prebuilt_prompts=prompts,
+            prebuilt_seeds=seeds,
+            run_control=self._pipeline_control,
+        )
+
+        def on_prog(tid: str, pct: int, status: str) -> None:
+            self._update_tasks_active_progress(tid, pct, status)
+            self._resize_to_current_tab()
+
+        self.worker.progress.connect(on_prog)
         self.worker.done.connect(lambda out: self._on_done(out))
         self.worker.failed.connect(self._on_failed)
+        self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
         self.worker.start()
 
     def _on_done(self, out_dir: str) -> None:
+        self._release_run_control()
         self._clear_tasks_active_row()
         self.run_btn.setEnabled(True)
         if not out_dir:
@@ -1864,6 +2038,7 @@ class MainWindow(QMainWindow):
             "folder": folder,
         }
         self._tasks_refresh()
+        self._update_tasks_control_buttons()
 
     def _update_tasks_active_progress(self, task_id: str, pct: int, message: str) -> None:
         if not self._tasks_active_row:
@@ -1876,6 +2051,86 @@ class MainWindow(QMainWindow):
             return
         self._tasks_active_row = None
         self._tasks_refresh()
+        self._update_tasks_control_buttons()
+
+    def _release_run_control(self) -> None:
+        self._pipeline_control = None
+        if hasattr(self, "tasks_pause_btn"):
+            try:
+                self.tasks_pause_btn.setText("Pause")
+            except Exception:
+                pass
+        self._update_tasks_control_buttons()
+
+    def _update_tasks_control_buttons(self) -> None:
+        en = self._tasks_active_row is not None
+        if hasattr(self, "tasks_pause_btn"):
+            try:
+                self.tasks_pause_btn.setEnabled(en)
+            except Exception:
+                pass
+        if hasattr(self, "tasks_stop_btn"):
+            try:
+                self.tasks_stop_btn.setEnabled(en)
+            except Exception:
+                pass
+
+    def _on_tasks_pause_toggle(self) -> None:
+        rc = self._pipeline_control
+        if rc is None:
+            return
+        if rc.is_paused():
+            rc.request_resume()
+            if hasattr(self, "tasks_pause_btn"):
+                self.tasks_pause_btn.setText("Pause")
+            self._append_log("Resumed.")
+        else:
+            rc.request_pause()
+            if hasattr(self, "tasks_pause_btn"):
+                self.tasks_pause_btn.setText("Resume")
+            self._append_log("Pause requested — takes effect after the current step finishes.")
+
+    def _on_tasks_stop(self) -> None:
+        if self._pipeline_control is not None:
+            self._pipeline_control.request_cancel()
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.requestInterruption()
+        if self.preview_worker is not None and self.preview_worker.isRunning():
+            self.preview_worker.requestInterruption()
+        if self.storyboard_worker is not None and self.storyboard_worker.isRunning():
+            self.storyboard_worker.requestInterruption()
+        self._append_log("Stop requested…")
+
+    def _on_pipeline_worker_cancelled(self) -> None:
+        self._clear_tasks_active_row()
+        self._release_run_control()
+        try:
+            self.run_btn.setEnabled(True)
+        except Exception:
+            pass
+        self._append_log("Pipeline cancelled.")
+
+    def _on_preview_worker_cancelled(self) -> None:
+        self._clear_tasks_active_row()
+        self._release_run_control()
+        if hasattr(self, "preview_btn"):
+            try:
+                self.preview_btn.setEnabled(True)
+                self.preview_btn.setText("Preview")
+            except Exception:
+                pass
+        self._append_log("Preview cancelled.")
+
+    def _on_storyboard_worker_cancelled(self) -> None:
+        self._clear_tasks_active_row()
+        self._release_run_control()
+        if hasattr(self, "storyboard_btn"):
+            try:
+                self.storyboard_btn.setEnabled(True)
+                self.storyboard_btn.setText("Storyboard Preview")
+            except Exception:
+                pass
+        self._append_log("Storyboard preview cancelled.")
 
     def _tasks_refresh(self) -> None:
         if not hasattr(self, "tasks_table"):
@@ -2234,6 +2489,7 @@ class MainWindow(QMainWindow):
             self._append_log(f"Failed to save YouTube tokens: {e}")
 
     def _on_failed(self, err: str) -> None:
+        self._release_run_control()
         self._clear_tasks_active_row()
         self.run_btn.setEnabled(True)
         self._append_log("Run failed:")

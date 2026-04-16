@@ -15,6 +15,7 @@ TASK_LABELS: dict[str, str] = {
     "storyboard_images": "Preview images",
     "storyboard_grid": "Storyboard grid",
     "download": "Download",
+    "pipeline_run": "Pipeline",
     "pipeline_video": "Pipeline video",
     "storyboard": "Storyboard",  # final ready
 }

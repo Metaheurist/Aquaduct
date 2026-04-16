@@ -19,6 +19,9 @@ from src.model_manager import (
 
 import main as pipeline_main
 from src.brain import VideoPackage, generate_script
+from src.brain import expand_custom_field_text
+from src.model_integrity_cache import classify_integrity_status
+from src.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.characters_store import character_context_for_brain, resolve_active_character
 from src.branding_video import apply_palette_to_prompts
 from src.personality_auto import auto_pick_personality
@@ -54,8 +57,11 @@ def _fmt_bytes(n: int | float | None) -> str:
 
 
 class PipelineWorker(QThread):
+    # task_id (pipeline_run), 0–100, stage message — same shape as other task progress signals
+    progress = pyqtSignal(str, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
     def __init__(
         self,
@@ -65,6 +71,7 @@ class PipelineWorker(QThread):
         prebuilt_sources=None,
         prebuilt_prompts=None,
         prebuilt_seeds=None,
+        run_control: PipelineRunControl | None = None,
     ):
         super().__init__()
         self.settings = settings
@@ -72,6 +79,7 @@ class PipelineWorker(QThread):
         self.prebuilt_sources = prebuilt_sources
         self.prebuilt_prompts = prebuilt_prompts
         self.prebuilt_seeds = prebuilt_seeds
+        self.run_control = run_control
 
     def run(self) -> None:
         try:
@@ -82,11 +90,15 @@ class PipelineWorker(QThread):
                 prebuilt_sources=self.prebuilt_sources,
                 prebuilt_prompts=self.prebuilt_prompts,
                 prebuilt_seeds=self.prebuilt_seeds,
+                run_control=self.run_control,
+                on_progress=lambda tid, pct, msg: self.progress.emit(str(tid), int(pct), str(msg)),
             )
             if out is None:
                 self.done.emit("")
             else:
                 self.done.emit(str(out))
+        except PipelineCancelled:
+            self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
@@ -97,11 +109,13 @@ class PipelineBatchWorker(QThread):
     progress = pyqtSignal(str, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
-    def __init__(self, settings: AppSettings, *, quantity: int):
+    def __init__(self, settings: AppSettings, *, quantity: int, run_control: PipelineRunControl | None = None):
         super().__init__()
         self.settings = settings
         self.quantity = max(1, int(quantity))
+        self.run_control = run_control
 
     def run(self) -> None:
         try:
@@ -110,6 +124,9 @@ class PipelineBatchWorker(QThread):
             attempts = 0
             max_attempts = self.quantity * 3  # avoid infinite loops when no new news exists
             while created < self.quantity and attempts < max_attempts:
+                if self.run_control is not None and self.run_control.is_cancelled():
+                    self.cancelled.emit()
+                    return
                 attempts += 1
                 n = int(self.quantity)
                 self.progress.emit(
@@ -117,7 +134,28 @@ class PipelineBatchWorker(QThread):
                     0,
                     f"Starting video {created + 1}/{n} (attempt {attempts})…",
                 )
-                out = pipeline_main.run_once(settings=self.settings)
+                try:
+                    if self.run_control is not None:
+                        self.run_control.checkpoint()
+
+                    def on_inner(tid: str, pct: int, msg: str) -> None:
+                        inner = max(0, min(100, int(pct)))
+                        overall = int((created * 100 + inner) / n) if n > 0 else inner
+                        overall = max(0, min(100, overall))
+                        self.progress.emit(
+                            "pipeline_video",
+                            overall,
+                            f"Video {created + 1}/{n}: {msg}",
+                        )
+
+                    out = pipeline_main.run_once(
+                        settings=self.settings,
+                        run_control=self.run_control,
+                        on_progress=on_inner,
+                    )
+                except PipelineCancelled:
+                    self.cancelled.emit()
+                    return
                 if out is None:
                     # No new items; keep trying a bit in case another source yields something.
                     self.progress.emit(
@@ -127,9 +165,10 @@ class PipelineBatchWorker(QThread):
                     )
                     continue
                 created += 1
+                overall_done = int((created * 100) / n) if n > 0 else 100
                 self.progress.emit(
                     "pipeline_video",
-                    100,
+                    min(100, overall_done),
                     f"Finished video {created}/{n}",
                 )
 
@@ -465,6 +504,34 @@ class ModelDownloadWorker(QThread):
             self.failed.emit(f"{e}\n\n{tb}")
 
 
+class TextExpandWorker(QThread):
+    """Run ``expand_custom_field_text`` off the GUI thread (loads LLM; can take a while)."""
+
+    done = pyqtSignal(str)
+    failed = pyqtSignal(str)
+
+    def __init__(self, *, model_id: str, field_label: str, seed: str) -> None:
+        super().__init__()
+        self.model_id = str(model_id or "").strip()
+        self.field_label = str(field_label or "").strip()
+        self.seed = str(seed or "")
+
+    def run(self) -> None:
+        try:
+            if not self.model_id:
+                self.failed.emit("No script (LLM) model selected in Model tab.")
+                return
+            out = expand_custom_field_text(
+                model_id=self.model_id,
+                field_label=self.field_label,
+                seed=self.seed,
+            )
+            self.done.emit(out)
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
 class ModelIntegrityVerifyWorker(QThread):
     """
     Compare local ``models/<repo>/`` files to Hugging Face Hub (per-file checksums).
@@ -473,7 +540,8 @@ class ModelIntegrityVerifyWorker(QThread):
     """
 
     progress = pyqtSignal(str, str)  # repo_id, status line
-    done = pyqtSignal(str)  # multiline summary for the log
+    # multiline summary for the log; per-repo status for UI (ok / missing / corrupt / …)
+    done = pyqtSignal(str, object)
     failed = pyqtSignal(str)
 
     def __init__(self, *, repo_ids: list[str], models_dir, scope_label: str = ""):
@@ -492,18 +560,20 @@ class ModelIntegrityVerifyWorker(QThread):
 
             if not self.repo_ids:
                 lines.append("No repository ids to verify.")
-                self.done.emit("\n".join(lines))
+                self.done.emit("\n".join(lines), {})
                 return
 
             n = len(self.repo_ids)
             ok_n = 0
             bad_n = 0
+            status_by_repo: dict[str, str] = {}
             for i, rid in enumerate(self.repo_ids):
                 self.progress.emit(rid, f"[{i + 1}/{n}] Verifying…")
                 rpt = verify_project_model_integrity(rid, models_dir=Path(self.models_dir))
                 lines.append(f"--- {rpt.repo_id} ---")
                 if rpt.error:
                     lines.append(f"  ERROR: {rpt.error}")
+                    status_by_repo[str(rpt.repo_id)] = "error"
                     bad_n += 1
                     continue
                 if rpt.ok:
@@ -515,9 +585,11 @@ class ModelIntegrityVerifyWorker(QThread):
                     else:
                         rev_s = ""
                     lines.append(f"  OK — {rpt.checked_files} file(s) matched{rev_s}")
+                    status_by_repo[str(rpt.repo_id)] = "ok"
                     ok_n += 1
                 else:
                     bad_n += 1
+                    status_by_repo[str(rpt.repo_id)] = classify_integrity_status(rpt)
                     if rpt.missing_paths:
                         lines.append(f"  Missing on disk ({len(rpt.missing_paths)}): " + ", ".join(rpt.missing_paths[:8]))
                         if len(rpt.missing_paths) > 8:
@@ -533,7 +605,7 @@ class ModelIntegrityVerifyWorker(QThread):
                     lines.append(f"  Note: {rpt.warning}")
 
             lines.append(f"Summary: {ok_n} ok, {bad_n} failed, {n} total.")
-            self.done.emit("\n".join(lines))
+            self.done.emit("\n".join(lines), status_by_repo)
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
@@ -589,14 +661,18 @@ class PreviewWorker(QThread):
     progress = pyqtSignal(str, int, str)
     done = pyqtSignal(object, object, object, str, str)  # pkg, sources, prompts, personality_id, confidence
     failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
-    def __init__(self, settings: AppSettings):
+    def __init__(self, settings: AppSettings, *, run_control: PipelineRunControl | None = None):
         super().__init__()
         self.settings = settings
+        self.run_control = run_control
 
     def run(self) -> None:
         try:
             dprint("workers", "PreviewWorker start")
+            if self.run_control is not None:
+                self.run_control.checkpoint()
             paths = pipeline_main.get_paths()
             models = pipeline_main.get_models()
             app = self.settings
@@ -620,6 +696,9 @@ class PreviewWorker(QThread):
             titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
             self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
 
+            if self.run_control is not None:
+                self.run_control.checkpoint()
+
             self.progress.emit("personality", 0, "Selecting tone…")
             picked = auto_pick_personality(
                 requested_id=getattr(app, "personality_id", "auto"),
@@ -638,6 +717,9 @@ class PreviewWorker(QThread):
                 elif task == "llm_generate":
                     self.progress.emit("script_llm_gen", pct, msg)
 
+            if self.run_control is not None:
+                self.run_control.checkpoint()
+
             pkg = generate_script(
                 model_id=llm_id,
                 items=sources,
@@ -655,6 +737,8 @@ class PreviewWorker(QThread):
             # Minimal confidence signal: more sources = better; tag match tends to correlate with relevance.
             confidence = "High" if len(sources) >= 3 else ("Medium" if len(sources) == 2 else "Low")
             self.done.emit(pkg, sources, prompts, picked.preset.id, confidence)
+        except PipelineCancelled:
+            self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
@@ -664,16 +748,20 @@ class StoryboardWorker(QThread):
     progress = pyqtSignal(str, int, str)
     done = pyqtSignal(object, object)  # manifest_path, grid_png_path
     failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
-    def __init__(self, settings: AppSettings):
+    def __init__(self, settings: AppSettings, *, run_control: PipelineRunControl | None = None):
         super().__init__()
         self.settings = settings
+        self.run_control = run_control
 
     def run(self) -> None:
         try:
             from pathlib import Path
 
             dprint("workers", "StoryboardWorker start")
+            if self.run_control is not None:
+                self.run_control.checkpoint()
             paths = pipeline_main.get_paths()
             models = pipeline_main.get_models()
             app = self.settings
@@ -698,6 +786,9 @@ class StoryboardWorker(QThread):
             titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
             self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
 
+            if self.run_control is not None:
+                self.run_control.checkpoint()
+
             self.progress.emit("personality", 0, "Selecting tone…")
             picked = auto_pick_personality(
                 requested_id=getattr(app, "personality_id", "auto"),
@@ -715,6 +806,9 @@ class StoryboardWorker(QThread):
                     self.progress.emit("script_llm_load", pct, msg)
                 elif task == "llm_generate":
                     self.progress.emit("script_llm_gen", pct, msg)
+
+            if self.run_control is not None:
+                self.run_control.checkpoint()
 
             pkg = generate_script(
                 model_id=llm_id,
@@ -751,6 +845,9 @@ class StoryboardWorker(QThread):
 
             def _img_pct(pct: int, msg: str) -> None:
                 self.progress.emit("storyboard_images", pct, msg)
+
+            if self.run_control is not None:
+                self.run_control.checkpoint()
 
             self.progress.emit("storyboard_images", 0, "Loading image model…")
             gen = generate_images(
@@ -797,6 +894,8 @@ class StoryboardWorker(QThread):
 
             self.progress.emit("storyboard", 100, "Storyboard preview ready.")
             self.done.emit(manifest, grid)
+        except PipelineCancelled:
+            self.cancelled.emit()
         except Exception as e:
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")

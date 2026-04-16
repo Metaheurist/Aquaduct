@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 import shutil
@@ -45,7 +46,28 @@ from src.personality_auto import auto_pick_personality
 from src.single_instance import single_instance_guard
 from src.topics import effective_topic_tags, news_cache_mode_for_run
 from src.utils_vram import prepare_for_next_model
+from src.pipeline_control import PipelineRunControl, PipelineCancelled
 from debug import apply_cli_debug, dprint
+
+
+def _rc(run: PipelineRunControl | None) -> None:
+    if run is not None:
+        run.checkpoint()
+
+
+def _pipe_progress(
+    on_progress: Callable[[str, int, str], None] | None,
+    pct: int,
+    message: str,
+) -> None:
+    """Emit pipeline UI progress: task_id ``pipeline_run``, percent 0–100, short stage label."""
+    if not on_progress:
+        return
+    try:
+        p = max(0, min(100, int(pct)))
+        on_progress("pipeline_run", p, message)
+    except Exception:
+        pass
 
 
 def _firecrawl_kwargs(app: AppSettings) -> dict:
@@ -103,6 +125,8 @@ def run_once(
     prebuilt_sources: list[dict[str, str]] | None = None,
     prebuilt_prompts: list[str] | None = None,
     prebuilt_seeds: list[int] | None = None,
+    run_control: PipelineRunControl | None = None,
+    on_progress: Callable[[str, int, str], None] | None = None,
 ) -> Path | None:
     paths = get_paths()
     models = get_models()
@@ -116,6 +140,7 @@ def run_once(
         f"prebuilt_pkg={'yes' if prebuilt_pkg is not None else 'no'}",
         f"slideshow={bool(video_settings.use_image_slideshow)}",
     )
+    _pipe_progress(on_progress, 2, "Starting…")
     llm_id = app.llm_model_id.strip() or models.llm_id
     img_id = app.image_model_id.strip() or models.sdxl_turbo_id
     clip_id = getattr(app, "video_model_id", "").strip()
@@ -135,6 +160,9 @@ def run_once(
         dprint("pipeline", "preflight blocked run", str(pf.errors))
         raise RuntimeError("Preflight failed:\n- " + "\n- ".join(pf.errors))
 
+    _rc(run_control)
+    _pipe_progress(on_progress, 6, "Preflight OK")
+
     items = None
     sources: list[dict[str, str]] = []
     preview_blob: dict | None = None
@@ -151,6 +179,7 @@ def run_once(
         item = pick_one_item(items)
         if not item:
             dprint("crawler", "no item picked — stopping run_once")
+            _pipe_progress(on_progress, 8, "No new headlines in cache")
             return None
         dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
         sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
@@ -174,6 +203,12 @@ def run_once(
                 for s in (prebuilt_pkg.segments or [])
             ],
         }
+
+    _rc(run_control)
+    if prebuilt_pkg is None:
+        _pipe_progress(on_progress, 12, "Sources ready")
+    else:
+        _pipe_progress(on_progress, 14, "Using approved script (skips news & LLM)")
 
     run_id = _now_run_id()
     dprint("pipeline", f"run_id={run_id}")
@@ -202,6 +237,7 @@ def run_once(
             titles=titles,
             topic_tags=list(effective_topic_tags(app)),
         )
+        _pipe_progress(on_progress, 22, "Writing script (LLM)…")
         pkg = generate_script(
             model_id=llm_id,
             items=sources,
@@ -219,6 +255,9 @@ def run_once(
         pkg = prebuilt_pkg
         dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")
 
+    _pipe_progress(on_progress, 44, "Script ready")
+    _rc(run_control)
+
     # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
     prepare_for_next_model()
 
@@ -228,6 +267,7 @@ def run_once(
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     # Voice
+    _pipe_progress(on_progress, 50, "Generating voice / captions…")
     voice_wav = assets_dir / "voice.wav"
     captions_json = assets_dir / "captions.json"
     narration = pkg.narration_text()
@@ -272,6 +312,9 @@ def run_once(
         ffmpeg_executable=ffmpeg_exe,
     )
 
+    _pipe_progress(on_progress, 58, "Voice track ready")
+    _rc(run_control)
+
     prepare_for_next_model()
 
     # Audio polish + mixing (FFmpeg best-effort)
@@ -314,6 +357,9 @@ def run_once(
         except Exception:
             pass
 
+    _pipe_progress(on_progress, 64, "Preparing visuals & prompts…")
+    _rc(run_control)
+
     if video_settings.use_image_slideshow:
         dprint("pipeline", "mode=slideshow", f"images_per_video={video_settings.images_per_video}")
         img_dir = assets_dir / "images"
@@ -354,6 +400,7 @@ def run_once(
             storyboard=storyboard,
             settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "voice": voice_id}},
         )
+        _pipe_progress(on_progress, 68, "Generating images (diffusion)…")
         gen = generate_images(
             sdxl_turbo_model_id=img_id,
             prompts=storyboard_prompts,
@@ -362,6 +409,7 @@ def run_once(
             seeds=storyboard_seeds,
         )
         image_paths = [g.path for g in gen]
+        _pipe_progress(on_progress, 80, "Images ready")
 
         # Quality reject/regenerate (best-effort; re-inits model on retry).
         retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
@@ -434,6 +482,9 @@ def run_once(
         except Exception:
             mix_wav = final_voice_wav
 
+        _pipe_progress(on_progress, 88, "Rendering micro-clips & final MP4…")
+        _rc(run_control)
+
         assemble_microclips_then_concat(
             ffmpeg_dir=paths.ffmpeg_dir,
             settings=video_settings,
@@ -447,6 +498,7 @@ def run_once(
             article_text=article_text,
             topic_tags=list(effective_topic_tags(app)),
         )
+        _pipe_progress(on_progress, 93, "Encode complete")
     else:
         # For img→vid clip models, first generate keyframe images (using the image model),
         # then animate them into clips with the selected clip model.
@@ -467,6 +519,7 @@ def run_once(
             storyboard=storyboard,
             settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "clip": (clip_id or img_id), "voice": voice_id}},
         )
+        _pipe_progress(on_progress, 68, "Generating keyframe images…")
         key_gen = generate_images(
             sdxl_turbo_model_id=img_id,
             prompts=storyboard_prompts,
@@ -475,6 +528,7 @@ def run_once(
             seeds=storyboard_seeds,
         )
         keyframes = [g.path for g in key_gen]
+        _pipe_progress(on_progress, 76, "Keyframes ready")
 
         retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
         if retries > 0:
@@ -516,10 +570,13 @@ def run_once(
         except Exception:
             pass
 
+        _rc(run_control)
+
         # Keyframe image model off GPU before loading the clip / video diffusion model.
         prepare_for_next_model()
 
         clip_dir = assets_dir / "clips"
+        _pipe_progress(on_progress, 82, "Video diffusion (animate clips)…")
         gen_clips = generate_clips(
             video_model_id=(clip_id or img_id),
             prompts=prompts,
@@ -530,6 +587,7 @@ def run_once(
             seconds_per_clip=float(video_settings.clip_seconds),
         )
         clip_paths = [c.path for c in gen_clips]
+        _pipe_progress(on_progress, 88, "Clips ready")
         mix_wav = final_voice_wav
         try:
             if music and music.exists():
@@ -545,6 +603,9 @@ def run_once(
         except Exception:
             mix_wav = final_voice_wav
 
+        _pipe_progress(on_progress, 91, "Rendering micro-clips & final MP4…")
+        _rc(run_control)
+
         assemble_generated_clips_then_concat(
             ffmpeg_dir=paths.ffmpeg_dir,
             settings=video_settings,
@@ -558,6 +619,7 @@ def run_once(
             article_text=article_text,
             topic_tags=list(effective_topic_tags(app)),
         )
+        _pipe_progress(on_progress, 93, "Encode complete")
 
     # Optional cleanup: remove large image/keyframe folders to save disk space.
     if bool(getattr(video_settings, "cleanup_images_after_run", False)):
@@ -569,7 +631,9 @@ def run_once(
             except Exception:
                 pass
 
+    _pipe_progress(on_progress, 97, "Saving project folder…")
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
+    _pipe_progress(on_progress, 100, "Done")
     dprint("pipeline", "run_once done", f"video_dir={video_dir}")
     return video_dir
 
