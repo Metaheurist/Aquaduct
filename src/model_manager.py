@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 import re
+import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -14,6 +17,7 @@ class ModelOption:
     kind: str  # "script" | "video" | "voice"
     order: int = 0  # UI enumeration within kind
     pair_image_repo_id: str = ""  # for img→vid options, which image model to use for keyframes
+    size_hint: str = ""  # e.g. "82M", "3B", or "≈6–8GB"
 
 
 def model_options() -> list[ModelOption]:
@@ -23,17 +27,17 @@ def model_options() -> list[ModelOption]:
     """
     opts = [
         # Script (LLM)
-        ModelOption("Qwen2.5 1.5B Instruct (very small)", "Qwen/Qwen2.5-1.5B-Instruct", "fastest", "script"),
-        ModelOption("Qwen2.5 3B Instruct", "Qwen/Qwen2.5-3B-Instruct", "faster", "script"),
-        ModelOption("Phi-3.5 Mini Instruct (small but strong)", "microsoft/Phi-3.5-mini-instruct", "faster", "script"),
-        ModelOption("Llama 3.2 3B Instruct (4-bit target)", "meta-llama/Llama-3.2-3B-Instruct", "faster", "script"),
-        ModelOption("Mistral 7B Instruct v0.3 (heavier)", "mistralai/Mistral-7B-Instruct-v0.3", "slow", "script"),
-        ModelOption("Qwen2.5 7B Instruct (heavier)", "Qwen/Qwen2.5-7B-Instruct", "slow", "script"),
-        ModelOption("Llama 3.1 8B Instruct (heavier)", "meta-llama/Meta-Llama-3.1-8B-Instruct", "slow", "script"),
+        ModelOption("Qwen2.5 1.5B Instruct (very small)", "Qwen/Qwen2.5-1.5B-Instruct", "fastest", "script", size_hint="1.5B"),
+        ModelOption("Qwen2.5 3B Instruct", "Qwen/Qwen2.5-3B-Instruct", "faster", "script", size_hint="3B"),
+        ModelOption("Phi-3.5 Mini Instruct (small but strong)", "microsoft/Phi-3.5-mini-instruct", "faster", "script", size_hint="mini"),
+        ModelOption("Llama 3.2 3B Instruct (4-bit target)", "meta-llama/Llama-3.2-3B-Instruct", "faster", "script", size_hint="3B"),
+        ModelOption("Mistral 7B Instruct v0.3 (heavier)", "mistralai/Mistral-7B-Instruct-v0.3", "slow", "script", size_hint="7B"),
+        ModelOption("Qwen2.5 7B Instruct (heavier)", "Qwen/Qwen2.5-7B-Instruct", "slow", "script", size_hint="7B"),
+        ModelOption("Llama 3.1 8B Instruct (heavier)", "meta-llama/Meta-Llama-3.1-8B-Instruct", "slow", "script", size_hint="8B"),
         # Video/Images (diffusion)
-        ModelOption("SDXL Turbo (1-step images)", "stabilityai/sdxl-turbo", "fastest", "video"),
-        ModelOption("SD 1.5 (images, lightweight)", "runwayml/stable-diffusion-v1-5", "faster", "video"),
-        ModelOption("SDXL Base 1.0 (images, higher quality)", "stabilityai/stable-diffusion-xl-base-1.0", "slow", "video"),
+        ModelOption("SDXL Turbo (1-step images)", "stabilityai/sdxl-turbo", "fastest", "video", size_hint="≈6–8GB"),
+        ModelOption("SD 1.5 (images, lightweight)", "runwayml/stable-diffusion-v1-5", "faster", "video", size_hint="≈4–6GB"),
+        ModelOption("SDXL Base 1.0 (images, higher quality)", "stabilityai/stable-diffusion-xl-base-1.0", "slow", "video", size_hint="≈8–10GB"),
         # Paired pipelines (single selection): keyframes via SDXL Turbo, then animate with img→vid
         ModelOption(
             "SVD XT (img→vid clips) + SDXL Turbo keyframes",
@@ -41,11 +45,12 @@ def model_options() -> list[ModelOption]:
             "slow",
             "video",
             pair_image_repo_id="stabilityai/sdxl-turbo",
+            size_hint="≈10–12GB",
         ),
-        ModelOption("ZeroScope v2 576w (clips, text→vid)", "cerspense/zeroscope_v2_576w", "slow", "video"),
+        ModelOption("ZeroScope v2 576w (clips, text→vid)", "cerspense/zeroscope_v2_576w", "slow", "video", size_hint="≈6–8GB"),
         # Voice (TTS)
-        ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice"),
-        ModelOption("coqui XTTS v2 (higher quality, heavier)", "coqui/XTTS-v2", "slow", "voice"),
+        ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice", size_hint="82M"),
+        ModelOption("coqui XTTS v2 (higher quality, heavier)", "coqui/XTTS-v2", "slow", "voice", size_hint="XTTS v2"),
     ]
 
     speed_rank = {"fastest": 0, "faster": 1, "slow": 2}
@@ -57,7 +62,17 @@ def model_options() -> list[ModelOption]:
     out: list[ModelOption] = []
     for o in opts:
         counters[o.kind] = counters.get(o.kind, 0) + 1
-        out.append(ModelOption(o.label, o.repo_id, o.speed, o.kind, counters[o.kind], o.pair_image_repo_id))
+        out.append(
+            ModelOption(
+                o.label,
+                o.repo_id,
+                o.speed,
+                o.kind,
+                counters[o.kind],
+                o.pair_image_repo_id,
+                o.size_hint,
+            )
+        )
     return out
 
 
@@ -86,6 +101,231 @@ def _safe_repo_dirname(repo_id: str) -> str:
 def project_model_dirname(repo_id: str) -> str:
     """Folder name under `models/` for a Hugging Face repo id (matches `download_model_to_project`)."""
     return _safe_repo_dirname(repo_id)
+
+
+def _iter_files(root: Path) -> Iterable[Path]:
+    try:
+        for p in root.rglob("*"):
+            yield p
+    except Exception:
+        return
+
+
+def _dir_size_bytes(root: Path) -> int:
+    """
+    Best-effort recursive directory size in bytes.
+    Avoids following symlinks (Windows-safe) and ignores stat errors.
+    """
+    total = 0
+    for p in _iter_files(root):
+        try:
+            if p.is_symlink():
+                continue
+            if p.is_file():
+                total += int(p.stat().st_size)
+        except Exception:
+            continue
+    return int(total)
+
+
+def _human_bytes(n: int | float | None) -> str:
+    if n is None:
+        return "—"
+    try:
+        x = float(n)
+    except Exception:
+        return "—"
+    if x <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    u = 0
+    while x >= 1024.0 and u < len(units) - 1:
+        x /= 1024.0
+        u += 1
+    if u == 0:
+        return f"{int(x)} {units[u]}"
+    return f"{x:.1f} {units[u]}"
+
+
+def local_model_size_label(repo_id: str, *, models_dir: Path) -> str:
+    """
+    Returns a human-readable local size for a repo_id in the project `models/` folder.
+    If not downloaded, returns "—".
+    """
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return "—"
+    p = models_dir / project_model_dirname(rid)
+    if not p.exists() or not p.is_dir():
+        return "—"
+    return _human_bytes(_dir_size_bytes(p))
+
+
+def model_size_label(repo_id: str, *, models_dir: Path, size_hint: str = "") -> str:
+    """
+    Prefer actual local on-disk size (if downloaded), else fall back to size_hint, else "—".
+    """
+    local = local_model_size_label(repo_id, models_dir=models_dir)
+    if local != "—":
+        return local
+    hint = str(size_hint or "").strip()
+    return hint or "—"
+
+
+def hf_token() -> str | None:
+    """Public accessor for the Hugging Face token (if configured)."""
+    t = _hf_token()
+    return str(t) if isinstance(t, str) and t.strip() else None
+
+
+def remote_repo_size_bytes(repo_id: str, *, token: str | None = None, timeout_s: float = 20.0) -> int | None:
+    """
+    Best-effort total repo size (bytes) from Hugging Face Hub.
+    Requires network; uses token if provided (recommended for gated repos / rate limits).
+    """
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return None
+    try:
+        from huggingface_hub import HfApi  # type: ignore
+    except Exception:
+        return None
+
+    try:
+        api = HfApi(token=token or hf_token())
+        # files_metadata=True includes per-file sizes when available
+        info = api.model_info(repo_id=rid, files_metadata=True, timeout=timeout_s)
+        sibs = getattr(info, "siblings", None) or []
+        total = 0
+        any_size = False
+        for s in sibs:
+            try:
+                sz = getattr(s, "size", None)
+                if sz is None:
+                    continue
+                total += int(sz)
+                any_size = True
+            except Exception:
+                continue
+        return int(total) if any_size else None
+    except Exception:
+        return None
+
+
+def model_has_local_snapshot(repo_id: str, *, models_dir: Path, min_bytes: int = 256_000) -> bool:
+    """
+    True if ``models_dir/<repo_folder>/`` exists and has at least ``min_bytes`` on disk
+    (avoids counting empty/partial folders as "installed").
+    """
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return False
+    p = models_dir / project_model_dirname(rid)
+    if not p.is_dir():
+        return False
+    return _dir_size_bytes(p) >= int(min_bytes)
+
+
+def probe_hf_model(
+    repo_id: str,
+    *,
+    token: str | None = None,
+    timeout_s: float = 28.0,
+) -> tuple[bool, int | None, str]:
+    """
+    Hit the Hugging Face Hub for ``repo_id`` metadata and summed file sizes.
+
+    Returns ``(ok, total_bytes, error_message)``. ``ok`` is True when the repository
+    is reachable and listing succeeds. ``error_message`` is empty on success.
+    """
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return False, None, "empty repo id"
+    try:
+        from huggingface_hub import HfApi  # type: ignore
+    except Exception:
+        return False, None, "huggingface_hub is not available"
+
+    try:
+        api = HfApi(token=token or hf_token())
+        info = api.model_info(repo_id=rid, files_metadata=True, timeout=timeout_s)
+        sibs = getattr(info, "siblings", None) or []
+        total = 0
+        any_size = False
+        for s in sibs:
+            try:
+                sz = getattr(s, "size", None)
+                if sz is None:
+                    continue
+                total += int(sz)
+                any_size = True
+            except Exception:
+                continue
+        return True, (int(total) if any_size else None), ""
+    except Exception as e:
+        msg = str(e).strip() or type(e).__name__
+        if len(msg) > 240:
+            msg = msg[:237] + "..."
+        return False, None, msg
+
+
+def load_hf_size_cache(cache_path: Path) -> dict[str, int]:
+    """
+    Loads a simple {repo_id: bytes} cache file.
+    """
+    try:
+        if not cache_path.exists():
+            return {}
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        out: dict[str, int] = {}
+        for k, v in data.items():
+            if not isinstance(k, str):
+                continue
+            try:
+                out[k] = int(v)
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return {}
+
+
+def save_hf_size_cache(cache_path: Path, sizes: dict[str, int]) -> None:
+    """
+    Saves {repo_id: bytes} to disk (best-effort).
+    """
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {str(k): int(v) for k, v in (sizes or {}).items() if str(k).strip()}
+        cache_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        return
+
+
+def best_model_size_label(
+    repo_id: str,
+    *,
+    models_dir: Path,
+    remote_sizes: dict[str, int] | None = None,
+    size_hint: str = "",
+) -> str:
+    """
+    Prefer local on-disk size, else remote HF size (if available), else size_hint.
+    """
+    local = local_model_size_label(repo_id, models_dir=models_dir)
+    if local != "—":
+        return local
+    if remote_sizes:
+        try:
+            b = remote_sizes.get(str(repo_id).strip())
+            if b is not None:
+                return _human_bytes(int(b))
+        except Exception:
+            pass
+    hint = str(size_hint or "").strip()
+    return hint or "—"
 
 
 def _hf_token() -> str | bool | None:

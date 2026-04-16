@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -46,13 +47,26 @@ def attach_branding_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
+    # Scroll wrapper so the window doesn't expand to full content height.
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    # Keep the page compact; user can scroll for the rest.
+    scroll.setMinimumHeight(520)
+    scroll.setMaximumHeight(700)
+
+    content = QWidget()
+    scroll.setWidget(content)
+    content_lay = QVBoxLayout(content)
+    content_lay.setContentsMargins(0, 0, 0, 0)
+
     header = QLabel("Branding (theme + logo watermark)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
+    content_lay.addWidget(header)
 
     sub = QLabel("All options are optional. Enable the checkbox to apply an override.")
     sub.setStyleSheet("color: #B7B7C2;")
-    lay.addWidget(sub)
+    content_lay.addWidget(sub)
 
     form = QFormLayout()
     form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -170,19 +184,41 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("", danger_row)
 
+    def _apply_preset_to_color_rows(palette_id: str, *, skip_checked_rows: bool = False) -> None:
+        """Fill theme hex fields + chips from PRESET_PALETTES when a named preset is chosen."""
+        pid = str(palette_id or "default").strip().lower()
+        if pid == "custom":
+            return
+        pal = PRESET_PALETTES.get(pid, PRESET_PALETTES["default"])
+        pairs = [
+            (win.brand_bg_chk, win.brand_bg_hex, pal["bg"]),
+            (win.brand_panel_chk, win.brand_panel_hex, pal["panel"]),
+            (win.brand_text_chk, win.brand_text_hex, pal["text"]),
+            (win.brand_muted_chk, win.brand_muted_hex, pal["muted"]),
+            (win.brand_accent_chk, win.brand_accent_hex, pal["accent"]),
+            (win.brand_danger_chk, win.brand_danger_hex, pal["danger"]),
+        ]
+        for chk, edit, hx in pairs:
+            if skip_checked_rows and chk.isChecked():
+                continue
+            v = str(hx or "").strip()
+            if not v.startswith("#"):
+                v = "#" + v
+            edit.setText(v.upper())
+
     # ---- Watermark section ----
     divider = QLabel(" ")
     divider.setFixedHeight(8)
-    lay.addWidget(divider)
+    content_lay.addWidget(divider)
 
     # ---- Video style section (palette affects prompts + captions) ----
     vs_header = QLabel("Video style (palette → prompts + captions)")
     vs_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
-    lay.addWidget(vs_header)
+    content_lay.addWidget(vs_header)
 
     win.brand_video_style_enable = QCheckBox("Apply branding to generated video style")
     win.brand_video_style_enable.setChecked(bool(getattr(b, "video_style_enabled", False)))
-    lay.addWidget(win.brand_video_style_enable)
+    content_lay.addWidget(win.brand_video_style_enable)
 
     vs_row = QHBoxLayout()
     vs_lbl = QLabel("Strength")
@@ -196,15 +232,15 @@ def attach_branding_tab(win) -> None:
     win.brand_video_style_strength.setCurrentIndex(idx if idx >= 0 else 0)
     vs_row.addWidget(win.brand_video_style_strength)
     vs_row.addStretch(1)
-    lay.addLayout(vs_row)
+    content_lay.addLayout(vs_row)
 
     wmark_header = QLabel("Logo watermark (videos)")
     wmark_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
-    lay.addWidget(wmark_header)
+    content_lay.addWidget(wmark_header)
 
     win.brand_watermark_enable = QCheckBox("Watermark generated videos with a logo")
     win.brand_watermark_enable.setChecked(bool(getattr(b, "watermark_enabled", False)))
-    lay.addWidget(win.brand_watermark_enable)
+    content_lay.addWidget(win.brand_watermark_enable)
 
     wm_row = QHBoxLayout()
     win.brand_watermark_path = QLineEdit()
@@ -225,7 +261,7 @@ def attach_branding_tab(win) -> None:
 
     pick_logo.clicked.connect(pick_logo_file)
     wm_row.addWidget(pick_logo)
-    lay.addLayout(wm_row)
+    content_lay.addLayout(wm_row)
 
     wm_form = QFormLayout()
 
@@ -254,10 +290,10 @@ def attach_branding_tab(win) -> None:
     win.brand_watermark_scale.setValue(int(round(float(getattr(b, "watermark_scale", 0.18)) * 100)))
     win.brand_watermark_scale.setToolTip("Size (% of video width)")
     wm_form.addRow("Size", win.brand_watermark_scale)
-    lay.addLayout(wm_form)
+    content_lay.addLayout(wm_form)
 
-    lay.addLayout(form)
-    lay.addStretch(1)
+    content_lay.addLayout(form)
+    content_lay.addStretch(1)
 
     def _branding_from_ui() -> BrandingSettings:
         return BrandingSettings(
@@ -327,10 +363,16 @@ def attach_branding_tab(win) -> None:
         if hasattr(win, "brand_video_style_strength"):
             win.brand_video_style_strength.setEnabled(enabled_vs)
 
+    def _on_palette_changed(_i: int) -> None:
+        _apply_preset_to_color_rows(str(win.brand_palette_combo.currentData() or "default"), skip_checked_rows=False)
+        _sync_enabled()
+        _apply_live_theme()
+
+    win.brand_palette_combo.currentIndexChanged.connect(_on_palette_changed)
+
     # Live apply + enablement wiring
     for sig_src in [
         win.brand_theme_enable,
-        win.brand_palette_combo,
         win.brand_bg_chk,
         win.brand_panel_chk,
         win.brand_text_chk,
@@ -363,8 +405,12 @@ def attach_branding_tab(win) -> None:
     win.brand_watermark_scale.valueChanged.connect(lambda _v: None)
     win.brand_video_style_strength.currentIndexChanged.connect(lambda _i: None)
 
+    if str(win.brand_palette_combo.currentData() or "default") != "custom":
+        _apply_preset_to_color_rows(str(win.brand_palette_combo.currentData() or "default"), skip_checked_rows=True)
+
     _sync_enabled()
     _apply_live_theme()
 
+    lay.addWidget(scroll)
     win.tabs.addTab(w, "Branding")
 

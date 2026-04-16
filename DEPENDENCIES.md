@@ -6,6 +6,9 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 - **Python**: 3.11+
 - **Virtualenv**: recommended (`python -m venv .venv`)
 
+## Desktop UI (optional)
+- **PyQt6**: only required when using the graphical control panel (`python -m UI`). The headless `main.py` pipeline does not need it.
+
 ## Core runtime libraries
 - **requests / beautifulsoup4 / lxml**: scraping (Google News RSS + MarkTechPost fallback)
 - **torch**: GPU compute for LLM and diffusion (when available)

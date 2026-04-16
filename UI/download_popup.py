@@ -17,7 +17,7 @@ class DownloadPopup(QDialog):
         super().__init__(parent)
         self.setModal(True)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
-        self.setFixedSize(720, 165)
+        self.setFixedSize(720, 220)
         self._drag_pos: QPoint | None = None
         # Track why we're closing. closeEvent treats an "X" click as cancel, but
         # a deliberate Pause button should NOT also emit cancel.

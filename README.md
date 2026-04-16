@@ -101,9 +101,11 @@ Tabs:
 - **Run**: one-shot run + logs + open `videos/`
 - **Topics**: add/remove free-text topic tags
 - **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
-- **Branding**: theme palette overrides + logo watermark
-- **Settings**: dependency check/install + model select/download (script/video/voice)
+- **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
+- **Settings**: Download menu + dependency check/install + model select/download (script/video/voice); skips repos already under `models/`
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
+
+Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
 
 ## Build Windows EXE
 - Build docs: [`build/README.md`](build/README.md)
