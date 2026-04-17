@@ -31,6 +31,8 @@ Central place for:
 ## App settings (UI + pipeline)
 `AppSettings` includes:
 - `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)
+- `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
+- `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in `src/config.py`)
 - `topic_tags_by_mode`: per-format tag lists (bias crawling + scripting for the active format); use `src/topics.py` `effective_topic_tags()` for the current format
 - `background_music_path`
 - model overrides (repo IDs):

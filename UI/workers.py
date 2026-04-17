@@ -18,7 +18,7 @@ from src.model_manager import (
 )
 
 import main as pipeline_main
-from src.brain import VideoPackage, generate_script
+from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
 from src.brain import expand_custom_field_text
 from src.model_integrity_cache import classify_integrity_status
 from src.pipeline_control import PipelineCancelled, PipelineRunControl
@@ -677,58 +677,115 @@ class PreviewWorker(QThread):
             models = pipeline_main.get_models()
             app = self.settings
             llm_id = (app.llm_model_id or "").strip() or models.llm_id
+            tags = list(effective_topic_tags(app))
+            vf = str(getattr(app, "video_format", "news") or "news")
 
-            self.progress.emit("headlines", 0, "Reading news cache…")
-            fc = _firecrawl_kwargs(app)
-            tags = effective_topic_tags(app)
-            cm = news_cache_mode_for_run(app)
-            if bool(getattr(app.video, "high_quality_topic_selection", True)):
-                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+            if str(getattr(app, "run_content_mode", "preset")) == "custom":
+                raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
+                if not raw_inst:
+                    self.failed.emit("No video instructions (custom mode). Enter instructions in the Run tab.")
+                    return
+                first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
+                sources = [{"title": first_line, "url": "", "source": "custom"}]
+                self.progress.emit("headlines", 100, "Using custom instructions")
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
+
+                self.progress.emit("personality", 0, "Selecting tone…")
+                picked = auto_pick_personality(
+                    requested_id=getattr(app, "personality_id", "auto"),
+                    llm_model_id=llm_id,
+                    titles=[first_line],
+                    topic_tags=tags,
+                    extra_scoring_text=raw_inst[:2000],
+                )
+                self.progress.emit("personality", 100, f"{picked.preset.label}")
+
+                active_ch = resolve_active_character(app)
+                char_ctx = character_context_for_brain(active_ch) if active_ch else None
+
+                def _llm_task(task: str, pct: int, msg: str) -> None:
+                    if task == "llm_load":
+                        self.progress.emit("script_llm_load", pct, msg)
+                    elif task == "llm_generate":
+                        self.progress.emit("script_llm_gen", pct, msg)
+
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
+
+                expanded = expand_custom_video_instructions(
+                    model_id=llm_id,
+                    raw_instructions=raw_inst,
+                    video_format=vf,
+                    personality_id=picked.preset.id,
+                    on_llm_task=_llm_task,
+                )
+                pkg = generate_script(
+                    model_id=llm_id,
+                    items=sources,
+                    topic_tags=tags,
+                    personality_id=picked.preset.id,
+                    branding=getattr(app, "branding", None),
+                    character_context=char_ctx,
+                    creative_brief=expanded,
+                    video_format=vf,
+                    on_llm_task=_llm_task,
+                )
+                pkg = enforce_arc(pkg)
             else:
-                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
-            self.progress.emit("headlines", 60, "Choosing items…")
-            item = pick_one_item(items)
-            if not item:
-                self.failed.emit("No new items found.")
-                return
+                self.progress.emit("headlines", 0, "Reading news cache…")
+                fc = _firecrawl_kwargs(app)
+                cm = news_cache_mode_for_run(app)
+                if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                    items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                else:
+                    items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                self.progress.emit("headlines", 60, "Choosing items…")
+                item = pick_one_item(items)
+                if not item:
+                    self.failed.emit("No new items found.")
+                    return
 
-            sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
-            titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
-            self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
+                sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+                titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+                self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
 
-            if self.run_control is not None:
-                self.run_control.checkpoint()
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
 
-            self.progress.emit("personality", 0, "Selecting tone…")
-            picked = auto_pick_personality(
-                requested_id=getattr(app, "personality_id", "auto"),
-                llm_model_id=llm_id,
-                titles=titles,
-                topic_tags=list(tags),
-            )
-            self.progress.emit("personality", 100, f"{picked.preset.label}")
+                self.progress.emit("personality", 0, "Selecting tone…")
+                picked = auto_pick_personality(
+                    requested_id=getattr(app, "personality_id", "auto"),
+                    llm_model_id=llm_id,
+                    titles=titles,
+                    topic_tags=tags,
+                    extra_scoring_text="",
+                )
+                self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-            active_ch = resolve_active_character(app)
-            char_ctx = character_context_for_brain(active_ch) if active_ch else None
+                active_ch = resolve_active_character(app)
+                char_ctx = character_context_for_brain(active_ch) if active_ch else None
 
-            def _llm_task(task: str, pct: int, msg: str) -> None:
-                if task == "llm_load":
-                    self.progress.emit("script_llm_load", pct, msg)
-                elif task == "llm_generate":
-                    self.progress.emit("script_llm_gen", pct, msg)
+                def _llm_task(task: str, pct: int, msg: str) -> None:
+                    if task == "llm_load":
+                        self.progress.emit("script_llm_load", pct, msg)
+                    elif task == "llm_generate":
+                        self.progress.emit("script_llm_gen", pct, msg)
 
-            if self.run_control is not None:
-                self.run_control.checkpoint()
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
 
-            pkg = generate_script(
-                model_id=llm_id,
-                items=sources,
-                topic_tags=effective_topic_tags(app),
-                personality_id=picked.preset.id,
-                branding=getattr(app, "branding", None),
-                character_context=char_ctx,
-                on_llm_task=_llm_task,
-            )
+                pkg = generate_script(
+                    model_id=llm_id,
+                    items=sources,
+                    topic_tags=tags,
+                    personality_id=picked.preset.id,
+                    branding=getattr(app, "branding", None),
+                    character_context=char_ctx,
+                    video_format=vf,
+                    on_llm_task=_llm_task,
+                )
+                pkg = enforce_arc(pkg)
 
             prompts = [s.visual_prompt for s in pkg.segments][:10]
             prompts = apply_palette_to_prompts(prompts, getattr(app, "branding", None))
@@ -768,57 +825,114 @@ class StoryboardWorker(QThread):
 
             llm_id = (app.llm_model_id or "").strip() or models.llm_id
             img_id = (app.image_model_id or "").strip() or models.sdxl_turbo_id
+            tags = list(effective_topic_tags(app))
+            vf = str(getattr(app, "video_format", "news") or "news")
 
-            self.progress.emit("headlines", 0, "Reading news cache…")
-            fc = _firecrawl_kwargs(app)
-            tags = effective_topic_tags(app)
-            cm = news_cache_mode_for_run(app)
-            if bool(getattr(app.video, "high_quality_topic_selection", True)):
-                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+            if str(getattr(app, "run_content_mode", "preset")) == "custom":
+                raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
+                if not raw_inst:
+                    self.failed.emit("No video instructions (custom mode). Enter instructions in the Run tab.")
+                    return
+                first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
+                sources = [{"title": first_line, "url": "", "source": "custom"}]
+                self.progress.emit("headlines", 100, "Using custom instructions")
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
+
+                self.progress.emit("personality", 0, "Selecting tone…")
+                picked = auto_pick_personality(
+                    requested_id=getattr(app, "personality_id", "auto"),
+                    llm_model_id=llm_id,
+                    titles=[first_line],
+                    topic_tags=tags,
+                    extra_scoring_text=raw_inst[:2000],
+                )
+                self.progress.emit("personality", 100, f"{picked.preset.label}")
+
+                active_ch = resolve_active_character(app)
+                char_ctx = character_context_for_brain(active_ch) if active_ch else None
+
+                def _llm_task(task: str, pct: int, msg: str) -> None:
+                    if task == "llm_load":
+                        self.progress.emit("script_llm_load", pct, msg)
+                    elif task == "llm_generate":
+                        self.progress.emit("script_llm_gen", pct, msg)
+
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
+
+                expanded = expand_custom_video_instructions(
+                    model_id=llm_id,
+                    raw_instructions=raw_inst,
+                    video_format=vf,
+                    personality_id=picked.preset.id,
+                    on_llm_task=_llm_task,
+                )
+                pkg = generate_script(
+                    model_id=llm_id,
+                    items=sources,
+                    topic_tags=tags,
+                    personality_id=picked.preset.id,
+                    branding=getattr(app, "branding", None),
+                    character_context=char_ctx,
+                    creative_brief=expanded,
+                    video_format=vf,
+                    on_llm_task=_llm_task,
+                )
+                pkg = enforce_arc(pkg)
             else:
-                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
-            self.progress.emit("headlines", 60, "Choosing items…")
-            item = pick_one_item(items)
-            if not item:
-                self.failed.emit("No new items found.")
-                return
-            sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
-            titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
-            self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
+                self.progress.emit("headlines", 0, "Reading news cache…")
+                fc = _firecrawl_kwargs(app)
+                cm = news_cache_mode_for_run(app)
+                if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                    items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                else:
+                    items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                self.progress.emit("headlines", 60, "Choosing items…")
+                item = pick_one_item(items)
+                if not item:
+                    self.failed.emit("No new items found.")
+                    return
+                sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+                titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+                self.progress.emit("headlines", 100, f"Picked {len(sources)} headline(s)")
 
-            if self.run_control is not None:
-                self.run_control.checkpoint()
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
 
-            self.progress.emit("personality", 0, "Selecting tone…")
-            picked = auto_pick_personality(
-                requested_id=getattr(app, "personality_id", "auto"),
-                llm_model_id=llm_id,
-                titles=titles,
-                topic_tags=list(tags),
-            )
-            self.progress.emit("personality", 100, f"{picked.preset.label}")
+                self.progress.emit("personality", 0, "Selecting tone…")
+                picked = auto_pick_personality(
+                    requested_id=getattr(app, "personality_id", "auto"),
+                    llm_model_id=llm_id,
+                    titles=titles,
+                    topic_tags=tags,
+                    extra_scoring_text="",
+                )
+                self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-            active_ch = resolve_active_character(app)
-            char_ctx = character_context_for_brain(active_ch) if active_ch else None
+                active_ch = resolve_active_character(app)
+                char_ctx = character_context_for_brain(active_ch) if active_ch else None
 
-            def _llm_task(task: str, pct: int, msg: str) -> None:
-                if task == "llm_load":
-                    self.progress.emit("script_llm_load", pct, msg)
-                elif task == "llm_generate":
-                    self.progress.emit("script_llm_gen", pct, msg)
+                def _llm_task(task: str, pct: int, msg: str) -> None:
+                    if task == "llm_load":
+                        self.progress.emit("script_llm_load", pct, msg)
+                    elif task == "llm_generate":
+                        self.progress.emit("script_llm_gen", pct, msg)
 
-            if self.run_control is not None:
-                self.run_control.checkpoint()
+                if self.run_control is not None:
+                    self.run_control.checkpoint()
 
-            pkg = generate_script(
-                model_id=llm_id,
-                items=sources,
-                topic_tags=effective_topic_tags(app),
-                personality_id=picked.preset.id,
-                branding=getattr(app, "branding", None),
-                character_context=char_ctx,
-                on_llm_task=_llm_task,
-            )
+                pkg = generate_script(
+                    model_id=llm_id,
+                    items=sources,
+                    topic_tags=tags,
+                    personality_id=picked.preset.id,
+                    branding=getattr(app, "branding", None),
+                    character_context=char_ctx,
+                    video_format=vf,
+                    on_llm_task=_llm_task,
+                )
+                pkg = enforce_arc(pkg)
 
             prepare_for_next_model()
 

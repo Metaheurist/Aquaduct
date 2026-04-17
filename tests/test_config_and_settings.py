@@ -52,6 +52,20 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     assert s2.video.audio_polish in {"off", "basic", "strong"}
 
 
+def test_ui_settings_roundtrip_custom_video_fields(tmp_repo_root, monkeypatch):
+    from src import ui_settings as ui_mod
+
+    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+    s = AppSettings(
+        run_content_mode="custom",
+        custom_video_instructions="First line topic\nMore detail for the LLM.",
+    )
+    save_settings(s)
+    s2 = load_settings()
+    assert s2.run_content_mode == "custom"
+    assert "First line topic" in s2.custom_video_instructions
+
+
 def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
     from src import ui_settings as ui_mod
     from src.config import AppSettings

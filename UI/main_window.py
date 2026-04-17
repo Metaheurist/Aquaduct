@@ -31,7 +31,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.config import AppSettings, BrandingSettings, VideoSettings, VIDEO_FORMATS, get_paths
+from src.config import (
+    MAX_CUSTOM_VIDEO_INSTRUCTIONS,
+    AppSettings,
+    BrandingSettings,
+    VideoSettings,
+    VIDEO_FORMATS,
+    get_paths,
+)
 from src.model_integrity_cache import (
     integrity_cache_path,
     load_integrity_cache,
@@ -961,6 +968,16 @@ class MainWindow(QMainWindow):
             youtube_auto_upload_after_render=yt_auto,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             active_character_id=str(self.character_combo.currentData()) if hasattr(self, "character_combo") else str(getattr(self.settings, "active_character_id", "") or ""),
+            run_content_mode=(
+                "custom"
+                if hasattr(self, "run_content_custom_radio") and self.run_content_custom_radio.isChecked()
+                else "preset"
+            ),
+            custom_video_instructions=(
+                (self.custom_instructions_edit.toPlainText()[:MAX_CUSTOM_VIDEO_INSTRUCTIONS])
+                if hasattr(self, "custom_instructions_edit")
+                else str(getattr(self.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS]
+            ),
             llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
             image_model_id=image_model_id,
             video_model_id=video_model_id,
@@ -1502,6 +1519,12 @@ class MainWindow(QMainWindow):
                     self._append_log(f"- {e}")
                 return
 
+            if str(getattr(self.settings, "run_content_mode", "preset")) == "custom" and not str(
+                getattr(self.settings, "custom_video_instructions", "") or ""
+            ).strip():
+                self._append_log("Custom mode: enter video instructions in the Run tab first.")
+                return
+
             qty = int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1
 
             self.run_btn.setEnabled(False)
@@ -1555,6 +1578,11 @@ class MainWindow(QMainWindow):
 
         dprint("ui", "_on_preview")
         self._save_settings()
+        if str(getattr(self.settings, "run_content_mode", "preset")) == "custom" and not str(
+            getattr(self.settings, "custom_video_instructions", "") or ""
+        ).strip():
+            self._append_log("Custom mode: enter video instructions in the Run tab first.")
+            return
         self._maybe_log_offline_notice()
         pf = preflight_check(settings=self.settings, strict=False)
         for w in pf.warnings:
@@ -1778,6 +1806,11 @@ class MainWindow(QMainWindow):
         if self.storyboard_worker and self.storyboard_worker.isRunning():
             return
         self._save_settings()
+        if str(getattr(self.settings, "run_content_mode", "preset")) == "custom" and not str(
+            getattr(self.settings, "custom_video_instructions", "") or ""
+        ).strip():
+            self._append_log("Custom mode: enter video instructions in the Run tab first.")
+            return
         self._maybe_log_offline_notice()
         if hasattr(self, "storyboard_btn"):
             try:
