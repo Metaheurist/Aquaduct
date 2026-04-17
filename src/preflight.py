@@ -97,7 +97,7 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         paths = get_paths()
         if not find_ffmpeg(paths.ffmpeg_dir):
             errors.append(
-                "FFmpeg is not under .cache/ffmpeg yet. In the desktop app, click Run once — it downloads in the "
+                "FFmpeg is not under .Aquaduct_data/.cache/ffmpeg yet. In the desktop app, click Run once — it downloads in the "
                 "background on first launch (internet required). CLI: the next `python main.py --once` downloads it "
                 "before the pipeline starts. Or install FFmpeg yourself and ensure ffmpeg.exe is discoverable."
             )

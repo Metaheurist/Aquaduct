@@ -110,6 +110,7 @@ def attach_topics_tab(win) -> None:
     win.topics_mode_combo.addItem("News", "news")
     win.topics_mode_combo.addItem("Cartoon", "cartoon")
     win.topics_mode_combo.addItem("Explainer", "explainer")
+    win.topics_mode_combo.addItem("Cartoon (unhinged)", "unhinged")
     tm = str(getattr(win.settings, "video_format", "news") or "news")
     if tm not in VIDEO_FORMATS:
         tm = "news"

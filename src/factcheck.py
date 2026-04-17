@@ -106,7 +106,10 @@ def rewrite_with_uncertainty(
     tokenizer = None
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+        from .hf_transformers_imports import causal_lm_stack
+
+        AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig = causal_lm_stack()
 
         load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
         tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)

@@ -47,6 +47,7 @@ def attach_run_tab(win) -> None:
     win.video_format_combo.addItem("News (headlines)", "news")
     win.video_format_combo.addItem("Cartoon", "cartoon")
     win.video_format_combo.addItem("Explainer", "explainer")
+    win.video_format_combo.addItem("Cartoon (unhinged)", "unhinged")
     cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
     if cur_vf not in VIDEO_FORMATS:
         cur_vf = "news"
@@ -60,7 +61,7 @@ def attach_run_tab(win) -> None:
     mode_lbl = QLabel("Content source")
     mode_lbl.setStyleSheet("color: #B7B7C2;")
     mode_row.addWidget(mode_lbl)
-    win.run_content_preset_radio = QRadioButton("Preset (news cache + topics)")
+    win.run_content_preset_radio = QRadioButton("Preset")
     win.run_content_custom_radio = QRadioButton("Custom (your instructions)")
     win.run_content_mode_group = QButtonGroup(w)
     win.run_content_mode_group.addButton(win.run_content_preset_radio)
@@ -90,20 +91,45 @@ def attach_run_tab(win) -> None:
     vf_hint.setWordWrap(True)
     vf_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
 
+    def _preset_mode_caption(vf: str) -> str:
+        """Preset row explains how headlines are sourced (matches pipeline behavior)."""
+        if vf == "unhinged":
+            return "Preset (topics + fresh headlines)"
+        if vf == "news":
+            return "Preset (news cache + topics)"
+        # cartoon / explainer: per-format URL cache under data/news_cache/, not the news bucket
+        return "Preset (topics + headlines)"
+
     def _sync_content_mode_ui() -> None:
         custom = win.run_content_custom_radio.isChecked()
         custom_wrap.setVisible(custom)
+        vf = str(win.video_format_combo.currentData() or "news")
+        win.run_content_preset_radio.setText(_preset_mode_caption(vf))
         if custom:
+            extra = ""
+            if vf == "unhinged":
+                extra = (
+                    " Cartoon (unhinged) targets adult-animation satire (absurdist / shock-cartoon energy); "
+                    "local TTS rotates voices per beat (single cloud voice if your character uses ElevenLabs)."
+                )
             vf_hint.setText(
                 "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
                 "then writes the script (two passes — slower than Preset). Topic tags from the Topics tab still bias "
                 "hashtags when relevant."
+                + extra
+            )
+        elif vf == "unhinged":
+            vf_hint.setText(
+                "Cartoon (unhinged): Preset pulls comedy/absurdist headlines using your Topics tags (no local seen-URL cache). "
+                "Adult-animation satire tone. Local TTS rotates one system voice per script beat; "
+                "when a character uses ElevenLabs, one voice is used for the full track."
             )
         else:
             vf_hint.setText("Tags for the run come from the Topics tab list for this format.")
 
     win.run_content_preset_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
     win.run_content_custom_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
+    win.video_format_combo.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
     _sync_content_mode_ui()
     lay.addWidget(vf_hint)
 

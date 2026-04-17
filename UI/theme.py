@@ -34,6 +34,9 @@ QLineEdit, QTextEdit, QPlainTextEdit, QListWidget {{
   background: {control_bg}; border: 1px solid {border}; border-radius: 12px; padding: 8px; color: {text};
   min-height: 30px;
 }}
+QLineEdit::placeholder {{
+  color: {muted};
+}}
 QAbstractSpinBox, QSpinBox {{
   background: {control_bg}; border: 1px solid {border}; border-radius: 12px; color: {text};
   min-height: 32px; padding: 4px 8px; padding-right: 22px;
@@ -64,9 +67,18 @@ QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QListWidget:focus, QSpin
 }}
 QPushButton {{
   background: {control_bg}; border: 1px solid {border}; border-radius: 12px; padding: 10px 12px; color: {text};
+  font-weight: 600;
 }}
 QPushButton:hover {{ border: 1px solid {accent}; }}
 QPushButton:pressed {{ border: 1px solid {danger}; }}
+QPushButton[buttonRole="secondary"] {{
+  background: {panel}; color: {text}; border: 1px solid {border}; border-radius: 10px;
+  padding: 8px 14px; font-weight: 700; min-height: 26px;
+}}
+QPushButton[buttonRole="secondary"]:hover {{
+  background: {control_bg}; border: 1px solid {accent};
+}}
+QPushButton[buttonRole="secondary"]:pressed {{ border: 1px solid {danger}; }}
 QPushButton#primary {{ background: {accent}; color: {panel}; border: 1px solid {accent}; font-weight: 600; }}
 QPushButton#danger {{ background: {danger}; color: {text}; border: 1px solid {danger}; font-weight: 600; }}
 QPushButton#closeBtn {{
@@ -89,7 +101,17 @@ QPushButton#saveBtn {{
 }}
 QPushButton#saveBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
 QPushButton#saveBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
-QCheckBox {{ spacing: 10px; }}
+QPushButton#graphBtn {{
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: {accent};
+  font-weight: 800;
+  padding: 4px 10px;
+}}
+QPushButton#graphBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
+QPushButton#graphBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
+QCheckBox {{ spacing: 10px; color: {text}; font-weight: 600; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid {border}; background: {control_bg}; }}
 QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}
 """.lstrip()

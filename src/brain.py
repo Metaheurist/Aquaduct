@@ -130,13 +130,167 @@ def _to_package(data: dict[str, Any]) -> VideoPackage:
     )
 
 
-def _prompt_for_items(
+def _prompt_for_unhinged_items(
     headlines: list[dict[str, str]],
     topic_tags: list[str] | None,
     personality: PersonalityPreset,
     branding: BrandingSettings | None = None,
     character_context: str | None = None,
 ) -> str:
+    """Preset prompts for 'unhinged' adult-animation-style satire (not AI tool reviews)."""
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_line = f"Topic tags (bias hashtags and story angle): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
+    char_block = ""
+    cc = (character_context or "").strip()
+    if cc:
+        char_block = (
+            "Character / host identity (layer on tone; stay consistent in narration and on-screen cues):\n"
+            f"{cc}\n\n"
+        )
+    return (
+        "You are a comedy writer for chaotic vertical shorts (9:16). Write an UNHINGED CARTOON script in the spirit of "
+        "prestige adult-animation comedy: absurdist dread and awkward pauses, cynical sci-fi or family-sitcom banter, "
+        "shock-satire punchlines, grotesque-cute or liminal-weird imagery — like classic adult animated sitcoms, "
+        "NOT kids' TV or product reviews. Do not name, quote, or imitate any real show, character, or creator; "
+        "invent original voices and settings. Stay playful; no slurs, hate, harassment, or real-person cruelty.\n"
+        "Pick ONE headline below as a loose seed (twist or parody it freely — you do NOT review products).\n"
+        "Storytelling rule: The `hook` and every segment's `narration` must be in character voice — "
+        "first-person, dialogue between characters, or close third tied to a named character. "
+        "Do NOT default to a neutral news announcer; the story is told through the cast.\n"
+        "Write a ~50 second script with 6-10 few-second beats. Each beat should feel like a different voice could deliver it "
+        "(snappy, quotable lines; deadpan or manic energy both work).\n"
+        "Visual style: exaggerated 2D adult-animation look — flat color, rubber-hose or sharp TV-comedy staging, "
+        "gross-out or surreal backgrounds when it sells the joke — NOT corporate cyberpunk unless the joke demands it.\n"
+        "Enforce this structure (keep it tight):\n"
+        "- Hook (0-2s): wrong-foot the viewer — fake-wholesome, deadpan doom, or sudden satire\n"
+        "- Escalation (2-18s): the premise spirals (sitcom argument, sci-fi nonsense, or moral panic)\n"
+        "- Chaos peak (18-35s): maximum cartoon transgression with one concrete visual gag per beat\n"
+        "- Payoff (35-45s): land the joke (bleeped energy ok in text; no real slurs)\n"
+        "- Close/CTA (last few seconds): ironic follow / subscribe bit\n"
+        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+        "Constraints:\n"
+        "- narration total ~120-150 words\n"
+        "- title <= 80 chars\n"
+        "- hashtags: 15-30 items mixing adult animation + satire + cartoon comedy + shorts tags "
+        "(e.g. #AdultAnimation #CartoonTok), not only #AI\n"
+        "- avoid markdown except optional ```json fence\n"
+        "\n"
+        f"{personality_block}"
+        f"{char_block}"
+        f"{style_suffix}"
+        f"{tag_line}"
+        f"Headlines (pick ONE as seed — interpret wildly): {json.dumps(headlines, ensure_ascii=False)}\n"
+    )
+
+
+def _prompt_for_cartoon_items(
+    headlines: list[dict[str, str]],
+    topic_tags: list[str] | None,
+    personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
+    character_context: str | None = None,
+) -> str:
+    """Preset prompts for cartoon format — character-voiced story, not news reviews."""
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_line = f"Topic tags (bias hashtags and story angle): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
+    char_block = ""
+    cc = (character_context or "").strip()
+    if cc:
+        char_block = (
+            "Character / cast (the story is told through these voices — stay consistent):\n"
+            f"{cc}\n\n"
+        )
+    return (
+        "You are a comedy writer for playful cartoon vertical shorts (9:16). "
+        "Tell a tiny story with a clear beginning, middle, and punchline — all through characters.\n"
+        "Storytelling rule: The `hook` and every segment's `narration` must be in character voice — "
+        "first-person, dialogue between characters, or close third tied to a named character. "
+        "Do NOT use a neutral TV announcer or product-demo narrator unless the joke is explicitly about that. "
+        "The audience should hear the cast living the story.\n"
+        "Pick ONE headline below as a loose seed (parody or twist freely — you are NOT reviewing products).\n"
+        "Write a ~50 second script with 6-10 few-second beats. Keep language family-friendly; no slurs or hate.\n"
+        "Visual style: bright 2D cartoon, bold shapes, expressive faces, rubber-hose or modern toon energy.\n"
+        "Enforce this structure (keep it tight):\n"
+        "- Hook (0-2s): a character grabs the mic — wrong-footing or playful chaos\n"
+        "- Rising action (2-22s): characters react, escalate, argue, or chase the idea\n"
+        "- Peak (22-38s): biggest visual gag; one concrete cartoon beat per segment when possible\n"
+        "- Payoff (38-48s): land the joke from the cast's POV\n"
+        "- Close/CTA (last few seconds): in-character sign-off\n"
+        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+        "Use `on_screen_text` for short dialogue tags, reactions, or caption jokes.\n"
+        "Constraints:\n"
+        "- narration total ~120-150 words\n"
+        "- title <= 80 chars\n"
+        "- hashtags: 15-30 items mixing cartoon + comedy + shorts tags (e.g. #CartoonTok), not only #AI\n"
+        "- avoid markdown except optional ```json fence\n"
+        "\n"
+        f"{personality_block}"
+        f"{char_block}"
+        f"{style_suffix}"
+        f"{tag_line}"
+        f"Headlines (pick ONE as seed — interpret wildly): {json.dumps(headlines, ensure_ascii=False)}\n"
+    )
+
+
+def _prompt_for_items(
+    headlines: list[dict[str, str]],
+    topic_tags: list[str] | None,
+    personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
+    character_context: str | None = None,
+    video_format: str = "news",
+) -> str:
+    vf = (video_format or "news").strip().lower()
+    if vf == "cartoon":
+        return _prompt_for_cartoon_items(
+            headlines, topic_tags, personality, branding=branding, character_context=character_context
+        )
+    if vf == "unhinged":
+        return _prompt_for_unhinged_items(
+            headlines, topic_tags, personality, branding=branding, character_context=character_context
+        )
     # Keep it stable for JSON parsing.
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     tag_line = f"Topic tags (must strongly influence the tool choice/angle): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
@@ -198,9 +352,16 @@ def _prompt_for_items(
 def _vf_hint(video_format: str) -> str:
     f = (video_format or "news").strip().lower()
     if f == "cartoon":
-        return "playful / exaggerated visuals ok; keep pacing snappy"
+        return (
+            "character-driven cartoon story: narrate through the cast (dialogue / first-person), playful exaggerated visuals, snappy pacing"
+        )
     if f == "explainer":
         return "teach clearly: define terms, use simple on-screen labels"
+    if f == "unhinged":
+        return (
+            "adult-animation comedy: absurdist satire, cynical banter, shock-cartoon punchlines, surreal or gross-out gags; "
+            "invent original characters — no cruelty or hate, playful only"
+        )
     return "timely angle; connect to current AI tooling news when plausible"
 
 
@@ -247,6 +408,66 @@ def _prompt_for_creative_brief(
             f"{cc}\n\n"
         )
     vf = _vf_hint(video_format)
+    vf_key = (video_format or "news").strip().lower()
+    if vf_key == "cartoon":
+        return (
+            "You are a comedy writer for cartoon vertical shorts (9:16).\n"
+            "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
+            "Turn it into a complete script package — you may interpret and tighten, but stay faithful to the user's intent.\n"
+            f"Video format mode: {video_format!r}. Aim for: {vf}\n"
+            "Narration must be in character voice throughout (dialogue or first-person), not a detached announcer.\n"
+            "Default visual style: bright 2D cartoon, expressive acting — unless the brief says otherwise.\n"
+            "Enforce this structure (keep it tight):\n"
+            "- Hook (0-2s): a character opens\n"
+            "- Rising action (2-22s): cast drives the story\n"
+            "- Peak (22-38s): biggest gag\n"
+            "- Payoff + CTA: in-character close\n"
+            "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+            "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+            "Constraints:\n"
+            "- narration total ~120-150 words\n"
+            "- title <= 80 chars\n"
+            "- hashtags: 15-30 items mixing cartoon + comedy + shorts tags\n"
+            "- avoid markdown except optional ```json fence\n"
+            "\n"
+            f"{personality_block}"
+            f"{char_block}"
+            f"{style_suffix}"
+            f"{tag_line}"
+            "Creative brief (primary — follow this):\n"
+            f"{expanded_brief.strip()}\n"
+        )
+    if vf_key == "unhinged":
+        return (
+            "You are a comedy writer for adult-animation-style vertical shorts (9:16).\n"
+            "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
+            "Turn it into a complete script package — you may interpret and tighten, but stay faithful to the user's intent.\n"
+            f"Video format mode: {video_format!r}. Aim for: {vf}\n"
+            "Write a ~50 second script with 6-10 few-second beats. Do not name or imitate real shows or characters; invent originals.\n"
+            "Narration must be in character voice throughout — not a neutral news announcer.\n"
+            "Default visual style: flat 2D adult-animation satire, exaggerated acting, gross-out or surreal sets — "
+            "unless the brief says otherwise (not corporate cyberpunk by default).\n"
+            "Enforce this structure (keep it tight):\n"
+            "- Hook (0-2s): deadpan wrongness or fake-sincere doom\n"
+            "- Escalation (2-18s): sitcom argument, sci-fi nonsense, or moral panic — pick one and spiral\n"
+            "- Chaos peak (18-35s): maximum cartoon transgression; one concrete visual gag per beat\n"
+            "- Payoff (35-45s): land the joke\n"
+            "- Close/CTA (last few seconds): ironic follow / subscribe bit\n"
+            "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+            "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+            "Constraints:\n"
+            "- narration total ~120-150 words\n"
+            "- title <= 80 chars\n"
+            "- hashtags: 15-30 items mixing adult animation + satire + cartoon comedy + shorts tags\n"
+            "- avoid markdown except optional ```json fence\n"
+            "\n"
+            f"{personality_block}"
+            f"{char_block}"
+            f"{style_suffix}"
+            f"{tag_line}"
+            "Creative brief (primary — follow this):\n"
+            f"{expanded_brief.strip()}\n"
+        )
     return (
         "You are a viral short-form scriptwriter for vertical video (9:16).\n"
         "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
@@ -290,26 +511,77 @@ def expand_custom_video_instructions(
     """
     personality = get_personality_by_id(personality_id)
     vf = _vf_hint(video_format)
-    prompt = (
-        "You are a creative director for short-form vertical video (9:16).\n"
-        "The user wrote rough notes. Expand them into a structured creative brief. "
-        "Do NOT output JSON. Use clear plain text with labeled sections.\n"
-        f"Video format mode: {video_format!r}. Target style: {vf}\n"
-        f"Tone anchor — {personality.label}: {personality.description}\n"
-        "Style rules to respect:\n"
-        + "\n".join(f"- {r}" for r in personality.style_rules)
-        + "\n\nUser's raw notes:\n"
-        f"{raw_instructions.strip()}\n\n"
-        "Output sections (use headings):\n"
-        "1) Working title (one line)\n"
-        "2) Core angle / hook\n"
-        "3) Beat-by-beat outline (6–10 beats for ~50 seconds total)\n"
-        "4) Visual motifs (default high-contrast cyberpunk unless notes say otherwise)\n"
-        "5) Short on-screen text keywords per beat\n"
-        "6) Hashtag theme words (no # prefixes)\n"
-        "7) CTA idea\n"
-        "Keep it tight and actionable.\n"
-    )
+    vf_key = (video_format or "news").strip().lower()
+    if vf_key == "cartoon":
+        prompt = (
+            "You are a creative director for character-driven cartoon shorts (9:16).\n"
+            "The user wrote rough notes. Expand them into a structured creative brief. "
+            "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+            f"Video format mode: {video_format!r}. Target style: {vf}\n"
+            "The story must be told through characters — specify who speaks, their voices, and how narration maps to beats.\n"
+            f"Tone anchor — {personality.label}: {personality.description}\n"
+            "Style rules to respect:\n"
+            + "\n".join(f"- {r}" for r in personality.style_rules)
+            + "\n\nUser's raw notes:\n"
+            f"{raw_instructions.strip()}\n\n"
+            "Output sections (use headings):\n"
+            "1) Working title (one line)\n"
+            "2) Cast (names + one-line voice each)\n"
+            "3) Core hook (in-character)\n"
+            "4) Beat-by-beat outline (6–10 beats for ~50 seconds) — who says what\n"
+            "5) Visual motifs (bright 2D cartoon; not cyberpunk unless notes say so)\n"
+            "6) Short on-screen text keywords per beat\n"
+            "7) Hashtag theme words (no # prefixes)\n"
+            "8) CTA idea (in-character)\n"
+            "Keep it tight and actionable.\n"
+        )
+    elif vf_key == "unhinged":
+        prompt = (
+            "You are a creative director for adult-animation-style comedy shorts (9:16).\n"
+            "The user wrote rough notes. Expand them into a structured creative brief. "
+            "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+            f"Video format mode: {video_format!r}. Target style: {vf}\n"
+            "Comedy direction: absurdist satire, cynical banter, shock-cartoon or surreal dread — "
+            "invent original characters and settings; do not name or imitate real shows.\n"
+            "The story must be told through those characters' voices (not a neutral announcer).\n"
+            f"Tone anchor — {personality.label}: {personality.description}\n"
+            "Style rules to respect:\n"
+            + "\n".join(f"- {r}" for r in personality.style_rules)
+            + "\n\nUser's raw notes:\n"
+            f"{raw_instructions.strip()}\n\n"
+            "Output sections (use headings):\n"
+            "1) Working title (one line)\n"
+            "2) Cast (who speaks; one-line voice each)\n"
+            "3) Core angle / hook (deadpan, wrong-footing, or satirical)\n"
+            "4) Beat-by-beat outline (6–10 beats for ~50 seconds total) — who says what\n"
+            "5) Visual motifs (default: flat 2D adult-animation satire, exaggerated faces, grotesque-cute or liminal weirdness — "
+            "unless notes say otherwise; not corporate cyberpunk by default)\n"
+            "6) Short on-screen text keywords per beat\n"
+            "7) Hashtag theme words (no # prefixes)\n"
+            "8) CTA idea (in-character)\n"
+            "Keep it tight and actionable.\n"
+        )
+    else:
+        prompt = (
+            "You are a creative director for short-form vertical video (9:16).\n"
+            "The user wrote rough notes. Expand them into a structured creative brief. "
+            "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+            f"Video format mode: {video_format!r}. Target style: {vf}\n"
+            f"Tone anchor — {personality.label}: {personality.description}\n"
+            "Style rules to respect:\n"
+            + "\n".join(f"- {r}" for r in personality.style_rules)
+            + "\n\nUser's raw notes:\n"
+            f"{raw_instructions.strip()}\n\n"
+            "Output sections (use headings):\n"
+            "1) Working title (one line)\n"
+            "2) Core angle / hook\n"
+            "3) Beat-by-beat outline (6–10 beats for ~50 seconds total)\n"
+            "4) Visual motifs (default high-contrast cyberpunk unless notes say otherwise)\n"
+            "5) Short on-screen text keywords per beat\n"
+            "6) Hashtag theme words (no # prefixes)\n"
+            "7) CTA idea\n"
+            "Keep it tight and actionable.\n"
+        )
     with vram_guard():
         raw = _generate_with_transformers(
             model_id=model_id,
@@ -464,7 +736,10 @@ def _generate_with_transformers(
     max_new_tokens: int = 650,
 ) -> str:
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+    from .hf_transformers_imports import causal_lm_stack, text_iterator_streamer_cls
+
+    AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig = causal_lm_stack()
 
     def _stderr(msg: str) -> None:
         if not on_llm_task:
@@ -529,7 +804,7 @@ def _generate_with_transformers(
     try:
         from threading import Thread
 
-        from transformers import TextIteratorStreamer
+        TextIteratorStreamer = text_iterator_streamer_cls()
 
         streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
         generation_kwargs = {
@@ -621,7 +896,14 @@ def generate_script(
             character_context=character_context,
         )
     else:
-        prompt = _prompt_for_items(items, topic_tags, personality, branding=branding, character_context=character_context)
+        prompt = _prompt_for_items(
+            items,
+            topic_tags,
+            personality,
+            branding=branding,
+            character_context=character_context,
+            video_format=str(video_format or "news"),
+        )
     mode = "custom_brief" if (creative_brief is not None and str(creative_brief).strip()) else "headlines"
     dprint("brain", "generate_script start", f"model_id={model_id!r}", f"mode={mode!r}", f"items={len(items)}", f"personality={personality_id!r}")
 
@@ -642,6 +924,76 @@ def generate_script(
                     branding=branding,
                 )
                 dprint("brain", "generate_script ok (fallback custom)", f"title={pkg.title[:100]!r}")
+                return pkg
+            vf_fallback = str(video_format or "news").strip().lower()
+            if vf_fallback == "unhinged":
+                seed = (items[0].get("title") if items else "") or "Chaos hour"
+                title = seed[:80]
+                hook = "This headline showed up uninvited — we’re doing a full adult-animation meltdown."
+                hashtags = [
+                    "#AdultAnimation",
+                    "#CartoonTok",
+                    "#ComedyShorts",
+                    "#Absurd",
+                    "#Satire",
+                    "#Animation",
+                    "#Shorts",
+                    "#Unhinged",
+                    "#Parody",
+                    "#Sketch",
+                    "#Viral",
+                    "#DarkComedy",
+                    "#Toon",
+                    "#Chaos",
+                    "#Funny",
+                    "#WTF",
+                    "#Animated",
+                ]
+                pkg = VideoPackage(
+                    title=title,
+                    description=f"Adult-animation-style satire riff inspired by: {seed}",
+                    hashtags=hashtags[:30],
+                    hook=hook,
+                    segments=[
+                        ScriptSegment(
+                            narration="Cold open: we pretend this is a normal news day — it is not. The vibe is wrong on purpose.",
+                            visual_prompt="flat 2D adult cartoon, deadpan characters, liminal suburban background, 9:16",
+                            on_screen_text="COLD OPEN",
+                        ),
+                        ScriptSegment(
+                            narration="B-plot: the premise mutates into sci-fi sitcom chaos until someone yells about morality.",
+                            visual_prompt="exaggerated TV-comedy staging, gross-out reaction shots, comic panels, speed lines, 9:16",
+                            on_screen_text="ESCALATE",
+                        ),
+                        ScriptSegment(
+                            narration="Tag: we stick the landing before the censors wake up. Subscribe if you’re still sane.",
+                            visual_prompt="cartoon freeze-frame punchline, silly fireworks, 9:16",
+                            on_screen_text="OUTRO",
+                        ),
+                    ],
+                    cta="Follow for more unhinged adult cartoons.",
+                )
+                if branding and bool(getattr(branding, "video_style_enabled", False)):
+                    suf = palette_prompt_suffix(branding)
+                    if suf:
+                        pkg = VideoPackage(
+                            title=pkg.title,
+                            description=pkg.description,
+                            hashtags=pkg.hashtags,
+                            hook=pkg.hook,
+                            segments=[
+                                ScriptSegment(
+                                    narration=s.narration,
+                                    visual_prompt=(
+                                        s.visual_prompt if "Palette:" in s.visual_prompt else f"{s.visual_prompt}, {suf}"
+                                    ),
+                                    on_screen_text=s.on_screen_text,
+                                )
+                                for s in pkg.segments
+                            ],
+                            cta=pkg.cta,
+                        )
+                dprint("brain", "generate_script ok (fallback unhinged)", f"title={pkg.title[:100]!r}")
                 return pkg
             # Fallback: minimal structured script without the LLM (keeps pipeline running).
             tool_title = (items[0].get("title") if items else "") or "New AI Tool"

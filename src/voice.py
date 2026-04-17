@@ -99,6 +99,62 @@ def _try_kokoro_tts(_model_id: str, _text: str, _out_wav: Path, _speaker: str | 
         return False
 
 
+UNHINGED_ROTATION_MAX_VOICES = 12
+
+
+def _synthesize_tts_to_wav(
+    *,
+    kokoro_model_id: str,
+    text: str,
+    out_wav_path: Path,
+    pyttsx3_voice_id: str | None = None,
+    kokoro_speaker: str | None = None,
+    elevenlabs_voice_id: str | None = None,
+    elevenlabs_api_key: str | None = None,
+    ffmpeg_executable: Path | None = None,
+    only_pyttsx3: bool = False,
+) -> None:
+    """
+    Write speech-only WAV using the same backend order as ``synthesize`` (ElevenLabs → Kokoro → pyttsx3).
+    Does not write captions. May synthesize a short beep if output is missing/empty.
+
+    ``only_pyttsx3`` skips cloud/Kokoro (for per-segment local voice rotation).
+    """
+    out_wav_path.parent.mkdir(parents=True, exist_ok=True)
+    if only_pyttsx3:
+        with vram_guard():
+            _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
+    else:
+        with vram_guard():
+            el_ok = False
+            ev = (elevenlabs_voice_id or "").strip()
+            ek = (elevenlabs_api_key or "").strip()
+            if ev and ek and ffmpeg_executable is not None:
+                try:
+                    from .elevenlabs_tts import synthesize_to_wav
+
+                    el_ok = synthesize_to_wav(
+                        api_key=ek,
+                        voice_id=ev,
+                        text=text,
+                        out_wav=out_wav_path,
+                        ffmpeg_bin=ffmpeg_executable,
+                    )
+                except Exception:
+                    el_ok = False
+            if not el_ok:
+                ok = _try_kokoro_tts(kokoro_model_id, text, out_wav_path, _speaker=kokoro_speaker)
+                if not ok:
+                    _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
+
+    if not out_wav_path.exists() or out_wav_path.stat().st_size < 1024:
+        sr = 24000
+        dur = max(3.0, min(60.0, len(text.split()) * 0.35))
+        t = np.linspace(0, dur, int(sr * dur), endpoint=False)
+        audio = 0.08 * np.sin(2 * math.pi * 220.0 * t).astype(np.float32)
+        _write_wav_pcm16(out_wav_path, audio, sr)
+
+
 def _pyttsx3_tts(text: str, out_wav: Path, pyttsx3_voice_id: str | None = None) -> None:
     """
     Offline fallback TTS using Windows SAPI via pyttsx3.
@@ -148,38 +204,19 @@ def synthesize(
     from debug import dprint
 
     dprint("voice", "synthesize", f"model={kokoro_model_id!r}", f"chars={len(text)}")
-    out_wav_path.parent.mkdir(parents=True, exist_ok=True)
     out_captions_json.parent.mkdir(parents=True, exist_ok=True)
 
-    with vram_guard():
-        el_ok = False
-        ev = (elevenlabs_voice_id or "").strip()
-        ek = (elevenlabs_api_key or "").strip()
-        if ev and ek and ffmpeg_executable is not None:
-            try:
-                from .elevenlabs_tts import synthesize_to_wav
-
-                el_ok = synthesize_to_wav(
-                    api_key=ek,
-                    voice_id=ev,
-                    text=text,
-                    out_wav=out_wav_path,
-                    ffmpeg_bin=ffmpeg_executable,
-                )
-            except Exception:
-                el_ok = False
-        if not el_ok:
-            ok = _try_kokoro_tts(kokoro_model_id, text, out_wav_path, _speaker=kokoro_speaker)
-            if not ok:
-                _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
-
-    # Ensure there is audio; if pyttsx3 fails, create a short beep track as last resort.
-    if not out_wav_path.exists() or out_wav_path.stat().st_size < 1024:
-        sr = 24000
-        dur = max(3.0, min(60.0, len(text.split()) * 0.35))
-        t = np.linspace(0, dur, int(sr * dur), endpoint=False)
-        audio = 0.08 * np.sin(2 * math.pi * 220.0 * t).astype(np.float32)
-        _write_wav_pcm16(out_wav_path, audio, sr)
+    _synthesize_tts_to_wav(
+        kokoro_model_id=kokoro_model_id,
+        text=text,
+        out_wav_path=out_wav_path,
+        pyttsx3_voice_id=pyttsx3_voice_id,
+        kokoro_speaker=kokoro_speaker,
+        elevenlabs_voice_id=elevenlabs_voice_id,
+        elevenlabs_api_key=elevenlabs_api_key,
+        ffmpeg_executable=ffmpeg_executable,
+        only_pyttsx3=False,
+    )
 
     dur_s = _duration_seconds(out_wav_path)
     words = _simple_word_timestamps(text=text, total_s=dur_s)
@@ -188,4 +225,126 @@ def synthesize(
     out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     dprint("voice", "synthesize done", f"word_timestamps={len(words)}")
     return words
+
+
+def _read_wav_mono_i16(path: Path) -> tuple[np.ndarray, int]:
+    """PCM int16 mono + sample rate."""
+    data, sr = sf.read(str(path), dtype="float32", always_2d=True)
+    if data.ndim == 2 and data.shape[1] > 1:
+        mono = np.mean(data.astype(np.float64), axis=1)
+    else:
+        mono = data[:, 0].astype(np.float64) if data.ndim == 2 else data.astype(np.float64)
+    i16 = (np.clip(mono, -1.0, 1.0) * 32767.0).astype(np.int16)
+    return i16, int(sr)
+
+
+def _resample_linear_i16(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
+    if sr_in == sr_out or len(x) == 0:
+        return x
+    n_in = len(x)
+    n_out = max(1, int(round(n_in * sr_out / float(sr_in))))
+    t_in = np.linspace(0.0, float(n_in - 1), num=n_in)
+    t_out = np.linspace(0.0, float(n_in - 1), num=n_out)
+    xf = x.astype(np.float64) / 32767.0
+    y = np.interp(t_out, t_in, xf)
+    return (np.clip(y, -1.0, 1.0) * 32767.0).astype(np.int16)
+
+
+def concat_pcm16_wavs(paths: list[Path], out_path: Path) -> None:
+    """Concatenate mono PCM WAVs; resample to the first file's sample rate."""
+    if not paths:
+        raise ValueError("concat_pcm16_wavs: empty paths")
+    chunks: list[np.ndarray] = []
+    target_sr: int | None = None
+    for p in paths:
+        data, sr = _read_wav_mono_i16(p)
+        if target_sr is None:
+            target_sr = sr
+        elif sr != target_sr:
+            data = _resample_linear_i16(data, sr, target_sr)
+        chunks.append(data)
+    merged = np.concatenate(chunks) if len(chunks) > 1 else chunks[0]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    audio_f = merged.astype(np.float32) / 32767.0
+    sf.write(str(out_path), audio_f, int(target_sr or 24000), subtype="PCM_16")
+
+
+def synthesize_unhinged_rotating_pyttsx3(
+    *,
+    kokoro_model_id: str,
+    segment_texts: list[str],
+    out_wav_path: Path,
+    out_captions_json: Path,
+) -> list[WordTimestamp]:
+    """
+    One local pyttsx3 voice per non-empty segment (round-robin, max
+    ``UNHINGED_ROTATION_MAX_VOICES`` distinct voices). Concatenates WAVs and merges
+    word timestamps. Does not use ElevenLabs or Kokoro (call sites must bypass
+    when cloud TTS is active).
+    """
+    from debug import dprint
+
+    dprint("voice", "synthesize_unhinged", f"segments={len(segment_texts)}")
+    out_captions_json.parent.mkdir(parents=True, exist_ok=True)
+    raw_ids = [vid for _, vid in list_pyttsx3_voices()][:UNHINGED_ROTATION_MAX_VOICES]
+    voice_ids: list[str | None] = [v for v in raw_ids if (v or "").strip()] if raw_ids else []
+    if not voice_ids:
+        voice_ids = [None]
+
+    offset_s = 0.0
+    combined: list[WordTimestamp] = []
+    temp_paths: list[Path] = []
+    v_idx = 0
+    try:
+        for text in segment_texts:
+            t = (text or "").strip()
+            if not t:
+                continue
+            py_vid = voice_ids[v_idx % len(voice_ids)]
+            v_idx += 1
+            tmp = out_wav_path.parent / f"_unhinged_seg_{len(temp_paths):03d}.wav"
+            _synthesize_tts_to_wav(
+                kokoro_model_id=kokoro_model_id,
+                text=t,
+                out_wav_path=tmp,
+                pyttsx3_voice_id=py_vid,
+                kokoro_speaker=None,
+                elevenlabs_voice_id=None,
+                elevenlabs_api_key=None,
+                ffmpeg_executable=None,
+                only_pyttsx3=True,
+            )
+            dur = _duration_seconds(tmp)
+            for w in _simple_word_timestamps(text=t, total_s=dur):
+                combined.append(WordTimestamp(word=w.word, start=w.start + offset_s, end=w.end + offset_s))
+            offset_s += dur
+            temp_paths.append(tmp)
+
+        if not temp_paths:
+            _synthesize_tts_to_wav(
+                kokoro_model_id=kokoro_model_id,
+                text=" ",
+                out_wav_path=out_wav_path,
+                pyttsx3_voice_id=voice_ids[0],
+                kokoro_speaker=None,
+                elevenlabs_voice_id=None,
+                elevenlabs_api_key=None,
+                ffmpeg_executable=None,
+                only_pyttsx3=True,
+            )
+            combined = _simple_word_timestamps(text=" ", total_s=_duration_seconds(out_wav_path))
+        else:
+            concat_pcm16_wavs(temp_paths, out_wav_path)
+
+        payload = [{"word": w.word, "start": w.start, "end": w.end} for w in combined]
+        out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        dprint("voice", "synthesize_unhinged done", f"word_timestamps={len(combined)}")
+        return combined
+    finally:
+        for p in temp_paths:
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
 

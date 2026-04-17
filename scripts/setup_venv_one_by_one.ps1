@@ -1,5 +1,5 @@
-# Creates .venv in the project root, upgrades pip tooling first, then installs
-# each line of requirements.txt one package at a time (easier to see progress / failures).
+# Creates .venv in the project root, upgrades pip tooling, then runs
+# scripts/install_pytorch.py --with-rest (PyTorch for your GPU/CPU + requirements.txt).
 #
 # Usage (from repo root):
 #   .\scripts\setup_venv_one_by_one.ps1
@@ -14,10 +14,11 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 Set-Location $ProjectRoot
 $VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+$InstallTorch = Join-Path $ProjectRoot "scripts\install_pytorch.py"
 $ReqFile = Join-Path $ProjectRoot "requirements.txt"
 
-if (-not (Test-Path $ReqFile)) {
-    Write-Error "requirements.txt not found at: $ReqFile"
+if (-not (Test-Path $InstallTorch) -or -not (Test-Path $ReqFile)) {
+    Write-Error "Missing scripts/install_pytorch.py or requirements.txt under: $ProjectRoot"
     exit 1
 }
 
@@ -42,27 +43,14 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
 
-# 3) Enumerate and install each requirement line
-$lines = Get-Content $ReqFile -Encoding UTF8 | ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -and ($_ -notmatch '^\s*#') }
-
-$index = 0
-$total = @($lines).Count
-Write-Host "=== [3] Installing $total packages from requirements.txt (one by one) ==="
-Write-Host ""
-
-foreach ($req in $lines) {
-    $index++
-    Write-Host "------------------------------------------------------------"
-    Write-Host "[$index / $total] Installing: $req"
-    Write-Host "------------------------------------------------------------"
-    & $VenvPython -m pip install $req
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "pip install failed for: $req"
-        exit $LASTEXITCODE
-    }
-    Write-Host ""
+# 3) PyTorch (CUDA if NVIDIA GPU, else CPU; macOS: PyPI) + requirements.txt
+Write-Host "=== [3] PyTorch + dependencies (scripts/install_pytorch.py --with-rest) ==="
+& $VenvPython $InstallTorch --with-rest
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "install_pytorch.py --with-rest failed"
+    exit $LASTEXITCODE
 }
+Write-Host ""
 
 Write-Host "=== Done. Activate with: .\.venv\Scripts\Activate.ps1 ==="
 Write-Host "=== Then run: python -m UI   or   python UI/ui_app.py   or   python main.py --once ==="

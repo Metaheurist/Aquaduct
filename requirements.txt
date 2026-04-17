@@ -1,9 +1,14 @@
+# Aquaduct runtime dependencies.
+#
+# PyTorch is installed separately so CUDA wheels apply when available:
+#   python scripts/install_pytorch.py --with-rest
+# Or: python scripts/install_pytorch.py && pip install -r requirements.txt
+#
 requests>=2.32.0
 beautifulsoup4>=4.12.0
 lxml>=5.2.0
 
-# Local LLM + image generation
-torch>=2.4.0
+# Local LLM + image generation (install torch first: scripts/install_pytorch.py)
 transformers>=4.45.0
 accelerate>=0.34.0
 bitsandbytes>=0.43.0
@@ -20,3 +25,6 @@ numpy>=2.0.0
 soundfile>=0.12.0
 pyttsx3>=2.90
 PyQt6>=6.7.0
+
+# Resource monitor (title bar graph)
+psutil>=5.9.0

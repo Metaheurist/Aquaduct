@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.config import AppSettings, VideoSettings
-from src.topics import effective_topic_tags, news_cache_mode_for_run
+from src.topics import effective_topic_tags, news_cache_mode_for_run, normalize_video_format
 from src.ui_settings import load_settings, save_settings
 
 
@@ -18,7 +18,7 @@ def test_ui_settings_roundtrip_defaults(write_ui_settings):
 def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     from src import ui_settings as ui_mod
 
-    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
 
     s = AppSettings(
         topic_tags_by_mode={"news": ["AI video editor", "agentic workflow"], "cartoon": [], "explainer": []},
@@ -55,7 +55,7 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
 def test_ui_settings_roundtrip_custom_video_fields(tmp_repo_root, monkeypatch):
     from src import ui_settings as ui_mod
 
-    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     s = AppSettings(
         run_content_mode="custom",
         custom_video_instructions="First line topic\nMore detail for the LLM.",
@@ -70,7 +70,7 @@ def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
     from src import ui_settings as ui_mod
     from src.config import AppSettings
 
-    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     s = AppSettings(
         hf_api_enabled=False,
         hf_token="hf_x",
@@ -88,7 +88,7 @@ def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
 def test_ui_settings_migrates_legacy_topic_tags_to_news(tmp_repo_root, monkeypatch):
     from src import ui_settings as ui_mod
 
-    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     p = tmp_repo_root / "ui_settings.json"
     p.write_text('{"topic_tags": ["legacy"], "personality_id": "auto"}', encoding="utf-8")
     s = load_settings()
@@ -97,20 +97,45 @@ def test_ui_settings_migrates_legacy_topic_tags_to_news(tmp_repo_root, monkeypat
 
 def test_effective_topic_tags_follows_video_format():
     s = AppSettings(
-        topic_tags_by_mode={"news": ["n1"], "cartoon": ["c1", "c2"], "explainer": []},
+        topic_tags_by_mode={"news": ["n1"], "cartoon": ["c1", "c2"], "explainer": [], "unhinged": ["u1"]},
         video_format="cartoon",
     )
     assert effective_topic_tags(s) == ["c1", "c2"]
+
+
+def test_effective_topic_tags_unhinged():
+    s = AppSettings(
+        topic_tags_by_mode={"news": ["n1"], "cartoon": [], "explainer": [], "unhinged": ["meme", "sketch"]},
+        video_format="unhinged",
+    )
+    assert effective_topic_tags(s) == ["meme", "sketch"]
 
 
 def test_news_cache_mode_for_run_matches_video_format():
     assert news_cache_mode_for_run(AppSettings(video_format="cartoon")) == "cartoon"
     assert news_cache_mode_for_run(AppSettings(video_format="NEWS")) == "news"
     assert news_cache_mode_for_run(AppSettings(video_format="explainer")) == "explainer"
+    assert news_cache_mode_for_run(AppSettings(video_format="unhinged")) == "unhinged"
 
 
 def test_news_cache_mode_for_run_unknown_defaults_to_news():
     assert news_cache_mode_for_run(AppSettings(video_format="")) == "news"
     # Invalid format string falls back to "news" per normalize_video_format
     assert news_cache_mode_for_run(AppSettings(video_format="not-a-mode")) == "news"
+
+
+def test_normalize_video_format_unhinged():
+    assert normalize_video_format("UNHINGED") == "unhinged"
+    assert normalize_video_format("unhinged") == "unhinged"
+
+
+def test_save_settings_calls_mark_hidden(tmp_repo_root, monkeypatch):
+    from src import ui_settings as ui_mod
+
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
+    called: list = []
+    monkeypatch.setattr(ui_mod, "mark_path_hidden", lambda p: called.append(p))
+    save_settings(AppSettings())
+    assert len(called) == 1
+    assert called[0] == tmp_repo_root / "ui_settings.json"
 

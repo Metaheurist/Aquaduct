@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QTextEdit,
     QVBoxLayout,
@@ -71,22 +72,34 @@ def _fill_el_voice_combo(combo: QComboBox, current_voice_id: str, voices: list[t
 def attach_characters_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
-    lay.setContentsMargins(6, 4, 6, 6)
-    lay.setSpacing(4)
+    lay.setContentsMargins(6, 4, 6, 4)
+    lay.setSpacing(2)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    inner = QWidget()
+    inner_lay = QVBoxLayout(inner)
+    inner_lay.setContentsMargins(0, 0, 4, 8)
+    inner_lay.setSpacing(3)
 
     header = QLabel("Characters")
-    header.setStyleSheet("font-size: 14px; font-weight: 700;")
-    lay.addWidget(header)
+    header.setStyleSheet("font-size: 13px; font-weight: 700;")
+    inner_lay.addWidget(header)
 
     hint = QLabel("Host identity, visuals, optional TTS — pick one on the Run tab.")
     hint.setWordWrap(True)
-    hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
-    lay.addWidget(hint)
+    hint.setStyleSheet("color: #B7B7C2; font-size: 10px;")
+    inner_lay.addWidget(hint)
 
     win.characters_list = QListWidget()
-    win.characters_list.setMinimumHeight(88)
-    win.characters_list.setMaximumHeight(132)
-    lay.addWidget(win.characters_list)
+    win.characters_list.setMinimumHeight(56)
+    win.characters_list.setMaximumHeight(100)
+    inner_lay.addWidget(win.characters_list)
 
     btn_row = QHBoxLayout()
     btn_row.setSpacing(6)
@@ -94,57 +107,58 @@ def attach_characters_tab(win) -> None:
     win.characters_dup_btn = QPushButton("Duplicate")
     win.characters_del_btn = QPushButton("Delete")
     for b in (win.characters_add_btn, win.characters_dup_btn, win.characters_del_btn):
+        b.setProperty("buttonRole", "secondary")
         b.setMaximumHeight(28)
     btn_row.addWidget(win.characters_add_btn)
     btn_row.addWidget(win.characters_dup_btn)
     btn_row.addWidget(win.characters_del_btn)
     btn_row.addStretch(1)
-    lay.addLayout(btn_row)
+    inner_lay.addLayout(btn_row)
 
     win.character_name_edit = QLineEdit()
     win.character_name_edit.setPlaceholderText("Name")
     win.character_name_edit.setMaximumHeight(26)
     lbl_name = QLabel("Name")
     lbl_name.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(lbl_name)
-    lay.addWidget(win.character_name_edit)
+    inner_lay.addWidget(lbl_name)
+    inner_lay.addWidget(win.character_name_edit)
 
     lbl_id = QLabel("Identity / persona (script + on-screen)")
     lbl_id.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(lbl_id)
+    inner_lay.addWidget(lbl_id)
     win.character_identity_edit = QTextEdit()
-    win.character_identity_edit.setMinimumHeight(48)
-    win.character_identity_edit.setMaximumHeight(96)
+    win.character_identity_edit.setMinimumHeight(36)
+    win.character_identity_edit.setMaximumHeight(72)
     win.character_identity_edit.setPlaceholderText("Who is this host? Tone, channel, audience…")
     win.character_identity_edit.setAcceptRichText(False)
     win.character_identity_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    lay.addWidget(wrap_editor_with_brain(win.character_identity_edit, "Identity / persona (script + on-screen)", win))
+    inner_lay.addWidget(wrap_editor_with_brain(win.character_identity_edit, "Identity / persona (script + on-screen)", win))
 
     lbl_vis = QLabel("Visual style (prepended to image prompts)")
     lbl_vis.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(lbl_vis)
+    inner_lay.addWidget(lbl_vis)
     win.character_visual_edit = QTextEdit()
-    win.character_visual_edit.setMinimumHeight(40)
-    win.character_visual_edit.setMaximumHeight(80)
+    win.character_visual_edit.setMinimumHeight(32)
+    win.character_visual_edit.setMaximumHeight(64)
     win.character_visual_edit.setPlaceholderText("e.g. neon cyberpunk studio, warm key light, mascot host…")
     win.character_visual_edit.setAcceptRichText(False)
     win.character_visual_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    lay.addWidget(wrap_editor_with_brain(win.character_visual_edit, "Visual style (image prompts)", win))
+    inner_lay.addWidget(wrap_editor_with_brain(win.character_visual_edit, "Visual style (image prompts)", win))
 
     lbl_neg = QLabel("Extra negatives for diffusion (comma phrases)")
     lbl_neg.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(lbl_neg)
+    inner_lay.addWidget(lbl_neg)
     win.character_negatives_edit = QTextEdit()
-    win.character_negatives_edit.setMaximumHeight(48)
+    win.character_negatives_edit.setMaximumHeight(40)
     win.character_negatives_edit.setPlaceholderText("e.g. extra fingers, watermark")
     win.character_negatives_edit.setAcceptRichText(False)
     win.character_negatives_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    lay.addWidget(wrap_editor_with_brain(win.character_negatives_edit, "Extra negatives for diffusion", win))
+    inner_lay.addWidget(wrap_editor_with_brain(win.character_negatives_edit, "Extra negatives for diffusion", win))
 
     win.character_default_voice_chk = QCheckBox("Use project default voice (Settings → Voice model)")
     win.character_default_voice_chk.setChecked(True)
-    win.character_default_voice_chk.setStyleSheet("font-size: 11px;")
-    lay.addWidget(win.character_default_voice_chk)
+    win.character_default_voice_chk.setStyleSheet("font-size: 11px; font-weight: 600;")
+    inner_lay.addWidget(win.character_default_voice_chk)
 
     vrow = QHBoxLayout()
     vrow.setSpacing(6)
@@ -157,18 +171,20 @@ def attach_characters_tab(win) -> None:
     win.character_voice_combo.setMaximumHeight(26)
     vrow.addWidget(win.character_voice_combo, 1)
     win.character_voice_refresh_btn = QPushButton("Refresh")
+    win.character_voice_refresh_btn.setProperty("buttonRole", "secondary")
     win.character_voice_refresh_btn.setMaximumHeight(28)
+    win.character_voice_refresh_btn.setMinimumWidth(88)
     win.character_voice_refresh_btn.setToolTip("Refresh pyttsx3 voice list")
     vrow.addWidget(win.character_voice_refresh_btn)
-    lay.addLayout(vrow)
+    inner_lay.addLayout(vrow)
 
     lbl_ko = QLabel("Kokoro speaker (optional)")
     lbl_ko.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(lbl_ko)
+    inner_lay.addWidget(lbl_ko)
     win.character_kokoro_edit = QLineEdit()
-    win.character_kokoro_edit.setPlaceholderText("When Kokoro path is enabled in settings")
+    win.character_kokoro_edit.setPlaceholderText("Optional Kokoro speaker id (when enabled in settings)")
     win.character_kokoro_edit.setMaximumHeight(26)
-    lay.addWidget(win.character_kokoro_edit)
+    inner_lay.addWidget(win.character_kokoro_edit)
 
     win.character_el_container = QWidget()
     el_outer = QVBoxLayout(win.character_el_container)
@@ -178,7 +194,7 @@ def attach_characters_tab(win) -> None:
         "ElevenLabs: API tab + key (or ELEVENLABS_API_KEY). Used when default voice is off."
     )
     win.character_el_hint.setWordWrap(True)
-    win.character_el_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
+    win.character_el_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     el_outer.addWidget(win.character_el_hint)
     el_row = QHBoxLayout()
     el_row.setSpacing(6)
@@ -191,19 +207,29 @@ def attach_characters_tab(win) -> None:
     win.character_el_voice_combo.setMaximumHeight(26)
     el_row.addWidget(win.character_el_voice_combo, 1)
     win.character_el_refresh_btn = QPushButton("Refresh EL")
+    win.character_el_refresh_btn.setProperty("buttonRole", "secondary")
     win.character_el_refresh_btn.setMaximumHeight(28)
+    win.character_el_refresh_btn.setMinimumWidth(98)
     win.character_el_refresh_btn.setToolTip("Refresh ElevenLabs voice list")
     el_row.addWidget(win.character_el_refresh_btn)
     el_outer.addLayout(el_row)
-    lay.addWidget(win.character_el_container)
+    inner_lay.addWidget(win.character_el_container)
 
-    save_row = QHBoxLayout()
+    scroll.setWidget(inner)
+
+    foot = QWidget()
+    foot_lay = QHBoxLayout(foot)
+    foot_lay.setContentsMargins(0, 4, 0, 8)
+    foot_lay.setSpacing(6)
     win.characters_save_btn = QPushButton("Save character")
     win.characters_save_btn.setObjectName("primary")
-    win.characters_save_btn.setMaximumHeight(32)
-    save_row.addWidget(win.characters_save_btn)
-    save_row.addStretch(1)
-    lay.addLayout(save_row)
+    win.characters_save_btn.setMinimumHeight(34)
+    win.characters_save_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+    foot_lay.addWidget(win.characters_save_btn)
+    foot_lay.addStretch(1)
+
+    lay.addWidget(scroll, 1)
+    lay.addWidget(foot)
 
     w.setStyleSheet(
         """

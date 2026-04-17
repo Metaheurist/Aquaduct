@@ -21,11 +21,13 @@ This project builds **Aquaduct**, a **fully local** tool that:
 
 ### 1) Install
 
+PyTorch is installed **before** the rest of the stack so pip can use **CUDA wheels** when an NVIDIA GPU is detected (otherwise CPU wheels; macOS uses PyPI).
+
 ```powershell
 cd d:\Aquaduct
 python -m venv .venv
 .\.venv\Scripts\activate
-pip install -r requirements.txt
+python scripts/install_pytorch.py --with-rest
 ```
 
 ### Tests
@@ -34,6 +36,10 @@ pip install -r requirements.txt
 pip install -r requirements.txt -r requirements-dev.txt
 pytest -q -m "not qt"
 ```
+
+(`torch` / CUDA wheels: use `python scripts/install_pytorch.py --with-rest` before or as documented in `requirements.txt`.)
+
+`tests/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`).
 
 Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt):
 
@@ -75,7 +81,7 @@ python main.py --once --music "D:\path\to\music.mp3"
 cd d:\Aquaduct
 python -m venv .venv
 .\.venv\Scripts\activate
-pip install -r requirements.txt
+python scripts/install_pytorch.py --with-rest
 python main.py --once
 ```
 
@@ -110,7 +116,7 @@ python -m UI
 Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** (same look as the main window); native **file/folder** pickers stay OS-standard.
 
 Tabs:
-- **Run**: one-shot run + **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer) + **Personality** + optional **Character** + open `videos/`
+- **Run**: one-shot or **batch** quantity; **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)

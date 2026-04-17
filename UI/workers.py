@@ -22,7 +22,7 @@ from src.brain import VideoPackage, enforce_arc, expand_custom_video_instruction
 from src.brain import expand_custom_field_text
 from src.model_integrity_cache import classify_integrity_status
 from src.pipeline_control import PipelineCancelled, PipelineRunControl
-from src.characters_store import character_context_for_brain, resolve_active_character
+from src.characters_store import character_context_for_brain, resolve_character_for_pipeline
 from src.branding_video import apply_palette_to_prompts
 from src.personality_auto import auto_pick_personality
 from src.storyboard import build_storyboard, render_preview_grid, write_manifest
@@ -212,7 +212,7 @@ class TopicDiscoverWorker(QThread):
 
 class FFmpegEnsureWorker(QThread):
     """
-    Download static FFmpeg into ``.cache/ffmpeg`` on first use. Keeps the UI responsive
+    Download static FFmpeg into ``.Aquaduct_data/.cache/ffmpeg`` on first use. Keeps the UI responsive
     (runs off the GUI thread).
     """
 
@@ -701,8 +701,13 @@ class PreviewWorker(QThread):
                 )
                 self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-                active_ch = resolve_active_character(app)
-                char_ctx = character_context_for_brain(active_ch) if active_ch else None
+                active_ch = resolve_character_for_pipeline(
+                    app,
+                    video_format=vf,
+                    topic_tags=tags,
+                    headline_seed=first_line,
+                )
+                char_ctx = character_context_for_brain(active_ch)
 
                 def _llm_task(task: str, pct: int, msg: str) -> None:
                     if task == "llm_load":
@@ -733,10 +738,26 @@ class PreviewWorker(QThread):
                 )
                 pkg = enforce_arc(pkg)
             else:
-                self.progress.emit("headlines", 0, "Reading news cache…")
-                fc = _firecrawl_kwargs(app)
                 cm = news_cache_mode_for_run(app)
-                if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                self.progress.emit(
+                    "headlines",
+                    0,
+                    "Fetching headlines…" if cm == "unhinged" else "Reading news cache…",
+                )
+                fc = _firecrawl_kwargs(app)
+                if cm == "unhinged":
+                    if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                        items = get_scored_items(
+                            paths.news_cache_dir,
+                            limit=3,
+                            topic_tags=tags,
+                            cache_mode=cm,
+                            persist_cache=False,
+                            **fc,
+                        )
+                    else:
+                        items = fetch_latest_items(limit=3, topic_tags=tags, topic_mode=cm, **fc)
+                elif bool(getattr(app.video, "high_quality_topic_selection", True)):
                     items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
                 else:
                     items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
@@ -763,8 +784,13 @@ class PreviewWorker(QThread):
                 )
                 self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-                active_ch = resolve_active_character(app)
-                char_ctx = character_context_for_brain(active_ch) if active_ch else None
+                active_ch = resolve_character_for_pipeline(
+                    app,
+                    video_format=vf,
+                    topic_tags=tags,
+                    headline_seed=str(sources[0].get("title") or "") if sources else "",
+                )
+                char_ctx = character_context_for_brain(active_ch)
 
                 def _llm_task(task: str, pct: int, msg: str) -> None:
                     if task == "llm_load":
@@ -849,8 +875,13 @@ class StoryboardWorker(QThread):
                 )
                 self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-                active_ch = resolve_active_character(app)
-                char_ctx = character_context_for_brain(active_ch) if active_ch else None
+                active_ch = resolve_character_for_pipeline(
+                    app,
+                    video_format=vf,
+                    topic_tags=tags,
+                    headline_seed=first_line,
+                )
+                char_ctx = character_context_for_brain(active_ch)
 
                 def _llm_task(task: str, pct: int, msg: str) -> None:
                     if task == "llm_load":
@@ -881,10 +912,26 @@ class StoryboardWorker(QThread):
                 )
                 pkg = enforce_arc(pkg)
             else:
-                self.progress.emit("headlines", 0, "Reading news cache…")
-                fc = _firecrawl_kwargs(app)
                 cm = news_cache_mode_for_run(app)
-                if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                self.progress.emit(
+                    "headlines",
+                    0,
+                    "Fetching headlines…" if cm == "unhinged" else "Reading news cache…",
+                )
+                fc = _firecrawl_kwargs(app)
+                if cm == "unhinged":
+                    if bool(getattr(app.video, "high_quality_topic_selection", True)):
+                        items = get_scored_items(
+                            paths.news_cache_dir,
+                            limit=3,
+                            topic_tags=tags,
+                            cache_mode=cm,
+                            persist_cache=False,
+                            **fc,
+                        )
+                    else:
+                        items = fetch_latest_items(limit=3, topic_tags=tags, topic_mode=cm, **fc)
+                elif bool(getattr(app.video, "high_quality_topic_selection", True)):
                     items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
                 else:
                     items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
@@ -910,8 +957,13 @@ class StoryboardWorker(QThread):
                 )
                 self.progress.emit("personality", 100, f"{picked.preset.label}")
 
-                active_ch = resolve_active_character(app)
-                char_ctx = character_context_for_brain(active_ch) if active_ch else None
+                active_ch = resolve_character_for_pipeline(
+                    app,
+                    video_format=vf,
+                    topic_tags=tags,
+                    headline_seed=str(sources[0].get("title") or "") if sources else "",
+                )
+                char_ctx = character_context_for_brain(active_ch)
 
                 def _llm_task(task: str, pct: int, msg: str) -> None:
                     if task == "llm_load":

@@ -37,6 +37,8 @@ build/ai-news-factory*/
 models/
 
 # Local app state (do not commit)
+.Aquaduct_data/
+# Legacy paths (before .Aquaduct_data); keep ignored if leftover from older builds
 ui_settings.json
 data/upload_tasks.json
 data/characters.json

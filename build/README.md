@@ -43,5 +43,5 @@ The build script also bundles `requirements.txt`, optional `docs/*.md` (UI build
 - **bitsandbytes on Windows**: If 4-bit LLM fails on some setups, the app falls back to a template script so the pipeline still runs.
 - **PyInstaller + bitsandbytes**: You may see many `Library not found` warnings for CUDA DLLs (`cudart64_*.dll`, `cublas*.dll`, etc.). That is normal on a machine without the full CUDA toolkit in PATH; PyInstaller still bundles `bitsandbytes`, and at runtime CUDA comes from the NVIDIA driver/toolkit where installed.
 - **PyInstaller + torch**: You may see a warning about `torch.utils.tensorboard` / missing `tensorboard`; it is optional for this app and can be ignored unless you use TensorBoard.
-- **ElevenLabs / HTTPS**: If the frozen app fails to reach the API with SSL errors, verify `certifi` is bundled (the script uses `--collect-all certifi`). Stay on a current `pyinstaller` from `build/requirements-build.txt`.
+- **ElevenLabs / HTTPS**: If the frozen app fails to reach the API with SSL errors, verify `certifi` is bundled (the script uses `--collect-all certifi`). Stay on a current `pyinstaller` from `requirements-dev.txt` (installed before building).
 

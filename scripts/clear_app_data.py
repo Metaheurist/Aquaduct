@@ -1,10 +1,10 @@
 """
 CLI equivalent of the desktop app: Settings → Danger zone → "Clear data".
 
-Deletes ui_settings.json, models/, data/news_cache/, .cache/, runs/, videos/,
+Deletes .Aquaduct_data/ui_settings.json, models/, data/news_cache/, .cache/, runs/, videos/,
 then recreates empty folders and writes a fresh default ui_settings.json.
 
-Close the app (and any Explorer windows in this repo) before running.
+Close the app (and any Explorer windows under the install folder) before running.
 
 Usage:
   python scripts/clear_app_data.py          # prompts for confirmation

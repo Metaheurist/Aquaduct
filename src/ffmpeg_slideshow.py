@@ -5,6 +5,35 @@ from pathlib import Path
 
 from .utils_ffmpeg import ensure_ffmpeg
 
+# Subset of names supported by FFmpeg `xfade` (varies slightly by build; unknown → fade).
+XFADE_TRANSITIONS: tuple[str, ...] = (
+    "fade",
+    "dissolve",
+    "wipeleft",
+    "wiperight",
+    "wipeup",
+    "wipedown",
+    "slideleft",
+    "slideright",
+    "slideup",
+    "slidedown",
+    "radial",
+    "smoothleft",
+    "smoothright",
+    "circlecrop",
+    "vertopen",
+    "horzopen",
+    "diagtl",
+    "diagtr",
+    "hlslice",
+    "hrslice",
+)
+
+
+def sanitize_xfade_transition(name: str | None) -> str:
+    t = (name or "fade").strip().lower()
+    return t if t in XFADE_TRANSITIONS else "fade"
+
 
 def build_motion_slideshow(
     *,
@@ -16,6 +45,7 @@ def build_motion_slideshow(
     height: int,
     fps: int,
     transition_strength: str = "low",
+    xfade_transition: str = "fade",
 ) -> Path:
     """
     Build a motion slideshow with FFmpeg zoompan and optional xfade.
@@ -36,6 +66,8 @@ def build_motion_slideshow(
         xfade_dur = 0.35
     elif transition_strength == "low":
         xfade_dur = 0.22
+
+    xfn = sanitize_xfade_transition(xfade_transition)
 
     # Inputs: each image as looped input for its duration (+ transition overlap).
     cmd = [str(ffmpeg), "-y"]
@@ -65,7 +97,9 @@ def build_motion_slideshow(
         for i in range(1, len(imgs)):
             if xfade_dur > 0:
                 off = max(0.0, offset - xfade_dur)
-                fc_parts.append(f"[{cur}][v{i}]xfade=transition=fade:duration={xfade_dur:.3f}:offset={off:.3f}[x{i}]")
+                fc_parts.append(
+                    f"[{cur}][v{i}]xfade=transition={xfn}:duration={xfade_dur:.3f}:offset={off:.3f}[x{i}]"
+                )
                 cur = f"x{i}"
             else:
                 fc_parts.append(f"[{cur}][v{i}]concat=n=2:v=1:a=0[vcat{i}]")

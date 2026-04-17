@@ -21,15 +21,17 @@ def patch_paths(monkeypatch: pytest.MonkeyPatch, tmp_repo_root: Path):
 
     def _fake_get_paths():
         root = tmp_repo_root
-        data_dir = root / "data"
-        cache_dir = root / ".cache"
+        ada = root / ".Aquaduct_data"
+        data_dir = ada / "data"
+        cache_dir = ada / ".cache"
         return config_mod.Paths(
             root=root,
+            app_data_dir=ada,
             data_dir=data_dir,
             news_cache_dir=data_dir / "news_cache",
-            runs_dir=root / "runs",
-            videos_dir=root / "videos",
-            models_dir=root / "models",
+            runs_dir=ada / "runs",
+            videos_dir=ada / "videos",
+            models_dir=ada / "models",
             cache_dir=cache_dir,
             ffmpeg_dir=cache_dir / "ffmpeg",
         )
@@ -62,11 +64,11 @@ def no_network(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def write_ui_settings(tmp_repo_root: Path, monkeypatch: pytest.MonkeyPatch):
     """
-    Helper to write ui_settings.json into a temp root and patch ui_settings._root().
+    Helper to write ui_settings.json into a temp root and patch application_data_dir().
     """
     from src import ui_settings as ui_mod
 
-    monkeypatch.setattr(ui_mod, "_root", lambda: tmp_repo_root)
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
 
     def _write(payload: dict) -> Path:
         p = tmp_repo_root / "ui_settings.json"
