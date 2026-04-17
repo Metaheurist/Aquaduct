@@ -3,6 +3,8 @@
 ## Purpose
 Fetch trending AI-tool news with a **free default path** (no paid news APIs), optionally using **Firecrawl** when configured in the app/API tab.
 
+**Desktop Run → Custom** (`AppSettings.run_content_mode == "custom"`) does **not** use the crawler for script sourcing on that run; the pipeline uses user instructions and synthetic `sources` metadata instead (see [Main loop](main.md), [Brain](brain.md)).
+
 ## Inputs
 - **Optional Firecrawl** (`firecrawl_enabled` + API key, or `FIRECRAWL_API_KEY` in the environment): v2 search for headlines; v1 scrape for article text when `fetch_article_text` is on. On failure or when disabled, Aquaduct falls back automatically.
 - Google News RSS query (default in `get_latest_items` / `fetch_latest_items`)

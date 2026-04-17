@@ -24,7 +24,13 @@ If the local model fails to load (common on some Windows setups), it returns a d
 - `cta`
 
 ## Main entrypoint
-- `generate_script(model_id: str, items: list[dict[str,str]], topic_tags: list[str] | None) -> VideoPackage`
+- `generate_script(..., items: list[dict[str,str]], topic_tags: list[str] | None, creative_brief: str | None = None, video_format: str = "news", ...) -> VideoPackage`
+  - **Preset runs**: `items` are scraped headlines; prompt is built from `items` + tags + personality.
+  - **Custom runs** (desktop **Run → Custom**): set `creative_brief` to the output of **`expand_custom_video_instructions`** (first LLM pass; plain-text structured brief). `items` may be a single synthetic row (`source: "custom"`) for metadata. `video_format` steers tone hints in the prompt.
+
+## Custom run mode (LLM expansion + package)
+- **`expand_custom_video_instructions`**: first pass — turns rough user notes into a labeled creative brief (plain text, not JSON).
+- **`generate_script`** with `creative_brief` set: second pass — same JSON schema as headline mode, but the primary directive is the expanded brief (`_prompt_for_creative_brief`). On failure, **`_fallback_package_custom`** builds a minimal package from the brief text instead of the generic “tool news” fallback.
 
 ## Character context
 When the Run tab selects a **character** (see [Characters](characters.md)), an extra block is added so narration and on-screen text stay consistent with that host identity (layered on top of **Personality** presets).

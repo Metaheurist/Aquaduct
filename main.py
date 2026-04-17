@@ -15,7 +15,7 @@ except Exception:  # optional dependency
     load_dotenv = None
 
 from src.artist import generate_images
-from src.brain import VideoPackage, generate_script, enforce_arc
+from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
 from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
 from src.crawler import get_latest_items, get_scored_items, pick_one_item, fetch_article_text
 from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
@@ -166,23 +166,35 @@ def run_once(
     items = None
     sources: list[dict[str, str]] = []
     preview_blob: dict | None = None
+    item = None
 
     if prebuilt_pkg is None:
-        # Prefer scored + diversified selection (better signals, fewer duplicates).
-        fc = _firecrawl_kwargs(app)
-        tags = effective_topic_tags(app)
-        cm = news_cache_mode_for_run(app)
-        if bool(getattr(video_settings, "high_quality_topic_selection", True)):
-            items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+        if str(getattr(app, "run_content_mode", "preset")) == "custom":
+            raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
+            if not raw_inst:
+                dprint("pipeline", "custom mode but empty instructions — stopping")
+                _pipe_progress(on_progress, 8, "No instructions (custom mode)")
+                return None
+            first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
+            sources = [{"title": first_line, "url": "", "source": "custom"}]
+            items = []
+            dprint("pipeline", "custom mode — synthetic source", f"title={first_line[:80]!r}")
         else:
-            items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
-        item = pick_one_item(items)
-        if not item:
-            dprint("crawler", "no item picked — stopping run_once")
-            _pipe_progress(on_progress, 8, "No new headlines in cache")
-            return None
-        dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
-        sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+            # Prefer scored + diversified selection (better signals, fewer duplicates).
+            fc = _firecrawl_kwargs(app)
+            tags = effective_topic_tags(app)
+            cm = news_cache_mode_for_run(app)
+            if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+            else:
+                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+            item = pick_one_item(items)
+            if not item:
+                dprint("crawler", "no item picked — stopping run_once")
+                _pipe_progress(on_progress, 8, "No new headlines in cache")
+                return None
+            dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
+            sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
     else:
         sources = list(prebuilt_sources or [])
         if not sources:
@@ -206,7 +218,10 @@ def run_once(
 
     _rc(run_control)
     if prebuilt_pkg is None:
-        _pipe_progress(on_progress, 12, "Sources ready")
+        if str(getattr(app, "run_content_mode", "preset")) == "custom":
+            _pipe_progress(on_progress, 12, "Custom instructions ready")
+        else:
+            _pipe_progress(on_progress, 12, "Sources ready")
     else:
         _pipe_progress(on_progress, 14, "Using approved script (skips news & LLM)")
 
@@ -230,27 +245,71 @@ def run_once(
 
     # Brain
     if prebuilt_pkg is None:
-        titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
-        picked = auto_pick_personality(
-            requested_id=getattr(app, "personality_id", "auto"),
-            llm_model_id=llm_id,
-            titles=titles,
-            topic_tags=list(effective_topic_tags(app)),
-        )
-        _pipe_progress(on_progress, 22, "Writing script (LLM)…")
-        pkg = generate_script(
-            model_id=llm_id,
-            items=sources,
-            topic_tags=effective_topic_tags(app),
-            personality_id=picked.preset.id,
-            branding=getattr(app, "branding", None),
-            character_context=char_ctx,
-        )
-        pkg = enforce_arc(pkg)
-        # Best-effort safety rewrite (uses article text snippet when available).
-        if bool(getattr(video_settings, "llm_factcheck", True)):
-            pkg = rewrite_with_uncertainty(pkg=pkg, article_text=article_text, sources=sources, model_id=llm_id)
-        dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
+        tags = list(effective_topic_tags(app))
+        vf = str(getattr(app, "video_format", "news") or "news")
+        if str(getattr(app, "run_content_mode", "preset")) == "custom" and str(getattr(app, "custom_video_instructions", "") or "").strip():
+            raw_inst = str(app.custom_video_instructions).strip()
+            titles_for_pick = [sources[0].get("title", "Custom video")] if sources else ["Custom video"]
+            picked = auto_pick_personality(
+                requested_id=getattr(app, "personality_id", "auto"),
+                llm_model_id=llm_id,
+                titles=titles_for_pick,
+                topic_tags=tags,
+                extra_scoring_text=raw_inst[:2000],
+            )
+
+            def _expand_llm(task: str, pct: int, msg: str) -> None:
+                if on_progress is None:
+                    return
+                sub = 10 + int(max(0, min(100, int(pct))) * 0.08)
+                _pipe_progress(on_progress, sub, msg or "Expanding brief…")
+
+            _rc(run_control)
+            _pipe_progress(on_progress, 14, "Expanding creative brief (LLM)…")
+            expanded = expand_custom_video_instructions(
+                model_id=llm_id,
+                raw_instructions=raw_inst,
+                video_format=vf,
+                personality_id=picked.preset.id,
+                on_llm_task=_expand_llm,
+            )
+            _pipe_progress(on_progress, 22, "Writing script (LLM)…")
+            pkg = generate_script(
+                model_id=llm_id,
+                items=sources,
+                topic_tags=tags,
+                personality_id=picked.preset.id,
+                branding=getattr(app, "branding", None),
+                character_context=char_ctx,
+                creative_brief=expanded,
+                video_format=vf,
+            )
+            pkg = enforce_arc(pkg)
+            dprint("pipeline", "script ready (custom)", f"title={pkg.title[:100]!r}")
+        else:
+            titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
+            picked = auto_pick_personality(
+                requested_id=getattr(app, "personality_id", "auto"),
+                llm_model_id=llm_id,
+                titles=titles,
+                topic_tags=tags,
+                extra_scoring_text="",
+            )
+            _pipe_progress(on_progress, 22, "Writing script (LLM)…")
+            pkg = generate_script(
+                model_id=llm_id,
+                items=sources,
+                topic_tags=tags,
+                personality_id=picked.preset.id,
+                branding=getattr(app, "branding", None),
+                character_context=char_ctx,
+                video_format=vf,
+            )
+            pkg = enforce_arc(pkg)
+            # Best-effort safety rewrite (uses article text snippet when available).
+            if bool(getattr(video_settings, "llm_factcheck", True)):
+                pkg = rewrite_with_uncertainty(pkg=pkg, article_text=article_text, sources=sources, model_id=llm_id)
+            dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
     else:
         pkg = prebuilt_pkg
         dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")

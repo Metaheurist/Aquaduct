@@ -108,7 +108,7 @@ python -m UI
 ```
 
 Tabs:
-- **Run**: one-shot run + **video format** (News / Cartoon / Explainer) + **Personality** + optional **Character** + open `videos/`
+- **Run**: one-shot run + **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)

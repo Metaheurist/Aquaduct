@@ -16,6 +16,30 @@ def test_extract_json_from_fenced_block():
     assert d["title"] == "t"
 
 
+def test_generate_script_custom_brief_uses_creative_prompt(monkeypatch):
+    import src.brain as brain_mod
+
+    captured: dict[str, str] = {}
+
+    def fake_gen(model_id: str, prompt: str, **kwargs):
+        captured["prompt"] = prompt
+        return (
+            '{"title":"T","description":"D","hashtags":["#A"],"hook":"H",'
+            '"segments":[{"narration":"N","visual_prompt":"V","on_screen_text":"O"}],"cta":"C"}'
+        )
+
+    monkeypatch.setattr(brain_mod, "_generate_with_transformers", fake_gen)
+    pkg = brain_mod.generate_script(
+        model_id="x",
+        items=[{"title": "Synthetic", "url": "", "source": "custom"}],
+        creative_brief="My creative angle for the video.",
+        video_format="explainer",
+    )
+    assert "My creative angle" in captured["prompt"]
+    assert "Creative brief" in captured["prompt"]
+    assert pkg.title == "T"
+
+
 def test_extract_json_from_inline_object():
     d = _extract_json('{"a":1, "b":2}')
     assert d == {"a": 1, "b": 2}

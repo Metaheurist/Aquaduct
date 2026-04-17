@@ -22,6 +22,7 @@ python UI/ui_app.py
 ## Tabs
 - **Run**
   - One-shot run button
+  - **Content source**: **Preset (news cache + topics)** uses the deduped headline cache and per-format topic tags (same as before). **Custom (your instructions)** uses a multiline text box: the script LLM **expands** your notes into a creative brief, then **writes** the structured `VideoPackage` (two LLM passes — slower than Preset). Custom mode does **not** pick headlines from the cache; topic tags still bias hashtags when relevant. Instructions are stored in settings (`run_content_mode`, `custom_video_instructions`; length capped). Run / Preview / Storyboard preview require non-empty instructions when Custom is selected.
   - **Video format** (News / Cartoon / Explainer): together with Topics, selects which tag list the pipeline uses (`video_format` + `topic_tags_by_mode`)
   - **Personality** (preset or Auto) and optional **Character** (see Characters tab) for script + storyboard consistency
   - Live pipeline / preview / storyboard progress is shown as the **top row** on the **Tasks** tab; the **Status** column shows **stage + percent** (e.g. script, voice, images, encode) for runs, not only “Running…”

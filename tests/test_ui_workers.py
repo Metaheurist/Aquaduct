@@ -1,6 +1,63 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
+
+
+@pytest.mark.qt
+def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
+    from UI.workers import PreviewWorker
+    from src.brain import ScriptSegment, VideoPackage
+    from src.config import AppSettings
+
+    import UI.workers as wmod
+
+    monkeypatch.setattr(wmod, "get_scored_items", lambda *a, **k: (_ for _ in ()).throw(AssertionError("news cache should not load")))
+    monkeypatch.setattr(wmod, "get_latest_items", lambda *a, **k: (_ for _ in ()).throw(AssertionError("news cache should not load")))
+
+    def fake_paths():
+        root = Path("/tmp/aquaduct_preview_test")
+        return SimpleNamespace(news_cache_dir=root / "news_cache", videos_dir=root / "videos")
+
+    monkeypatch.setattr(wmod.pipeline_main, "get_paths", fake_paths)
+    monkeypatch.setattr(
+        wmod.pipeline_main,
+        "get_models",
+        lambda: SimpleNamespace(llm_id="m", sdxl_turbo_id="i", kokoro_id="k"),
+    )
+
+    def fake_expand(**kwargs):
+        assert "cats" in kwargs["raw_instructions"]
+        return "expanded brief"
+
+    def fake_generate_script(**kwargs):
+        assert kwargs.get("creative_brief") == "expanded brief"
+        assert kwargs["items"][0].get("source") == "custom"
+        return VideoPackage(
+            title="T",
+            description="D",
+            hashtags=["#AI"],
+            hook="H",
+            segments=[ScriptSegment(narration="N", visual_prompt="V", on_screen_text="O")],
+            cta="C",
+        )
+
+    monkeypatch.setattr(wmod, "expand_custom_video_instructions", fake_expand)
+    monkeypatch.setattr(wmod, "generate_script", fake_generate_script)
+    monkeypatch.setattr(wmod, "enforce_arc", lambda pkg: pkg)
+
+    app = AppSettings(run_content_mode="custom", custom_video_instructions="A video about cats")
+    w = PreviewWorker(app)
+    results: list[tuple] = []
+    w.done.connect(lambda *a: results.append(tuple(a)))
+    w.start()
+    qtbot.waitUntil(lambda: len(results) >= 1, timeout=8000)
+    assert len(results) == 1
+    pkg, sources, prompts, personality_id, confidence = results[0]
+    assert pkg.title == "T"
+    assert sources[0]["source"] == "custom"
 
 
 @pytest.mark.qt

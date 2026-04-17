@@ -10,10 +10,11 @@ def test_download_popup_pause_saves_resume_queue(qtbot, monkeypatch):
     import UI.main_window as mw
 
     class DummyWorker:
-        def __init__(self, *, repo_ids, models_dir, title="Downloading"):
+        def __init__(self, *, repo_ids, models_dir, title="Downloading", remote_bytes_by_repo=None, **_kwargs):
             self.repo_ids = list(repo_ids)
             self.models_dir = models_dir
             self.title = title
+            _ = remote_bytes_by_repo
             self.current_index = 0
             self.current_repo_id = ""
             self._paused = False

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Run tab: Custom video instructions (Preset vs Custom)
+- **Content source** on **Run**: **Preset** keeps the existing flow (news cache + topic tags + personality). **Custom** uses multiline **video instructions** you write; the app does **not** pick headlines from the cache for that run. The script model runs twice: **expand** rough notes into a structured creative brief (plain text), then **generate** the same JSON `VideoPackage` the rest of the pipeline consumes (slower than Preset). Topic tags from the Topics tab still bias hashtags when relevant.
+- **Settings** ([`src/config.py`](src/config.py), [`src/ui_settings.py`](src/ui_settings.py)): `run_content_mode` (`preset` | `custom`), `custom_video_instructions` (capped length `MAX_CUSTOM_VIDEO_INSTRUCTIONS`).
+- **Orchestration** ([`main.py`](main.py)): Custom mode builds synthetic `sources` for metadata (`source: "custom"`), skips article fetch, calls [`src/brain.py`](src/brain.py) `expand_custom_video_instructions` then `generate_script(..., creative_brief=..., video_format=...)`. **Auto** personality uses instruction text in [`src/personality_auto.py`](src/personality_auto.py) `extra_scoring_text`. **Factcheck** `rewrite_with_uncertainty` is skipped when there is no article (Custom-only scripts).
+- **UI** ([`UI/tabs/run_tab.py`](UI/tabs/run_tab.py), [`UI/main_window.py`](UI/main_window.py)): Preset/Custom radio + instructions editor; **Preview** / **Storyboard preview** / **Run** require non-empty instructions in Custom mode.
+- **Workers** ([`UI/workers.py`](UI/workers.py)): `PreviewWorker` and `StoryboardWorker` mirror the same Custom vs Preset branching as `run_once`.
+- **Tests**: [`tests/test_brain.py`](tests/test_brain.py) (creative-brief prompt path), [`tests/test_brain_expand.py`](tests/test_brain_expand.py) (`expand_custom_video_instructions`), [`tests/test_config_and_settings.py`](tests/test_config_and_settings.py) (settings roundtrip), [`tests/test_ui_workers.py`](tests/test_ui_workers.py) (`PreviewWorker` custom path skips news cache). [`tests/test_ui_download_pause.py`](tests/test_ui_download_pause.py) dummy download worker updated for `ModelDownloadWorker(..., remote_bytes_by_repo=...)`.
+
 ### Tasks: pipeline progress + pause/stop
 - **Tasks** tab **Status** column shows **stage + percent** (e.g. `Pipeline: Writing script (LLM)… — 22%`) during runs, not only “Running…”. Emitted from [`main.py`](main.py) `run_once(..., on_progress=)` → [`UI/workers.py`](UI/workers.py) `PipelineWorker.progress` / batch remapped `PipelineBatchWorker.progress`; labels in [`UI/progress_tasks.py`](UI/progress_tasks.py) (`pipeline_run`, `pipeline_video`).
 - **Pause** / **Resume** and **Stop** while a pipeline, batch run, Preview, or Storyboard job is active (cooperative cancel between steps via [`src/pipeline_control.py`](src/pipeline_control.py); `main.run_once` checkpoints). Stop also requests `QThread` interruption.
@@ -87,7 +95,7 @@ All notable changes to this project will be documented in this file.
 - **`scripts/download_hf_models.py`**: Portable HF snapshot downloader into `./models` (same layout as the app), with optional `--out` and token via env/CLI.
 
 ### Docs & tests
-- Docs refreshed for UI (Tasks progress, Model integrity badges/dialog, **🧠** field expansion), **README**, [docs/ui.md](docs/ui.md), [docs/models.md](docs/models.md), [docs/characters.md](docs/characters.md), [docs/brain.md](docs/brain.md); branding palette behavior, models/skip semantics, **TikTok**, **YouTube**, **checksum verification**, **Characters**, and **ElevenLabs**.
+- Docs refreshed for UI (Tasks progress, Model integrity badges/dialog, **🧠** field expansion), **README**, [docs/ui.md](docs/ui.md), [docs/models.md](docs/models.md), [docs/characters.md](docs/characters.md), [docs/brain.md](docs/brain.md), [docs/config.md](docs/config.md), [docs/main.md](docs/main.md); branding palette behavior, models/skip semantics, **TikTok**, **YouTube**, **checksum verification**, **Characters**, **ElevenLabs**, and **Preset vs Custom** run content.
 - **`tests/test_personality_auto.py`** updated for rules-only auto pick.
 - **`tests/test_upload_tasks.py`**, **`tests/test_tiktok_post.py`**, **`tests/test_model_integrity.py`**, **`tests/test_brain_expand.py`** (mocked LLM expand). UI tests need **`pip install -r requirements-dev.txt`** (pytest-qt + PyQt6 for `qtbot`).
 

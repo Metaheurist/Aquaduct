@@ -1,10 +1,23 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QSizePolicy,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-from src.config import VIDEO_FORMATS
+from src.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
 from src.characters_store import load_all
 from src.personalities import get_personality_presets
+from UI.brain_expand import wrap_editor_with_brain
 
 
 def attach_run_tab(win) -> None:
@@ -43,9 +56,55 @@ def attach_run_tab(win) -> None:
     fmt_row.addStretch(1)
     lay.addLayout(fmt_row)
 
-    vf_hint = QLabel("Tags for the run come from the Topics tab list for this format.")
+    mode_row = QHBoxLayout()
+    mode_lbl = QLabel("Content source")
+    mode_lbl.setStyleSheet("color: #B7B7C2;")
+    mode_row.addWidget(mode_lbl)
+    win.run_content_preset_radio = QRadioButton("Preset (news cache + topics)")
+    win.run_content_custom_radio = QRadioButton("Custom (your instructions)")
+    win.run_content_mode_group = QButtonGroup(w)
+    win.run_content_mode_group.addButton(win.run_content_preset_radio)
+    win.run_content_mode_group.addButton(win.run_content_custom_radio)
+    if str(getattr(win.settings, "run_content_mode", "preset") or "preset") == "custom":
+        win.run_content_custom_radio.setChecked(True)
+    else:
+        win.run_content_preset_radio.setChecked(True)
+    mode_row.addWidget(win.run_content_preset_radio)
+    mode_row.addWidget(win.run_content_custom_radio)
+    mode_row.addStretch(1)
+    lay.addLayout(mode_row)
+
+    win.custom_instructions_edit = QTextEdit()
+    win.custom_instructions_edit.setAcceptRichText(False)
+    win.custom_instructions_edit.setPlaceholderText(
+        "Describe the video: topic, angle, tone, structure, visual vibe, CTA… "
+        f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters stored.)"
+    )
+    win.custom_instructions_edit.setPlainText(str(getattr(win.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS])
+    win.custom_instructions_edit.setMinimumHeight(72)
+    win.custom_instructions_edit.setMaximumHeight(160)
+    custom_wrap = wrap_editor_with_brain(win.custom_instructions_edit, "Custom video instructions", win)
+    lay.addWidget(custom_wrap)
+
+    vf_hint = QLabel("")
     vf_hint.setWordWrap(True)
     vf_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+
+    def _sync_content_mode_ui() -> None:
+        custom = win.run_content_custom_radio.isChecked()
+        custom_wrap.setVisible(custom)
+        if custom:
+            vf_hint.setText(
+                "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
+                "then writes the script (two passes — slower than Preset). Topic tags from the Topics tab still bias "
+                "hashtags when relevant."
+            )
+        else:
+            vf_hint.setText("Tags for the run come from the Topics tab list for this format.")
+
+    win.run_content_preset_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
+    win.run_content_custom_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
+    _sync_content_mode_ui()
     lay.addWidget(vf_hint)
 
     # Personality selection
