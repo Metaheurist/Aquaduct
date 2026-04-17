@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from .app_dirs import application_data_dir, mark_path_hidden
+from .ffmpeg_slideshow import sanitize_xfade_transition
 from .config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
     AppSettings,
@@ -16,12 +20,8 @@ from .config import (
 )
 
 
-def _root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
 def settings_path() -> Path:
-    return _root() / "ui_settings.json"
+    return application_data_dir() / "ui_settings.json"
 
 
 def _sanitize_tags(tags: Any) -> list[str]:
@@ -104,6 +104,7 @@ def load_settings() -> AppSettings:
         transition_strength=str(video_raw.get("transition_strength", "low"))
         if str(video_raw.get("transition_strength", "low")) in ("off", "low", "med")
         else "low",
+        xfade_transition=sanitize_xfade_transition(str(video_raw.get("xfade_transition", "fade"))),
         audio_polish=str(video_raw.get("audio_polish", "basic"))
         if str(video_raw.get("audio_polish", "basic")) in ("off", "basic", "strong")
         else "basic",
@@ -226,11 +227,44 @@ def load_settings() -> AppSettings:
     )
 
 
-def save_settings(settings: AppSettings) -> None:
+def save_settings(settings: AppSettings) -> bool:
+    """
+    Persist settings to ``ui_settings.json``. Uses a temp file + ``os.replace`` (atomic on Windows)
+    and retries on ``PermissionError`` (OneDrive, antivirus, or another Aquaduct instance).
+
+    Returns True if the file was written; False if all attempts failed (callers can continue in-memory).
+    """
     from debug import dprint
 
     p = settings_path()
-    payload = asdict(settings)
-    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    dprint("config", "save_settings", str(p))
+    payload = json.dumps(asdict(settings), indent=2, ensure_ascii=False)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        dprint("config", "save_settings", f"mkdir failed: {e}")
+        return False
+
+    tmp = p.parent / f".ui_settings_{os.getpid()}.tmp"
+    last_err: BaseException | None = None
+    for attempt in range(6):
+        try:
+            tmp.write_text(payload, encoding="utf-8")
+            os.replace(tmp, p)
+            try:
+                mark_path_hidden(p)
+            except Exception:
+                pass
+            dprint("config", "save_settings", str(p))
+            return True
+        except (PermissionError, OSError) as e:
+            last_err = e
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
+            if attempt < 5:
+                time.sleep(0.05 * (2**attempt))
+    dprint("config", "save_settings", f"FAILED after retries: {last_err!r}")
+    return False
 

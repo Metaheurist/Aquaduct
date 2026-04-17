@@ -85,15 +85,17 @@ def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
     from src.config import AppSettings, Paths
 
     # Avoid touching real repo folders
+    ada = tmp_path / ".Aquaduct_data"
     paths = Paths(
         root=tmp_path,
-        data_dir=tmp_path / "data",
-        news_cache_dir=tmp_path / "data" / "news_cache",
-        runs_dir=tmp_path / "runs",
-        videos_dir=tmp_path / "videos",
-        models_dir=tmp_path / "models",
-        cache_dir=tmp_path / ".cache",
-        ffmpeg_dir=tmp_path / ".cache" / "ffmpeg",
+        app_data_dir=ada,
+        data_dir=ada / "data",
+        news_cache_dir=ada / "data" / "news_cache",
+        runs_dir=ada / "runs",
+        videos_dir=ada / "videos",
+        models_dir=ada / "models",
+        cache_dir=ada / ".cache",
+        ffmpeg_dir=ada / ".cache" / "ffmpeg",
     )
     for d in [paths.news_cache_dir, paths.runs_dir, paths.videos_dir, paths.models_dir, paths.cache_dir, paths.ffmpeg_dir]:
         d.mkdir(parents=True, exist_ok=True)

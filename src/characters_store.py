@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import uuid
+import zlib
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from .config import AppSettings, get_paths
+from .topics import normalize_video_format
 
 
 def characters_path() -> Path:
@@ -142,6 +145,101 @@ def resolve_active_character(settings: AppSettings) -> Character | None:
     if not cid:
         return None
     return get_by_id(load_all(), cid)
+
+
+def _ephemeral_character_for_show(
+    *,
+    video_format: str,
+    topic_tags: list[str] | None,
+    headline_seed: str,
+) -> Character:
+    """In-memory cast when the user has no saved characters — not written to disk."""
+    vf = normalize_video_format(video_format)
+    seed = f"{headline_seed}|{vf}|{'|'.join(topic_tags or [])}"
+    digest = zlib.adler32(seed.encode("utf-8", errors="ignore")) & 0xFFFFFFFF
+    rng = random.Random(digest)
+
+    first = rng.choice(
+        ["Jordan", "Riley", "Casey", "Morgan", "Quinn", "Avery", "Jamie", "Drew", "Sage", "Remy"]
+    )
+    last = rng.choice(
+        ["Vex", "Noodle", "Kettle", "Flux", "Spindle", "Gribble", "Wobble", "Thunk", "Pocket", "Lint"]
+    )
+    name = f"{first} {last}"
+    tag_hint = ", ".join((topic_tags or [])[:4]) or "general audience"
+
+    if vf == "unhinged":
+        identity = (
+            f"The show's core cast for this vertical: {name} is the cynical host who commits to the bit; "
+            "a recurring off-screen foil (voice-only) interrupts with fake moral authority. "
+            f"Topic vibe: {tag_hint}. Invent original jokes — do not reference real shows or celebrities."
+        )
+        visual = (
+            "Flat 2D adult-animation satire, exaggerated expressions, sitcom staging, gross-out or surreal "
+            "backgrounds when needed, 9:16 vertical"
+        )
+    elif vf == "cartoon":
+        identity = (
+            f"Host character {name}: playful, expressive, slightly chaotic energy for cartoon comedy. "
+            f"Topic vibe: {tag_hint}."
+        )
+        visual = "Bright 2D cartoon, bold outlines, rubber-hose motion, friendly palette, 9:16 vertical"
+    elif vf == "explainer":
+        identity = (
+            f"Host {name}: patient educator — clear, curious, slightly nerdy — guides the viewer. "
+            f"Topic vibe: {tag_hint}."
+        )
+        visual = (
+            "Clean infographic-adjacent visuals, diagrams, soft gradients, readable text overlays, 9:16 vertical"
+        )
+    else:
+        identity = (
+            f"Host {name}: credible short-form host — fast, skeptical, plain language. "
+            f"Topic vibe: {tag_hint}."
+        )
+        visual = (
+            "High-contrast cyberpunk HUD accents, subtle glitch, readable captions, 9:16 vertical"
+        )
+
+    negatives = "Slurs, hate, harassment, or real-person cruelty; do not copy real shows or characters."
+
+    return Character(
+        id=uuid.uuid4().hex,
+        name=name,
+        identity=identity,
+        visual_style=visual,
+        negatives=negatives,
+        use_default_voice=True,
+        pyttsx3_voice_id="",
+        kokoro_voice="",
+        elevenlabs_voice_id="",
+    )
+
+
+def resolve_character_for_pipeline(
+    settings: AppSettings,
+    *,
+    video_format: str = "news",
+    topic_tags: list[str] | None = None,
+    headline_seed: str = "",
+) -> Character:
+    """
+    Character for script, visuals, and optional voice overrides.
+
+    Uses the active character when set; otherwise the first saved character (by name);
+    otherwise generates a one-off in-memory character for this run (no disk write).
+    """
+    ch = resolve_active_character(settings)
+    if ch is not None:
+        return ch
+    all_c = load_all()
+    if all_c:
+        return sorted(all_c, key=lambda x: x.name.lower())[0]
+    return _ephemeral_character_for_show(
+        video_format=video_format,
+        topic_tags=topic_tags,
+        headline_seed=headline_seed or "",
+    )
 
 
 def character_context_for_brain(ch: Character) -> str:

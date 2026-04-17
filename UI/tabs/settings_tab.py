@@ -97,7 +97,10 @@ def attach_settings_tab(win) -> None:
 
     win.install_deps_btn = QPushButton("Install dependencies")
     win.install_deps_btn.setObjectName("primary")
-    win.install_deps_btn.setToolTip("pip install -r requirements.txt into the current Python environment")
+    win.install_deps_btn.setToolTip(
+        "Install PyTorch for this PC (CUDA if an NVIDIA GPU is detected, else CPU; macOS uses PyPI), "
+        "then pip install -r requirements.txt — same as: python scripts/install_pytorch.py --with-rest"
+    )
     win.install_deps_btn.clicked.connect(win._install_deps)
     actions_row.addWidget(win.install_deps_btn)
 

@@ -2,7 +2,7 @@
 Ensure only one app instance (CLI or UI).
 
 Windows: named mutex in the *Local* namespace (no admin; Global\\ often fails without elevation).
-If mutex creation fails, fall back to a non-blocking lock file under `.cache/`.
+If mutex creation fails, fall back to a non-blocking lock file under `.Aquaduct_data/.cache/`.
 
 Keeps mutex handle / lock file open for the process lifetime so the lock is not released by GC.
 """

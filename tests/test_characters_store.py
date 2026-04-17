@@ -7,6 +7,7 @@ from src.characters_store import (
     load_all,
     new_character,
     resolve_active_character,
+    resolve_character_for_pipeline,
     save_all,
     upsert,
 )
@@ -46,6 +47,38 @@ def test_resolve_active_character(patch_paths, tmp_repo_root):
     assert got is not None
     assert got.id == c.id
     assert resolve_active_character(AppSettings(active_character_id="")) is None
+
+
+def test_resolve_character_for_pipeline_ephemeral_when_empty(patch_paths, tmp_repo_root):
+    save_all([])
+    s = AppSettings(active_character_id="")
+    got = resolve_character_for_pipeline(
+        s,
+        video_format="unhinged",
+        topic_tags=["sketch"],
+        headline_seed="Test headline",
+    )
+    assert got.name
+    ctx = character_context_for_brain(got)
+    assert "sketch" in ctx or "cynical" in got.identity.lower()
+
+
+def test_resolve_character_for_pipeline_first_saved_when_no_active(patch_paths, tmp_repo_root):
+    save_all([])
+    c = new_character(name="Zebra")
+    d = new_character(name="Alpha")
+    save_all([c, d])
+    got = resolve_character_for_pipeline(AppSettings(active_character_id=""), video_format="news")
+    assert got.id == d.id
+
+
+def test_resolve_character_for_pipeline_prefers_active(patch_paths, tmp_repo_root):
+    save_all([])
+    c = new_character(name="Pick")
+    d = new_character(name="Other")
+    save_all([c, d])
+    got = resolve_character_for_pipeline(AppSettings(active_character_id=c.id), video_format="news")
+    assert got.id == c.id
 
 
 def test_character_context_for_brain():

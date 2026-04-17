@@ -39,11 +39,12 @@ Activate-Venv $VenvDir
 Write-Host "Upgrading pip"
 python -m pip install --upgrade pip
 
-Write-Host "Installing runtime dependencies"
-pip install -r requirements.txt
+Write-Host "Installing PyTorch (CUDA if NVIDIA GPU, else CPU) + runtime dependencies"
+python scripts/install_pytorch.py --with-rest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Installing build dependencies"
-pip install -r build\\requirements-build.txt
+Write-Host "Installing build dependencies (pytest + PyInstaller, etc.)"
+pip install -r requirements-dev.txt
 
 Write-Host "Building exe with PyInstaller"
 $mode = "--onedir"

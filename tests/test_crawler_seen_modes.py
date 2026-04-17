@@ -125,6 +125,25 @@ def test_cartoon_scored_uses_separate_seen_titles(monkeypatch: pytest.MonkeyPatc
     assert "Legacy title noise" in saved
 
 
+def test_unhinged_scored_persist_cache_false_skips_disk(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from src.crawler import NewsItem, get_scored_items
+
+    news_cache = tmp_path / "news_cache"
+    news_cache.mkdir(parents=True)
+
+    raw = [
+        NewsItem(title="Headline A", url="https://a.example/u1", source="GoogleNews"),
+        NewsItem(title="Headline B", url="https://b.example/u2", source="GoogleNews"),
+    ]
+
+    monkeypatch.setattr("src.crawler.fetch_latest_items", lambda **_kw: raw)
+    monkeypatch.setattr("src.content_quality.diversify", lambda ranked, **_kw: ranked)
+
+    get_scored_items(news_cache, limit=1, fetch_n=2, cache_mode="unhinged", persist_cache=False)
+    assert not any(news_cache.glob("seen*.json"))
+    assert not any(news_cache.glob("seen_titles*.json"))
+
+
 def test_clear_news_seen_cache_files_removes_legacy_and_per_mode(tmp_path) -> None:
     from src.crawler import clear_news_seen_cache_files
 
@@ -157,8 +176,14 @@ def test_effective_query_mode_tailors_search_bias() -> None:
     assert "physics" in e
     assert "explainer" in e.lower() or "tutorial" in e.lower()
 
+    u = _effective_query(query="", topic_tags=["sketch"], topic_mode="unhinged")
+    assert "sketch" in u
+    assert "meme" in u.lower() or "comedy" in u.lower()
+
     assert "AI tool" in _default_headline_query("news") or "AI" in _default_headline_query("news")
     assert "cartoon" in _default_headline_query("cartoon").lower()
+    uh_def = _default_headline_query("unhinged").lower()
+    assert "meme" in uh_def or "comedy" in uh_def
 
 
 def test_clear_news_seen_cache_files_empty_dir(tmp_path) -> None:

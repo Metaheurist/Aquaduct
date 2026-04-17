@@ -116,6 +116,12 @@ def _default_headline_query(mode: str | None) -> str:
             "(animation OR cartoon OR \"animated short\" OR series OR character OR comedy) "
             "(premiere OR episode OR trailer OR festival OR reboot)"
         )
+    if m == "unhinged":
+        return (
+            "(\"adult animation\" OR \"animated sitcom\" OR \"dark comedy\" OR satire OR parody OR sketch OR "
+            "absurdist OR surreal OR \"shock comedy\" OR \"animated series\" OR \"black comedy\") "
+            "(episode OR short OR clip OR season OR reboot OR trailer OR comedy)"
+        )
     if m == "explainer":
         return (
             "(explainer OR tutorial OR documentary OR guide) "
@@ -148,6 +154,11 @@ def _effective_query(
             return (
                 f"({tag_expr}) (animation OR cartoon OR animated OR character OR comedy OR "
                 f"trailer OR series OR short OR film OR festival)"
+            )
+        if mode == "unhinged":
+            return (
+                f"({tag_expr}) (\"adult animation\" OR satire OR parody OR sketch OR animated OR absurdist OR "
+                f"surreal OR \"dark comedy\" OR \"animated sitcom\" OR short OR series OR episode OR clip)"
             )
         if mode == "explainer":
             return (
@@ -421,10 +432,14 @@ def get_scored_items(
     firecrawl_enabled: bool = False,
     firecrawl_api_key: str | None = None,
     cache_mode: str | None = "news",
+    persist_cache: bool = True,
 ) -> list[NewsItem]:
     """
     Fetch more candidates, score them (novelty/impact/clarity/tag match), diversify across tags,
     then return up to `limit` best items.
+
+    When ``persist_cache`` is False, URL/title history under ``news_cache_dir`` is not read or
+    written (used for Cartoon unhinged preset runs).
     """
     from .content_quality import diversify, load_seen_titles, save_seen_titles, score_item
 
@@ -440,9 +455,12 @@ def get_scored_items(
     )
 
     _, seen_titles_path = news_seen_paths(news_cache_dir, cache_mode)
-    seen_titles = load_seen_titles(seen_titles_path)
-    if not seen_titles and _cache_mode_key(cache_mode) == "news":
-        seen_titles = load_seen_titles(news_cache_dir / "seen_titles.json")
+    if persist_cache:
+        seen_titles = load_seen_titles(seen_titles_path)
+        if not seen_titles and _cache_mode_key(cache_mode) == "news":
+            seen_titles = load_seen_titles(news_cache_dir / "seen_titles.json")
+    else:
+        seen_titles = []
 
     # Source weights: can evolve later; keep simple now.
     source_weights = {"GoogleNews": 0.25, "MarkTechPost": 0.15, "Firecrawl": 0.25}
@@ -459,26 +477,37 @@ def get_scored_items(
     # Maintain existing seen URL behavior (so repeated runs move forward).
     # Reuse get_latest_items filtering by feeding it through the existing seen mechanism:
     # we’ll manually filter URLs here and persist to seen_<mode>.json.
-    seen_path, seen = _load_seen_migrated(news_cache_dir, cache_mode)
     out: list[NewsItem] = []
-    for it in diversified:
-        if it.url in seen:
-            continue
-        out.append(it)
-        seen.add(it.url)
-        if len(out) >= limit:
-            break
-    _save_seen(seen_path, seen)
+    if persist_cache:
+        seen_path, seen = _load_seen_migrated(news_cache_dir, cache_mode)
+        for it in diversified:
+            if it.url in seen:
+                continue
+            out.append(it)
+            seen.add(it.url)
+            if len(out) >= limit:
+                break
+        _save_seen(seen_path, seen)
+    else:
+        seen_urls: set[str] = set()
+        for it in diversified:
+            if it.url in seen_urls:
+                continue
+            out.append(it)
+            seen_urls.add(it.url)
+            if len(out) >= limit:
+                break
 
     # Update seen titles list for novelty scoring next time
-    try:
-        for it in out:
-            t = (it.title or "").strip()
-            if t:
-                seen_titles.append(t)
-        save_seen_titles(seen_titles_path, seen_titles)
-    except Exception:
-        pass
+    if persist_cache:
+        try:
+            for it in out:
+                t = (it.title or "").strip()
+                if t:
+                    seen_titles.append(t)
+            save_seen_titles(seen_titles_path, seen_titles)
+        except Exception:
+            pass
 
     return out
 

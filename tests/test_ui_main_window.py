@@ -67,3 +67,63 @@ def test_storyboard_dialog_constructs(qtbot, tmp_path):
     d.show()
     assert d is not None
 
+
+@pytest.mark.qt
+def test_on_run_queues_when_pipeline_worker_running(qtbot, monkeypatch, patch_paths, write_ui_settings):
+    """Clicking Run while a pipeline is active appends a FIFO job instead of no-op."""
+    write_ui_settings({"topic_tags": []})
+    from UI.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w.show()
+
+    mock_worker = MagicMock()
+    mock_worker.isRunning.return_value = True
+    w.worker = mock_worker
+    w.run_qty_spin.setValue(3)
+
+    w._on_run()
+
+    assert len(w._pipeline_run_queue) == 1
+    assert w._pipeline_run_queue[0]["kind"] == "pipeline"
+    assert w._pipeline_run_queue[0]["qty"] == 3
+    assert w._pipeline_run_queue[0]["settings"] is not w.settings
+
+
+@pytest.mark.qt
+def test_pipeline_cancel_clears_queued_jobs(qtbot, monkeypatch, patch_paths, write_ui_settings):
+    write_ui_settings({"topic_tags": []})
+    from UI.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w.show()
+
+    w._pipeline_run_queue = [{"kind": "pipeline", "settings": w.settings, "qty": 1}]
+    w._append_log = MagicMock()
+
+    w._on_pipeline_worker_cancelled()
+
+    assert w._pipeline_run_queue == []
+
+
+@pytest.mark.qt
+def test_try_start_next_queued_pipeline_enables_run_when_idle(qtbot, monkeypatch, patch_paths, write_ui_settings):
+    """With no worker running and an empty queue, the next-queue helper re-enables Run."""
+    write_ui_settings({"topic_tags": []})
+    from UI.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w.show()
+
+    w.worker = MagicMock()
+    w.worker.isRunning.return_value = False
+    w._pipeline_run_queue.clear()
+    w.run_btn.setEnabled(False)
+
+    w._try_start_next_queued_pipeline()
+
+    assert w.run_btn.isEnabled() is True
+

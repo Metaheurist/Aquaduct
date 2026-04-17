@@ -17,17 +17,17 @@ except Exception:  # optional dependency
 from src.artist import generate_images
 from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
 from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
-from src.crawler import get_latest_items, get_scored_items, pick_one_item, fetch_article_text
+from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item, fetch_article_text
 from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.clips import generate_clips
 from src.branding_video import apply_palette_to_prompts
-from src.characters_store import character_context_for_brain, resolve_active_character
+from src.characters_store import character_context_for_brain, resolve_character_for_pipeline
 from src.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.factcheck import rewrite_with_uncertainty
 from src.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
 from src.storyboard import build_storyboard, write_manifest
 from src.frame_quality import is_reject, score_frame
-from src.voice import synthesize
+from src.voice import synthesize, synthesize_unhinged_rotating_pyttsx3
 from src.tts_text import shape_tts_text
 from src.audio_fx import (
     AudioPolishConfig,
@@ -131,8 +131,6 @@ def run_once(
     paths = get_paths()
     models = get_models()
     app = settings or AppSettings()
-    active_character = resolve_active_character(app)
-    char_ctx = character_context_for_brain(active_character) if active_character else None
     video_settings = app.video
     dprint(
         "pipeline",
@@ -152,7 +150,7 @@ def run_once(
     paths.videos_dir.mkdir(parents=True, exist_ok=True)
 
     if not find_ffmpeg(paths.ffmpeg_dir):
-        dprint("pipeline", "Downloading FFmpeg to .cache/ffmpeg/ (first run; needs internet; may take several minutes)…")
+        dprint("pipeline", "Downloading FFmpeg to .Aquaduct_data/.cache/ffmpeg/ (first run; needs internet; may take several minutes)…")
         ensure_ffmpeg(paths.ffmpeg_dir)
 
     pf = preflight_check(settings=app, strict=True)
@@ -184,7 +182,20 @@ def run_once(
             fc = _firecrawl_kwargs(app)
             tags = effective_topic_tags(app)
             cm = news_cache_mode_for_run(app)
-            if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+            # Cartoon (unhinged): do not read/write news_cache — fetch fresh each run.
+            if cm == "unhinged":
+                if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+                    items = get_scored_items(
+                        paths.news_cache_dir,
+                        limit=3,
+                        topic_tags=tags,
+                        cache_mode=cm,
+                        persist_cache=False,
+                        **fc,
+                    )
+                else:
+                    items = fetch_latest_items(limit=3, topic_tags=tags, topic_mode=cm, **fc)
+            elif bool(getattr(video_settings, "high_quality_topic_selection", True)):
                 items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
             else:
                 items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
@@ -242,6 +253,22 @@ def run_once(
                 (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
         except Exception:
             article_text = ""
+
+    # Cast: active character, else first saved, else ephemeral autogen for this run (not saved).
+    _vf_cast = str(getattr(app, "video_format", "news") or "news")
+    _tags_cast = list(effective_topic_tags(app))
+    _head_seed = ""
+    if sources:
+        _head_seed = str(sources[0].get("title") or "")
+    elif prebuilt_pkg is not None:
+        _head_seed = str(prebuilt_pkg.title or "")
+    active_character = resolve_character_for_pipeline(
+        app,
+        video_format=_vf_cast,
+        topic_tags=_tags_cast,
+        headline_seed=_head_seed,
+    )
+    char_ctx = character_context_for_brain(active_character)
 
     # Brain
     if prebuilt_pkg is None:
@@ -329,14 +356,9 @@ def run_once(
     _pipe_progress(on_progress, 50, "Generating voice / captions…")
     voice_wav = assets_dir / "voice.wav"
     captions_json = assets_dir / "captions.json"
+    vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
     narration = pkg.narration_text()
-    shaped = shape_tts_text(narration, personality_id=str(getattr(app, "personality_id", "neutral") or "neutral"))
-    if shaped:
-        try:
-            (assets_dir / "narration_shaped.txt").write_text(shaped, encoding="utf-8")
-            narration = shaped
-        except Exception:
-            pass
+    pid_voice = str(getattr(app, "personality_id", "neutral") or "neutral")
     py_tts_voice: str | None = None
     kokoro_sp: str | None = None
     el_vid: str | None = None
@@ -359,17 +381,51 @@ def run_once(
                 ffmpeg_exe = None
                 el_vid = None
                 el_key = None
-    synthesize(
-        kokoro_model_id=voice_id,
-        text=narration,
-        out_wav_path=voice_wav,
-        out_captions_json=captions_json,
-        pyttsx3_voice_id=py_tts_voice,
-        kokoro_speaker=kokoro_sp,
-        elevenlabs_voice_id=el_vid,
-        elevenlabs_api_key=el_key,
-        ffmpeg_executable=ffmpeg_exe,
-    )
+    use_el = bool(el_vid and el_key and ffmpeg_exe)
+    char_forces_voice = active_character is not None and not getattr(active_character, "use_default_voice", True)
+    rotate_unhinged = vf_voice == "unhinged" and not use_el and not char_forces_voice
+
+    if rotate_unhinged:
+        parts: list[str] = []
+        if pkg.hook.strip():
+            parts.append(pkg.hook.strip())
+        for seg in pkg.segments or []:
+            if (seg.narration or "").strip():
+                parts.append(seg.narration.strip())
+        if pkg.cta.strip():
+            parts.append(pkg.cta.strip())
+        texts_uh: list[str] = []
+        for raw in parts:
+            st = shape_tts_text(raw, personality_id=pid_voice)
+            texts_uh.append(st if st else raw)
+        if not texts_uh:
+            st_full = shape_tts_text(narration, personality_id=pid_voice)
+            texts_uh = [st_full if st_full else narration]
+        synthesize_unhinged_rotating_pyttsx3(
+            kokoro_model_id=voice_id,
+            segment_texts=texts_uh,
+            out_wav_path=voice_wav,
+            out_captions_json=captions_json,
+        )
+    else:
+        shaped = shape_tts_text(narration, personality_id=pid_voice)
+        if shaped:
+            try:
+                (assets_dir / "narration_shaped.txt").write_text(shaped, encoding="utf-8")
+                narration = shaped
+            except Exception:
+                pass
+        synthesize(
+            kokoro_model_id=voice_id,
+            text=narration,
+            out_wav_path=voice_wav,
+            out_captions_json=captions_json,
+            pyttsx3_voice_id=py_tts_voice,
+            kokoro_speaker=kokoro_sp,
+            elevenlabs_voice_id=el_vid,
+            elevenlabs_api_key=el_key,
+            ffmpeg_executable=ffmpeg_exe,
+        )
 
     _pipe_progress(on_progress, 58, "Voice track ready")
     _rc(run_control)

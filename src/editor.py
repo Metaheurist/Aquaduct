@@ -216,6 +216,7 @@ def assemble_microclips_then_concat(
                 height=settings.height,
                 fps=int(settings.fps),
                 transition_strength=str(getattr(settings, "transition_strength", "low") or "low"),
+                xfade_transition=str(getattr(settings, "xfade_transition", "fade") or "fade"),
             )
 
             base = VideoFileClip(str(base_mp4)).set_duration(total_dur).resize((settings.width, settings.height))

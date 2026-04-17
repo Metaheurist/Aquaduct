@@ -4,10 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-# Pipeline + per-mode topic lists use the same IDs.
-VideoFormat = Literal["news", "cartoon", "explainer"]
+from .app_dirs import application_data_dir, installation_dir
 
-VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer")
+# Pipeline + per-mode topic lists use the same IDs.
+VideoFormat = Literal["news", "cartoon", "explainer", "unhinged"]
+
+VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer", "unhinged")
 
 RunContentMode = Literal["preset", "custom"]
 
@@ -21,7 +23,10 @@ def default_topic_tags_by_mode() -> dict[str, list[str]]:
 
 @dataclass(frozen=True)
 class Paths:
+    # Install / repo root (dev) or folder with the .exe (frozen)—not writable data root.
     root: Path
+    # ``.Aquaduct_data``: models, runs, cache, ui_settings.json, etc.
+    app_data_dir: Path
     data_dir: Path
     news_cache_dir: Path
     runs_dir: Path
@@ -32,17 +37,19 @@ class Paths:
 
 
 def get_paths() -> Paths:
-    root = Path(__file__).resolve().parents[1]
-    data_dir = root / "data"
+    root = installation_dir()
+    ada = application_data_dir()
+    data_dir = ada / "data"
     news_cache_dir = data_dir / "news_cache"
-    runs_dir = root / "runs"
-    videos_dir = root / "videos"
-    models_dir = root / "models"
-    cache_dir = root / ".cache"
+    runs_dir = ada / "runs"
+    videos_dir = ada / "videos"
+    models_dir = ada / "models"
+    cache_dir = ada / ".cache"
     ffmpeg_dir = cache_dir / "ffmpeg"
 
     return Paths(
         root=root,
+        app_data_dir=ada,
         data_dir=data_dir,
         news_cache_dir=news_cache_dir,
         runs_dir=runs_dir,
@@ -96,6 +103,8 @@ class VideoSettings:
     quality_retries: int = 2
     enable_motion: bool = True
     transition_strength: Literal["off", "low", "med"] = "low"
+    # FFmpeg xfade transition name (see `src/ffmpeg_slideshow.sanitize_xfade_transition`).
+    xfade_transition: str = "fade"
 
     # Audio polish (v1)
     audio_polish: Literal["off", "basic", "strong"] = "basic"

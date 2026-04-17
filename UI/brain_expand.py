@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLineEdit, QTextEdit, QToolButton, QWidget
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtWidgets import QLineEdit, QSizePolicy, QTextEdit, QToolButton, QWidget
 
 from UI.frameless_dialog import aquaduct_warning
 
@@ -36,11 +36,19 @@ class BrainAugmentedEditor(QWidget):
         self._worker = None
 
         editor.setParent(self)
+        sp = editor.sizePolicy()
+        self.setSizePolicy(sp.horizontalPolicy(), sp.verticalPolicy())
         if isinstance(editor, QTextEdit):
             try:
                 editor.setViewportMargins(0, 0, 36, 0)
             except Exception:
                 pass
+            mh = int(editor.maximumHeight())
+            if 0 < mh < 16777215:
+                self.setMaximumHeight(mh)
+            mnh = int(editor.minimumHeight())
+            if mnh > 0:
+                self.setMinimumHeight(mnh)
         else:
             prev = (editor.styleSheet() or "").strip()
             if "padding-right" not in prev.lower():
@@ -76,7 +84,17 @@ class BrainAugmentedEditor(QWidget):
         return self._ed.minimumSizeHint()
 
     def sizeHint(self):  # type: ignore[no-untyped-def]
-        return self._ed.sizeHint()
+        # QTextEdit.sizeHint() is often huge; respect min/max height so layouts don't add empty space.
+        sh = self._ed.sizeHint()
+        w = max(sh.width(), self._ed.minimumSizeHint().width())
+        h = sh.height()
+        mh = int(self._ed.maximumHeight())
+        if 0 < mh < 16777215:
+            h = min(h, mh)
+        mnh = int(self._ed.minimumHeight())
+        if mnh > 0:
+            h = max(h, mnh)
+        return QSize(w, h)
 
     def _seed_text(self) -> str:
         if isinstance(self._ed, QTextEdit):
