@@ -37,7 +37,12 @@ Third-party tutorials and demos for models exposed in **Settings → Models**. T
 | UI label (short) | Hugging Face repo | Example YouTube demos |
 |------------------|-------------------|------------------------|
 | Kokoro 82M | `hexgrad/Kokoro-82M` | [Kokoro-82M — open source TTS](https://www.youtube.com/watch?v=L7D-xLRS1oU) · [Kokoro local TTS + custom voices](https://www.youtube.com/watch?v=tl1wvZXlj0I) · [Kokoro TTS setup + API](https://www.youtube.com/watch?v=vf3Xa_WcsIg) |
+| MMS-TTS English (Meta, lightweight) | `facebook/mms-tts-eng` | [Model card (HF)](https://huggingface.co/facebook/mms-tts-eng) |
+| MeloTTS English | `myshell-ai/MeloTTS-English` | [Model card (HF)](https://huggingface.co/myshell-ai/MeloTTS-English) |
+| SpeechT5 TTS (Microsoft) | `microsoft/speecht5_tts` | [Model card (HF)](https://huggingface.co/microsoft/speecht5_tts) |
+| Parler-TTS mini v1 (expressive) | `parler-tts/parler-tts-mini-v1` | [Parler-TTS — Hugging Face intro](https://www.youtube.com/watch?v=VQrT1iZ6_nc) · [Model card (HF)](https://huggingface.co/parler-tts/parler-tts-mini-v1) |
 | coqui XTTS v2 | `coqui/XTTS-v2` | [Coqui XTTS on Windows — local cloning](https://www.youtube.com/watch?v=HJB17HW4M9o) · [XTTS2 — clone voices](https://www.youtube.com/watch?v=pNTTTwap12Y) · [AI voice clone with Colab + XTTSv2](https://www.youtube.com/watch?v=CgDs8WL5YSE) |
+| Bark (high quality, very large) | `suno/bark` | [Bark — AI research walkthrough](https://www.youtube.com/watch?v=qWoX5HmWTO0) · [Model card (HF)](https://huggingface.co/suno/bark) |
 
 ---
 

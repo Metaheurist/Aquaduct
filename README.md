@@ -30,6 +30,13 @@ python -m venv .venv
 python scripts/install_pytorch.py --with-rest
 ```
 
+Optional — activate **and** `cd` to the repo in one step (PowerShell):
+
+```powershell
+cd d:\Aquaduct
+. .\scripts\setup_terminal_env.ps1
+```
+
 ### Tests
 
 ```powershell
@@ -84,6 +91,8 @@ python -m venv .venv
 python scripts/install_pytorch.py --with-rest
 python main.py --once
 ```
+
+Same folder, optional: `. .\scripts\setup_terminal_env.ps1` after `cd` to activate `.venv` (see [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1)).
 
 ## Project layout
 - `main.py`: one-shot run (`--once`) or infinite loop (default)

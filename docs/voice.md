@@ -8,6 +8,8 @@ Turn narration text into:
 ## Kokoro target
 The project is designed to use the **Kokoro-82M** model locally. Packaging/APIs can vary, so the MVP keeps a best-effort stub and stays runnable even if Kokoro integration isn’t available yet.
 
+**Settings → Model → Voice** also lists other Hugging Face TTS checkpoints (MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.) for **download** into `models/`; only the Kokoro path is targeted in code today, unless you integrate another engine yourself.
+
 ## Offline fallback (always runnable)
 If Kokoro generation is unavailable, the MVP falls back to:
 - `pyttsx3` (Windows SAPI)

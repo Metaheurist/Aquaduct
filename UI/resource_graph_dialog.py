@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 
 from PyQt6.QtCore import QPointF, QTimer, Qt
-from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from UI.frameless_dialog import FramelessDialog
@@ -139,14 +139,18 @@ class ResourceGraphDialog(FramelessDialog):
         super().closeEvent(event)
 
     def _on_tick(self) -> None:
-        s = sample_aquaduct_resources()
-        self._cpu_chart.push(s.process_cpu_pct)
-        self._ram_chart.push(s.process_ram_pct)
-        self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}% (process, vs one core = 100%)")
-        self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system (this process RSS)")
+        try:
+            s = sample_aquaduct_resources()
+            self._cpu_chart.push(s.process_cpu_pct)
+            self._ram_chart.push(s.process_ram_pct)
+            self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}% (process, vs one core = 100%)")
+            self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system (this process RSS)")
 
-        if s.gpu_mem_pct is not None:
-            self._gpu_chart.push(s.gpu_mem_pct)
-            self._gpu_lbl.setText(f"GPU VRAM {s.gpu_mem_pct:5.1f}% of total (CUDA device)")
-        else:
-            self._gpu_lbl.setText("GPU VRAM n/a (CUDA not active or torch not on GPU)")
+            if s.gpu_mem_pct is not None:
+                self._gpu_chart.push(s.gpu_mem_pct)
+                self._gpu_lbl.setText(f"GPU VRAM {s.gpu_mem_pct:5.1f}% of total (CUDA device)")
+            else:
+                self._gpu_lbl.setText("GPU VRAM n/a (CUDA not active or torch not on GPU)")
+        except Exception:
+            # Avoid crashing the main window if psutil/Qt/torch sampling misbehaves on a tick.
+            pass

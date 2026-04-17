@@ -3,6 +3,8 @@
 ## Purpose
 The **My PC** tab displays detected hardware and estimates how well each curated model option will run on your machine.
 
+The **Model** tab **Auto-fit for this PC** button uses the same VRAM/RAM heuristics to pick script, video, and voice repos from the curated list (`rank_models_for_auto_fit` in `src/hardware.py`).
+
 Implemented in:
 - `src/hardware.py`
 
