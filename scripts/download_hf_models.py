@@ -53,7 +53,12 @@ ALL_REPOS = [
     "stabilityai/stable-video-diffusion-img2vid-xt",
     "cerspense/zeroscope_v2_576w",
     "hexgrad/Kokoro-82M",
+    "facebook/mms-tts-eng",
+    "myshell-ai/MeloTTS-English",
+    "microsoft/speecht5_tts",
+    "parler-tts/parler-tts-mini-v1",
     "coqui/XTTS-v2",
+    "suno/bark",
 ]
 
 

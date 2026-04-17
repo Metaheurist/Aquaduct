@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.hardware import get_hardware_info, rate_model_fit_for_repo, vram_requirement_hint
+from src.hardware import get_hardware_info, rate_model_fit_for_repo, rank_models_for_auto_fit, vram_requirement_hint
 from src.model_integrity_cache import worst_integrity_status
 from src.model_manager import (
     best_model_size_label,
@@ -508,6 +508,60 @@ def attach_settings_tab(win) -> None:
     form.addRow("Video/images model", img_row)
     form.addRow("Voice model (TTS)", voice_row)
     lay.addLayout(form)
+
+    auto_fit_row = QHBoxLayout()
+    win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
+    win.auto_fit_models_btn.setObjectName("primary")
+    win.auto_fit_models_btn.setToolTip(
+        "Re-detect GPU/RAM and select the best script, video, and voice models for this machine "
+        "(same heuristics as the fit badges). Skips grayed-out entries that are unavailable on Hugging Face."
+    )
+    auto_fit_row.addWidget(win.auto_fit_models_btn)
+    auto_fit_row.addStretch(1)
+    lay.addLayout(auto_fit_row)
+
+    def _auto_fit_models() -> None:
+        try:
+            win._hw_info = get_hardware_info()
+        except Exception:
+            pass
+        ranked = rank_models_for_auto_fit(win._model_opts, win._hw_info)
+        role = Qt.ItemDataRole.UserRole
+
+        def _combo_set_best(combo: QComboBox, candidates: tuple[str | tuple[str, str], ...]) -> bool:
+            for data in candidates:
+                i = combo.findData(data, role)
+                if i < 0:
+                    continue
+                try:
+                    midx = combo.model().index(i, 0)
+                    if midx.flags() & Qt.ItemFlag.ItemIsEnabled:
+                        combo.setCurrentIndex(i)
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        ok_s = _combo_set_best(win.llm_combo, ranked.script_repo_ids)
+        ok_v = _combo_set_best(win.img_combo, ranked.video_combo_values)
+        ok_c = _combo_set_best(win.voice_combo, ranked.voice_repo_ids)
+        _update_fit_badges()
+        if hasattr(win, "_append_log"):
+            win._append_log(ranked.log_summary)
+            if not (ok_s and ok_v and ok_c):
+                win._append_log(
+                    "Auto-fit: one or more preferred models are disabled (Hub check). "
+                    "Try again when online, download weights to models/, or pick manually."
+                )
+        if hasattr(win, "_save_settings"):
+            try:
+                win._save_settings()
+            except Exception:
+                pass
+
+    win.auto_fit_models_btn.clicked.connect(_auto_fit_models)
+    win._auto_fit_models = _auto_fit_models
+
     _update_fit_badges()
     win.llm_combo.setToolTip(win.llm_combo.currentText())
     win.img_combo.setToolTip(win.img_combo.currentText())

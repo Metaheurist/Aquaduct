@@ -5,6 +5,7 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 ## Python
 - **Python**: 3.11+
 - **Virtualenv**: recommended (`python -m venv .venv`)
+- **Windows shell**: after `cd` to the repo, you can dot-source [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1) (`. .\scripts\setup_terminal_env.ps1`) to activate `.venv` and set the working directory; optional **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** for gated Hugging Face models (or use **Settings → API** in the UI).
 
 ## Desktop UI (optional)
 - **PyQt6**: only required when using the graphical control panel (`python -m UI`). The headless `main.py` pipeline does not need it.

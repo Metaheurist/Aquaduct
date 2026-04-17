@@ -48,9 +48,14 @@ def model_options() -> list[ModelOption]:
             size_hint="≈10–12GB",
         ),
         ModelOption("ZeroScope v2 576w (clips, text→vid)", "cerspense/zeroscope_v2_576w", "slow", "video", size_hint="≈6–8GB"),
-        # Voice (TTS)
+        # Voice (TTS) — Hugging Face snapshots for local weights (pipeline TTS path is still ElevenLabs → Kokoro hook → pyttsx3)
         ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice", size_hint="82M"),
+        ModelOption("MMS-TTS English (Meta, lightweight)", "facebook/mms-tts-eng", "faster", "voice", size_hint="MMS-TTS"),
+        ModelOption("MeloTTS English", "myshell-ai/MeloTTS-English", "faster", "voice", size_hint="MeloTTS"),
+        ModelOption("SpeechT5 TTS (Microsoft)", "microsoft/speecht5_tts", "faster", "voice", size_hint="SpeechT5"),
+        ModelOption("Parler-TTS mini v1 (expressive)", "parler-tts/parler-tts-mini-v1", "slow", "voice", size_hint="Parler mini"),
         ModelOption("coqui XTTS v2 (higher quality, heavier)", "coqui/XTTS-v2", "slow", "voice", size_hint="XTTS v2"),
+        ModelOption("Bark (high quality, very large)", "suno/bark", "slow", "voice", size_hint="Bark"),
     ]
 
     speed_rank = {"fastest": 0, "faster": 1, "slow": 2}

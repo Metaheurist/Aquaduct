@@ -3,13 +3,15 @@
 ## Where models are used
 - **Script model (LLM)**: `src/brain.py` (local inference; 4-bit target when supported)
 - **Video/images model**: `src/artist.py` (diffusers text-to-image, SDXL Turbo default)
-- **Voice model (TTS)**: `src/voice.py` (Kokoro target; offline fallback)
+- **Voice model (TTS)**: `src/voice.py` (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
 
 ## UI model selection
 In the UI **Model** tab you can pick and download models separately for:
 - Script
 - Video/images
 - Voice
+
+**Auto-fit for this PC** sets all three from detected VRAM/RAM using `rank_models_for_auto_fit` in `src/hardware.py` (same heuristics as **My PC** fit badges). It saves settings after applying.
 
 Each option is labeled with a relative speed marker:
 - `fastest` / `faster` / `slow`
