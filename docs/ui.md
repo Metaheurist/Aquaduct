@@ -81,3 +81,8 @@ Applied via a global Qt stylesheet (QSS) with:
 - default pink/red accent `#FE2C55`
 - optional palette overrides configured in the Branding tab
 
+## Dialogs and alerts
+- The main window is **frameless** with a custom title bar and **✕** (see [`UI/main_window.py`](../UI/main_window.py)). **Modal alerts**, confirmations, the **Hugging Face token** prompt, **Preview** / **Storyboard Preview** windows, **Topics → Discover** approval dialogs, and the **model integrity** summary use the same pattern via [`UI/frameless_dialog.py`](../UI/frameless_dialog.py): **`FramelessDialog`** (title + ✕, drag the title bar to move) and helpers such as **`aquaduct_information`** / **`aquaduct_warning`** / **`aquaduct_question`**. Styling includes `QDialog#FramelessDialogShell` in [`UI/theme.py`](../theme.py) (rounded card border).
+- **Download progress** already used a similar borderless popup ([`UI/download_popup.py`](../download_popup.py)).
+- **System file/folder pickers** (`QFileDialog`) remain the OS native dialogs.
+

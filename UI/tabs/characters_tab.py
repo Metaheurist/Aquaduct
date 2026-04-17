@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QTextEdit,
@@ -24,6 +23,7 @@ from src.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_availabl
 from src.ui_settings import save_settings
 from src.voice import list_pyttsx3_voices as list_sys_voices
 from UI.brain_expand import wrap_editor_with_brain
+from UI.frameless_dialog import aquaduct_question, aquaduct_warning
 
 
 class _ElevenLabsVoicesThread(QThread):
@@ -335,7 +335,7 @@ def attach_characters_tab(win) -> None:
         nonlocal all_chars
         ch = _read_form()
         if not ch:
-            QMessageBox.warning(w, "Characters", "Select or add a character first.")
+            aquaduct_warning(w, "Characters", "Select or add a character first.")
             return
         all_chars = upsert(all_chars, ch)
         save_all(all_chars)
@@ -361,7 +361,7 @@ def attach_characters_tab(win) -> None:
         nonlocal all_chars, _current_id
         ch = _read_form()
         if not ch:
-            QMessageBox.warning(w, "Characters", "Select a character to duplicate.")
+            aquaduct_warning(w, "Characters", "Select a character to duplicate.")
             return
         dup = new_character(name=f"{ch.name} (copy)")
         dup = Character(
@@ -392,13 +392,12 @@ def attach_characters_tab(win) -> None:
         ch = get_by_id(all_chars, str(it.data(256) or ""))
         if not ch:
             return
-        r = QMessageBox.question(
+        if not aquaduct_question(
             w,
             "Delete character",
             f"Delete “{ch.name}”?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if r != QMessageBox.StandardButton.Yes:
+            default_no=True,
+        ):
             return
         all_chars = delete_by_id(all_chars, ch.id)
         save_all(all_chars)

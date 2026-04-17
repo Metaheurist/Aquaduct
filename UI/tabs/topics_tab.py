@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from UI.brain_expand import wrap_editor_with_brain
+from UI.frameless_dialog import FramelessDialog
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -20,20 +21,17 @@ from src.config import VIDEO_FORMATS
 
 
 def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
-    d = QDialog(parent)
-    d.setWindowTitle("Newest AI news topics (approve)")
-    d.setModal(True)
+    d = FramelessDialog(parent, title="Newest AI news topics (approve)")
     d.setMinimumSize(720, 520)
 
-    lay = QVBoxLayout(d)
     header = QLabel("Newest AI news topics")
     header.setStyleSheet("font-size: 14px; font-weight: 700;")
-    lay.addWidget(header)
+    d.body_layout.addWidget(header)
 
     sub = QLabel("These are auto-extracted from the newest headlines. Nothing is added until you click Add selected.")
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setWordWrap(True)
-    lay.addWidget(sub)
+    d.body_layout.addWidget(sub)
 
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
@@ -49,7 +47,7 @@ def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
         inner_lay.addWidget(cb)
     inner_lay.addStretch(1)
     scroll.setWidget(inner)
-    lay.addWidget(scroll, 1)
+    d.body_layout.addWidget(scroll, 1)
 
     btns = QHBoxLayout()
     ok = QPushButton("Add selected")
@@ -59,7 +57,7 @@ def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
     btns.addWidget(ok)
     btns.addWidget(cancel)
     btns.addStretch(1)
-    lay.addLayout(btns)
+    d.body_layout.addLayout(btns)
 
     out: list[str] = []
 
@@ -77,25 +75,22 @@ def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
 
 
 def _no_topics_dialog(parent: QWidget) -> None:
-    d = QDialog(parent)
-    d.setWindowTitle("Newest AI news topics")
-    d.setModal(True)
+    d = FramelessDialog(parent, title="Newest AI news topics")
     d.setMinimumSize(520, 220)
-    lay = QVBoxLayout(d)
     header = QLabel("No topics found")
     header.setStyleSheet("font-size: 14px; font-weight: 700;")
-    lay.addWidget(header)
+    d.body_layout.addWidget(header)
     sub = QLabel("Couldn’t extract any topic candidates from the newest headlines right now. Try again in a minute.")
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setWordWrap(True)
-    lay.addWidget(sub)
+    d.body_layout.addWidget(sub)
     btns = QHBoxLayout()
     ok = QPushButton("OK")
     ok.setObjectName("primary")
     ok.clicked.connect(d.accept)
     btns.addWidget(ok)
     btns.addStretch(1)
-    lay.addLayout(btns)
+    d.body_layout.addLayout(btns)
     d.exec()
 
 

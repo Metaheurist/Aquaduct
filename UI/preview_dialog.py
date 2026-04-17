@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Callable
 
 from PyQt6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -12,8 +11,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from UI.frameless_dialog import FramelessDialog
 
-class PreviewDialog(QDialog):
+
+class PreviewDialog(FramelessDialog):
     def __init__(
         self,
         parent=None,
@@ -27,24 +28,18 @@ class PreviewDialog(QDialog):
         on_regenerate: Callable[[], None],
         on_approve_run: Callable[[], None],
     ) -> None:
-        super().__init__(parent)
-        self.setModal(True)
-        self.setWindowTitle("Preview")
+        super().__init__(parent, title="Preview")
         self.setMinimumSize(980, 720)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(10)
 
         header = QLabel("Preview (script + storyboard)")
         header.setStyleSheet("font-size: 16px; font-weight: 800;")
-        root.addWidget(header)
+        self.body_layout.addWidget(header)
 
         conf_line = f"<br><b>Confidence</b>: {confidence}" if confidence else ""
         meta = QLabel(f"<b>Title</b>: {title}<br><b>Personality</b>: {personality_id}{conf_line}")
         meta.setWordWrap(True)
         meta.setStyleSheet("color: #B7B7C2;")
-        root.addWidget(meta)
+        self.body_layout.addWidget(meta)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -83,7 +78,7 @@ class PreviewDialog(QDialog):
 
         il.addStretch(1)
         scroll.setWidget(inner)
-        root.addWidget(scroll, 1)
+        self.body_layout.addWidget(scroll, 1)
 
         btns = QHBoxLayout()
         regen = QPushButton("Regenerate")
@@ -100,5 +95,5 @@ class PreviewDialog(QDialog):
         btns.addWidget(close)
 
         btns.addStretch(1)
-        root.addLayout(btns)
+        self.body_layout.addLayout(btns)
 

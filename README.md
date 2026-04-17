@@ -107,6 +107,8 @@ Run:
 python -m UI
 ```
 
+Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** (same look as the main window); native **file/folder** pickers stay OS-standard.
+
 Tabs:
 - **Run**: one-shot run + **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
