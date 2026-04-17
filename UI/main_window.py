@@ -20,15 +20,19 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
-    QDialog,
-    QDialogButtonBox,
-    QLineEdit,
     QTabWidget,
     QPushButton,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+)
+
+from UI.frameless_dialog import (
+    aquaduct_information,
+    aquaduct_message_with_details,
+    aquaduct_question,
+    aquaduct_warning,
+    show_hf_token_dialog,
 )
 
 from src.config import (
@@ -273,45 +277,10 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Hugging Face token (recommended)")
-        dlg.setModal(True)
-        lay = QVBoxLayout(dlg)
-        lay.setContentsMargins(14, 14, 14, 14)
-        lay.setSpacing(10)
-
-        _hf_tokens = "https://huggingface.co/settings/tokens"
-        hint = QLabel(
-            "Some models and size lookups require a Hugging Face access token.<br><br>"
-            "<b>How to get one:</b><br>"
-            f'- Go to <a href="{_hf_tokens}">{_hf_tokens}</a><br>'
-            "- Create a token (a standard read-only token is enough)<br>"
-            "- Paste it below<br><br>"
-            "We will store it in ui_settings.json and use it for authenticated Hub requests."
-        )
-        hint.setTextFormat(Qt.TextFormat.RichText)
-        hint.setOpenExternalLinks(True)
-        hint.setWordWrap(True)
-        hint.setStyleSheet(
-            "QLabel { color: #B7B7C2; } "
-            "QLabel a { color: #25F4EE; text-decoration: none; } "
-            "QLabel a:hover { text-decoration: underline; }"
-        )
-        lay.addWidget(hint)
-
-        inp = QLineEdit()
-        inp.setPlaceholderText("hf_... (paste your token here)")
-        inp.setEchoMode(QLineEdit.EchoMode.Password)
-        lay.addWidget(inp)
-
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        lay.addWidget(btns)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-
-        if dlg.exec() != QDialog.DialogCode.Accepted:
+        accepted, token = show_hf_token_dialog(self)
+        if not accepted:
             return
-        token = str(inp.text() or "").strip()
+        token = str(token or "").strip()
         if not token:
             return
 
@@ -366,7 +335,7 @@ class MainWindow(QMainWindow):
         """
         Wipe local app state: settings, downloaded models, cache, and generated outputs.
         """
-        reply = QMessageBox.question(
+        if not aquaduct_question(
             self,
             "Clear all data?",
             "This will delete:\n\n"
@@ -376,10 +345,8 @@ class MainWindow(QMainWindow):
             "- .cache/ (ffmpeg + other caches)\n"
             "- runs/ and videos/ (generated outputs)\n\n"
             "This cannot be undone. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+            default_no=True,
+        ):
             return
 
         # Stop download thread first so we can delete models/ without WinError 32 on partial files.
@@ -390,7 +357,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         if self.download_worker and self.download_worker.isRunning():
-            QMessageBox.warning(
+            aquaduct_warning(
                 self,
                 "Clear data",
                 "The model download thread is still stopping. Wait a few seconds and try Clear again.",
@@ -399,7 +366,7 @@ class MainWindow(QMainWindow):
 
         busy = self._busy_background_jobs()
         if busy:
-            QMessageBox.warning(
+            aquaduct_warning(
                 self,
                 "Clear data",
                 "Stop these before clearing data (they may lock files under this project):\n\n- "
@@ -466,9 +433,9 @@ class MainWindow(QMainWindow):
                 "\n\nTip: Close any Explorer windows inside this repo, pause antivirus for the folder, "
                 "wait a few seconds, then try Clear again."
             )
-            QMessageBox.warning(self, "Clear data finished (with errors)", "\n".join(errors) + tip)
+            aquaduct_warning(self, "Clear data finished (with errors)", "\n".join(errors) + tip)
         else:
-            QMessageBox.information(self, "Clear data finished", "All local data was cleared. Restart the app for a clean slate.")
+            aquaduct_information(self, "Clear data finished", "All local data was cleared. Restart the app for a clean slate.")
 
         if hasattr(self, "personality_combo") and hasattr(self, "personality_hint"):
             self._update_personality_hint()
@@ -1262,14 +1229,12 @@ class MainWindow(QMainWindow):
         Human-readable summary + expandable full report (same content as the activity log).
         """
         raw = (report_text or "").strip()
-        box = QMessageBox(self)
-        box.setWindowTitle("Model integrity check")
-        box.setTextFormat(Qt.TextFormat.PlainText)
+        main_text = ""
+        info_text = ""
 
         if "No repository ids to verify." in raw:
-            box.setIcon(QMessageBox.Icon.Information)
-            box.setText("There were no model folders to check.")
-            box.setInformativeText(
+            main_text = "There were no model folders to check."
+            info_text = (
                 "Download a model first, or use “selected” when at least one folder exists under models/."
             )
         else:
@@ -1281,68 +1246,46 @@ class MainWindow(QMainWindow):
             if m:
                 ok_n, bad_n, total = int(m.group(1)), int(m.group(2)), int(m.group(3))
                 if bad_n == 0:
-                    box.setIcon(QMessageBox.Icon.Information)
-                    box.setText(
+                    main_text = (
                         f"All {total} checked model(s) passed. "
                         "Local files match Hugging Face checksums for the checked snapshot."
                     )
-                    box.setInformativeText(
-                        "Open “Show Details…” below if you need the per-model breakdown."
-                    )
+                    info_text = 'Scroll the details below for the per-model breakdown.'
                 elif ok_n == 0:
-                    box.setIcon(QMessageBox.Icon.Warning)
-                    box.setText(
-                        f"None of the {total} checked model(s) passed verification."
-                    )
-                    box.setInformativeText(
+                    main_text = f"None of the {total} checked model(s) passed verification."
+                    info_text = (
                         "That usually means downloads never finished, weights are missing, or only Hub cache "
                         "metadata exists. Re-download from the Download tab when you need that model.\n\n"
                         "Seeing extra paths under “.cache/huggingface” is normal for incomplete or cached downloads."
                     )
                 else:
-                    box.setIcon(QMessageBox.Icon.Warning)
-                    box.setText(
-                        f"{ok_n} of {total} model(s) look good; {bad_n} need attention."
-                    )
-                    box.setInformativeText(
+                    main_text = f"{ok_n} of {total} model(s) look good; {bad_n} need attention."
+                    info_text = (
                         "Failed checks mean missing weight files or checksum mismatches. "
                         "Re-download affected models from the Download tab.\n\n"
                         "“Unexpected extra files” often includes Hub cache — focus on missing files first."
                     )
             else:
-                box.setIcon(QMessageBox.Icon.Information)
-                box.setText("Verification finished.")
-                box.setInformativeText("Expand “Show Details…” for the full report.")
+                main_text = "Verification finished."
+                info_text = "Full report is below."
 
-        box.setDetailedText(raw)
-        box.setStandardButtons(QMessageBox.StandardButton.Ok)
-        try:
-            box.setDefaultButton(QMessageBox.StandardButton.Ok)
-        except Exception:
-            pass
-        try:
-            box.setMinimumWidth(520)
-        except Exception:
-            pass
-        box.exec()
+        aquaduct_message_with_details(
+            self,
+            "Model integrity check",
+            main_text,
+            informative_text=info_text,
+            details_text=raw,
+        )
 
     def _show_integrity_check_error_popup(self, err: str) -> None:
         e = (err or "").strip()
-        box = QMessageBox(self)
-        box.setWindowTitle("Model integrity check")
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setTextFormat(Qt.TextFormat.PlainText)
-        box.setText("The verification run failed or was interrupted.")
-        box.setInformativeText(
-            "You can copy the details below for troubleshooting or bug reports."
+        aquaduct_message_with_details(
+            self,
+            "Model integrity check",
+            "The verification run failed or was interrupted.",
+            informative_text="You can copy the details below for troubleshooting or bug reports.",
+            details_text=e,
         )
-        box.setDetailedText(e)
-        box.setStandardButtons(QMessageBox.StandardButton.Ok)
-        try:
-            box.setMinimumWidth(520)
-        except Exception:
-            pass
-        box.exec()
 
     def _start_download(self, repo_ids: list[str], *, title: str) -> None:
         if self.download_worker and self.download_worker.isRunning():
@@ -2283,11 +2226,11 @@ class MainWindow(QMainWindow):
     def _tasks_upload_tiktok(self) -> None:
         tid = self._tasks_selected_id()
         if not tid:
-            QMessageBox.information(self, "Tasks", "Select a task row first.")
+            aquaduct_information(self, "Tasks", "Select a task row first.")
             return
         self.settings = self._collect_settings_from_ui()
         if not bool(getattr(self.settings, "tiktok_enabled", False)):
-            QMessageBox.information(self, "TikTok", "Enable TikTok in the API tab and connect your account.")
+            aquaduct_information(self, "TikTok", "Enable TikTok in the API tab and connect your account.")
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
             return
@@ -2296,16 +2239,16 @@ class MainWindow(QMainWindow):
     def _tasks_upload_youtube(self) -> None:
         tid = self._tasks_selected_id()
         if not tid:
-            QMessageBox.information(self, "Tasks", "Select a task row first.")
+            aquaduct_information(self, "Tasks", "Select a task row first.")
             return
         self.settings = self._collect_settings_from_ui()
         if not bool(getattr(self.settings, "youtube_enabled", False)):
-            QMessageBox.information(self, "YouTube", "Enable YouTube in the API tab and connect your account.")
+            aquaduct_information(self, "YouTube", "Enable YouTube in the API tab and connect your account.")
             return
         if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
-            QMessageBox.information(self, "Uploads", "Another upload is in progress — wait for it to finish.")
+            aquaduct_information(self, "Uploads", "Another upload is in progress — wait for it to finish.")
             return
         self._start_youtube_upload_worker(tid)
 
@@ -2367,7 +2310,7 @@ class MainWindow(QMainWindow):
         ck = str(getattr(self.settings, "tiktok_client_key", "") or "").strip()
         sec = str(getattr(self.settings, "tiktok_client_secret", "") or "").strip()
         if not ck or not sec:
-            QMessageBox.warning(self, "TikTok", "Enter Client key and Client secret from developers.tiktok.com first, then Save or try again.")
+            aquaduct_warning(self, "TikTok", "Enter Client key and Client secret from developers.tiktok.com first, then Save or try again.")
             return
         port = int(getattr(self.settings, "tiktok_oauth_port", 8765) or 8765)
         redirect = str(getattr(self.settings, "tiktok_redirect_uri", "") or "").strip()
@@ -2416,7 +2359,7 @@ class MainWindow(QMainWindow):
         self._append_log("Opened browser for TikTok login — complete authorization in the browser.")
 
     def _tiktok_oauth_ui_failed(self, err: str) -> None:
-        QMessageBox.warning(self, "TikTok OAuth", err[:800])
+        aquaduct_warning(self, "TikTok OAuth", err[:800])
         self._append_log(f"TikTok OAuth failed: {err}")
 
     def _tiktok_oauth_ui_ok(self, access: str, refresh: str, exp: float, open_id: str) -> None:
@@ -2442,7 +2385,7 @@ class MainWindow(QMainWindow):
         cid = str(getattr(self.settings, "youtube_client_id", "") or "").strip()
         sec = str(getattr(self.settings, "youtube_client_secret", "") or "").strip()
         if not cid or not sec:
-            QMessageBox.warning(
+            aquaduct_warning(
                 self,
                 "YouTube",
                 "Enter OAuth Client ID and Client secret from Google Cloud Console first, then Save or try again.",
@@ -2502,7 +2445,7 @@ class MainWindow(QMainWindow):
         self._append_log("Opened browser for Google login — finish authorization to enable YouTube uploads.")
 
     def _youtube_oauth_ui_failed(self, err: str) -> None:
-        QMessageBox.warning(self, "YouTube OAuth", err[:800])
+        aquaduct_warning(self, "YouTube OAuth", err[:800])
         self._append_log(f"YouTube OAuth failed: {err}")
 
     def _youtube_oauth_ui_ok(self, access: str, refresh: str, exp: float) -> None:

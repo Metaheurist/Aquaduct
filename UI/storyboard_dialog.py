@@ -8,13 +8,10 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 from UI.brain_expand import wrap_editor_with_brain
 from PyQt6.QtWidgets import (
-    QDialog,
     QFormLayout,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -22,8 +19,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from UI.frameless_dialog import FramelessDialog, aquaduct_information, aquaduct_warning
 
-class StoryboardPreviewDialog(QDialog):
+
+class StoryboardPreviewDialog(FramelessDialog):
     def __init__(
         self,
         parent=None,
@@ -34,9 +33,7 @@ class StoryboardPreviewDialog(QDialog):
         on_regenerate_all: Callable[[], None],
         on_approve_render: Callable[[], None],
     ) -> None:
-        super().__init__(parent)
-        self.setModal(True)
-        self.setWindowTitle("Storyboard Preview")
+        super().__init__(parent, title="Storyboard Preview")
         self.setMinimumSize(1020, 760)
 
         self.manifest_path = Path(manifest_path)
@@ -45,23 +42,19 @@ class StoryboardPreviewDialog(QDialog):
         self._on_regen_all = on_regenerate_all
         self._on_approve_render = on_approve_render
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(10)
-
         header = QLabel("Storyboard Preview (first-frame grid)")
         header.setStyleSheet("font-size: 16px; font-weight: 800;")
-        root.addWidget(header)
+        self.body_layout.addWidget(header)
 
         self.meta = QLabel("")
         self.meta.setStyleSheet("color: #B7B7C2;")
         self.meta.setWordWrap(True)
-        root.addWidget(self.meta)
+        self.body_layout.addWidget(self.meta)
 
         self.grid_lbl = QLabel()
         self.grid_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.grid_lbl.setStyleSheet("border: 1px solid #3A3A44; border-radius: 10px; padding: 6px;")
-        root.addWidget(self.grid_lbl, 1)
+        self.body_layout.addWidget(self.grid_lbl, 1)
 
         # Controls
         controls = QHBoxLayout()
@@ -87,7 +80,7 @@ class StoryboardPreviewDialog(QDialog):
         close.clicked.connect(self.reject)
         controls.addWidget(close)
         controls.addStretch(1)
-        root.addLayout(controls)
+        self.body_layout.addLayout(controls)
 
         # Scene editor
         self._editor = QWidget()
@@ -109,7 +102,7 @@ class StoryboardPreviewDialog(QDialog):
         save_scene.clicked.connect(self._save_scene_edits)
         form.addRow("", save_scene)
 
-        root.addWidget(self._editor, 0)
+        self.body_layout.addWidget(self._editor, 0)
 
         self.scene_spin.valueChanged.connect(self._load_scene_into_editor)
         self.refresh()
@@ -164,7 +157,7 @@ class StoryboardPreviewDialog(QDialog):
             scenes[idx] = sc
             m["scenes"] = scenes
             self.manifest_path.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-            QMessageBox.information(self, "Saved", "Scene updated in manifest.json")
+            aquaduct_information(self, "Saved", "Scene updated in manifest.json")
         except Exception as e:
-            QMessageBox.warning(self, "Save failed", str(e))
+            aquaduct_warning(self, "Save failed", str(e))
 

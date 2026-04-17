@@ -7,7 +7,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLineEdit, QMessageBox, QTextEdit, QToolButton, QWidget
+from PyQt6.QtWidgets import QLineEdit, QTextEdit, QToolButton, QWidget
+
+from UI.frameless_dialog import aquaduct_warning
 
 from src.config import get_models
 
@@ -123,7 +125,7 @@ class BrainAugmentedEditor(QWidget):
                 self._win._append_log(f"LLM expand failed ({self._field_label}):\n{err}")
             short = (err or "")[:1800]
             try:
-                QMessageBox.warning(
+                aquaduct_warning(
                     self._win if isinstance(self._win, QWidget) else None,
                     "LLM expand failed",
                     short,

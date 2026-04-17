@@ -21,6 +21,11 @@ class Palette(TypedDict):
 
 QSS_TEMPLATE = r"""
 QWidget {{ background: {bg}; color: {text}; font-family: "Segoe UI", "Arial"; font-size: 12px; }}
+QDialog#FramelessDialogShell {{
+  background: {panel};
+  border: 1px solid {border};
+  border-radius: 14px;
+}}
 QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 8px; background: {panel}; }}
 QTabBar::tab {{ background: {control_bg}; color: {muted}; padding: 10px 14px; margin: 6px 6px 0 0;
                border-top-left-radius: 14px; border-top-right-radius: 14px; border: 1px solid {border}; }}
