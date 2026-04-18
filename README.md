@@ -129,7 +129,7 @@ Tabs:
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
-- **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
+- **Video**: **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-clip timing, bitrate, slideshow/clip mode, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
 - **Model**: Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already under `models/`
@@ -155,7 +155,7 @@ Example:
 - [Editor (micro-clips + captions)](docs/editor.md)
 - [Main loop / CLI](docs/main.md)
 - [Config](docs/config.md)
-- [Desktop UI](docs/ui.md)
+- [Desktop UI](docs/ui.md) (includes **Video** platform preset tiles and NSFW toggle)
 - [Branding (theme + watermark)](docs/branding.md)
 - [Models + downloads](docs/models.md)
 - [Hardware + model fit rules](docs/hardware.md)

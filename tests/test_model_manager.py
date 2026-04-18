@@ -32,15 +32,17 @@ def test_download_model_to_project_calls_snapshot_download(tmp_path, monkeypatch
 
 
 def test_find_repo_dirs_in_folder_detects_safe_and_nested_paths(tmp_path):
-    expected = {"a/b", "c/d"}
+    expected = {"a/b", "c/d", "e/f"}
     (tmp_path / "models").mkdir()
     (tmp_path / "models" / "a__b").mkdir(parents=True)
-    (tmp_path / "c__d").mkdir(parents=True)
+    (tmp_path / "models" / "c" / "d").mkdir(parents=True)
+    (tmp_path / "e__f").mkdir(parents=True)
 
     found = find_repo_dirs_in_folder(tmp_path, expected)
     assert set(repo_id for repo_id, _ in found) == expected
     assert any(str(path).endswith("models\\a__b") for _, path in found)
-    assert any(str(path).endswith("c__d") for _, path in found)
+    assert any(str(path).endswith("models\\c\\d") for _, path in found)
+    assert any(str(path).endswith("e__f") for _, path in found)
 
 
 def test_resolve_pretrained_load_path_returns_nested_local_snapshot(tmp_path):

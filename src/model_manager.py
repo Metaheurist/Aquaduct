@@ -127,7 +127,8 @@ def find_repo_dirs_in_folder(folder: Path, repo_ids: set[str]) -> list[tuple[str
     """Discover curated model repo directories under a selected folder.
 
     This supports selecting either a parent folder containing safe-encoded model dirs,
-    or a folder that contains a nested ``models/`` tree with owner/repo children.
+    a folder that contains a nested ``models/`` tree with owner/repo children, or a
+    direct ``owner/repo`` tree under the selected folder.
     """
     folder = Path(folder)
     if not folder.is_dir():
@@ -147,21 +148,32 @@ def find_repo_dirs_in_folder(folder: Path, repo_ids: set[str]) -> list[tuple[str
     if maybe_self:
         _add(maybe_self, folder)
 
-    for child in sorted(folder.iterdir()):
-        if not child.is_dir():
-            continue
-
-        maybe_repo = project_dirname_to_repo_id(child.name)
-        if maybe_repo:
-            _add(maybe_repo, child)
-            continue
-
-        for subchild in sorted(child.iterdir()):
-            if not subchild.is_dir():
+    def _inspect_parent(parent: Path, owner_name: str | None = None) -> None:
+        for child in sorted(parent.iterdir()):
+            if not child.is_dir():
                 continue
-            candidate = f"{child.name}/{subchild.name}"
-            _add(candidate, subchild)
 
+            maybe_repo = project_dirname_to_repo_id(child.name)
+            if maybe_repo:
+                _add(maybe_repo, child)
+                continue
+
+            if owner_name:
+                candidate = f"{owner_name}/{child.name}"
+                _add(candidate, child)
+                continue
+
+            if child.name.lower() == "models":
+                _inspect_parent(child)
+                continue
+
+            for subchild in sorted(child.iterdir()):
+                if not subchild.is_dir():
+                    continue
+                candidate = f"{child.name}/{subchild.name}"
+                _add(candidate, subchild)
+
+    _inspect_parent(folder)
     return out
 
 

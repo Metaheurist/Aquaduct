@@ -1047,6 +1047,7 @@ class StoryboardWorker(QThread):
                 max_images=len(prompts),
                 seeds=seeds,
                 steps=4,  # quality-first preview
+                allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
                 on_image_progress=_img_pct,
             )
             scene_paths = [g.path for g in gen]
