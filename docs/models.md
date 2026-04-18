@@ -24,10 +24,14 @@ This is implemented in:
 - `src/model_manager.py`
 
 Notes:
+- **Download ▾ → Download all voice models** queues every curated TTS snapshot (including Microsoft **SpeechT5** / **MMS-TTS**, Kokoro, MeloTTS, Parler, XTTS, Bark, …), skipping repos already present under `models/`. Same mechanism as **Download ALL models**, but voice-only (smaller total than full script+video+voice).
 - Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
 - In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.
 - The UI treats a repo as **already installed** when `models/<repo>/` exists and has enough bytes on disk (not an empty or partial folder). **Download selected**, **download all selected**, and **download all** then **skip** that repo and move on—nothing is re-fetched unless you delete the folder or pick a different repo.
 - Some video presets use **two** Hub repos (image + video). **Download all selected** queues **both** so both snapshots are present.
+
+## Python packages (PyTorch, transformers, …)
+Hub downloads above are **model weights only**. The **Python** stack (PyTorch, `transformers`, etc.) is installed separately: **`python scripts/install_pytorch.py --with-rest`** or, from the app, **Model → Install dependencies** (same steps; see [Dependencies](../DEPENDENCIES.md), [Desktop UI](ui.md)).
 
 ## Portable downloader (optional)
 For machines without running the full app, you can snapshot the same repos into `./models`:

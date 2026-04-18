@@ -1058,21 +1058,18 @@ class MainWindow(QMainWindow):
                     pass
             self._append_log("requirements.txt not found.")
             return
-        self._append_log(
-            "Installing PyTorch for this machine (auto: NVIDIA GPU → CUDA 12.x wheels; "
-            "otherwise CPU; macOS → PyPI), then pip install -r requirements.txt…"
-        )
+        self._append_log("Opening dependency installer (PyTorch + requirements.txt)…")
         try:
-            from src.torch_install import install_pytorch_then_rest
+            from UI.install_deps_dialog import install_dependencies_with_dialog
 
-            code, out = install_pytorch_then_rest(force_cuda_if_applicable=True)
+            code, out = install_dependencies_with_dialog(self)
             if hasattr(self, "deps_status"):
                 try:
                     self.deps_status.setPlainText(out[:16000] + ("…" if len(out) > 16000 else ""))
                 except Exception:
-                    self._append_log(out)
+                    self._append_log(out[:8000] if len(out) > 8000 else out)
             else:
-                self._append_log(out)
+                self._append_log(out[:4000] + ("…" if len(out) > 4000 else "") if out else "")
             self._append_log("Dependency install finished." if code == 0 else f"Dependency install exited with code {code}.")
         except Exception as e:
             if hasattr(self, "deps_status"):
@@ -1177,6 +1174,35 @@ class MainWindow(QMainWindow):
             self._append_log("All curated models are already on disk.")
             return
         self._start_download(need, title=f"Downloading ALL models ({len(need)} remaining)")
+
+    def _download_all_voice_models(self) -> None:
+        """
+        Download every curated voice (TTS) Hub snapshot: Kokoro, MMS-TTS, MeloTTS, SpeechT5,
+        Parler-TTS, XTTS, Bark, etc. Skips repos already under models/.
+        """
+        if not hasattr(self, "_model_opts") or not self._model_opts:
+            self._append_log("No model options loaded yet.")
+            return
+        repo_ids: list[str] = []
+        seen: set[str] = set()
+        for opt in self._model_opts:
+            if getattr(opt, "kind", "") != "voice":
+                continue
+            rid = str(opt.repo_id).strip()
+            if not rid or rid in seen:
+                continue
+            seen.add(rid)
+            repo_ids.append(rid)
+        if not repo_ids:
+            self._append_log("No voice models in curated list.")
+            return
+        need, have = self._repos_still_need_download(repo_ids)
+        if have:
+            self._append_log(f"Skipping {len(have)} voice model(s) already on disk.")
+        if not need:
+            self._append_log("All curated voice models are already on disk.")
+            return
+        self._start_download(need, title=f"Downloading all voice models ({len(need)} remaining)")
 
     def _repos_selected_installed_only(self) -> list[str]:
         """Current LLM / image / voice selections, de-duplicated, only repos with a local snapshot."""

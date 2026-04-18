@@ -7,6 +7,26 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 - **Virtualenv**: recommended (`python -m venv .venv`)
 - **Windows shell**: after `cd` to the repo, you can dot-source [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1) (`. .\scripts\setup_terminal_env.ps1`) to activate `.venv` and set the working directory; optional **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** for gated Hugging Face models (or use **Settings → API** in the UI).
 
+### System-wide install (optional; Windows)
+Use this only if you want packages in a **global** Python instead of `.venv`.
+
+- **Avoid Python 3.14 as the default target** for PyTorch: `torchaudio` (and sometimes full CUDA stacks) may have **no wheels** yet. Prefer **Python 3.11 or 3.12** (e.g. `C:\Program Files\Python312\python.exe` if installed).
+- From the repo root, using **Python 3.12** explicitly:
+
+```powershell
+cd C:\path\to\Aquaduct
+& "C:\Program Files\Python312\python.exe" scripts\install_pytorch.py --with-rest
+```
+
+- To target a specific interpreter regardless of how you invoked the script:
+
+```powershell
+python scripts\install_pytorch.py --with-rest --python "C:\Program Files\Python312\python.exe"
+```
+
+- If `Program Files` is not writable, pip may use **per-user** site-packages (`Defaulting to user installation`); add `%APPDATA%\Python\Python312\Scripts` to **PATH** if `pip`/`python` scripts are not found.
+- Running the app: `& "C:\Program Files\Python312\python.exe" main.py` or `python -m UI` with that same interpreter.
+
 ## Desktop UI (optional)
 - **PyQt6**: only required when using the graphical control panel (`python -m UI`). The headless `main.py` pipeline does not need it.
 
@@ -16,6 +36,7 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 ## Core runtime libraries
 - **requests / beautifulsoup4 / lxml**: scraping (Google News RSS + MarkTechPost fallback). Optional **Firecrawl** HTTP APIs when enabled in the app (API key via UI or `FIRECRAWL_API_KEY`). Optional **ElevenLabs** TTS when enabled (API key via UI or `ELEVENLABS_API_KEY`).
 - **torch** / **torchvision** / **torchaudio**: install these **first** via [`scripts/install_pytorch.py`](scripts/install_pytorch.py) — it picks **CUDA 12.4** wheels when `nvidia-smi` (or WMI on Windows) sees an NVIDIA GPU, **CPU** wheels otherwise, and default **PyPI** builds on **macOS**. Then install the rest with `python scripts/install_pytorch.py --with-rest` or `pip install -r requirements.txt` (runtime deps live in one file; **`torch` is not listed** so CUDA wheels are not skipped).
+- **Desktop UI**: **Model → Install dependencies** runs the same PyTorch-then-`requirements.txt` flow in a modal dialog ([`UI/install_deps_dialog.py`](UI/install_deps_dialog.py)) with streamed pip output. The bar is **indeterminate** until pip emits tqdm-style lines with a **`%`**, then shows **determinate 0–100%** ([`src/torch_install.py`](src/torch_install.py): `run_subprocess_streaming`, `pip_download_percent`, `--progress-bar on` injection). If pip stays quiet (large wheels, older pip), the bar may remain indeterminate; the log and status line still update when lines appear.
 - **transformers / accelerate / bitsandbytes**: local LLM inference (4-bit where supported)
 - **diffusers / safetensors**: SDXL Turbo image generation
 - **huggingface_hub**: “zero-touch” model download on first run; also used by the desktop **verify checksums** action (compare local `models/` snapshots to the Hub)

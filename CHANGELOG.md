@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Model tab: Install dependencies (progress dialog)
+- **Install dependencies** opens a frameless **Installing dependencies** dialog with **step labels** (PyTorch vs `requirements.txt`), a **progress bar** (**indeterminate** until pip prints tqdm-style `%` lines, then **0–100%** from parsed output), a **current action** line from `pip_line_hint` (Collecting / Downloading / Installing…), and a **scrolling log**. Close is disabled until the run finishes. Streaming uses [`src/torch_install.py`](src/torch_install.py): `run_subprocess_streaming` splits on `\r` and `\n` so same-line pip progress is visible; `pip install` invocations inject `--progress-bar on`; `pip_download_percent` maps lines to the bar. Implementation: [`UI/install_deps_dialog.py`](UI/install_deps_dialog.py). Tests: [`tests/test_torch_install.py`](tests/test_torch_install.py).
+
+### PyTorch dtype helper (LLM expand / transformers)
+- **`src/torch_dtypes.py`**: central `torch_float16()` for BitsAndBytes / `from_pretrained` dtypes. If `import torch` is a **broken or stub** install (no `torch.float16`), raises a clear `RuntimeError` pointing to `scripts/install_pytorch.py --with-rest` instead of `AttributeError: module 'torch' has no attribute 'float16'`. Used from [`src/brain.py`](src/brain.py), [`src/factcheck.py`](src/factcheck.py), [`src/artist.py`](src/artist.py), [`src/clips.py`](src/clips.py). Tests: [`tests/test_torch_dtypes.py`](tests/test_torch_dtypes.py).
+
+### Model tab: download all voice models
+- **Download ▾ → Download all voice models** queues Hugging Face snapshots for every curated TTS option (Kokoro, MMS-TTS, MeloTTS, Microsoft SpeechT5, Parler-TTS, XTTS, Bark, …), skipping repos already under `models/`. Implementation: [`UI/main_window.py`](UI/main_window.py) (`_download_all_voice_models`), [`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py). Docs: [`docs/models.md`](docs/models.md), [`docs/ui.md`](docs/ui.md).
+
 ### Model tab: Auto-fit for this PC
 - **Auto-fit for this PC** on the **Model** tab picks script / video / voice models from detected VRAM and RAM using `rank_models_for_auto_fit` in [`src/hardware.py`](src/hardware.py) (same rules as fit badges; SDXL Turbo is preferred over SD 1.5 when VRAM ≥ ~8 GB and Turbo is still OK). Skips disabled Hub rows; logs the selection and **saves settings**. Docs: [`docs/ui.md`](docs/ui.md). Tests: [`tests/test_auto_fit.py`](tests/test_auto_fit.py).
 
