@@ -184,6 +184,13 @@ def assemble_microclips_then_concat(
     imgs = images[:] if images else []
     if not imgs:
         raise ValueError("No images provided to editor.")
+    missing = [p for p in imgs if not Path(p).exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Missing image file(s) for assembly: "
+            + ", ".join(str(p) for p in missing[:8])
+            + (" …" if len(missing) > 8 else "")
+        )
 
     clip_count = min(len(imgs), max(3, int(math.ceil(total_dur / settings.microclip_max_s))))
     imgs = imgs[:clip_count]

@@ -28,3 +28,6 @@ PyQt6>=6.7.0
 
 # Resource monitor (title bar graph)
 psutil>=5.9.0
+
+# CLI: Rich progress bars for install_pytorch.py (TTY)
+rich>=13.7.0

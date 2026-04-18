@@ -15,14 +15,6 @@ def attach_quality_tab(win) -> None:
     win.prefer_gpu_chk.setChecked(bool(win.settings.prefer_gpu))
     lay.addWidget(win.prefer_gpu_chk)
 
-    win.try_llm_chk = QCheckBox("Try 4-bit LLM scripting (falls back if unavailable)")
-    win.try_llm_chk.setChecked(bool(win.settings.try_llm_4bit))
-    lay.addWidget(win.try_llm_chk)
-
-    win.try_sdxl_chk = QCheckBox("Try SDXL Turbo images (falls back if unavailable)")
-    win.try_sdxl_chk.setChecked(bool(win.settings.try_sdxl_turbo))
-    lay.addWidget(win.try_sdxl_chk)
-
     info = QLabel("Tip: On 8GB VRAM, the app loads/unloads models per stage to reduce OOM risk.")
     info.setStyleSheet("color: #B7B7C2;")
     lay.addWidget(info)

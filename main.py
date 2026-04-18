@@ -14,7 +14,7 @@ try:
 except Exception:  # optional dependency
     load_dotenv = None
 
-from src.artist import generate_images
+from src.artist import apply_regenerated_image, generate_images
 from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
 from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
 from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item, fetch_article_text
@@ -56,16 +56,22 @@ def _rc(run: PipelineRunControl | None) -> None:
 
 
 def _pipe_progress(
-    on_progress: Callable[[str, int, str], None] | None,
-    pct: int,
+    on_progress: Callable[[str, int, int, str], None] | None,
+    overall_pct: int,
+    task_pct: int,
     message: str,
 ) -> None:
-    """Emit pipeline UI progress: task_id ``pipeline_run``, percent 0–100, short stage label."""
+    """Emit pipeline UI progress: overall 0–100 for the full run; task 0–100 within the current step (-1 = unknown)."""
     if not on_progress:
         return
     try:
-        p = max(0, min(100, int(pct)))
-        on_progress("pipeline_run", p, message)
+        o = max(0, min(100, int(overall_pct)))
+        t = int(task_pct)
+        if t > 100:
+            t = 100
+        if t < -1:
+            t = -1
+        on_progress("pipeline_run", o, t, message)
     except Exception:
         pass
 
@@ -126,7 +132,7 @@ def run_once(
     prebuilt_prompts: list[str] | None = None,
     prebuilt_seeds: list[int] | None = None,
     run_control: PipelineRunControl | None = None,
-    on_progress: Callable[[str, int, str], None] | None = None,
+    on_progress: Callable[[str, int, int, str], None] | None = None,
 ) -> Path | None:
     paths = get_paths()
     models = get_models()
@@ -138,7 +144,7 @@ def run_once(
         f"prebuilt_pkg={'yes' if prebuilt_pkg is not None else 'no'}",
         f"slideshow={bool(video_settings.use_image_slideshow)}",
     )
-    _pipe_progress(on_progress, 2, "Starting…")
+    _pipe_progress(on_progress, 2, -1, "Starting…")
     llm_id = app.llm_model_id.strip() or models.llm_id
     img_id = app.image_model_id.strip() or models.sdxl_turbo_id
     clip_id = getattr(app, "video_model_id", "").strip()
@@ -159,7 +165,7 @@ def run_once(
         raise RuntimeError("Preflight failed:\n- " + "\n- ".join(pf.errors))
 
     _rc(run_control)
-    _pipe_progress(on_progress, 6, "Preflight OK")
+    _pipe_progress(on_progress, 6, -1, "Preflight OK")
 
     items = None
     sources: list[dict[str, str]] = []
@@ -171,7 +177,7 @@ def run_once(
             raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
             if not raw_inst:
                 dprint("pipeline", "custom mode but empty instructions — stopping")
-                _pipe_progress(on_progress, 8, "No instructions (custom mode)")
+                _pipe_progress(on_progress, 8, -1, "No instructions (custom mode)")
                 return None
             first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
             sources = [{"title": first_line, "url": "", "source": "custom"}]
@@ -202,7 +208,7 @@ def run_once(
             item = pick_one_item(items)
             if not item:
                 dprint("crawler", "no item picked — stopping run_once")
-                _pipe_progress(on_progress, 8, "No new headlines in cache")
+                _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
                 return None
             dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
             sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
@@ -230,11 +236,11 @@ def run_once(
     _rc(run_control)
     if prebuilt_pkg is None:
         if str(getattr(app, "run_content_mode", "preset")) == "custom":
-            _pipe_progress(on_progress, 12, "Custom instructions ready")
+            _pipe_progress(on_progress, 12, -1, "Custom instructions ready")
         else:
-            _pipe_progress(on_progress, 12, "Sources ready")
+            _pipe_progress(on_progress, 12, -1, "Sources ready")
     else:
-        _pipe_progress(on_progress, 14, "Using approved script (skips news & LLM)")
+        _pipe_progress(on_progress, 14, -1, "Using approved script (skips news & LLM)")
 
     run_id = _now_run_id()
     dprint("pipeline", f"run_id={run_id}")
@@ -274,6 +280,7 @@ def run_once(
     if prebuilt_pkg is None:
         tags = list(effective_topic_tags(app))
         vf = str(getattr(app, "video_format", "news") or "news")
+        try_llm_4bit = bool(getattr(app, "try_llm_4bit", True))
         if str(getattr(app, "run_content_mode", "preset")) == "custom" and str(getattr(app, "custom_video_instructions", "") or "").strip():
             raw_inst = str(app.custom_video_instructions).strip()
             titles_for_pick = [sources[0].get("title", "Custom video")] if sources else ["Custom video"]
@@ -288,19 +295,21 @@ def run_once(
             def _expand_llm(task: str, pct: int, msg: str) -> None:
                 if on_progress is None:
                     return
-                sub = 10 + int(max(0, min(100, int(pct))) * 0.08)
-                _pipe_progress(on_progress, sub, msg or "Expanding brief…")
+                inner = max(0, min(100, int(pct)))
+                overall = 10 + int(8 * inner / 100)
+                _pipe_progress(on_progress, overall, inner, msg or "Expanding brief…")
 
             _rc(run_control)
-            _pipe_progress(on_progress, 14, "Expanding creative brief (LLM)…")
+            _pipe_progress(on_progress, 14, -1, "Expanding creative brief (LLM)…")
             expanded = expand_custom_video_instructions(
                 model_id=llm_id,
                 raw_instructions=raw_inst,
                 video_format=vf,
                 personality_id=picked.preset.id,
                 on_llm_task=_expand_llm,
+                try_llm_4bit=try_llm_4bit,
             )
-            _pipe_progress(on_progress, 22, "Writing script (LLM)…")
+            _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
             pkg = generate_script(
                 model_id=llm_id,
                 items=sources,
@@ -310,6 +319,7 @@ def run_once(
                 character_context=char_ctx,
                 creative_brief=expanded,
                 video_format=vf,
+                try_llm_4bit=try_llm_4bit,
             )
             pkg = enforce_arc(pkg)
             dprint("pipeline", "script ready (custom)", f"title={pkg.title[:100]!r}")
@@ -322,7 +332,7 @@ def run_once(
                 topic_tags=tags,
                 extra_scoring_text="",
             )
-            _pipe_progress(on_progress, 22, "Writing script (LLM)…")
+            _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
             pkg = generate_script(
                 model_id=llm_id,
                 items=sources,
@@ -331,17 +341,24 @@ def run_once(
                 branding=getattr(app, "branding", None),
                 character_context=char_ctx,
                 video_format=vf,
+                try_llm_4bit=try_llm_4bit,
             )
             pkg = enforce_arc(pkg)
             # Best-effort safety rewrite (uses article text snippet when available).
             if bool(getattr(video_settings, "llm_factcheck", True)):
-                pkg = rewrite_with_uncertainty(pkg=pkg, article_text=article_text, sources=sources, model_id=llm_id)
+                pkg = rewrite_with_uncertainty(
+                    pkg=pkg,
+                    article_text=article_text,
+                    sources=sources,
+                    model_id=llm_id,
+                    try_llm_4bit=try_llm_4bit,
+                )
             dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
     else:
         pkg = prebuilt_pkg
         dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")
 
-    _pipe_progress(on_progress, 44, "Script ready")
+    _pipe_progress(on_progress, 44, -1, "Script ready")
     _rc(run_control)
 
     # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
@@ -353,7 +370,7 @@ def run_once(
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     # Voice
-    _pipe_progress(on_progress, 50, "Generating voice / captions…")
+    _pipe_progress(on_progress, 50, -1, "Generating voice / captions…")
     voice_wav = assets_dir / "voice.wav"
     captions_json = assets_dir / "captions.json"
     vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
@@ -427,7 +444,7 @@ def run_once(
             ffmpeg_executable=ffmpeg_exe,
         )
 
-    _pipe_progress(on_progress, 58, "Voice track ready")
+    _pipe_progress(on_progress, 58, -1, "Voice track ready")
     _rc(run_control)
 
     prepare_for_next_model()
@@ -472,7 +489,7 @@ def run_once(
         except Exception:
             pass
 
-    _pipe_progress(on_progress, 64, "Preparing visuals & prompts…")
+    _pipe_progress(on_progress, 64, -1, "Preparing visuals & prompts…")
     _rc(run_control)
 
     if video_settings.use_image_slideshow:
@@ -515,7 +532,7 @@ def run_once(
             storyboard=storyboard,
             settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "voice": voice_id}},
         )
-        _pipe_progress(on_progress, 68, "Generating images (diffusion)…")
+        _pipe_progress(on_progress, 68, -1, "Generating images (diffusion)…")
         gen = generate_images(
             sdxl_turbo_model_id=img_id,
             prompts=storyboard_prompts,
@@ -524,7 +541,7 @@ def run_once(
             seeds=storyboard_seeds,
         )
         image_paths = [g.path for g in gen]
-        _pipe_progress(on_progress, 80, "Images ready")
+        _pipe_progress(on_progress, 80, -1, "Images ready")
 
         # Quality reject/regenerate (best-effort; re-inits model on retry).
         retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
@@ -547,10 +564,7 @@ def run_once(
                         seeds=[int(base_seed) + attempt],
                     )
                     if regen:
-                        try:
-                            regen[0].path.replace(out_path)
-                        except Exception:
-                            pass
+                        apply_regenerated_image(regen, out_path)
 
         # Update manifest with image paths
         try:
@@ -597,7 +611,7 @@ def run_once(
         except Exception:
             mix_wav = final_voice_wav
 
-        _pipe_progress(on_progress, 88, "Rendering micro-clips & final MP4…")
+        _pipe_progress(on_progress, 88, -1, "Rendering micro-clips & final MP4…")
         _rc(run_control)
 
         assemble_microclips_then_concat(
@@ -613,7 +627,7 @@ def run_once(
             article_text=article_text,
             topic_tags=list(effective_topic_tags(app)),
         )
-        _pipe_progress(on_progress, 93, "Encode complete")
+        _pipe_progress(on_progress, 93, -1, "Encode complete")
     else:
         # For img→vid clip models, first generate keyframe images (using the image model),
         # then animate them into clips with the selected clip model.
@@ -634,7 +648,7 @@ def run_once(
             storyboard=storyboard,
             settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "clip": (clip_id or img_id), "voice": voice_id}},
         )
-        _pipe_progress(on_progress, 68, "Generating keyframe images…")
+        _pipe_progress(on_progress, 68, -1, "Generating keyframe images…")
         key_gen = generate_images(
             sdxl_turbo_model_id=img_id,
             prompts=storyboard_prompts,
@@ -643,7 +657,7 @@ def run_once(
             seeds=storyboard_seeds,
         )
         keyframes = [g.path for g in key_gen]
-        _pipe_progress(on_progress, 76, "Keyframes ready")
+        _pipe_progress(on_progress, 76, -1, "Keyframes ready")
 
         retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
         if retries > 0:
@@ -665,10 +679,7 @@ def run_once(
                         seeds=[int(base_seed) + attempt],
                     )
                     if regen:
-                        try:
-                            regen[0].path.replace(out_path)
-                        except Exception:
-                            pass
+                        apply_regenerated_image(regen, out_path)
 
         # Update manifest with keyframe paths
         try:
@@ -691,7 +702,7 @@ def run_once(
         prepare_for_next_model()
 
         clip_dir = assets_dir / "clips"
-        _pipe_progress(on_progress, 82, "Video diffusion (animate clips)…")
+        _pipe_progress(on_progress, 82, -1, "Video diffusion (animate clips)…")
         gen_clips = generate_clips(
             video_model_id=(clip_id or img_id),
             prompts=prompts,
@@ -702,7 +713,7 @@ def run_once(
             seconds_per_clip=float(video_settings.clip_seconds),
         )
         clip_paths = [c.path for c in gen_clips]
-        _pipe_progress(on_progress, 88, "Clips ready")
+        _pipe_progress(on_progress, 88, -1, "Clips ready")
         mix_wav = final_voice_wav
         try:
             if music and music.exists():
@@ -718,7 +729,7 @@ def run_once(
         except Exception:
             mix_wav = final_voice_wav
 
-        _pipe_progress(on_progress, 91, "Rendering micro-clips & final MP4…")
+        _pipe_progress(on_progress, 91, -1, "Rendering micro-clips & final MP4…")
         _rc(run_control)
 
         assemble_generated_clips_then_concat(
@@ -734,7 +745,7 @@ def run_once(
             article_text=article_text,
             topic_tags=list(effective_topic_tags(app)),
         )
-        _pipe_progress(on_progress, 93, "Encode complete")
+        _pipe_progress(on_progress, 93, -1, "Encode complete")
 
     # Optional cleanup: remove large image/keyframe folders to save disk space.
     if bool(getattr(video_settings, "cleanup_images_after_run", False)):
@@ -746,9 +757,9 @@ def run_once(
             except Exception:
                 pass
 
-    _pipe_progress(on_progress, 97, "Saving project folder…")
+    _pipe_progress(on_progress, 97, -1, "Saving project folder…")
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
-    _pipe_progress(on_progress, 100, "Done")
+    _pipe_progress(on_progress, 100, 100, "Done")
     dprint("pipeline", "run_once done", f"video_dir={video_dir}")
     return video_dir
 

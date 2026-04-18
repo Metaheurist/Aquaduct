@@ -54,6 +54,9 @@ data/news_cache/seen_titles_*.json
 # Generated pipeline outputs (local)
 runs/
 
+# Repo-root logs (UI, debug, install scripts)
+logs/
+
 # Repo-root cache / build logs (local)
 .cache/
 build/last-build.log

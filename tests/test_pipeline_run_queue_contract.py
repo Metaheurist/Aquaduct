@@ -43,3 +43,24 @@ def test_storyboard_queue_item_fields():
     assert item["kind"] == "storyboard"
     assert item["prompts"] == ["a"]
     assert item["seeds"] == [1]
+
+
+def test_format_status_line_dual_progress_for_pipeline():
+    from UI.progress_tasks import format_status_line
+
+    line = format_status_line("pipeline_run", 44, 67, "Generating images (diffusion)…")
+    assert "total 44%" in line and "step 67%" in line
+
+
+def test_format_status_line_single_when_step_unknown():
+    from UI.progress_tasks import format_status_line
+
+    line = format_status_line("pipeline_run", 22, -1, "Writing script (LLM)…")
+    assert "22%" in line and "total" not in line
+
+
+def test_format_status_line_preview_stays_single_percent():
+    from UI.progress_tasks import format_status_line
+
+    line = format_status_line("headlines", 60, -1, "Choosing items…")
+    assert "60%" in line and "total" not in line

@@ -153,6 +153,7 @@ def debug_enabled(category: str) -> bool:
 def dprint(category: str, *parts: object, ts: bool = True) -> None:
     """
     Print one debug line to stderr if ``category`` is enabled.
+    Also appends the same line to ``logs/debug.log`` when enabled.
     *parts* are passed through ``str()`` like ``print``.
     """
     cat = category.lower().strip()
@@ -161,7 +162,14 @@ def dprint(category: str, *parts: object, ts: bool = True) -> None:
     prefix = f"[Aquaduct:{cat}]"
     if ts:
         prefix = f"{datetime.now().isoformat(timespec='seconds')} {prefix}"
+    line = prefix + " " + " ".join(str(p) for p in parts)
     print(prefix, *parts, file=sys.stderr, flush=True)
+    try:
+        from src.repo_logs import append_debug_log
+
+        append_debug_log(line)
+    except Exception:
+        pass
 
 
 def debug_categories_line() -> str:

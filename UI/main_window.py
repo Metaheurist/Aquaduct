@@ -560,6 +560,12 @@ class MainWindow(QMainWindow):
 
     def _append_log(self, line: str) -> None:
         msg = line.rstrip()
+        try:
+            from src.repo_logs import append_ui_log
+
+            append_ui_log(msg)
+        except Exception:
+            pass
         if hasattr(self, "log_box"):
             try:
                 self.log_box.append(msg)
@@ -759,7 +765,7 @@ class MainWindow(QMainWindow):
             cleanup_images_after_run=bool(self.cleanup_images_chk.isChecked()) if hasattr(self, "cleanup_images_chk") else False,
             high_quality_topic_selection=bool(self.hq_topics_chk.isChecked()) if hasattr(self, "hq_topics_chk") else True,
             fetch_article_text=bool(self.fetch_article_chk.isChecked()) if hasattr(self, "fetch_article_chk") else True,
-            llm_factcheck=bool(self.factcheck_chk.isChecked()) if hasattr(self, "factcheck_chk") else True,
+            llm_factcheck=bool(getattr(self.settings.video, "llm_factcheck", True)),
             prompt_conditioning=bool(self.prompt_cond_chk.isChecked()) if hasattr(self, "prompt_cond_chk") else True,
             seed_base=int(str(self.seed_base_input.text()).strip())
             if hasattr(self, "seed_base_input") and str(self.seed_base_input.text()).strip().lstrip("-").isdigit()
@@ -917,9 +923,9 @@ class MainWindow(QMainWindow):
         return AppSettings(
             topic_tags_by_mode=topic_map,
             video_format=vfmt,
-            prefer_gpu=bool(self.prefer_gpu_chk.isChecked()),
-            try_llm_4bit=bool(self.try_llm_chk.isChecked()),
-            try_sdxl_turbo=bool(self.try_sdxl_chk.isChecked()),
+            prefer_gpu=bool(self.prefer_gpu_chk.isChecked()) if hasattr(self, "prefer_gpu_chk") else bool(getattr(self.settings, "prefer_gpu", True)),
+            try_llm_4bit=bool(getattr(self.settings, "try_llm_4bit", True)),
+            try_sdxl_turbo=bool(getattr(self.settings, "try_sdxl_turbo", True)),
             background_music_path=str(self.music_path.text()).strip(),
             hf_token=hf_tok,
             hf_api_enabled=hf_en,
@@ -1404,9 +1410,9 @@ class MainWindow(QMainWindow):
 
         popup.pause_requested.connect(_pause_download)
 
-        def on_progress(task_id: str, pct: int, status: str) -> None:
-            popup.status.setText(format_status_line(task_id, pct, status))
-            popup.bar.setValue(max(0, min(100, int(pct))))
+        def on_progress(task_id: str, overall_pct: int, task_pct: int, status: str) -> None:
+            popup.status.setText(format_status_line(task_id, overall_pct, task_pct, status))
+            popup.bar.setValue(max(0, min(100, int(overall_pct))))
 
         def on_done(_msg: str) -> None:
             msg = str(_msg or "").strip().lower()
@@ -1519,14 +1525,14 @@ class MainWindow(QMainWindow):
         self.run_btn.setEnabled(False)
         qty = max(1, int(quantity))
 
-        def on_prog(tid: str, pct: int, status: str) -> None:
-            self._update_tasks_active_progress(tid, pct, status)
+        def on_prog(tid: str, overall_pct: int, task_pct: int, status: str) -> None:
+            self._update_tasks_active_progress(tid, overall_pct, task_pct, status)
             self._resize_to_current_tab()
 
         if prebuilt_pkg is not None:
             self._set_tasks_active_row(
                 "Pipeline run",
-                format_status_line("pipeline_run", 0, "Queued (approved preview)…"),
+                format_status_line("pipeline_run", 0, -1, "Queued (approved preview)…"),
                 folder="In progress",
             )
             self._pipeline_control = PipelineRunControl()
@@ -1547,7 +1553,7 @@ class MainWindow(QMainWindow):
         if prebuilt_prompts is not None and prebuilt_seeds is not None:
             self._set_tasks_active_row(
                 "Pipeline run",
-                format_status_line("pipeline_run", 0, "Queued (approved storyboard)…"),
+                format_status_line("pipeline_run", 0, -1, "Queued (approved storyboard)…"),
                 folder="In progress",
             )
             self._pipeline_control = PipelineRunControl()
@@ -1569,7 +1575,7 @@ class MainWindow(QMainWindow):
         if qty <= 1:
             self._set_tasks_active_row(
                 "Pipeline run",
-                format_status_line("pipeline_run", 0, "Queued…"),
+                format_status_line("pipeline_run", 0, -1, "Queued…"),
                 folder="In progress",
             )
             self._pipeline_control = PipelineRunControl()
@@ -1590,15 +1596,32 @@ class MainWindow(QMainWindow):
         self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
         self.worker.start()
 
+    def _drain_pipeline_worker(self) -> None:
+        """Wait for the pipeline QThread to finish and drop the reference.
+
+        `done` / `failed` can be delivered while the worker thread is still
+        tearing down; `_try_start_next_queued_pipeline` must not see a
+        running worker or it will skip the queue and leave Run stuck.
+        """
+        w = self.worker
+        if w is None:
+            return
+        try:
+            w.wait()
+        except Exception:
+            pass
+        self.worker = None
+
     def _on_batch_pipeline_message(self, msg: str) -> None:
         self._release_run_control()
         self._clear_tasks_active_row()
+        self._drain_pipeline_worker()
         self._append_log(msg)
         self._resize_to_current_tab()
         self._try_start_next_queued_pipeline()
 
     def _try_start_next_queued_pipeline(self) -> None:
-        if self.worker and self.worker.isRunning():
+        if self.worker is not None and self.worker.isRunning():
             return
         if not self._pipeline_run_queue:
             try:
@@ -1723,8 +1746,8 @@ class MainWindow(QMainWindow):
         self._pipeline_control = PipelineRunControl()
         self.preview_worker = PreviewWorker(self.settings, run_control=self._pipeline_control)
 
-        def on_prog(task_id: str, pct: int, status: str) -> None:
-            self._update_tasks_active_progress(task_id, pct, status)
+        def on_prog(task_id: str, overall_pct: int, task_pct: int, status: str) -> None:
+            self._update_tasks_active_progress(task_id, overall_pct, task_pct, status)
             self._resize_to_current_tab()
 
         def on_done(pkg, sources, prompts, personality_id: str, confidence: str) -> None:
@@ -1872,7 +1895,7 @@ class MainWindow(QMainWindow):
                 return
 
             from pathlib import Path
-            from src.artist import generate_images
+            from src.artist import apply_regenerated_image, generate_images
             from src.editor import assemble_microclips_then_concat
             from src.config import get_paths, get_models
 
@@ -1892,10 +1915,7 @@ class MainWindow(QMainWindow):
                 seeds=[seed + 1],
             )
             if regen:
-                try:
-                    regen[0].path.replace(out_path)
-                except Exception:
-                    pass
+                apply_regenerated_image(regen, out_path)
                 sc["seed"] = seed + 1
                 sc["image_path"] = str(out_path)
                 scenes[idx - 1] = sc
@@ -1944,8 +1964,8 @@ class MainWindow(QMainWindow):
         self._pipeline_control = PipelineRunControl()
         self.storyboard_worker = StoryboardWorker(self.settings, run_control=self._pipeline_control)
 
-        def on_prog(task_id: str, pct: int, status: str) -> None:
-            self._update_tasks_active_progress(task_id, pct, status)
+        def on_prog(task_id: str, overall_pct: int, task_pct: int, status: str) -> None:
+            self._update_tasks_active_progress(task_id, overall_pct, task_pct, status)
             self._resize_to_current_tab()
 
         def on_done(manifest_path, grid_png_path) -> None:
@@ -2020,7 +2040,7 @@ class MainWindow(QMainWindow):
         out_path = Path(prev_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        from src.artist import generate_images
+        from src.artist import apply_regenerated_image, generate_images
         from src.config import get_models
 
         models = get_models()
@@ -2037,10 +2057,7 @@ class MainWindow(QMainWindow):
             steps=4,
         )
         if gen:
-            try:
-                gen[0].path.replace(out_path)
-            except Exception:
-                pass
+            apply_regenerated_image(gen, out_path)
 
         sc["seed"] = int(new_seed)
         sc["preview_image_path"] = str(out_path)
@@ -2117,6 +2134,7 @@ class MainWindow(QMainWindow):
     def _on_done(self, out_dir: str) -> None:
         self._release_run_control()
         self._clear_tasks_active_row()
+        self._drain_pipeline_worker()
         if not out_dir:
             self._append_log("No new items found.")
             self._try_start_next_queued_pipeline()
@@ -2199,10 +2217,14 @@ class MainWindow(QMainWindow):
         self._tasks_refresh()
         self._update_tasks_control_buttons()
 
-    def _update_tasks_active_progress(self, task_id: str, pct: int, message: str) -> None:
+    def _update_tasks_active_progress(
+        self, task_id: str, overall_pct: int, task_pct: int, message: str
+    ) -> None:
         if not self._tasks_active_row:
             return
-        self._tasks_active_row["status"] = format_status_line(task_id, pct, message)[:300]
+        self._tasks_active_row["status"] = format_status_line(
+            task_id, overall_pct, task_pct, message
+        )[:300]
         self._tasks_refresh()
 
     def _clear_tasks_active_row(self) -> None:
@@ -2263,6 +2285,7 @@ class MainWindow(QMainWindow):
     def _on_pipeline_worker_cancelled(self) -> None:
         self._clear_tasks_active_row()
         self._release_run_control()
+        self._drain_pipeline_worker()
         dropped = len(self._pipeline_run_queue)
         if dropped:
             self._pipeline_run_queue.clear()
@@ -2655,6 +2678,7 @@ class MainWindow(QMainWindow):
     def _on_failed(self, err: str) -> None:
         self._release_run_control()
         self._clear_tasks_active_row()
+        self._drain_pipeline_worker()
         self._append_log("Run failed:")
         self._append_log(err)
         self._try_start_next_queued_pipeline()

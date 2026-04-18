@@ -27,6 +27,36 @@ python scripts\install_pytorch.py --with-rest --python "C:\Program Files\Python3
 - If `Program Files` is not writable, pip may use **per-user** site-packages (`Defaulting to user installation`); add `%APPDATA%\Python\Python312\Scripts` to **PATH** if `pip`/`python` scripts are not found.
 - Running the app: `& "C:\Program Files\Python312\python.exe" main.py` or `python -m UI` with that same interpreter.
 
+### Install PyTorch in both `.venv` and a global Python (Windows)
+Use **one** command that runs the installer for each interpreter (PyTorch + CUDA/CPU detection runs per target):
+
+```powershell
+cd C:\path\to\Aquaduct
+python scripts\install_pytorch.py --with-rest `
+  --python ".\.venv\Scripts\python.exe" `
+  --python "C:\Program Files\Python312\python.exe"
+```
+
+Or run the helper (defaults global to Python 3.12 under Program Files; skips venv if missing):
+
+```powershell
+.\scripts\install_pytorch_venv_and_global.ps1
+```
+
+By default the helper streams to the console **and** appends to **`logs/install-pytorch.log`** (under the repo; the folder is gitignored). Console-only:
+
+```powershell
+.\scripts\install_pytorch_venv_and_global.ps1 -NoLog
+```
+
+A different log path (relative paths resolve under the repo root):
+
+```powershell
+.\scripts\install_pytorch_venv_and_global.ps1 -LogFile logs\custom-install.log
+```
+
+PyTorch-only (no `requirements.txt`) for both: add `-PyTorchOnly` to the `.ps1`, or omit `--with-rest` when calling `install_pytorch.py` directly.
+
 ## Desktop UI (optional)
 - **PyQt6**: only required when using the graphical control panel (`python -m UI`). The headless `main.py` pipeline does not need it.
 
