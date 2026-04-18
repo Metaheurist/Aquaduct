@@ -123,6 +123,48 @@ def project_dirname_to_repo_id(dirname: str) -> str | None:
     return f"{a}/{b}"
 
 
+def find_repo_dirs_in_folder(folder: Path, repo_ids: set[str]) -> list[tuple[str, Path]]:
+    """Discover curated model repo directories under a selected folder.
+
+    This supports selecting either a parent folder containing safe-encoded model dirs,
+    or a folder that contains a nested ``models/`` tree with owner/repo children.
+    """
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+
+    out: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+
+    def _add(repo_id: str, path: Path) -> None:
+        rid = str(repo_id or "").strip()
+        if not rid or rid in seen or rid not in repo_ids:
+            return
+        seen.add(rid)
+        out.append((rid, path))
+
+    maybe_self = project_dirname_to_repo_id(folder.name)
+    if maybe_self:
+        _add(maybe_self, folder)
+
+    for child in sorted(folder.iterdir()):
+        if not child.is_dir():
+            continue
+
+        maybe_repo = project_dirname_to_repo_id(child.name)
+        if maybe_repo:
+            _add(maybe_repo, child)
+            continue
+
+        for subchild in sorted(child.iterdir()):
+            if not subchild.is_dir():
+                continue
+            candidate = f"{child.name}/{subchild.name}"
+            _add(candidate, subchild)
+
+    return out
+
+
 @dataclass(frozen=True)
 class ModelIntegrityReport:
     """Result of comparing a local ``models/<encoded-repo>/`` tree to the Hugging Face Hub."""
@@ -230,13 +272,24 @@ def list_installed_repo_ids_from_disk(models_dir: Path) -> list[str]:
         for p in sorted(models_dir.iterdir()):
             if not p.is_dir():
                 continue
+
+            # Safe-encoded folder names, e.g. owner__repo-name
             rid = project_dirname_to_repo_id(p.name)
-            if not rid:
-                continue
-            if model_has_local_snapshot(rid, models_dir=models_dir, min_bytes=min_bytes_for_snapshot()):
+            if rid and model_has_local_snapshot(rid, models_dir=models_dir, min_bytes=min_bytes_for_snapshot()):
                 if rid not in seen:
                     seen.add(rid)
                     out.append(rid)
+                continue
+
+            # Nested owner/repo layout: models_dir/owner/repo
+            for child in sorted(p.iterdir()):
+                if not child.is_dir():
+                    continue
+                candidate = f"{p.name}/{child.name}"
+                if model_has_local_snapshot(candidate, models_dir=models_dir, min_bytes=min_bytes_for_snapshot()):
+                    if candidate not in seen:
+                        seen.add(candidate)
+                        out.append(candidate)
     except Exception:
         return out
     return out
@@ -286,16 +339,34 @@ def _human_bytes(n: int | float | None) -> str:
     return f"{x:.1f} {units[u]}"
 
 
+def _find_local_snapshot_dir(repo_id: str, models_dir: Path) -> Path | None:
+    """Return the local project snapshot directory for a repo_id, if it exists."""
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return None
+
+    candidate = models_dir / project_model_dirname(rid)
+    if candidate.is_dir():
+        return candidate
+
+    nested = models_dir / rid
+    if nested.is_dir():
+        return nested
+
+    underscore = models_dir / rid.replace("/", "_")
+    if underscore.is_dir():
+        return underscore
+
+    return None
+
+
 def local_model_size_label(repo_id: str, *, models_dir: Path) -> str:
     """
     Returns a human-readable local size for a repo_id in the project `models/` folder.
     If not downloaded, returns "—".
     """
-    rid = str(repo_id or "").strip()
-    if not rid:
-        return "—"
-    p = models_dir / project_model_dirname(rid)
-    if not p.exists() or not p.is_dir():
+    p = _find_local_snapshot_dir(repo_id, models_dir)
+    if p is None:
         return "—"
     return _human_bytes(_dir_size_bytes(p))
 
@@ -363,21 +434,18 @@ def resolve_pretrained_load_path(repo_id: str, *, models_dir: Path) -> str:
     rid = str(repo_id or "").strip()
     if not rid:
         return repo_id
-    if model_has_local_snapshot(rid, models_dir=models_dir):
-        return str((models_dir / project_model_dirname(rid)).resolve())
+    p = _find_local_snapshot_dir(rid, models_dir)
+    if p is not None:
+        return str(p.resolve())
     return rid
 
 
 def model_has_local_snapshot(repo_id: str, *, models_dir: Path, min_bytes: int | None = None) -> bool:
     """
-    True if ``models_dir/<repo_folder>/`` exists and has at least ``min_bytes`` on disk
-    (avoids counting empty/partial folders as "installed").
+    True if a local project snapshot already exists and has at least ``min_bytes`` on disk.
     """
-    rid = str(repo_id or "").strip()
-    if not rid:
-        return False
-    p = models_dir / project_model_dirname(rid)
-    if not p.is_dir():
+    p = _find_local_snapshot_dir(repo_id, models_dir)
+    if p is None or not p.is_dir():
         return False
     mb = int(min_bytes) if min_bytes is not None else min_bytes_for_snapshot()
     return _dir_size_bytes(p) >= mb
