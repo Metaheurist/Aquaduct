@@ -84,6 +84,11 @@ def attach_settings_tab(win) -> None:
     _a.triggered.connect(win._download_all_models)
     dl_menu.addAction(_a)
     dl_menu.addSeparator()
+    _a = QAction("Import models from folder", win)
+    _a.setToolTip("Select a folder containing model directories to import curated models from.")
+    _a.triggered.connect(win._import_models_from_folder)
+    dl_menu.addAction(_a)
+    dl_menu.addSeparator()
     _a = QAction("Verify checksums — selected models (on disk)", win)
     _a.setToolTip(
         "Compare local files to Hugging Face Hub (SHA-256 for LFS weights, git blob ids for small files). "

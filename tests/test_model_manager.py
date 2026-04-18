@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.model_manager import download_model_to_project, model_options
+from src.model_manager import download_model_to_project, find_repo_dirs_in_folder, model_options, resolve_pretrained_load_path
 
 
 def test_model_options_enumerated_and_sorted():
@@ -29,6 +29,24 @@ def test_download_model_to_project_calls_snapshot_download(tmp_path, monkeypatch
     assert isinstance(out, Path)
     assert calls["repo_id"] == "repo/id"
     assert "local_dir" in calls
+
+
+def test_find_repo_dirs_in_folder_detects_safe_and_nested_paths(tmp_path):
+    expected = {"a/b", "c/d"}
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "a__b").mkdir(parents=True)
+    (tmp_path / "c__d").mkdir(parents=True)
+
+    found = find_repo_dirs_in_folder(tmp_path, expected)
+    assert set(repo_id for repo_id, _ in found) == expected
+    assert any(str(path).endswith("models\\a__b") for _, path in found)
+    assert any(str(path).endswith("c__d") for _, path in found)
+
+
+def test_resolve_pretrained_load_path_returns_nested_local_snapshot(tmp_path):
+    nested = tmp_path / "owner" / "repo"
+    nested.mkdir(parents=True)
+    assert resolve_pretrained_load_path("owner/repo", models_dir=tmp_path) == str(nested)
 
 
 def test_prompt_conditioning_assigns_varied_scene_types():

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtGui import QDesktopServices, QGuiApplication
-from PyQt6.QtCore import QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
+from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -53,7 +53,7 @@ from src.model_integrity_cache import (
 from src.crawler import clear_news_seen_cache_files
 from src.topics import normalize_video_format
 from src.fs_delete import rmtree_robust, unlink_file
-from src.model_manager import download_model_to_project, list_installed_repo_ids_from_disk, model_has_local_snapshot
+from src.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
 from src.preflight import preflight_check
 from src.pipeline_control import PipelineRunControl
 from src.utils_ffmpeg import find_ffmpeg
@@ -75,7 +75,7 @@ from UI.tabs import (
     attach_video_tab,
     attach_effects_tab,
 )
-from UI.download_popup import DownloadPopup
+from UI.download_popup import DownloadPopup, ImportPopup
 from UI.workers import (
     FFmpegEnsureWorker,
     ModelDownloadWorker,
@@ -232,13 +232,20 @@ class MainWindow(QMainWindow):
 
         self._reset_run_session_state()
 
+    def _has_explicit_hf_env_token(self) -> bool:
+        """Return True when HF token env vars are explicitly set with a non-empty value."""
+        for key in ("HF_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+            if str(os.environ.get(key, "") or "").strip():
+                return True
+        return False
+
     def _apply_saved_hf_token_to_env(self) -> None:
         """
         If user saved an HF token in ui_settings.json, expose it to huggingface_hub via env var
         for the current app session (unless the user already provided one via env).
         """
         try:
-            if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
+            if self._has_explicit_hf_env_token():
                 return
             if not bool(getattr(self.settings, "hf_api_enabled", True)):
                 return
@@ -246,19 +253,21 @@ class MainWindow(QMainWindow):
             if not t:
                 return
             os.environ["HF_TOKEN"] = t
+            os.environ["HUGGINGFACEHUB_API_TOKEN"] = t
         except Exception:
             pass
 
     def _apply_hf_token_from_current_settings(self) -> None:
         """After save or dialog: sync HF_TOKEN from settings when user enabled HF API."""
         try:
-            if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
+            if self._has_explicit_hf_env_token():
                 return
             if not bool(getattr(self.settings, "hf_api_enabled", True)):
                 return
             t = str(getattr(self.settings, "hf_token", "") or "").strip()
             if t:
                 os.environ["HF_TOKEN"] = t
+                os.environ["HUGGINGFACEHUB_API_TOKEN"] = t
         except Exception:
             pass
 
@@ -281,7 +290,7 @@ class MainWindow(QMainWindow):
         try:
             if not bool(getattr(self.settings, "hf_api_enabled", True)):
                 return
-            if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
+            if self._has_explicit_hf_env_token():
                 return
             saved = str(getattr(self.settings, "hf_token", "") or "").strip()
             if saved:
@@ -1209,6 +1218,161 @@ class MainWindow(QMainWindow):
             self._append_log("All curated voice models are already on disk.")
             return
         self._start_download(need, title=f"Downloading all voice models ({len(need)} remaining)")
+
+    def _calculate_dir_size(self, path: Path) -> int:
+        """Calculate total size of directory in bytes."""
+        total = 0
+        try:
+            for root, dirs, files in os.walk(path):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return total
+
+    def _import_models_from_folder(self) -> None:
+        """Import curated models from a selected folder."""
+        folder = QFileDialog.getExistingDirectory(self, "Select folder containing model directories")
+        if not folder:
+            return
+        folder_path = Path(folder)
+
+        # Discover curated model folders in the selected source.
+        from src.model_manager import find_repo_dirs_in_folder, project_dirname_to_repo_id, model_options
+        opts = model_options()
+        repo_ids = {opt.repo_id for opt in opts}
+
+        found = []
+        for repo_id, src_dir in find_repo_dirs_in_folder(folder_path, repo_ids):
+            size = self._calculate_dir_size(src_dir)
+            found.append((repo_id, src_dir.name, size, src_dir))
+
+        if not found:
+            aquaduct_information(self, "No models found", "No curated model directories found in the selected folder.")
+            return
+
+        # Dialog
+        from PyQt6.QtWidgets import QDialog, QCheckBox, QDialogButtonBox, QVBoxLayout, QLabel
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Import Models")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Select models to import:"))
+        checkboxes = []
+        for repo_id, dirname, size, subdir in found:
+            cb = QCheckBox(f"{repo_id} ({size / (1024**3):.1f} GB)")
+            cb.setChecked(True)
+            checkboxes.append((cb, repo_id, dirname, size, subdir))
+            layout.addWidget(cb)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = [(repo_id, dirname, size, subdir) for cb, repo_id, dirname, size, subdir in checkboxes if cb.isChecked()]
+        if not selected:
+            return
+
+        # Warn if a selected video model has a paired image dependency that wasn't imported.
+        selected_repo_ids = [repo_id for repo_id, _, _, _ in selected]
+        paired_missing: list[str] = []
+        opt_by_repo = {opt.repo_id: opt for opt in model_options()}
+        for repo_id in selected_repo_ids:
+            opt = opt_by_repo.get(repo_id)
+            if opt and getattr(opt, "pair_image_repo_id", ""):
+                dep = str(opt.pair_image_repo_id).strip()
+                if dep and dep not in selected_repo_ids:
+                    paired_missing.append(dep)
+        if paired_missing:
+            aquaduct_warning(
+                self,
+                "Paired model missing",
+                "One or more selected video models require an additional paired image model to run without downloading from Hugging Face:\n"
+                + "\n".join(paired_missing)
+                + "\n\nImport the missing paired model(s) as well if available in the source folder.",
+            )
+
+        # Check disk space
+        import shutil
+        models_dir = self.paths.models_dir
+        models_dir.mkdir(parents=True, exist_ok=True)
+        total, used, free = shutil.disk_usage(models_dir)
+        free_gb = free / (1024**3)
+        selected_total_gb = sum(size for _, _, size, _ in selected) / (1024**3)
+        if selected_total_gb > free_gb:
+            msg = f"Selected models require {selected_total_gb:.1f} GB, but only {free_gb:.1f} GB free space available."
+            if not aquaduct_question(self, "Insufficient disk space", msg + "\n\nProceed anyway?"):
+                return
+
+        # Import
+        self._import_cancelled = False
+        popup = ImportPopup(self, title="Importing selected models")
+        popup.cancel_requested.connect(lambda: setattr(self, '_import_cancelled', True))
+        popup.show()
+
+        total_models = len(selected)
+        for index, (repo_id, dirname, size, src_dir) in enumerate(selected, start=1):
+            if self._import_cancelled:
+                self._append_log("Model import cancelled.")
+                break
+
+            if model_has_local_snapshot(repo_id, models_dir=models_dir):
+                self._append_log(f"Skipping {repo_id}, already exists.")
+                continue
+
+            dst_dir = models_dir / project_model_dirname(repo_id)
+            popup.set_model_status(repo_id, index, total_models)
+            popup.set_progress(0)
+            self._copytree_with_progress(src_dir, dst_dir, popup)
+            if self._import_cancelled:
+                self._append_log(f"Import cancelled while copying {repo_id}.")
+                break
+
+        popup.close()
+
+    def _copytree_with_progress(self, src_dir: Path, dst_dir: Path, popup) -> None:
+        import shutil
+
+        total_bytes = 0
+        file_paths: list[Path] = []
+        for root, _, files in os.walk(src_dir):
+            for file_name in files:
+                file_path = Path(root) / file_name
+                try:
+                    total_bytes += file_path.stat().st_size
+                    file_paths.append(file_path)
+                except OSError:
+                    pass
+
+        if not file_paths:
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            return
+
+        os.makedirs(dst_dir, exist_ok=True)
+        copied_bytes = 0
+        for file_path in file_paths:
+            if self._import_cancelled:
+                return
+            relative_path = file_path.relative_to(src_dir)
+            target_path = dst_dir / relative_path
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(file_path, target_path)
+            except Exception as e:
+                self._append_log(f"Failed to copy {file_path}: {e}")
+                return
+            try:
+                copied_bytes += file_path.stat().st_size
+            except OSError:
+                pass
+            percent = int(copied_bytes * 100 / total_bytes) if total_bytes else 100
+            popup.set_progress(percent)
+            QCoreApplication.processEvents()
 
     def _repos_selected_installed_only(self) -> list[str]:
         """Current LLM / image / voice selections, de-duplicated, only repos with a local snapshot."""
