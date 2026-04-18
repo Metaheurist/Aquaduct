@@ -138,14 +138,6 @@ def attach_video_tab(win) -> None:
     win.prefer_gpu_chk.setChecked(bool(win.settings.prefer_gpu))
     lay.addWidget(win.prefer_gpu_chk)
 
-    win.try_llm_chk = QCheckBox("Try 4-bit LLM scripting (falls back if unavailable)")
-    win.try_llm_chk.setChecked(bool(win.settings.try_llm_4bit))
-    lay.addWidget(win.try_llm_chk)
-
-    win.try_sdxl_chk = QCheckBox("Try SDXL Turbo images (falls back if unavailable)")
-    win.try_sdxl_chk.setChecked(bool(win.settings.try_sdxl_turbo))
-    lay.addWidget(win.try_sdxl_chk)
-
     win.hq_topics_chk = QCheckBox("High quality topic selection (score + diversify)")
     win.hq_topics_chk.setChecked(bool(getattr(win.settings.video, "high_quality_topic_selection", True)))
     lay.addWidget(win.hq_topics_chk)
@@ -153,10 +145,6 @@ def attach_video_tab(win) -> None:
     win.fetch_article_chk = QCheckBox("Fetch article text for accuracy (slower)")
     win.fetch_article_chk.setChecked(bool(getattr(win.settings.video, "fetch_article_text", True)))
     lay.addWidget(win.fetch_article_chk)
-
-    win.factcheck_chk = QCheckBox("LLM fact-check pass (safer phrasing + attribution)")
-    win.factcheck_chk.setChecked(bool(getattr(win.settings.video, "llm_factcheck", True)))
-    lay.addWidget(win.factcheck_chk)
 
     win.prompt_cond_chk = QCheckBox("Stronger prompt conditioning (scene types + negatives)")
     win.prompt_cond_chk.setChecked(bool(getattr(win.settings.video, "prompt_conditioning", True)))

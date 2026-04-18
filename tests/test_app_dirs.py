@@ -35,3 +35,23 @@ def test_get_paths_uses_app_data_subdirs(monkeypatch, tmp_path):
     assert p.data_dir == p.app_data_dir / "data"
     assert p.cache_dir == p.app_data_dir / ".cache"
     assert p.runs_dir == p.app_data_dir / "runs"
+
+
+def test_repo_logs_under_installation_dir(monkeypatch, tmp_path):
+    from src import repo_logs
+
+    monkeypatch.setattr(repo_logs, "installation_dir", lambda: tmp_path)
+
+    d = repo_logs.logs_dir()
+    assert d == tmp_path / "logs"
+    assert d.is_dir()
+
+    repo_logs.append_ui_log("hello")
+    assert "hello" in (d / "ui.log").read_text(encoding="utf-8")
+
+    p = repo_logs.write_install_dependencies_log("pip output")
+    assert p.parent == d
+    assert p.name.startswith("install-dependencies-") and p.name.endswith(".log")
+    assert p.read_text(encoding="utf-8") == "pip output"
+
+    assert repo_logs.default_install_pytorch_log_path() == d / "install-pytorch.log"

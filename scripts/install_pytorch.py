@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""CLI wrapper: installs PyTorch matched to hardware, optionally all other deps."""
+"""
+CLI wrapper: installs PyTorch matched to hardware, optionally all other deps.
+
+Streams pip output live to stdout (flush per line). For maximum immediacy when
+piping or redirecting, run: python -u scripts/install_pytorch.py ...
+"""
 from __future__ import annotations
 
 import sys

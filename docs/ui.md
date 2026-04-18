@@ -47,8 +47,7 @@ python UI/ui_app.py
   - Delete generated images after run (save storage)
 - Quality/performance and advanced controls live under **Video**:
   - Prefer GPU toggle (advisory)
-  - Try 4-bit LLM toggle (advisory; pipeline falls back if unavailable)
-  - Try SDXL Turbo toggle (advisory; pipeline falls back if unavailable)
+  - High quality topic selection, fetch article text, prompt conditioning (no model-specific toggles here; script/image behavior is chosen on the **Model** tab)
   - Background music picker
   - Clear news URL/title cache: removes legacy `seen.json` / `seen_titles.json` and all `seen_*.json` / `seen_titles_*.json` under `data/news_cache/`
 - **Branding**

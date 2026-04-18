@@ -505,6 +505,7 @@ def expand_custom_video_instructions(
     video_format: str,
     personality_id: str,
     on_llm_task: Callable[[str, int, str], None] | None = None,
+    try_llm_4bit: bool = True,
 ) -> str:
     """
     First LLM pass for custom Run mode: expand the user's rough notes into a structured creative brief (plain text).
@@ -588,6 +589,7 @@ def expand_custom_video_instructions(
             prompt=prompt,
             on_llm_task=on_llm_task,
             max_new_tokens=900,
+            try_llm_4bit=try_llm_4bit,
         )
     return raw.strip()
 
@@ -728,26 +730,153 @@ def _emit_llm(
         on_llm_task(task, max(0, min(100, int(pct))), msg)
 
 
+def torch_cuda_kernels_work() -> bool:
+    """
+    True only if basic CUDA tensor ops run on device 0.
+
+    PyTorch wheels omit SASS for some newer (or unusual) GPUs; ``cuda.is_available()``
+    can still be True while every kernel fails with "no kernel image is available".
+    """
+    import torch
+
+    if not torch.cuda.is_available():
+        return False
+    try:
+        x = torch.tensor([0, 1], device="cuda", dtype=torch.long)
+        torch.isin(x, x)
+        return True
+    except RuntimeError:
+        return False
+
+
+def load_causal_lm_from_pretrained(
+    load_path: str,
+    *,
+    try_4bit: bool = True,
+    on_status: Callable[[str], None] | None = None,
+) -> Any:
+    """
+    Load ``AutoModelForCausalLM`` from disk or Hub id.
+
+    Tries bitsandbytes 4-bit first when ``try_4bit`` and CUDA works (saves VRAM).
+    If 4-bit raises, falls back to fp16 with ``device_map="auto"``.
+
+    If this PyTorch build has **no usable CUDA kernels** for the installed GPU
+    (``cuda.is_available()`` true but ops fail with "no kernel image"), loads on
+    **CPU** in fp16 — slower but runs on unsupported/new GPUs until you install a
+    matching PyTorch build.
+    """
+    from .hf_transformers_imports import causal_lm_stack
+    from .torch_dtypes import torch_float16
+
+    AutoModelForCausalLM, _, BitsAndBytesConfig = causal_lm_stack()
+    _fp16 = torch_float16()
+    cuda_ok = torch_cuda_kernels_work()
+
+    def _status(msg: str) -> None:
+        if on_status:
+            on_status(msg)
+
+    def _from_pretrained_with_optional_bnb(
+        *, quantization_config: Any | None, device_map: str
+    ) -> Any:
+        if quantization_config is not None:
+            try:
+                return AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    quantization_config=quantization_config,
+                    device_map=device_map,
+                    dtype=_fp16,
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True,
+                )
+            except TypeError:
+                try:
+                    return AutoModelForCausalLM.from_pretrained(
+                        load_path,
+                        quantization_config=quantization_config,
+                        device_map=device_map,
+                        torch_dtype=_fp16,
+                        low_cpu_mem_usage=True,
+                        trust_remote_code=True,
+                    )
+                except TypeError:
+                    return AutoModelForCausalLM.from_pretrained(
+                        load_path,
+                        quantization_config=quantization_config,
+                        device_map=device_map,
+                        torch_dtype=_fp16,
+                        trust_remote_code=True,
+                    )
+        try:
+            return AutoModelForCausalLM.from_pretrained(
+                load_path,
+                device_map=device_map,
+                dtype=_fp16,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+            )
+        except TypeError:
+            try:
+                return AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    device_map=device_map,
+                    torch_dtype=_fp16,
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True,
+                )
+            except TypeError:
+                return AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    device_map=device_map,
+                    torch_dtype=_fp16,
+                    trust_remote_code=True,
+                )
+
+    if not cuda_ok:
+        _status("CUDA unusable for this GPU/driver build; loading LLM on CPU (slower)…")
+        return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="cpu")
+
+    if try_4bit:
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=_fp16,
+        )
+        try:
+            _status("Loading model (4-bit)…")
+            return _from_pretrained_with_optional_bnb(quantization_config=bnb, device_map="auto")
+        except Exception as e:
+            _status(f"4-bit load failed ({type(e).__name__}); loading in fp16 instead…")
+            return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="auto")
+
+    _status("Loading model (fp16)…")
+    return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="auto")
+
+
 def _generate_with_transformers(
     model_id: str,
     prompt: str,
     *,
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 650,
+    try_llm_4bit: bool = True,
 ) -> str:
     import torch
 
     from .hf_transformers_imports import causal_lm_stack, text_iterator_streamer_cls
-    from .torch_dtypes import torch_float16
 
-    AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig = causal_lm_stack()
-    _fp16 = torch_float16()
+    _, AutoTokenizer, _ = causal_lm_stack()
 
     def _stderr(msg: str) -> None:
         if not on_llm_task:
             import sys
 
             print(f"[Aquaduct] {msg}", file=sys.stderr, flush=True)
+
+    def _load_status(detail: str) -> None:
+        _emit_llm(on_llm_task, "llm_load", 55, detail)
 
     # Load from project `models/<repo>/` when present; plain repo id uses HF cache (extra downloads).
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
@@ -756,41 +885,12 @@ def _generate_with_transformers(
     tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
     _emit_llm(on_llm_task, "llm_load", 25, "Tokenizer ready")
 
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=_fp16,
-    )
-
     _emit_llm(on_llm_task, "llm_load", 30, "Loading model weights…")
-    try:
-        model = AutoModelForCausalLM.from_pretrained(
-            load_path,
-            quantization_config=bnb,
-            device_map="auto",
-            dtype=_fp16,
-            low_cpu_mem_usage=True,
-            trust_remote_code=True,
-        )
-    except TypeError:
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                load_path,
-                quantization_config=bnb,
-                device_map="auto",
-                torch_dtype=_fp16,
-                low_cpu_mem_usage=True,
-                trust_remote_code=True,
-            )
-        except TypeError:
-            model = AutoModelForCausalLM.from_pretrained(
-                load_path,
-                quantization_config=bnb,
-                device_map="auto",
-                torch_dtype=_fp16,
-                trust_remote_code=True,
-            )
+    model = load_causal_lm_from_pretrained(
+        load_path,
+        try_4bit=bool(try_llm_4bit),
+        on_status=_load_status,
+    )
     _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")
 
     # Simple chat-ish formatting without requiring tokenizer chat template support.
@@ -882,6 +982,7 @@ def generate_script(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     creative_brief: str | None = None,
     video_format: str = "news",
+    try_llm_4bit: bool = True,
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links, or from a pre-expanded custom creative brief.
@@ -911,7 +1012,12 @@ def generate_script(
 
     with vram_guard():
         try:
-            raw = _generate_with_transformers(model_id=model_id, prompt=prompt, on_llm_task=on_llm_task)
+            raw = _generate_with_transformers(
+                model_id=model_id,
+                prompt=prompt,
+                on_llm_task=on_llm_task,
+                try_llm_4bit=try_llm_4bit,
+            )
             data = _extract_json(raw)
             pkg = _to_package(data)
             dprint("brain", "generate_script ok (transformers)", f"title={pkg.title[:100]!r}")
@@ -1118,6 +1224,7 @@ def expand_custom_field_text(
     seed: str,
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 512,
+    try_llm_4bit: bool = True,
 ) -> str:
     """
     Use the local LLM to expand or improve free-form UI text (character fields, topics, prompts, etc.).
@@ -1145,6 +1252,7 @@ def expand_custom_field_text(
             prompt,
             on_llm_task=on_llm_task,
             max_new_tokens=max_new_tokens,
+            try_llm_4bit=try_llm_4bit,
         )
     out = (raw or "").strip()
     # Trim common wrappers
