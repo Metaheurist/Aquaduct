@@ -108,8 +108,10 @@ def rewrite_with_uncertainty(
         import torch
 
         from .hf_transformers_imports import causal_lm_stack
+        from .torch_dtypes import torch_float16
 
         AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig = causal_lm_stack()
+        _fp16 = torch_float16()
 
         load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
         tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
@@ -117,14 +119,14 @@ def rewrite_with_uncertainty(
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=_fp16,
         )
         try:
             model = AutoModelForCausalLM.from_pretrained(
                 load_path,
                 quantization_config=bnb,
                 device_map="auto",
-                dtype=torch.float16,
+                dtype=_fp16,
                 low_cpu_mem_usage=True,
                 trust_remote_code=True,
             )
@@ -134,7 +136,7 @@ def rewrite_with_uncertainty(
                     load_path,
                     quantization_config=bnb,
                     device_map="auto",
-                    torch_dtype=torch.float16,
+                    torch_dtype=_fp16,
                     low_cpu_mem_usage=True,
                     trust_remote_code=True,
                 )
@@ -143,7 +145,7 @@ def rewrite_with_uncertainty(
                     load_path,
                     quantization_config=bnb,
                     device_map="auto",
-                    torch_dtype=torch.float16,
+                    torch_dtype=_fp16,
                     trust_remote_code=True,
                 )
 

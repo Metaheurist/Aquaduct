@@ -738,8 +738,10 @@ def _generate_with_transformers(
     import torch
 
     from .hf_transformers_imports import causal_lm_stack, text_iterator_streamer_cls
+    from .torch_dtypes import torch_float16
 
     AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig = causal_lm_stack()
+    _fp16 = torch_float16()
 
     def _stderr(msg: str) -> None:
         if not on_llm_task:
@@ -758,7 +760,7 @@ def _generate_with_transformers(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=_fp16,
     )
 
     _emit_llm(on_llm_task, "llm_load", 30, "Loading model weights…")
@@ -767,7 +769,7 @@ def _generate_with_transformers(
             load_path,
             quantization_config=bnb,
             device_map="auto",
-            dtype=torch.float16,
+            dtype=_fp16,
             low_cpu_mem_usage=True,
             trust_remote_code=True,
         )
@@ -777,7 +779,7 @@ def _generate_with_transformers(
                 load_path,
                 quantization_config=bnb,
                 device_map="auto",
-                torch_dtype=torch.float16,
+                torch_dtype=_fp16,
                 low_cpu_mem_usage=True,
                 trust_remote_code=True,
             )
@@ -786,7 +788,7 @@ def _generate_with_transformers(
                 load_path,
                 quantization_config=bnb,
                 device_map="auto",
-                torch_dtype=torch.float16,
+                torch_dtype=_fp16,
                 trust_remote_code=True,
             )
     _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")

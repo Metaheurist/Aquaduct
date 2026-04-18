@@ -7,6 +7,7 @@ import numpy as np
 
 from .config import get_paths
 from .model_manager import resolve_pretrained_load_path
+from .torch_dtypes import torch_float16
 from .utils_vram import cleanup_vram, vram_guard
 
 
@@ -35,14 +36,15 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
     import torch
     from diffusers import DiffusionPipeline
 
+    _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
 
     try:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
     except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")
     else:
@@ -94,14 +96,15 @@ def _try_image_to_video(
     from diffusers import DiffusionPipeline
     from PIL import Image
 
+    _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
 
     try:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
     except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
     pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 
     results: list[GeneratedClip] = []

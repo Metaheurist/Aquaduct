@@ -132,7 +132,7 @@ Tabs:
 - **Video**: output + quality knobs (format presets, FPS, micro-clip timing, bitrate, slideshow/clip mode, performance toggles, music, cache utilities)
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
-- **Model**: Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; dependency check/install; model select/download (script/video/voice); skips repos already under `models/`
+- **Model**: Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already under `models/`
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
 
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
