@@ -37,14 +37,16 @@ python UI/ui_app.py
   - Lists successful renders (`data/upload_tasks.json`): open folder, play `final.mp4`, copy caption from `meta.json` / `hashtags.txt`, mark posted manually, **Upload to TikTok** (inbox) and/or **Upload to YouTube** when the **API** tab is configured (separate toggles); optional auto-uploads per platform after each render
   - While a **pipeline run**, **batch run**, **Preview**, or **Storyboard preview** is active (top row), **Pause** / **Resume** waits between major steps (`src/pipeline_control.py`); **Stop** cancels at the next checkpoint (does not interrupt mid–GPU generation). For an active **pipeline** (or batch), **Stop** also **clears** any extra runs you queued with **Run** while the previous job was still going.
 - **Video**
+  - **Platform template** (top): **tiles** (like graphics presets in a game) — one card per social profile (e.g. short-form vertical, Instagram square/portrait, Pinterest, YouTube/LinkedIn landscape) plus **Custom**. Clicking a tile applies resolution, FPS, micro-clip timing, images per video, bitrate, and clip-mode timings. Changing any of those controls switches to **Custom**. Stored as `video.platform_preset_id` in settings; definitions in [`src/video_platform_presets.py`](../src/video_platform_presets.py).
+  - **Resolution** (dropdown of width×height presets used by the templates)
   - Images per video
-  - Video format presets (resolution/aspect)
-  - Clip mode vs slideshow mode
+  - Slideshow mode vs clip mode (generate images and stitch vs video-clip pipeline)
   - FPS
   - Micro-clip min/max seconds
   - Bitrate preset (low/med/high)
   - Export intermediate micro-clips toggle
   - Delete generated images after run (save storage)
+  - **Allow NSFW image output** (optional): disables the diffusion safety checker for image generation so flagged frames are not replaced with black slides — use only where appropriate; you are responsible for platform rules (`AppSettings.allow_nsfw`)
 - Quality/performance and advanced controls live under **Video**:
   - Prefer GPU toggle (advisory)
   - High quality topic selection, fetch article text, prompt conditioning (no model-specific toggles here; script/image behavior is chosen on the **Model** tab)

@@ -121,6 +121,9 @@ class VideoSettings:
     facts_card_position: Literal["top_left", "top_right"] = "top_left"
     facts_card_duration: Literal["short", "long"] = "short"
 
+    # Last selected platform template id (empty = Custom); see `src/video_platform_presets.py`
+    platform_preset_id: str = ""
+
 
 @dataclass(frozen=True)
 class BrandingSettings:
@@ -180,6 +183,7 @@ class AppSettings:
     image_model_id: str = ""
     video_model_id: str = ""  # optional: separate clip model (e.g., img→vid) when paired with keyframe image model
     voice_model_id: str = ""
+    allow_nsfw: bool = False  # allow NSFW content (disable safety checker)
     video: VideoSettings = VideoSettings()
     branding: BrandingSettings = BrandingSettings()
     # TikTok Content Posting API (OAuth + optional upload). See docs/tiktok.md

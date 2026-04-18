@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Video tab: platform presets (tiles) + social templates
+- **Platform template** at the top of **Video** uses **selectable tiles** (game-style preset cards): one tile per curated social profile (short-form vertical HD/720p, Instagram/Facebook square and 4:5, Pinterest 2:3, YouTube/LinkedIn 1080p, landscape 720p, etc.) plus **Custom** for full manual control. Definitions live in [`src/video_platform_presets.py`](src/video_platform_presets.py). Clicking a tile applies **resolution**, **FPS**, **micro-clip min/max**, **images per video**, **bitrate**, **clips per video**, and **seconds per clip**. The selection is stored as **`video.platform_preset_id`** in [`ui_settings.json`](src/ui_settings.py) and surfaced in [`UI/main_window.py`](UI/main_window.py) as **`_video_platform_preset_id`**. Editing any of those fields switches the UI to **Custom**.
+- **Resolution** dropdown (formerly labeled “Video format”) lists all template sizes from the same module.
+
+### Image generation: NSFW option + quality-regenerate fix
+- **Allow NSFW image output** on **Video** ([`AppSettings.allow_nsfw`](src/config.py)): clears the diffusion **safety checker** / **feature extractor** after load so models such as SD 1.5 do not return black frames when the classifier flags content ([`src/artist.py`](src/artist.py)). Persisted in UI settings; passed through [`main.py`](main.py), [`UI/workers.py`](UI/workers.py), and regenerate flows in [`UI/main_window.py`](UI/main_window.py).
+- **Quality retries** for slideshow/keyframes used to call `generate_images(..., max_images=1)`, which always wrote `img_001.png`, then [`apply_regenerated_image`](src/artist.py) deleted that source after copying—wiping **earlier** slides when regenerating a **later** index. Retries now use a **temporary output directory** before copying to the real path ([`main.py`](main.py), scene re-render in [`UI/main_window.py`](UI/main_window.py)).
+
 ### Model tab: Install dependencies (progress dialog)
 - **Install dependencies** opens a frameless **Installing dependencies** dialog with **step labels** (PyTorch vs `requirements.txt`), a **progress bar** (**indeterminate** until pip prints tqdm-style `%` lines, then **0–100%** from parsed output), a **current action** line from `pip_line_hint` (Collecting / Downloading / Installing…), and a **scrolling log**. Close is disabled until the run finishes. Streaming uses [`src/torch_install.py`](src/torch_install.py): `run_subprocess_streaming` splits on `\r` and `\n` so same-line pip progress is visible; `pip install` invocations inject `--progress-bar on`; `pip_download_percent` maps lines to the bar. Implementation: [`UI/install_deps_dialog.py`](UI/install_deps_dialog.py). Tests: [`tests/test_torch_install.py`](tests/test_torch_install.py).
 

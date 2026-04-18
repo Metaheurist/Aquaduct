@@ -27,6 +27,7 @@ Central place for:
 - images per video
 - bitrate preset (low/med/high)
 - export micro-clips toggle
+- **`platform_preset_id`**: last selected **platform template** id from the Video tab tiles (empty string = **Custom**). See [`src/video_platform_presets.py`](../src/video_platform_presets.py).
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
@@ -44,6 +45,7 @@ Central place for:
 - **Characters**: `active_character_id` selects a row from `data/characters.json` (Character Builder); empty means no character — see [Characters](characters.md)
 - **TikTok** (optional): `tiktok_enabled`, client key/secret, redirect URI, OAuth port, tokens, `tiktok_publishing_mode`, `tiktok_auto_upload_after_render` — see [TikTok](tiktok.md)
 - **YouTube** (optional, independent of TikTok): `youtube_enabled`, OAuth client ID/secret, redirect URI, OAuth port (default loopback port **8888**), tokens, `youtube_privacy_status`, `youtube_add_shorts_hashtag`, `youtube_auto_upload_after_render` — see [YouTube](youtube.md)
+- **Image safety**: `allow_nsfw` — when `True`, diffusion image generation runs without the built-in **safety checker** (see [Artist](artist.md))
 
 Task queue for finished renders (Tasks tab) is stored in `data/upload_tasks.json` (paths + per-row TikTok/YouTube upload metadata); keep it local / gitignored.
 

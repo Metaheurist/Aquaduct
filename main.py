@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -17,6 +18,7 @@ except Exception:  # optional dependency
 from src.artist import apply_regenerated_image, generate_images
 from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
 from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
+from src.ui_settings import load_settings
 from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item, fetch_article_text
 from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.clips import generate_clips
@@ -492,6 +494,8 @@ def run_once(
     _pipe_progress(on_progress, 64, -1, "Preparing visuals & prompts…")
     _rc(run_control)
 
+    _allow_nsfw = bool(getattr(app, "allow_nsfw", False))
+
     if video_settings.use_image_slideshow:
         dprint("pipeline", "mode=slideshow", f"images_per_video={video_settings.images_per_video}")
         img_dir = assets_dir / "images"
@@ -539,6 +543,7 @@ def run_once(
             out_dir=img_dir,
             max_images=max(1, int(video_settings.images_per_video)),
             seeds=storyboard_seeds,
+            allow_nsfw=_allow_nsfw,
         )
         image_paths = [g.path for g in gen]
         _pipe_progress(on_progress, 80, -1, "Images ready")
@@ -556,15 +561,17 @@ def run_once(
                     except Exception:
                         break
                     attempt += 1
-                    regen = generate_images(
-                        sdxl_turbo_model_id=img_id,
-                        prompts=[p],
-                        out_dir=img_dir,
-                        max_images=1,
-                        seeds=[int(base_seed) + attempt],
-                    )
-                    if regen:
-                        apply_regenerated_image(regen, out_path)
+                    with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
+                        regen = generate_images(
+                            sdxl_turbo_model_id=img_id,
+                            prompts=[p],
+                            out_dir=Path(_td),
+                            max_images=1,
+                            seeds=[int(base_seed) + attempt],
+                            allow_nsfw=_allow_nsfw,
+                        )
+                        if regen:
+                            apply_regenerated_image(regen, out_path)
 
         # Update manifest with image paths
         try:
@@ -655,6 +662,7 @@ def run_once(
             out_dir=key_dir,
             max_images=max(1, int(video_settings.clips_per_video)),
             seeds=storyboard_seeds,
+            allow_nsfw=_allow_nsfw,
         )
         keyframes = [g.path for g in key_gen]
         _pipe_progress(on_progress, 76, -1, "Keyframes ready")
@@ -671,15 +679,17 @@ def run_once(
                     except Exception:
                         break
                     attempt += 1
-                    regen = generate_images(
-                        sdxl_turbo_model_id=img_id,
-                        prompts=[p],
-                        out_dir=key_dir,
-                        max_images=1,
-                        seeds=[int(base_seed) + attempt],
-                    )
-                    if regen:
-                        apply_regenerated_image(regen, out_path)
+                    with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
+                        regen = generate_images(
+                            sdxl_turbo_model_id=img_id,
+                            prompts=[p],
+                            out_dir=Path(_td),
+                            max_images=1,
+                            seeds=[int(base_seed) + attempt],
+                            allow_nsfw=_allow_nsfw,
+                        )
+                        if regen:
+                            apply_regenerated_image(regen, out_path)
 
         # Update manifest with keyframe paths
         try:
@@ -789,6 +799,13 @@ def main() -> None:
 
     music = Path(args.music).resolve() if args.music else None
 
+    saved_settings = load_settings() if (args.cli or args.once) else None
+    if saved_settings and bool(getattr(saved_settings, "hf_api_enabled", True)):
+        saved_token = str(getattr(saved_settings, "hf_token", "") or "").strip()
+        if saved_token and not (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")):
+            os.environ["HF_TOKEN"] = saved_token
+            os.environ["HUGGINGFACEHUB_API_TOKEN"] = saved_token
+
     # Default: launching main should bring up the UI (unless CLI mode requested).
     if args.ui or (not args.cli and not args.once):
         from UI.app import main as ui_main
@@ -797,7 +814,7 @@ def main() -> None:
         return
 
     if args.once:
-        app = AppSettings(background_music_path=str(music) if music else "")
+        app = saved_settings or AppSettings(background_music_path=str(music) if music else "")
         out = run_once(settings=app)
         if out:
             print(f"Created: {out}")

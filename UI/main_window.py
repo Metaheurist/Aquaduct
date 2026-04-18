@@ -8,6 +8,7 @@ import secrets
 from collections.abc import Callable
 import subprocess
 import sys
+import tempfile
 import threading
 import webbrowser
 from dataclasses import replace
@@ -802,6 +803,11 @@ class MainWindow(QMainWindow):
             facts_card_duration=str(self.facts_card_dur_combo.currentData() or "short")
             if hasattr(self, "facts_card_dur_combo")
             else "short",
+            platform_preset_id=(
+                str(getattr(self, "_video_platform_preset_id", "") or "").strip()
+                if hasattr(self, "_video_platform_preset_id")
+                else str(getattr(self.settings.video, "platform_preset_id", "") or "")
+            ),
         )
 
         branding = getattr(self.settings, "branding", BrandingSettings())
@@ -980,6 +986,7 @@ class MainWindow(QMainWindow):
             image_model_id=image_model_id,
             video_model_id=video_model_id,
             voice_model_id=str(self.voice_combo.currentData()) if hasattr(self, "voice_combo") else self.settings.voice_model_id,
+            allow_nsfw=bool(self.allow_nsfw_chk.isChecked()) if hasattr(self, "allow_nsfw_chk") else bool(getattr(self.settings, "allow_nsfw", False)),
             video=video,
             branding=branding,
         )
@@ -2069,17 +2076,18 @@ class MainWindow(QMainWindow):
             img_id = settings.image_model_id.strip() or models.sdxl_turbo_id
 
             out_path = Path(img_path)
-            out_dir = out_path.parent
             self._append_log(f"Regenerating scene #{idx}…")
-            regen = generate_images(
-                sdxl_turbo_model_id=img_id,
-                prompts=[prompt],
-                out_dir=out_dir,
-                max_images=1,
-                seeds=[seed + 1],
-            )
-            if regen:
-                apply_regenerated_image(regen, out_path)
+            with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
+                regen = generate_images(
+                    sdxl_turbo_model_id=img_id,
+                    prompts=[prompt],
+                    out_dir=Path(_td),
+                    max_images=1,
+                    seeds=[seed + 1],
+                    allow_nsfw=bool(getattr(settings, "allow_nsfw", False)),
+                )
+                if regen:
+                    apply_regenerated_image(regen, out_path)
                 sc["seed"] = seed + 1
                 sc["image_path"] = str(out_path)
                 scenes[idx - 1] = sc
@@ -2219,6 +2227,7 @@ class MainWindow(QMainWindow):
             max_images=1,
             seeds=[new_seed],
             steps=4,
+            allow_nsfw=bool(getattr(settings, "allow_nsfw", False)),
         )
         if gen:
             apply_regenerated_image(gen, out_path)

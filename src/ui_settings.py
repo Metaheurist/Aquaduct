@@ -124,6 +124,7 @@ def load_settings() -> AppSettings:
         facts_card_duration=str(video_raw.get("facts_card_duration", "short"))
         if str(video_raw.get("facts_card_duration", "short")) in ("short", "long")
         else "short",
+        platform_preset_id=str(video_raw.get("platform_preset_id", "") or ""),
     )
 
     branding_raw = data.get("branding", {}) if isinstance(data, dict) else {}
@@ -188,6 +189,7 @@ def load_settings() -> AppSettings:
         image_model_id=str(data.get("image_model_id", "")) if isinstance(data, dict) else "",
         video_model_id=str(data.get("video_model_id", "")) if isinstance(data, dict) else "",
         voice_model_id=str(data.get("voice_model_id", "")) if isinstance(data, dict) else "",
+        allow_nsfw=bool(data.get("allow_nsfw", False)) if isinstance(data, dict) else False,
         video=video,
         branding=branding,
         tiktok_enabled=bool(data.get("tiktok_enabled", False)) if isinstance(data, dict) else False,

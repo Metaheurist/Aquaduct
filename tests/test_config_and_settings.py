@@ -29,7 +29,14 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
         video_model_id="z",
         voice_model_id="v",
         background_music_path="C:\\music.mp3",
-        video=VideoSettings(width=720, height=1280, fps=24, images_per_video=5, cleanup_images_after_run=True),
+        video=VideoSettings(
+            width=720,
+            height=1280,
+            fps=24,
+            images_per_video=5,
+            cleanup_images_after_run=True,
+            platform_preset_id="landscape_720p",
+        ),
         elevenlabs_enabled=True,
         elevenlabs_api_key="el_test_key",
     )
@@ -48,6 +55,7 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     assert s2.video.fps == 24
     assert s2.video.images_per_video == 5
     assert s2.video.cleanup_images_after_run is True
+    assert s2.video.platform_preset_id == "landscape_720p"
     # Audio defaults/persistence should not break loading
     assert s2.video.audio_polish in {"off", "basic", "strong"}
 
@@ -76,6 +84,7 @@ def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
         hf_token="hf_x",
         firecrawl_enabled=True,
         firecrawl_api_key="fc_y",
+        allow_nsfw=True,
     )
     save_settings(s)
     s2 = load_settings()
@@ -83,6 +92,7 @@ def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
     assert s2.hf_token == "hf_x"
     assert s2.firecrawl_enabled is True
     assert s2.firecrawl_api_key == "fc_y"
+    assert s2.allow_nsfw is True
 
 
 def test_ui_settings_migrates_legacy_topic_tags_to_news(tmp_repo_root, monkeypatch):

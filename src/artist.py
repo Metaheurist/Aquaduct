@@ -43,6 +43,20 @@ def apply_regenerated_image(regen: list[GeneratedImage], out_path: Path) -> None
         pass
 
 
+def _maybe_disable_safety_checker(pipe, *, allow_nsfw: bool) -> None:
+    """When ``allow_nsfw`` is True, disable the diffusion safety classifier (no blacked-out frames)."""
+    if not allow_nsfw:
+        return
+    try:
+        pipe.safety_checker = None
+    except Exception:
+        pass
+    try:
+        pipe.feature_extractor = None
+    except Exception:
+        pass
+
+
 def _place_pipe_on_device(pipe) -> None:
     """Move pipeline to GPU, or CPU; optionally use sequential CPU offload to save VRAM."""
     import torch
@@ -87,6 +101,7 @@ def _try_sdxl_turbo(
     out_dir: Path,
     *,
     steps: int = 1,
+    allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
 ) -> list[GeneratedImage]:
     import torch
@@ -108,6 +123,7 @@ def _try_sdxl_turbo(
             torch_dtype=_fp16,
             variant="fp16",
         )
+    _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe)
 
     n = len(prompts)
@@ -140,6 +156,7 @@ def _try_sdxl_turbo_seeded(
     out_dir: Path,
     *,
     steps: int = 1,
+    allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
 ) -> list[GeneratedImage]:
     import torch
@@ -161,6 +178,7 @@ def _try_sdxl_turbo_seeded(
             torch_dtype=_fp16,
             variant="fp16",
         )
+    _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe)
 
     n = len(prompts)
@@ -197,6 +215,7 @@ def generate_images(
     max_images: int | None = None,
     seeds: list[int] | None = None,
     steps: int = 1,
+    allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
 ) -> list[GeneratedImage]:
     """
@@ -225,11 +244,22 @@ def generate_images(
         try:
             if seeds is not None:
                 r = _try_sdxl_turbo_seeded(
-                    sdxl_turbo_model_id, prompts, seeds, out_dir, steps=steps, on_image_progress=on_image_progress
+                    sdxl_turbo_model_id,
+                    prompts,
+                    seeds,
+                    out_dir,
+                    steps=steps,
+                    allow_nsfw=allow_nsfw,
+                    on_image_progress=on_image_progress,
                 )
             else:
                 r = _try_sdxl_turbo(
-                    sdxl_turbo_model_id, prompts, out_dir, steps=steps, on_image_progress=on_image_progress
+                    sdxl_turbo_model_id,
+                    prompts,
+                    out_dir,
+                    steps=steps,
+                    allow_nsfw=allow_nsfw,
+                    on_image_progress=on_image_progress,
                 )
             dprint("artist", "generate_images done", f"count={len(r)}")
             return r
