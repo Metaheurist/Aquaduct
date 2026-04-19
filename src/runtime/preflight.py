@@ -45,19 +45,12 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         errors.append(f"Invalid FPS: {v.fps}.")
     pro_on = bool(getattr(v, "pro_mode", False))
     if pro_on and not is_api_mode(settings):
-        # Pro mode is true text-to-video. Slideshow stitching must be OFF.
+        # Pro mode runs scene-by-scene video (text-to-video and/or image→keyframes→video). Slideshow must be OFF.
         if bool(getattr(v, "use_image_slideshow", True)):
             errors.append("Pro mode disables slideshow stitching — turn off 'Generate images and stitch (slideshow mode)'.")
         vid = str(getattr(settings, "video_model_id", "") or "").strip()
         if not vid:
-            errors.append("Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope for text-to-video Pro).")
-        else:
-            rl = vid.lower()
-            if "stable-video-diffusion" in rl or "img2vid" in rl:
-                errors.append(
-                    "Pro mode currently supports text-to-video only. Stable Video Diffusion is image-to-video. "
-                    "Choose ZeroScope in the Video slot, or turn off Pro."
-                )
+            errors.append("Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope or Stable Video Diffusion).")
         pc = float(getattr(v, "pro_clip_seconds", 0) or 0)
         if pc <= 0:
             errors.append("Pro mode: scene length (seconds) must be > 0.")

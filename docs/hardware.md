@@ -11,7 +11,7 @@ Implemented in:
 ## Hardware detection (best-effort)
 The app attempts to detect:
 - OS + CPU (via `platform`)
-- RAM (Windows: `GlobalMemoryStatusEx`)
+- RAM: total physical memory on Windows (`GlobalMemoryStatusEx`); on other OSes or if that fails, **`psutil.virtual_memory().total`**
 - GPU + VRAM:
   - primary: `nvidia-smi --query-gpu=name,memory.total`
   - fallback: `torch.cuda` device properties (if PyTorch is installed and CUDA is available)
@@ -20,6 +20,8 @@ If a field can’t be detected, the UI shows “(not detected)”.
 
 ## Resource usage graph (title bar 📈)
 The sample shows **CPU for the whole process tree** (Python plus subprocesses such as FFmpeg), **RSS for the tree**, and **current CUDA VRAM**. VRAM often **drops** after a GPU stage finishes (e.g. after Pro text-to-video clips, while the pipeline muxes audio/captions with FFmpeg). The pipeline **runs stages sequentially** and may **unload** models between steps to limit peak memory — it is not designed to keep every model resident at maximum utilization at once.
+
+For **local diffusion** (image + video model slots), the app can also use **CPU offload** (weights staged in system RAM vs VRAM) with automatic rules from VRAM + free RAM — see [Performance: Diffusion VRAM vs system RAM](performance.md#diffusion-vram-vs-system-ram-cpu-offload) and [`src/util/diffusion_placement.py`](../src/util/diffusion_placement.py).
 
 ## Minimum requirements (guidance)
 Recommended for best results:

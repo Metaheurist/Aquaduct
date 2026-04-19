@@ -31,6 +31,19 @@ Replace `NAME` with `main`, `src.runtime.pipeline_api`, or `UI.app`.
 - **First torch / diffusers / transformers load** — Large GPU RAM and seconds of startup when a local model is first materialized; normal for HF stacks.
 - **FFmpeg download** — One-time network + disk cost under `.cache/ffmpeg/` (see [ffmpeg.md](ffmpeg.md)).
 
+## Diffusion: VRAM vs system RAM (CPU offload)
+
+Local **image** and **video** diffusion use a shared placement helper ([`src/util/diffusion_placement.py`](../src/util/diffusion_placement.py)) so weights can stay mostly in **system RAM** and move to the GPU per module/step (**Diffusers** `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`), instead of loading the full pipeline into VRAM at once. This is **not** Windows paging to disk; it trades **speed** for **lower peak VRAM**.
+
+**Automatic policy** uses detected **GPU VRAM** ([`get_hardware_info()`](../src/models/hardware.py)) and **available RAM** (`psutil.virtual_memory().available`). Override anytime with environment variables:
+
+| Variable | Values |
+|----------|--------|
+| `AQUADUCT_DIFFUSION_CPU_OFFLOAD` | `auto` (default), `off` / `none` / `0` (full GPU when CUDA works), `model`, `sequential` |
+| `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true` — legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
+
+The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
+
 ## Related
 
 - Desktop UX (wheel guard, tabs): [ui.md](ui.md)

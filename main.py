@@ -2,7 +2,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -148,7 +148,7 @@ def _firecrawl_kwargs(app: AppSettings) -> dict:
 
 
 def _now_run_id() -> str:
-    return datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def _write_video_folder(
@@ -231,13 +231,23 @@ def _pro_prompt_for_text_to_video(*, pkg: VideoPackage, prompts: list[str]) -> s
     return _cap_words(core, 55)
 
 
-def _split_into_pro_scenes_from_script(*, pkg: VideoPackage, prompts: list[str]) -> list[str]:
+def _split_into_pro_scenes_from_script(
+    *,
+    pkg: VideoPackage,
+    prompts: list[str],
+    video_format: str = "news",
+) -> list[str]:
     """
-    Create a list of scene prompts for Pro text-to-video, covering the whole script.
+    Create a list of scene prompts for Pro video, covering the whole script.
 
     If a beat is too long for CLIP (~77 tokens), we split it into multiple scenes instead of over-condensing.
+
+    News / explainer style anchors scenes with the headline; cartoon / unhinged omits the title so prompts stay
+    character-first (matches storyboard + image models).
     """
-    title = " ".join(str(pkg.title or "").split()).strip()
+    vf = str(video_format or "news").strip().lower()
+    use_title = vf not in ("cartoon", "unhinged")
+    title = (" ".join(str(pkg.title or "").split()).strip()) if use_title else ""
     out: list[str] = []
 
     def _push(scene_text: str) -> None:
@@ -261,13 +271,13 @@ def _split_into_pro_scenes_from_script(*, pkg: VideoPackage, prompts: list[str])
 
     # Prefer script segments as scenes; include hook/CTA as their own scenes.
     if (pkg.hook or "").strip():
-        _push(f"{title} | {pkg.hook}")
+        _push(f"{title} | {pkg.hook}" if title else str(pkg.hook).strip())
     for seg in (pkg.segments or []):
         nar = " ".join(str(getattr(seg, "narration", "") or "").split()).strip()
         if nar:
             _push(f"{title} | {nar}" if title else nar)
     if (pkg.cta or "").strip():
-        _push(f"{title} | {pkg.cta}")
+        _push(f"{title} | {pkg.cta}" if title else str(pkg.cta).strip())
 
     # Fallback: use visual prompts if narration is empty.
     if not out:
@@ -819,39 +829,80 @@ def run_once(
                 "external_reference_strength": 0.55,
             }
     
-        # Pro mode: true text-to-video using the Video model slot only (no slideshow stitching).
+        # Pro mode: scene-by-scene video — text-to-video (Video slot) and/or image model → img2vid (e.g. SVD).
         if bool(getattr(video_settings, "pro_mode", False)):
             vid_slot = (clip_id or "").strip()
             if not vid_slot:
                 raise RuntimeError("Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope).")
             lowv = vid_slot.lower()
-            if "stable-video-diffusion" in lowv or "img2vid" in lowv:
-                raise RuntimeError(
-                    "Pro mode currently supports text-to-video only. Stable Video Diffusion is image-to-video. "
-                    "Choose ZeroScope in the Video slot, or turn off Pro."
-                )
-    
+            pro_img2vid = "stable-video-diffusion" in lowv or "img2vid" in lowv
+
             T = float(getattr(video_settings, "pro_clip_seconds", 4.0))
             T = max(0.5, T)
-            pro_scenes = _split_into_pro_scenes_from_script(pkg=pkg, prompts=prompts)
+            pro_scenes = _split_into_pro_scenes_from_script(
+                pkg=pkg,
+                prompts=prompts,
+                video_format=str(getattr(app, "video_format", "news") or "news"),
+            )
             # Persist the exact prompts used for debugging.
             (assets_dir / "pro_prompt.txt").write_text("\n\n".join(pro_scenes), encoding="utf-8")
-    
-            _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
-            _rc(run_control)
-            clip_dir = assets_dir / "pro_clips"
-            gen_clips = generate_clips(
-                video_model_id=vid_slot,
-                prompts=pro_scenes,
-                init_images=None,
-                out_dir=clip_dir,
-                max_clips=len(pro_scenes),
-                fps=int(video_settings.fps),
-                seconds_per_clip=T,
-            )
+
+            if pro_img2vid:
+                _pipe_progress(on_progress, 64, -1, "Pro: scene keyframes (image model)…")
+                _rc(run_control)
+                key_dir = assets_dir / "pro_keyframes"
+                pro_storyboard = build_storyboard(
+                    pkg,
+                    seed_base=getattr(video_settings, "seed_base", None),
+                    branding=getattr(app, "branding", None),
+                    max_scenes=max(1, len(pro_scenes)),
+                    character=active_character,
+                )
+                ns = max(1, len(pro_storyboard.scenes))
+                pro_key_seeds = [
+                    int(pro_storyboard.scenes[i % ns].seed) + (i // ns) * 7919 for i in range(len(pro_scenes))
+                ]
+                key_gen = generate_images(
+                    sdxl_turbo_model_id=img_id,
+                    prompts=pro_scenes,
+                    out_dir=key_dir,
+                    max_images=len(pro_scenes),
+                    seeds=pro_key_seeds,
+                    allow_nsfw=_allow_nsfw,
+                    art_style_preset_id=_art_style_id,
+                    use_style_continuity=True,
+                    **_diffusion_ref_kw,
+                )
+                keyframes = [g.path for g in key_gen]
+                prepare_for_next_model()
+                _pipe_progress(on_progress, 68, -1, "Pro: image-to-video (motion model)…")
+                _rc(run_control)
+                clip_dir = assets_dir / "pro_clips"
+                gen_clips = generate_clips(
+                    video_model_id=vid_slot,
+                    prompts=pro_scenes,
+                    init_images=keyframes,
+                    out_dir=clip_dir,
+                    max_clips=len(pro_scenes),
+                    fps=int(video_settings.fps),
+                    seconds_per_clip=T,
+                )
+            else:
+                _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
+                _rc(run_control)
+                clip_dir = assets_dir / "pro_clips"
+                gen_clips = generate_clips(
+                    video_model_id=vid_slot,
+                    prompts=pro_scenes,
+                    init_images=None,
+                    out_dir=clip_dir,
+                    max_clips=len(pro_scenes),
+                    fps=int(video_settings.fps),
+                    seconds_per_clip=T,
+                )
             clip_paths = [c.path for c in gen_clips]
             if not clip_paths:
-                raise RuntimeError("Text-to-video produced no scene.")
+                raise RuntimeError("Pro mode produced no video segments.")
     
             # Align narration to the total Pro timeline so captions and audio match the generated clip duration.
             total_T = float(T) * float(len(clip_paths))
@@ -1028,7 +1079,7 @@ def run_once(
                         seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
                     )
                     if not zc:
-                        raise RuntimeError("Text-to-video produced no scene for Pro mode.")
+                        raise RuntimeError("Pro mode produced no video segments (ZeroScope path).")
                     img_dir.mkdir(parents=True, exist_ok=True)
                     for old in img_dir.glob("img_*.png"):
                         try:
@@ -1042,10 +1093,19 @@ def run_once(
                         ffmpeg_dir=paths.ffmpeg_dir,
                     )
                 elif "stable-video-diffusion" in lowv or "img2vid" in lowv:
-                    raise RuntimeError(
-                        "Pro mode does not support Stable Video Diffusion (it needs still keyframes). "
-                        "Pick ZeroScope in the Video slot for text-to-video Pro, or turn off Pro and use motion (scene) mode with Image + Video."
+                    # Slideshow Pro expects still frames; SVD cannot fill that slot — use the Image model for stills.
+                    gen = generate_images(
+                        sdxl_turbo_model_id=img_id,
+                        prompts=storyboard_prompts,
+                        out_dir=img_dir,
+                        max_images=gen_max,
+                        seeds=storyboard_seeds,
+                        allow_nsfw=_allow_nsfw,
+                        art_style_preset_id=_art_style_id,
+                        use_style_continuity=False,
+                        **_diffusion_ref_kw,
                     )
+                    image_paths = [g.path for g in gen]
                 else:
                     gen = generate_images(
                         sdxl_turbo_model_id=vid_slot,

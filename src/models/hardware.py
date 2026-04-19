@@ -90,10 +90,21 @@ def _torch_cuda_info() -> tuple[str | None, float | None]:
         return None, None
 
 
+def _get_ram_gb_psutil() -> float | None:
+    try:
+        import psutil
+
+        return float(psutil.virtual_memory().total) / (1024**3)
+    except Exception:
+        return None
+
+
 def get_hardware_info() -> HardwareInfo:
     os_name = f"{platform.system()} {platform.release()} ({platform.version()})"
     cpu = platform.processor() or platform.machine() or "Unknown CPU"
     ram_gb = _get_ram_gb_windows() if os.name == "nt" else None
+    if ram_gb is None:
+        ram_gb = _get_ram_gb_psutil()
 
     gpu_name, vram_gb = _parse_nvidia_smi()
     if gpu_name is None:
