@@ -38,7 +38,8 @@ def test_preflight_pro_requires_video_model(monkeypatch):
     assert any("Pro mode requires a Video" in e for e in r.errors)
 
 
-def test_preflight_pro_rejects_svd(monkeypatch):
+def test_preflight_pro_allows_svd_img2vid(monkeypatch):
+    """Pro + SVD is valid: keyframes come from the image model, then img2vid in the pipeline."""
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
@@ -46,8 +47,8 @@ def test_preflight_pro_rejects_svd(monkeypatch):
     v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(video=v, video_model_id="stabilityai/stable-video-diffusion-img2vid-xt")
     r = preflight_check(settings=s, strict=True)
-    assert not r.ok
-    assert any("text-to-video" in e.lower() or "stable video diffusion" in e.lower() for e in r.errors)
+    assert r.ok
+    assert not any("stable video diffusion" in e.lower() for e in r.errors)
 
 
 def test_preflight_pro_disables_slideshow(monkeypatch):

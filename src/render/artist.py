@@ -13,6 +13,7 @@ from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
+from src.util.diffusion_placement import place_diffusion_pipeline
 from src.util.utils_vram import cleanup_vram, vram_guard
 
 
@@ -108,25 +109,8 @@ def _maybe_disable_safety_checker(pipe, *, allow_nsfw: bool) -> None:
 
 
 def _place_pipe_on_device(pipe) -> None:
-    """Move pipeline to GPU, or CPU; optionally use sequential CPU offload to save VRAM."""
-    import torch
-
-    if not torch.cuda.is_available():
-        pipe.to("cpu")
-        return
-    offload = os.environ.get("AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
-    if offload:
-        try:
-            pipe.enable_sequential_cpu_offload()
-            return
-        except Exception:
-            pass
-    pipe.to("cuda")
+    """Move pipeline to GPU/CPU using shared heuristics (VRAM, RAM, optional offload)."""
+    place_diffusion_pipeline(pipe)
 
 
 def _fallback_image(prompt: str, out_path: Path, *, size: int = 1024) -> None:

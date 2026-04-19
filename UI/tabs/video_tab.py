@@ -172,12 +172,12 @@ def attach_video_tab(win) -> None:
     win.use_slideshow_chk.setChecked(bool(win.settings.video.use_image_slideshow))
     form_video.addRow("", win.use_slideshow_chk)
 
-    win.pro_mode_chk = QCheckBox("Pro mode (text-to-video; multiple scenes from script)")
+    win.pro_mode_chk = QCheckBox("Pro mode (multi-scene video from script)")
     win.pro_mode_chk.setChecked(bool(getattr(win.settings.video, "pro_mode", False)))
     win.pro_mode_chk.setToolTip(
-        "Uses the Video model slot only (e.g. ZeroScope). The script is turned into one or more text-to-video prompts; "
-        "each generation is a scene segment, then segments are concatenated. Slideshow must be off. "
-        "See preflight for model requirements."
+        "Splits the script into scene prompts. Text-to-video models (e.g. ZeroScope) animate prompts directly. "
+        "Image-to-video models (e.g. Stable Video Diffusion) first render each scene as a still with the Image model, "
+        "then animate those keyframes. Slideshow must be off."
     )
     form_video.addRow("", win.pro_mode_chk)
 

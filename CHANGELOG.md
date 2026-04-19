@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Diffusion: automatic CPU offload (VRAM vs system RAM)
+- **Placement** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): shared **`place_diffusion_pipeline()`** for local **image** ([`src/render/artist.py`](src/render/artist.py)) and **video** ([`src/render/clips.py`](src/render/clips.py)) diffusers loads — **`enable_model_cpu_offload()`** / **`enable_sequential_cpu_offload()`** vs full **`cuda`** based on **detected GPU VRAM** and **available system RAM** (`psutil`), not OS disk swap.
+- **Auto policy** (override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`**: `auto` \| `off` \| `model` \| `sequential`; legacy **`AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD=1`** still forces sequential when unset/`auto`): favors full GPU when VRAM is ample and host RAM is free; uses **model** offload for mid VRAM (~8–12 GB); **sequential** when VRAM is tight or unknown; if **free RAM &lt; ~3 GB** but **VRAM ≥ ~8 GB**, prefers **full GPU** to avoid extra CPU staging.
+- **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): **total system RAM** falls back to **`psutil`** when the Windows-specific probe is unavailable (Linux/macOS).
+- **Tests**: [`tests/test_diffusion_placement.py`](tests/test_diffusion_placement.py).
+
+### Pro mode: multi-scene video + image-to-video (SVD)
+- **Pipeline** ([`main.py`](main.py)): when **Pro** is on, **slideshow off**, and the **Video** model id is **img2vid** (e.g. `stabilityai/stable-video-diffusion-img2vid-xt` or ids containing **`img2vid`**), the app **generates one keyframe per scene** with the **Image** model, then runs **img2vid** on those paths — same idea as motion mode without Pro. **Text-to-video** models (e.g. ZeroScope) still use **`init_images=None`**. Scene prompts honor **`video_format`**: **news** anchors with the headline; **cartoon** / **unhinged** omit the title prefix ([`_split_into_pro_scenes_from_script`](main.py)); [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py) passes **`video_format`** consistently.
+- **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): **no longer blocks** Pro + SVD; **slideshow + Pro + SVD** falls back to **still frames from the Image model** (the frame-stacking Pro path cannot drive SVD clip-by-clip).
+- **UI** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)): Pro checkbox label/tooltip describe **text-to-video** vs **image model → img2vid**.
+- **Tests**: [`tests/test_pro_img2vid_mock_run.py`](tests/test_pro_img2vid_mock_run.py), [`tests/test_preflight.py`](tests/test_preflight.py).
+
+### Resource usage window (title bar 📈)
+- **UI** ([`UI/resource_graph_dialog.py`](UI/resource_graph_dialog.py)): removed the long explanatory block; live CPU/RAM/GPU lines stay compact; sparkline axis labels unchanged.
+
+### Misc
+- **Run id** ([`main.py`](main.py)): **`_now_run_id()`** uses **timezone-aware** UTC (`datetime.now(timezone.utc)`) instead of deprecated **`utcnow()`**.
+
 ### Model storage (default vs external), pipeline resolution, and offsite downloads
 - **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `models_storage_mode` (`default` \| `external`), `models_external_path` — **Default** uses **`.Aquaduct_data/models`**; **External** uses an absolute folder for Hub snapshots (created when valid).
 - **Runtime** ([`src/core/models_dir.py`](src/core/models_dir.py)): `models_dir_for_app()`, `get_models_dir()` (pipeline override during local `run_once`), `set_pipeline_models_dir` / `clear_pipeline_models_dir` in a **`finally`** block in [`main.py`](main.py) so inference always resolves the active folder.
@@ -71,9 +89,9 @@ All notable changes to this project will be documented in this file.
 
 ### Video: Pro mode (text-to-video vs slideshow frame sequence)
 - **Settings** ([`src/core/config.py`](src/core/config.py)): `VideoSettings.pro_mode`, `pro_clip_seconds`, plus existing motion fields (`clips_per_video`, `clip_seconds`, …). Persisted in [`src/settings/ui_settings.py`](src/settings/ui_settings.py).
-- **Primary Pro path** ([`main.py`](main.py)): when **`pro_mode`** is on and **slideshow is off** (the default from the desktop UI), the pipeline runs **text-to-video** from the **Video** model slot: the script is split into multiple **scene** prompts, each segment is generated (e.g. ZeroScope), narration is stretched to the combined segment duration, then outputs are concatenated via **`assemble_generated_clips_then_concat`**. Prompts are written to **`assets/pro_prompt.txt`**. **SVD / img2vid-only** models are rejected in preflight. Short prompts + caps avoid **CLIP** token overflow on models with tight text limits ([`src/render/clips.py`](src/render/clips.py)).
+- **Primary Pro path** ([`main.py`](main.py)): when **`pro_mode`** is on and **slideshow is off** (the default from the desktop UI), the script is split into **scene** prompts (**`assets/pro_prompt.txt`**). **Text-to-video** Video models (e.g. ZeroScope) generate segments directly; **img2vid** models (e.g. Stable Video Diffusion) first render **keyframes** with the **Image** model under **`assets/pro_keyframes/`**, then run **img2vid** clips into **`assets/pro_clips/`**. Narration is stretched to the combined segment duration; concatenation via **`assemble_generated_clips_then_concat`**. Short prompts + caps avoid **CLIP** token overflow on tight text encoders ([`src/render/clips.py`](src/render/clips.py)).
 - **Legacy path**: if **`use_image_slideshow`** and **`pro_mode`** are both true (e.g. hand-edited settings), the older **one diffusion still per output frame** path still runs: **`round(pro_clip_seconds × fps)`** images with the SDXL **reference chain**, optional manifest key **`pro_generated_frames`**, final **`assemble_pro_frame_sequence_then_concat`** ([`src/render/editor.py`](src/render/editor.py); cap **`AQUADUCT_PRO_MAX_FRAMES`** via `pro_mode_frame_count`).
-- **UI** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)): Pro mode **unchecks and disables** slideshow; **Images per video** stays hidden while Pro is on; labels describe **text-to-video** and **scene** length.
+- **UI** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)): Pro mode **unchecks and disables** slideshow; **Images per video** stays hidden while Pro is on; labels describe **scene** length and **text-to-video** vs **image → img2vid**.
 - **Platform preset**: **`pro_shortform_60fps`** tile ([`src/settings/video_platform_presets.py`](src/settings/video_platform_presets.py)); `find_best_preset_for_video` matches `pro_mode` / `pro_clip_seconds`.
 - **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): Pro requires slideshow off, a configured **Video** model id, and positive **`pro_clip_seconds`**; motion mode validates **scenes per video** / **seconds per scene** when slideshow is off. Legacy slideshow + Pro still uses frame-count warnings where applicable.
 - **Tests**: [`tests/test_pro_mode_frames.py`](tests/test_pro_mode_frames.py); [`tests/test_preflight.py`](tests/test_preflight.py) and settings / preset tests extended for the rules above.

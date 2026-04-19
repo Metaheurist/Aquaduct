@@ -88,18 +88,6 @@ class ResourceGraphDialog(FramelessDialog):
         self.setMinimumWidth(520)
         self.setMinimumHeight(460)
 
-        hint = QLabel(
-            "CPU includes **this process plus child processes** (e.g. FFmpeg during encode) — the main Python "
-            "thread alone often looks idle while helpers run. RAM is RSS for the **process tree** (may slightly "
-            "over-count shared pages). GPU VRAM is **current** CUDA use: it **drops after** text-to-video / "
-            "diffusion steps finish, so it can look low during **final MP4 mux/caption** even though the GPU "
-            "was busy earlier. The pipeline runs **stages one after another** (script → voice → video → encode) "
-            "to avoid OOM — it does not load every model at full tilt at once. Updates every 1s."
-        )
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-        self.body_layout.addWidget(hint)
-
         self._cpu_lbl = QLabel("CPU — —%")
         self._cpu_lbl.setStyleSheet("color: #25F4EE; font-weight: 700; font-size: 12px;")
         self.body_layout.addWidget(self._cpu_lbl)
@@ -147,14 +135,14 @@ class ResourceGraphDialog(FramelessDialog):
             s = sample_aquaduct_resources()
             self._cpu_chart.push(s.process_cpu_pct)
             self._ram_chart.push(s.process_ram_pct)
-            self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}% (process tree vs all cores, 100% = fully busy)")
-            self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system (process tree RSS)")
+            self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}%")
+            self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system")
 
             if s.gpu_mem_pct is not None:
                 self._gpu_chart.push(s.gpu_mem_pct)
-                self._gpu_lbl.setText(f"GPU VRAM {s.gpu_mem_pct:5.1f}% of total (CUDA device)")
+                self._gpu_lbl.setText(f"GPU VRAM {s.gpu_mem_pct:5.1f}%")
             else:
-                self._gpu_lbl.setText("GPU VRAM n/a (CUDA not active or torch not on GPU)")
+                self._gpu_lbl.setText("GPU VRAM —")
         except Exception:
             # Avoid crashing the main window if psutil/Qt/torch sampling misbehaves on a tick.
             pass

@@ -11,6 +11,7 @@ from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
+from src.util.diffusion_placement import place_diffusion_pipeline
 from src.util.utils_vram import cleanup_vram, vram_guard
 
 
@@ -118,7 +119,6 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
     Best-effort text-to-video using diffusers. Different repos expose different pipelines; we use the generic
     DiffusionPipeline and common kwargs. If this fails, caller should fall back.
     """
-    import torch
     from diffusers import DiffusionPipeline
 
     _fp16 = torch_float16()
@@ -131,10 +131,7 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
     except TypeError:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
-    if torch.cuda.is_available():
-        pipe = pipe.to("cuda")
-    else:
-        pipe = pipe.to("cpu")
+    place_diffusion_pipeline(pipe)
 
     results: list[GeneratedClip] = []
     for i, p in enumerate(prompts, start=1):
@@ -174,7 +171,6 @@ def _try_image_to_video(
     Best-effort img→vid. We try passing `image=` to a diffusers pipeline; if the repo doesn't support it,
     this will raise and caller can fall back.
     """
-    import torch
     from diffusers import DiffusionPipeline
     from PIL import Image
 
@@ -188,7 +184,7 @@ def _try_image_to_video(
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
     except TypeError:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
-    pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+    place_diffusion_pipeline(pipe)
 
     results: list[GeneratedClip] = []
     pairs = list(zip(init_images, prompts))
