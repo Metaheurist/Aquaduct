@@ -72,6 +72,17 @@ def _title_candidates(title: str) -> list[str]:
         if 3 <= len(t) <= 24:
             cands.append(t)
 
+    # Lowercase / meme-style phrases (Firecrawl often returns sentence-case or all-lowercase titles).
+    tl = title.lower()
+    for m in re.finditer(r"\b([a-z][a-z']+(?:\s+[a-z][a-z']+){1,5})\b", tl):
+        phrase = " ".join(m.group(1).split()).strip()
+        if len(phrase) < 8 or len(phrase) > 72:
+            continue
+        stop_ratio = sum(1 for w in phrase.split() if w in _STOP) / max(1, len(phrase.split()))
+        if stop_ratio > 0.45:
+            continue
+        cands.append(phrase.title())
+
     # Cleanup
     out: list[str] = []
     seen: set[str] = set()
@@ -89,13 +100,35 @@ def _title_candidates(title: str) -> list[str]:
     return out
 
 
+def _fallback_topics_from_titles(items: list[NewsItem], *, limit: int) -> list[str]:
+    """When token/phrase heuristics yield nothing, use trimmed page titles as topic lines."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for it in items:
+        t = " ".join((it.title or "").split()).strip()
+        if len(t) < 4:
+            continue
+        if len(t) > 120:
+            t = t[:117].rstrip() + "…"
+        k = t.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(t)
+        if len(out) >= max(1, int(limit)):
+            break
+    return out
+
+
 def discover_topics_from_items(items: Iterable[NewsItem], *, limit: int = 30) -> list[str]:
     """
-    Returns a ranked list of candidate topic tags extracted from page titles (headline mode or creative/story mode).
+    Returns a ranked list of candidate topic tags extracted from page titles (news/explainer headlines
+    or creative pages from Firecrawl: memes, jokes, stories, art, etc.).
     """
+    item_list = list(items)
     counter: Counter[str] = Counter()
     original: dict[str, str] = {}
-    for it in items:
+    for it in item_list:
         for cand in _title_candidates(it.title):
             key = cand.lower()
             counter[key] += 1
@@ -116,5 +149,7 @@ def discover_topics_from_items(items: Iterable[NewsItem], *, limit: int = 30) ->
         out.append(s)
         if len(out) >= max(1, int(limit)):
             break
+    if not out and item_list:
+        out = _fallback_topics_from_titles(item_list, limit=limit)
     return out
 

@@ -16,19 +16,49 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.content.topics import normalize_video_format
 from src.core.config import VIDEO_FORMATS
 from UI.no_wheel_controls import NoWheelComboBox
 
 
-def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
-    d = FramelessDialog(parent, title="Newest AI news topics (approve)")
+def _is_creative_topics_mode(topic_mode: str | None) -> bool:
+    return normalize_video_format(str(topic_mode or "news")) in ("cartoon", "unhinged")
+
+
+def _pick_topics_dialog(
+    parent: QWidget,
+    topics: list[str],
+    *,
+    topic_mode: str = "news",
+    firecrawl_ready: bool = True,
+) -> list[str]:
+    creative = _is_creative_topics_mode(topic_mode)
+    win_title = (
+        "Discover: approve creative seeds"
+        if creative
+        else "Discover: approve topic ideas (news)"
+    )
+    d = FramelessDialog(parent, title=win_title)
     d.setMinimumSize(720, 520)
 
-    header = QLabel("Newest AI news topics")
+    header = QLabel("Creative seeds from the web" if creative else "Topic ideas from headlines")
     header.setStyleSheet("font-size: 14px; font-weight: 700;")
     d.body_layout.addWidget(header)
 
-    sub = QLabel("These are auto-extracted from the newest headlines. Nothing is added until you click Add selected.")
+    if creative:
+        sub = QLabel(
+            "Phrases are parsed from page titles Firecrawl found while searching for jokes, memes, short stories, "
+            "art, and fandom threads (not Google News headlines). "
+            + (
+                "Enable Firecrawl on the API tab with a key for reliable results."
+                if not firecrawl_ready
+                else "Nothing is added until you click Add selected."
+            )
+        )
+    else:
+        sub = QLabel(
+            "These are auto-extracted from recent headline-style results. Nothing is added until you click Add selected."
+        )
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setWordWrap(True)
     d.body_layout.addWidget(sub)
@@ -74,13 +104,39 @@ def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
     return out
 
 
-def _no_topics_dialog(parent: QWidget) -> None:
-    d = FramelessDialog(parent, title="Newest AI news topics")
-    d.setMinimumSize(520, 220)
-    header = QLabel("No topics found")
-    header.setStyleSheet("font-size: 14px; font-weight: 700;")
-    d.body_layout.addWidget(header)
-    sub = QLabel("Couldn’t extract any topic candidates from the newest headlines right now. Try again in a minute.")
+def _no_topics_dialog(
+    parent: QWidget,
+    *,
+    topic_mode: str = "news",
+    firecrawl_ready: bool = True,
+) -> None:
+    creative = _is_creative_topics_mode(topic_mode)
+    win_title = "Discover: creative seeds" if creative else "Discover: topic ideas"
+    d = FramelessDialog(parent, title=win_title)
+    d.setMinimumSize(520, 260)
+    if creative:
+        header = QLabel("No creative seeds yet")
+        header.setStyleSheet("font-size: 14px; font-weight: 700;")
+        d.body_layout.addWidget(header)
+        if not firecrawl_ready:
+            sub = QLabel(
+                "Cartoon and Unhinged Discover uses Firecrawl to search the open web for jokes, memes, stories, "
+                "and image-heavy pages (then turns titles into topic tags).\n\n"
+                "Turn on Firecrawl on the API tab and add your API key (or set the FIRECRAWL_API_KEY "
+                "environment variable), then try Discover again."
+            )
+        else:
+            sub = QLabel(
+                "Firecrawl did not return enough pages to extract phrases from. "
+                "Add a few topic tags above to steer the search, try again in a minute, or check your API quota."
+            )
+    else:
+        header = QLabel("No topics found")
+        header.setStyleSheet("font-size: 14px; font-weight: 700;")
+        d.body_layout.addWidget(header)
+        sub = QLabel(
+            "Couldn’t extract any topic candidates from the newest headlines right now. Try again in a minute."
+        )
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setWordWrap(True)
     d.body_layout.addWidget(sub)
@@ -121,9 +177,10 @@ def attach_topics_tab(win) -> None:
     lay.addLayout(mode_row)
 
     mode_hint = QLabel(
-        "Lists are separate per format. Discover uses headline-style ideas for News and Explainer; "
-        "for Cartoon and Unhinged it pulls creative / story-shaped seeds (not Google News headlines). "
-        "Picks are added here."
+        "Lists are separate per format. News and Explainer Discover use headline-style ideas. "
+        "Cartoon and Unhinged use Firecrawl to search the web for jokes, memes, stories, and art pages, "
+        "then suggest topic tags from page titles (enable Firecrawl on the API tab). "
+        "Approved picks are added here."
     )
     mode_hint.setWordWrap(True)
     mode_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
@@ -146,8 +203,8 @@ def attach_topics_tab(win) -> None:
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
     win.discover_btn.setToolTip(
-        "News/Explainer: headline ideas from your tags. Cartoon/Unhinged: creative and story-shaped seeds "
-        "(Firecrawl recommended). Approve phrases to add them to this list."
+        "News/Explainer: headline ideas from your tags. Cartoon/Unhinged: Firecrawl searches for memes, jokes, "
+        "stories, and image-heavy pages, then suggests tags from titles. Requires Firecrawl on the API tab."
     )
     win.discover_btn.clicked.connect(win._discover_topics)
     btn_row.addWidget(win.discover_btn)
