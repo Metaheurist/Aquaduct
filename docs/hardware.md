@@ -3,7 +3,7 @@
 ## Purpose
 The **My PC** tab displays detected hardware and estimates how well each curated model option will run on your machine.
 
-The **Model** tab **Auto-fit for this PC** button uses the same VRAM/RAM heuristics to pick script, video, and voice repos from the curated list (`rank_models_for_auto_fit` in `src/models/hardware.py`).
+The **Model** tab **Auto-fit for this PC** button uses the same VRAM/RAM heuristics to pick script, image, video, and voice repos from the curated list (`rank_models_for_auto_fit` in `src/models/hardware.py`).
 
 Implemented in:
 - `src/models/hardware.py`
@@ -34,7 +34,7 @@ The My PC tab assigns each model option a marker:
 - `UNKNOWN`
 
 These are simple heuristics based mainly on VRAM and the model kind:
-- **Video/images (SDXL Turbo)**:
+- **Image (SDXL Turbo class)**:
   - `EXCELLENT`: ≥ 10GB VRAM
   - `OK`: ≥ 8GB VRAM
   - `RISKY`: ≥ 6GB VRAM

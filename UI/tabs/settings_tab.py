@@ -63,6 +63,9 @@ def attach_settings_tab(win) -> None:
     _a = QAction("Download script model", win)
     _a.triggered.connect(lambda: win._download_selected("script"))
     dl_menu.addAction(_a)
+    _a = QAction("Download image model", win)
+    _a.triggered.connect(lambda: win._download_selected("image"))
+    dl_menu.addAction(_a)
     _a = QAction("Download video model", win)
     _a.triggered.connect(lambda: win._download_selected("video"))
     dl_menu.addAction(_a)
@@ -161,6 +164,7 @@ def attach_settings_tab(win) -> None:
     form.setHorizontalSpacing(14)
     win.llm_combo = QComboBox()
     win.img_combo = QComboBox()
+    win.vid_combo = QComboBox()
     win.voice_combo = QComboBox()
 
     def _prep_combo(combo: QComboBox) -> None:
@@ -219,32 +223,13 @@ def attach_settings_tab(win) -> None:
     def fill_combo_model(combo: QComboBox, kind: str) -> None:
         model = QStandardItemModel(combo)
         for opt in [o for o in win._model_opts if o.kind == kind]:
-            data = (
-                (opt.pair_image_repo_id, opt.repo_id)
-                if (kind == "video" and getattr(opt, "pair_image_repo_id", ""))
-                else opt.repo_id
+            data = opt.repo_id
+            sz = best_model_size_label(
+                opt.repo_id,
+                models_dir=win.paths.models_dir,
+                remote_sizes=win._hf_remote_sizes,
+                size_hint=getattr(opt, "size_hint", ""),
             )
-            if kind == "video" and getattr(opt, "pair_image_repo_id", ""):
-                vid_sz = best_model_size_label(
-                    opt.repo_id,
-                    models_dir=win.paths.models_dir,
-                    remote_sizes=win._hf_remote_sizes,
-                    size_hint=getattr(opt, "size_hint", ""),
-                )
-                img_sz = best_model_size_label(
-                    opt.pair_image_repo_id,
-                    models_dir=win.paths.models_dir,
-                    remote_sizes=win._hf_remote_sizes,
-                    size_hint="~6-8GB",
-                )
-                sz = f"{img_sz}+{vid_sz}"
-            else:
-                sz = best_model_size_label(
-                    opt.repo_id,
-                    models_dir=win.paths.models_dir,
-                    remote_sizes=win._hf_remote_sizes,
-                    size_hint=getattr(opt, "size_hint", ""),
-                )
             en, tip = _option_row_enabled(opt, kind)
             text = f"{opt.order:02d}. {opt.label}  [{sz} • {opt.speed}]"
             item = QStandardItem(text)
@@ -261,10 +246,12 @@ def attach_settings_tab(win) -> None:
     def _refresh_model_combos_keep_selection() -> None:
         llm_data = win.llm_combo.currentData()
         img_data = win.img_combo.currentData()
+        vid_data = win.vid_combo.currentData()
         voice_data = win.voice_combo.currentData()
 
         fill_combo_model(win.llm_combo, "script")
-        fill_combo_model(win.img_combo, "video")
+        fill_combo_model(win.img_combo, "image")
+        fill_combo_model(win.vid_combo, "video")
         fill_combo_model(win.voice_combo, "voice")
 
         role = Qt.ItemDataRole.UserRole
@@ -285,6 +272,14 @@ def attach_settings_tab(win) -> None:
         except Exception:
             _pick_first_enabled(win.img_combo)
         try:
+            i = win.vid_combo.findData(vid_data, role)
+            if i >= 0:
+                win.vid_combo.setCurrentIndex(i)
+            elif vid_data is not None:
+                _pick_first_enabled(win.vid_combo)
+        except Exception:
+            _pick_first_enabled(win.vid_combo)
+        try:
             i = win.voice_combo.findData(voice_data, role)
             if i >= 0:
                 win.voice_combo.setCurrentIndex(i)
@@ -294,7 +289,7 @@ def attach_settings_tab(win) -> None:
             _pick_first_enabled(win.voice_combo)
 
         # If restored index points at a disabled row, move to first enabled
-        for combo in (win.llm_combo, win.img_combo, win.voice_combo):
+        for combo in (win.llm_combo, win.img_combo, win.vid_combo, win.voice_combo):
             idx = combo.currentIndex()
             if idx < 0:
                 _pick_first_enabled(combo)
@@ -307,13 +302,15 @@ def attach_settings_tab(win) -> None:
                 pass
 
     fill_combo_model(win.llm_combo, "script")
-    fill_combo_model(win.img_combo, "video")
+    fill_combo_model(win.img_combo, "image")
+    fill_combo_model(win.vid_combo, "video")
     fill_combo_model(win.voice_combo, "voice")
 
     win.llm_dl_badge = QLabel("")
     win.img_dl_badge = QLabel("")
+    win.vid_dl_badge = QLabel("")
     win.voice_dl_badge = QLabel("")
-    for _b in (win.llm_dl_badge, win.img_dl_badge, win.voice_dl_badge):
+    for _b in (win.llm_dl_badge, win.img_dl_badge, win.vid_dl_badge, win.voice_dl_badge):
         _b.setStyleSheet("color:#5DFFB0;font-size:12px;font-weight:700;min-width:8.5em;")
         _b.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
@@ -321,14 +318,16 @@ def attach_settings_tab(win) -> None:
         idx = _combo_index_for_data(win.llm_combo, win.settings.llm_model_id)
         if idx >= 0:
             win.llm_combo.setCurrentIndex(idx)
-    vm = str(getattr(win.settings, "video_model_id", "") or "").strip()
     im = str(getattr(win.settings, "image_model_id", "") or "").strip()
     if im:
-        idx = _combo_index_for_data(win.img_combo, (im, vm)) if vm else -1
-        if idx < 0:
-            idx = _combo_index_for_data(win.img_combo, im)
+        idx = _combo_index_for_data(win.img_combo, im)
         if idx >= 0:
             win.img_combo.setCurrentIndex(idx)
+    vm = str(getattr(win.settings, "video_model_id", "") or "").strip()
+    if vm:
+        idx = _combo_index_for_data(win.vid_combo, vm)
+        if idx >= 0:
+            win.vid_combo.setCurrentIndex(idx)
     if win.settings.voice_model_id:
         idx = _combo_index_for_data(win.voice_combo, win.settings.voice_model_id)
         if idx >= 0:
@@ -337,8 +336,9 @@ def attach_settings_tab(win) -> None:
     # Required VRAM (typical; heuristic) between combo and fit badge
     win.llm_vram_lbl = QLabel("—")
     win.img_vram_lbl = QLabel("—")
+    win.vid_vram_lbl = QLabel("—")
     win.voice_vram_lbl = QLabel("—")
-    for _lbl in (win.llm_vram_lbl, win.img_vram_lbl, win.voice_vram_lbl):
+    for _lbl in (win.llm_vram_lbl, win.img_vram_lbl, win.vid_vram_lbl, win.voice_vram_lbl):
         _lbl.setStyleSheet(_vram_label_style())
         _lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         _lbl.setWordWrap(False)
@@ -347,6 +347,7 @@ def attach_settings_tab(win) -> None:
     # Fit badges (based on detected hardware)
     win.llm_fit = QLabel("UNKNOWN")
     win.img_fit = QLabel("UNKNOWN")
+    win.vid_fit = QLabel("UNKNOWN")
     win.voice_fit = QLabel("UNKNOWN")
 
     def _update_fit_badges() -> None:
@@ -470,21 +471,22 @@ def attach_settings_tab(win) -> None:
         set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
         set_dl_badge(win.llm_dl_badge, [llm_repo])
 
-        img_data = win.img_combo.currentData()
-        if isinstance(img_data, tuple) and len(img_data) == 2:
-            pair_id, vid_repo = str(img_data[0]), str(img_data[1])
-        else:
-            pair_id, vid_repo = "", str(img_data)
+        img_repo = str(win.img_combo.currentData())
+        img_opt = win._model_opt_by_repo.get(img_repo)
+        img_spd = img_opt.speed if img_opt else "slow"
+        win.img_vram_lbl.setText(vram_requirement_hint(kind="image", repo_id=img_repo, speed=img_spd))
+        set_badge(win.img_fit, kind="image", repo_id=img_repo)
+        set_dl_badge(win.img_dl_badge, [img_repo])
+
+        vid_repo = str(win.vid_combo.currentData())
         vid_opt = win._model_opt_by_repo.get(vid_repo)
         vid_spd = vid_opt.speed if vid_opt else "slow"
-        if not pair_id and vid_opt and getattr(vid_opt, "pair_image_repo_id", ""):
-            pair_id = str(vid_opt.pair_image_repo_id)
-        win.img_vram_lbl.setText(
+        pair_id = str(getattr(vid_opt, "pair_image_repo_id", "") or "").strip() if vid_opt else ""
+        win.vid_vram_lbl.setText(
             vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
         )
-        set_badge(win.img_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
-        img_repos = [pair_id, vid_repo] if pair_id and vid_repo else [vid_repo]
-        set_dl_badge(win.img_dl_badge, img_repos)
+        set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
+        set_dl_badge(win.vid_dl_badge, [vid_repo])
 
         voice_repo = str(win.voice_combo.currentData())
         voice_opt = win._model_opt_by_repo.get(voice_repo)
@@ -495,9 +497,11 @@ def attach_settings_tab(win) -> None:
 
     win.llm_combo.currentIndexChanged.connect(_update_fit_badges)
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
+    win.vid_combo.currentIndexChanged.connect(_update_fit_badges)
     win.voice_combo.currentIndexChanged.connect(_update_fit_badges)
     win.llm_combo.currentIndexChanged.connect(lambda: win.llm_combo.setToolTip(win.llm_combo.currentText()))
     win.img_combo.currentIndexChanged.connect(lambda: win.img_combo.setToolTip(win.img_combo.currentText()))
+    win.vid_combo.currentIndexChanged.connect(lambda: win.vid_combo.setToolTip(win.vid_combo.currentText()))
     win.voice_combo.currentIndexChanged.connect(lambda: win.voice_combo.setToolTip(win.voice_combo.currentText()))
 
     llm_row = QHBoxLayout()
@@ -510,6 +514,11 @@ def attach_settings_tab(win) -> None:
     img_row.addWidget(win.img_dl_badge, 0)
     img_row.addWidget(win.img_vram_lbl, 0)
     img_row.addWidget(win.img_fit, 0)
+    vid_row = QHBoxLayout()
+    vid_row.addWidget(win.vid_combo, 1)
+    vid_row.addWidget(win.vid_dl_badge, 0)
+    vid_row.addWidget(win.vid_vram_lbl, 0)
+    vid_row.addWidget(win.vid_fit, 0)
     voice_row = QHBoxLayout()
     voice_row.addWidget(win.voice_combo, 1)
     voice_row.addWidget(win.voice_dl_badge, 0)
@@ -517,7 +526,8 @@ def attach_settings_tab(win) -> None:
     voice_row.addWidget(win.voice_fit, 0)
 
     form.addRow("Script model (LLM)", llm_row)
-    form.addRow("Video/images model", img_row)
+    form.addRow("Image model (diffusion stills)", img_row)
+    form.addRow("Video model (motion / Pro / clips)", vid_row)
     form.addRow("Voice model (TTS)", voice_row)
     lay.addLayout(form)
 
@@ -525,7 +535,7 @@ def attach_settings_tab(win) -> None:
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
     win.auto_fit_models_btn.setObjectName("primary")
     win.auto_fit_models_btn.setToolTip(
-        "Re-detect GPU/RAM and select the best script, video, and voice models for this machine "
+        "Re-detect GPU/RAM and select the best script, image, video, and voice models for this machine "
         "(same heuristics as the fit badges). Skips grayed-out entries that are unavailable on Hugging Face."
     )
     auto_fit_row.addWidget(win.auto_fit_models_btn)
@@ -555,12 +565,13 @@ def attach_settings_tab(win) -> None:
             return False
 
         ok_s = _combo_set_best(win.llm_combo, ranked.script_repo_ids)
-        ok_v = _combo_set_best(win.img_combo, ranked.video_combo_values)
+        ok_i = _combo_set_best(win.img_combo, ranked.image_repo_ids)
+        ok_v = _combo_set_best(win.vid_combo, ranked.video_repo_ids)
         ok_c = _combo_set_best(win.voice_combo, ranked.voice_repo_ids)
         _update_fit_badges()
         if hasattr(win, "_append_log"):
             win._append_log(ranked.log_summary)
-            if not (ok_s and ok_v and ok_c):
+            if not (ok_s and ok_i and ok_v and ok_c):
                 win._append_log(
                     "Auto-fit: one or more preferred models are disabled (Hub check). "
                     "Try again when online, download weights to models/, or pick manually."
@@ -577,6 +588,7 @@ def attach_settings_tab(win) -> None:
     _update_fit_badges()
     win.llm_combo.setToolTip(win.llm_combo.currentText())
     win.img_combo.setToolTip(win.img_combo.currentText())
+    win.vid_combo.setToolTip(win.vid_combo.currentText())
     win.voice_combo.setToolTip(win.voice_combo.currentText())
 
     # Ping HF for remote sizes on startup (auth via HF_TOKEN / cached login).

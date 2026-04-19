@@ -71,6 +71,27 @@ _VINE_MEME_STRUCTURE = (
     "each segment should feel like the next panel or next cut.\n\n"
 )
 
+# Keeps small LLMs from echoing generic Shorts scaffolding instead of real story beats.
+_SCRIPT_SUBSTANCE_RULES = (
+    "Quality bar (mandatory):\n"
+    "- Every beat must add **new** substance: a fact, name, number, stake, or a joke tied to the sources — not empty hype.\n"
+    "- **Do not** lean on these clichés (or close paraphrases) as whole sentences or repeated transitions: "
+    "\"here's the rundown\", \"here's what you need to know\", \"one of the\", \"quick context\", "
+    "\"here's why this matters\", \"here's what's actually going on\", \"key takeaway\", \"according to early reports\", "
+    "\"keep an eye on updates\", \"who this hits hardest\", \"my read\", \"watch what happens next\", "
+    "\"the part that actually matters\", \"this headline\", \"walked in like it owned\", \"nobody agreed\", "
+    "\"we escalated\", \"yelled about morality\", \"stick the landing\", \"before the bit gets old\", \"still sane\".\n"
+    "- If a headline is broken English, SEO spam, or a mangled listicle title, **state the topic in clean plain language** "
+    "— do not read gibberish aloud or repeat the same broken phrase every segment.\n"
+    "- `visual_prompt` must show **this beat's** main subject + setting + one clear action (readable silhouette, one focal idea, 9:16). "
+    "Avoid prompts that are only \"dynamic graphics\" / \"bold text\" with no concrete scene.\n\n"
+)
+
+_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA = (
+    "Comedy-only: meta jokes about \"shorts\", \"the algorithm\", or \"the headline\" are ok **once** if they punch a specific source; "
+    "the rest should be character story with real callbacks to the tags/headlines.\n\n"
+)
+
 
 def _tts_block() -> str:
     return _TTS_SPOKEN_RULES
@@ -262,6 +283,24 @@ def _to_package(data: dict[str, Any]) -> VideoPackage:
     )
 
 
+def video_package_from_llm_output(text: str) -> VideoPackage:
+    """Parse model output (JSON, possibly fenced) into a VideoPackage."""
+    return _to_package(_extract_json(text))
+
+
+def _supplement_context_block(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    cap = 12_000
+    if len(t) > cap:
+        t = t[: cap - 1] + "…"
+    return (
+        "Supplemental research / web context (may include search synthesis; verify facts against the article excerpt when present):\n"
+        f"{t}\n\n"
+    )
+
+
 def _prompt_for_unhinged_items(
     headlines: list[dict[str, str]],
     topic_tags: list[str] | None,
@@ -313,6 +352,8 @@ def _prompt_for_unhinged_items(
         "Storytelling rule: The `hook` and every segment's `narration` must be in character voice — "
         "first-person, dialogue between characters, or close third tied to a named character. "
         "Do NOT default to a neutral news announcer; the story is told through the cast.\n"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
+        f"{_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA}"
         f"{_tts_block()}"
         f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats. Each beat should feel snappy and quotable "
         "(deadpan or manic energy both work).\n"
@@ -392,6 +433,8 @@ def _prompt_for_cartoon_items(
         "Storytelling rule: The `hook` and every segment's `narration` must be in character voice — "
         "first-person, dialogue between characters, or close third tied to a named character. "
         "Do NOT use a neutral TV announcer or product-demo narrator unless the joke is explicitly about that.\n"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
+        f"{_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA}"
         f"{_tts_block()}"
         f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats. Keep language family-friendly; no slurs or hate.\n"
         "Visual style: bright 2D cartoon, bold shapes, expressive faces, rubber-hose or modern toon energy — all visual jokes/staging go in `visual_prompt`.\n"
@@ -487,6 +530,7 @@ def _prompt_for_items(
             "character/host, and article excerpt below — do not default to any single domain (e.g. do not assume AI/tech unless those tags or sources say so).\n"
             "When an article excerpt is present, ground specifics (numbers, names, quotes) in it; do not invent beyond it.\n"
             "Weave **at least 2–4** headlines or angles into one arc — contrast outlets, sequence cause→effect, or show how stories connect.\n"
+            "Teach something concrete: by the end, the viewer should know **what** the thing is, **who** it affects, and **one** decision rule or trade-off — not a string of empty transitions.\n"
         )
         structure = (
             f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
@@ -522,6 +566,7 @@ def _prompt_for_items(
         extra_rules = "- name the main people, places, products, or events from the sources when relevant (do not invent names)\n"
     return (
         f"{role}"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
         f"{_tts_block()}"
         f"{structure}"
         "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
@@ -613,6 +658,8 @@ def _prompt_for_creative_brief(
             f"{_VINE_MEME_STRUCTURE}"
             "Narration must be in character voice throughout (dialogue or first-person), not a detached announcer.\n"
             "Default visual style: bright 2D cartoon, expressive acting — unless the brief says otherwise.\n"
+            f"{_SCRIPT_SUBSTANCE_RULES}"
+            f"{_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA}"
             f"{_tts_block()}"
             f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
             "Enforce this arc (adapt timing across segments):\n"
@@ -649,6 +696,8 @@ def _prompt_for_creative_brief(
             "Narration must be in character voice throughout — not a neutral news announcer.\n"
             "Default visual style: flat 2D adult-animation satire, exaggerated acting, gross-out or surreal sets — "
             "unless the brief says otherwise (not corporate cyberpunk by default).\n"
+            f"{_SCRIPT_SUBSTANCE_RULES}"
+            f"{_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA}"
             f"{_tts_block()}"
             "Enforce this arc (adapt timing across segments):\n"
             "- Hook: deadpan wrongness or fake-sincere doom\n"
@@ -680,6 +729,7 @@ def _prompt_for_creative_brief(
         f"Video format mode: {video_format!r}. Aim for: {vf}\n"
         f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
         "Style: punchy, factual where needed. Default visuals: bold modern vertical-short look unless the brief says otherwise — visuals only in `visual_prompt`.\n"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
         f"{_tts_block()}"
         "Enforce this arc (adapt timing across segments):\n"
         "- Hook: one punchy line (in host voice — see character block)\n"
@@ -1213,6 +1263,7 @@ def generate_script(
     video_format: str = "news",
     try_llm_4bit: bool = True,
     article_excerpt: str | None = None,
+    supplement_context: str = "",
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links, or from a pre-expanded custom creative brief.
@@ -1240,6 +1291,9 @@ def generate_script(
             video_format=str(video_format or "news"),
             article_excerpt=ex,
         )
+    sup = (supplement_context or "").strip()
+    if sup:
+        prompt = prompt + _supplement_context_block(sup)
     mode = "custom_brief" if (creative_brief is not None and str(creative_brief).strip()) else "headlines"
     dprint("brain", "generate_script start", f"model_id={model_id!r}", f"mode={mode!r}", f"items={len(items)}", f"personality={personality_id!r}")
 

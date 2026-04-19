@@ -80,7 +80,8 @@ def condition_prompt(
 ) -> str:
     p = (prompt or "").strip()
     if not p:
-        p = "high-contrast cyberpunk UI, neon, sharp, cinematic, 9:16 composition"
+        # Neutral default — avoid forcing cyberpunk/UI when the script is news, cartoon, or unrelated topics.
+        p = "single clear focal subject, readable silhouette, cinematic lighting, detailed, vertical 9:16 composition"
 
     cue = camera_cues(scene_type, idx=idx)
     neg = (negatives or default_negative_prompt()).strip()

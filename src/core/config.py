@@ -113,6 +113,10 @@ class VideoSettings:
     fetch_article_text: bool = True
     llm_factcheck: bool = True
     prompt_conditioning: bool = True
+    # Multi-stage script LLM + optional Firecrawl context / reference images (Video tab)
+    story_multistage_enabled: bool = False
+    story_web_context: bool = False
+    story_reference_images: bool = False
     # Visual quality controls
     seed_base: int | None = None
     quality_retries: int = 2

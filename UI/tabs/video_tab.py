@@ -171,6 +171,24 @@ def attach_video_tab(win) -> None:
     win.use_slideshow_chk.setChecked(bool(win.settings.video.use_image_slideshow))
     form_video.addRow("", win.use_slideshow_chk)
 
+    win.pro_mode_chk = QCheckBox("Pro mode (one generated image per output frame)")
+    win.pro_mode_chk.setChecked(bool(getattr(win.settings.video, "pro_mode", False)))
+    win.pro_mode_chk.setToolTip(
+        "Frame-accurate slideshow: generates one still per output frame (round(clip length × FPS)); "
+        "each frame is text-to-image from that beat’s prompt (no cross-frame style blending). "
+        "Encodes to a normal MP4; PNGs in assets are intermediates. "
+        "For true motion from a video diffusion model, turn off slideshow and use clip/motion mode instead."
+    )
+    form_video.addRow("", win.pro_mode_chk)
+
+    win.pro_clip_seconds_spin = QDoubleSpinBox()
+    win.pro_clip_seconds_spin.setRange(0.5, 120.0)
+    win.pro_clip_seconds_spin.setSingleStep(0.5)
+    win.pro_clip_seconds_spin.setDecimals(1)
+    win.pro_clip_seconds_spin.setValue(float(getattr(win.settings.video, "pro_clip_seconds", 4.0)))
+    win.pro_clip_seconds_spin.setToolTip("Output duration in seconds; frame count ≈ this × FPS (see preflight for caps).")
+    form_video.addRow("Pro clip length (seconds)", win.pro_clip_seconds_spin)
+
     win.clips_spin = QSpinBox()
     win.clips_spin.setRange(1, 10)
     win.clips_spin.setValue(int(getattr(win.settings.video, "clips_per_video", 3)))
@@ -248,6 +266,34 @@ def attach_video_tab(win) -> None:
     win.prompt_cond_chk = QCheckBox("Stronger prompt conditioning (scene types + negatives)")
     win.prompt_cond_chk.setChecked(bool(getattr(win.settings.video, "prompt_conditioning", True)))
     lay.addWidget(win.prompt_cond_chk)
+
+    sph = QLabel("Story pipeline (LLM)")
+    sph.setStyleSheet("font-size: 13px; font-weight: 600; margin-top: 10px;")
+    lay.addWidget(sph)
+
+    win.story_multistage_chk = QCheckBox("Multi-stage script review (format-specific LLM passes)")
+    win.story_multistage_chk.setChecked(bool(getattr(win.settings.video, "story_multistage_enabled", False)))
+    win.story_multistage_chk.setToolTip(
+        "Runs extra local LLM passes after the first draft: beat structure, safety, length, and clarity "
+        "(news/explainer) or dialogue, pacing, and punchlines (cartoon/unhinged). Slower but higher quality."
+    )
+    lay.addWidget(win.story_multistage_chk)
+
+    win.story_web_chk = QCheckBox("Gather web context for the script (Firecrawl search + scrape)")
+    win.story_web_chk.setChecked(bool(getattr(win.settings.video, "story_web_context", False)))
+    win.story_web_chk.setToolTip(
+        "Requires Firecrawl enabled with a valid API key on the API tab. Builds a short digest saved under "
+        "the run folder and feeds it into script generation and refinement."
+    )
+    lay.addWidget(win.story_web_chk)
+
+    win.story_refimg_chk = QCheckBox("Download reference images for diffusion (from scraped pages)")
+    win.story_refimg_chk.setChecked(bool(getattr(win.settings.video, "story_reference_images", False)))
+    win.story_refimg_chk.setToolTip(
+        "Saves a few images under the run folder and uses the first as an img2img init for the first generated "
+        "frame when your image model supports image-to-image. Needs Firecrawl for discovery; SDXL-style models work best."
+    )
+    lay.addWidget(win.story_refimg_chk)
 
     info = QLabel("Tip: On 8GB VRAM, the app loads/unloads models per stage to reduce OOM risk. Motion, transitions, and audio mix live on the Effects tab.")
     info.setStyleSheet("color: #B7B7C2; margin-top: 6px;")
@@ -361,6 +407,23 @@ def attach_video_tab(win) -> None:
     win._mark_video_template_custom = _mark_video_template_custom
     win._video_platform_preset_id = ""
 
+    def _sync_pro_mode_ui() -> None:
+        pro = bool(win.pro_mode_chk.isChecked())
+        lbl = form_video.labelForField(win.images_spin)
+        if lbl is not None:
+            lbl.setVisible(not pro)
+        win.images_spin.setVisible(not pro)
+        win.pro_clip_seconds_spin.setEnabled(pro)
+        if pro:
+            win.use_slideshow_chk.setChecked(True)
+            win.use_slideshow_chk.setEnabled(False)
+        else:
+            win.use_slideshow_chk.setEnabled(True)
+
+    def _on_pro_mode_toggled(*_a) -> None:
+        _sync_pro_mode_ui()
+        _mark_video_template_custom()
+
     win._platform_preset_tile_group.buttonClicked.connect(_on_preset_tile_clicked)
 
     win.format_combo.currentIndexChanged.connect(lambda *_: _mark_video_template_custom())
@@ -374,7 +437,7 @@ def attach_video_tab(win) -> None:
         win.clip_seconds_spin,
     ):
         _spin.valueChanged.connect(lambda *_: _mark_video_template_custom())
-    win.pro_mode_chk.toggled.connect(lambda *_: _mark_video_template_custom())
+    win.pro_mode_chk.toggled.connect(_on_pro_mode_toggled)
     win.pro_clip_seconds_spin.valueChanged.connect(lambda *_: _mark_video_template_custom())
 
     # Restore template selection from settings (prefer saved id, else infer from numbers)

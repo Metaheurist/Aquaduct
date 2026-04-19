@@ -28,6 +28,8 @@ from src.models.model_manager import (
 import main as pipeline_main
 from src.render.artist import generate_images
 from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc, expand_custom_video_instructions, generate_script
+from src.content.story_context import build_script_context
+from src.content.story_pipeline import run_multistage_refinement
 from src.content.brain import expand_custom_field_text, generate_character_from_preset_llm
 from src.core.config import get_paths
 from src.content.character_presets import CharacterAutoPreset, GeneratedCharacterFields
@@ -1032,6 +1034,7 @@ class StoryboardWorker(QThread):
             paths = pipeline_main.get_paths()
             models = pipeline_main.get_models()
             app = self.settings
+            diffusion_ref_path: Path | None = None
 
             llm_id = (app.llm_model_id or "").strip() or models.llm_id
             img_id = (app.image_model_id or "").strip() or models.sdxl_turbo_id
@@ -1078,6 +1081,24 @@ class StoryboardWorker(QThread):
                 if self.run_control is not None:
                     self.run_control.checkpoint()
 
+                script_digest = ""
+                script_ref_notes = ""
+                if bool(getattr(app.video, "story_web_context", False)) or bool(
+                    getattr(app.video, "story_reference_images", False)
+                ):
+                    ctx_dir = paths.cache_dir / "storyboard_script_context"
+                    ctx_dir.mkdir(parents=True, exist_ok=True)
+                    script_digest, _, diffusion_ref_path, script_ref_notes = build_script_context(
+                        topic_tags=tags,
+                        source_titles=[first_line],
+                        stored_firecrawl_key=str(getattr(app, "firecrawl_api_key", "") or ""),
+                        firecrawl_enabled=bool(getattr(app, "firecrawl_enabled", False)),
+                        want_web=bool(getattr(app.video, "story_web_context", False)),
+                        want_refs=bool(getattr(app.video, "story_reference_images", False)),
+                        out_dir=ctx_dir,
+                        extra_markdown=raw_inst[:8000],
+                    )
+
                 expanded = expand_custom_video_instructions(
                     model_id=llm_id,
                     raw_instructions=raw_inst,
@@ -1098,8 +1119,26 @@ class StoryboardWorker(QThread):
                     video_format=vf,
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
+                    supplement_context=script_digest,
                 )
                 pkg = enforce_arc(pkg, video_format=vf)
+                if bool(getattr(app.video, "story_multistage_enabled", False)):
+
+                    def _ms_sb(task: str, pct: int, msg: str) -> None:
+                        if task == "llm_load":
+                            self.progress.emit("script_llm_load", pct, pct, msg)
+                        elif task == "llm_generate":
+                            self.progress.emit("script_llm_gen", pct, pct, msg)
+
+                    pkg = run_multistage_refinement(
+                        pkg,
+                        video_format=vf,
+                        model_id=llm_id,
+                        web_digest=script_digest,
+                        reference_notes=script_ref_notes,
+                        try_llm_4bit=try_llm_4bit,
+                        on_llm_task=_ms_sb,
+                    )
             else:
                 cm = news_cache_mode_for_run(app)
                 self.progress.emit(
@@ -1174,6 +1213,24 @@ class StoryboardWorker(QThread):
                     except Exception:
                         article_excerpt = ""
 
+                script_digest = ""
+                script_ref_notes = ""
+                if bool(getattr(app.video, "story_web_context", False)) or bool(
+                    getattr(app.video, "story_reference_images", False)
+                ):
+                    ctx_dir = paths.cache_dir / "storyboard_script_context"
+                    ctx_dir.mkdir(parents=True, exist_ok=True)
+                    script_digest, _, diffusion_ref_path, script_ref_notes = build_script_context(
+                        topic_tags=tags,
+                        source_titles=titles,
+                        stored_firecrawl_key=str(getattr(app, "firecrawl_api_key", "") or ""),
+                        firecrawl_enabled=bool(getattr(app, "firecrawl_enabled", False)),
+                        want_web=bool(getattr(app.video, "story_web_context", False)),
+                        want_refs=bool(getattr(app.video, "story_reference_images", False)),
+                        out_dir=ctx_dir,
+                        extra_markdown=(article_excerpt or "")[:12000],
+                    )
+
                 pkg = generate_script(
                     model_id=llm_id,
                     items=sources,
@@ -1185,8 +1242,26 @@ class StoryboardWorker(QThread):
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                     article_excerpt=article_excerpt,
+                    supplement_context=script_digest,
                 )
                 pkg = enforce_arc(pkg, video_format=vf)
+                if bool(getattr(app.video, "story_multistage_enabled", False)):
+
+                    def _ms2(task: str, pct: int, msg: str) -> None:
+                        if task == "llm_load":
+                            self.progress.emit("script_llm_load", pct, pct, msg)
+                        elif task == "llm_generate":
+                            self.progress.emit("script_llm_gen", pct, pct, msg)
+
+                    pkg = run_multistage_refinement(
+                        pkg,
+                        video_format=vf,
+                        model_id=llm_id,
+                        web_digest=script_digest,
+                        reference_notes=script_ref_notes,
+                        try_llm_4bit=try_llm_4bit,
+                        on_llm_task=_ms2,
+                    )
 
             prepare_for_next_model()
 
@@ -1218,6 +1293,16 @@ class StoryboardWorker(QThread):
                 self.run_control.checkpoint()
 
             self.progress.emit("storyboard_images", 0, -1, "Loading image model…")
+            _ref_kw: dict = {}
+            if (
+                diffusion_ref_path is not None
+                and diffusion_ref_path.exists()
+                and bool(getattr(app.video, "story_reference_images", False))
+            ):
+                _ref_kw = {
+                    "external_reference_image": diffusion_ref_path,
+                    "external_reference_strength": 0.55,
+                }
             gen = generate_images(
                 sdxl_turbo_model_id=img_id,
                 prompts=prompts,
@@ -1228,6 +1313,7 @@ class StoryboardWorker(QThread):
                 allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
                 on_image_progress=_img_pct,
                 art_style_preset_id=str(getattr(app, "art_style_preset_id", None) or "balanced"),
+                **_ref_kw,
             )
             scene_paths = [g.path for g in gen]
 

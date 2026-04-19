@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,6 +10,7 @@ import numpy as np
 from src.core.config import get_paths
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
+from src.render.utils_ffmpeg import ensure_ffmpeg
 from src.util.utils_vram import cleanup_vram, vram_guard
 
 
@@ -195,6 +198,59 @@ def _fallback_clip_from_image(out_path: Path, *, fps: int, seconds: float, w: in
     fr = np.zeros((h, w, 3), dtype=np.uint8)
     fr[:, :, :] = (10, 10, 16)
     _write_mp4_from_frames([fr] * frames_n, out_path, fps=fps)
+
+
+def extract_pngs_from_mp4(
+    mp4: Path,
+    out_dir: Path,
+    *,
+    n: int,
+    ffmpeg_dir: Path,
+    prefix: str = "img_",
+) -> list[Path]:
+    """
+    Decode ``n`` evenly spaced frames from an MP4 into ``out_dir``/{prefix}001.png …
+    Used for Pro mode when the Video slot runs text-to-video (e.g. Zeroscope).
+    """
+    exe = ensure_ffmpeg(ffmpeg_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp = out_dir / "_pro_extract_frames"
+    tmp.mkdir(parents=True, exist_ok=True)
+    for old in tmp.glob("f_*.png"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    pat = str(tmp / "f_%06d.png")
+    subprocess.run(
+        [str(exe), "-y", "-i", str(mp4), "-vsync", "0", pat],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    frames = sorted(tmp.glob("f_*.png"))
+    if not frames:
+        raise RuntimeError(f"No frames extracted from {mp4}")
+    n = max(1, int(n))
+    out_paths: list[Path] = []
+    if len(frames) <= n:
+        for i in range(n):
+            src = frames[min(i, len(frames) - 1)]
+            dst = out_dir / f"{prefix}{i + 1:03d}.png"
+            shutil.copy2(src, dst)
+            out_paths.append(dst)
+    else:
+        idxs = [int(round(j * (len(frames) - 1) / max(1, n - 1))) for j in range(n)] if n > 1 else [0]
+        for i, ix in enumerate(idxs):
+            dst = out_dir / f"{prefix}{i + 1:03d}.png"
+            shutil.copy2(frames[ix], dst)
+            out_paths.append(dst)
+    for p in frames:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    return out_paths
 
 
 def generate_clips(

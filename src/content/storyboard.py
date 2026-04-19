@@ -77,6 +77,20 @@ def _shot_cycle(i: int) -> ShotType:
     return ("wide", "medium", "close")[int(i) % 3]  # type: ignore[return-value]
 
 
+def _merge_narration_into_weak_prompt(narration: str, visual: str, *, min_words: int = 10) -> str:
+    """If the LLM returned a vague visual line, anchor diffusion with a short clause from the spoken beat."""
+    v = (visual or "").strip()
+    if len(v.split()) >= min_words:
+        return v
+    words = [w for w in (narration or "").replace("\n", " ").split() if w]
+    clip = " ".join(words[:22])
+    if not clip:
+        return v
+    if not v:
+        return f"illustration of: {clip}"
+    return f"{v}; scene shows: {clip}"
+
+
 def _overlay_for(scene_text: str, *, idx: int, overlay_budget: int) -> OverlayType:
     if overlay_budget <= 0:
         return "none"
@@ -99,7 +113,7 @@ def build_storyboard(
     """
     dprint("storyboard", "build_storyboard", f"title={pkg.title[:80]!r}", f"max_scenes={max_scenes}")
     segs = list(pkg.segments or [])[: max(1, int(max_scenes))]
-    raw_prompts = [s.visual_prompt for s in segs]
+    raw_prompts = [_merge_narration_into_weak_prompt(s.narration, s.visual_prompt) for s in segs]
     if character is not None and (character.visual_style or "").strip():
         vs = character.visual_style.strip()
         prompts = [f"{vs}, {p}" if (p or "").strip() else vs for p in raw_prompts]

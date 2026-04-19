@@ -2,16 +2,18 @@
 
 ## Where models are used
 - **Script model (LLM)**: [`src/content/brain.py`](../src/content/brain.py) (local inference; 4-bit target when supported)
-- **Video/images model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers text-to-image, SDXL Turbo default)
+- **Image model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers text-to-image for stills and keyframes; SDXL Turbo default)
+- **Video model**: [`src/render/clips.py`](../src/render/clips.py) (motion: text-to-video / image-to-video). **Pro** slideshow uses this slot only (e.g. ZeroScope → one T2V clip, frames extracted; or a T2I repo id for per-frame stills). **Clip mode** (non-slideshow) still uses Image for keyframes + Video for animation.
 - **Voice model (TTS)**: [`src/speech/voice.py`](../src/speech/voice.py) (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
 
 ## UI model selection
 In the UI **Model** tab you can pick and download models separately for:
-- Script
-- Video/images
-- Voice
+- Script (LLM)
+- Image (diffusion stills)
+- Video (motion / Pro / clip pipeline)
+- Voice (TTS)
 
-**Auto-fit for this PC** sets all three from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../src/models/hardware.py) (same heuristics as **My PC** fit badges). It saves settings after applying.
+**Auto-fit for this PC** sets all four from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../src/models/hardware.py) (same heuristics as **My PC** fit badges). It saves settings after applying.
 
 **Script model and UI “brain” features** (🧠 expand, **Characters → Generate with LLM**) resolve the repo id from the **Script (LLM)** dropdown’s **current selection** first, then saved settings — so they load the same weights as the visible combo without requiring **Save** first (`resolve_llm_model_id` in [`UI/brain_expand.py`](../UI/brain_expand.py)).
 
@@ -36,7 +38,7 @@ So weights might exist in the **global HF cache** while the Model tab still show
 
 Notes:
 - **Gated models** (e.g. Meta Llama): accept the license on the model’s Hugging Face page, then paste a **read** token under **API** and **Save**. [`ensure_hf_token_in_env`](../src/models/hf_access.py) copies the saved token into `HF_TOKEN` whenever the process env had none — including when **Hugging Face API** is toggled off (downloads still need auth). [`_generate_with_transformers`](../src/content/brain.py) also refreshes the token from `ui_settings.json` before loading the tokenizer. Hub errors 401 / gated-repo are shortened for dialogs via [`humanize_hf_hub_error`](../src/models/hf_access.py).
-- **Download ▾ → Download all voice models** queues every curated TTS snapshot (including Microsoft **SpeechT5** / **MMS-TTS**, Kokoro, MeloTTS, Parler, XTTS, Bark, …), skipping repos already present under `models/`. Same mechanism as **Download ALL models**, but voice-only (smaller total than full script+video+voice).
+- **Download ▾ → Download all voice models** queues every curated TTS snapshot (including Microsoft **SpeechT5** / **MMS-TTS**, Kokoro, MeloTTS, Parler, XTTS, Bark, …), skipping repos already present under `models/`. Same mechanism as **Download ALL models**, but voice-only (smaller total than full curated set).
 - Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
 - In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.
 - The UI treats a repo as **already installed** when `models/<repo>/` exists and has enough bytes on disk (not an empty or partial folder). **Download selected**, **download all selected**, and **download all** then **skip** that repo and move on—nothing is re-fetched unless you delete the folder or pick a different repo.
@@ -78,5 +80,5 @@ Verification calls Hugging Face Hub (`huggingface_hub.HfApi.verify_repo_checksum
 Helpers live in `src/models/model_manager.py` (`verify_project_model_integrity`, `list_installed_repo_ids_from_disk`, `project_dirname_to_repo_id`). The UI runs checks in a background thread (`ModelIntegrityVerifyWorker` in `UI/workers.py`); large models can take several minutes.
 
 ## Integrity status in the UI (badges)
-After verification, per-repo outcomes are merged into `data/model_integrity_status.json` (see `src/models/model_integrity_cache.py`). The **Model** tab uses that file to label each dropdown row (script / video / voice), so you can see **Verified** vs **Missing** / **Corrupt** without re-running the full scan. Clear **Clear data** removes the cache file alongside other local state.
+After verification, per-repo outcomes are merged into `data/model_integrity_status.json` (see `src/models/model_integrity_cache.py`). The **Model** tab uses that file to label each dropdown row (script / image / video / voice), so you can see **Verified** vs **Missing** / **Corrupt** without re-running the full scan. Clear **Clear data** removes the cache file alongside other local state.
 

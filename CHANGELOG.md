@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Story pipeline: multi-stage script + web context + reference images
+- **Video settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): new toggles under `VideoSettings`:
+  - `story_multistage_enabled`: run format-specific multi-pass script refinement (beat structure, safety, length, clarity; comedy modes focus dialogue/pacing/punchline).
+  - `story_web_context`: optional Firecrawl search/scrape digest for extra context (saved under `runs/.../assets/script_context/web_digest.md`).
+  - `story_reference_images`: optionally download a few images from scraped pages and use the first as an **img2img** init for the first generated frame (when supported).
+- **Pipeline wiring** ([`main.py`](main.py), [`UI/workers.py`](UI/workers.py)): context gathering + refinement run before storyboard/image generation; storyboard preview path uses cache-backed context.
+- **Diffusion** ([`src/render/artist.py`](src/render/artist.py)): `generate_images` accepts `external_reference_image` + `external_reference_strength` and uses it for first-frame init (style chain and non-chain).
+
 ### Source layout (Python packages)
 - Flat `src/*.py` modules are reorganized into packages: **`src/core/`** (config, paths, app dirs), **`src/content/`** (brain, crawler, storyboard, topics, …), **`src/render/`** (artist, editor, captions, clips, ffmpeg slideshow, …), **`src/runtime/`** (preflight, pipeline control), **`src/settings/`** (UI settings, video/effects/art-style presets), **`src/speech/`** (voice, TTS, audio FX), **`src/platform/`** (upload tasks, TikTok/YouTube), **`src/util/`** (ffmpeg, VRAM, CLI helpers), and **`src/models/`** (HF access, model manager, hardware, torch install, pillow compat). Imports and tests updated throughout; legacy one-file paths removed.
 - **Docs**: cross-references under `docs/` and file links in this changelog’s **Unreleased** / historical entries now use the package paths above (no stale `src/brain.py`-style links).

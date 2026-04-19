@@ -16,12 +16,15 @@ def test_rank_models_for_auto_fit_returns_ordered_lists() -> None:
     r = rank_models_for_auto_fit(opts, hw)
     assert isinstance(r, AutoFitRanked)
     assert r.script_repo_ids
-    assert r.video_combo_values
+    assert r.image_repo_ids
+    assert r.video_repo_ids
     assert r.voice_repo_ids
     assert "Auto-fit" in r.log_summary
     assert "Script:" in r.log_summary
-    # 8GB VRAM: SDXL Turbo should rank before paired SVD (heavier).
-    assert r.video_combo_values[0] == "stabilityai/sdxl-turbo" or "sdxl-turbo" in r.video_combo_values[0]
+    # 8GB VRAM: SDXL Turbo should rank first among image models.
+    assert r.image_repo_ids[0] == "stabilityai/sdxl-turbo" or "sdxl-turbo" in r.image_repo_ids[0]
+    # Motion: Zeroscope is lighter than SVD in preference order.
+    assert r.video_repo_ids[0] == "cerspense/zeroscope_v2_576w"
 
 
 def test_rank_prefers_lighter_video_on_low_vram() -> None:
@@ -29,7 +32,7 @@ def test_rank_prefers_lighter_video_on_low_vram() -> None:
     hw = HardwareInfo(os="t", cpu="t", ram_gb=16.0, gpu_name="G", vram_gb=4.0)
     r = rank_models_for_auto_fit(opts, hw)
     # SD 1.5 class should beat SDXL Turbo when VRAM is tight.
-    assert r.video_combo_values[0] == "runwayml/stable-diffusion-v1-5"
+    assert r.image_repo_ids[0] == "runwayml/stable-diffusion-v1-5"
 
 
 def test_voice_fit_marker_penalizes_bark_on_small_vram() -> None:
