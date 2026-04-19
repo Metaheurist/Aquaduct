@@ -4,7 +4,7 @@
 Central place for:
 - model IDs
 - output/cache directories
-- basic video settings (resolution, FPS, clip durations)
+- basic video settings (resolution, FPS, scene / segment durations)
 - UI/pipeline settings overrides (via `AppSettings`)
 
 ## Paths
@@ -26,11 +26,12 @@ Central place for:
 ## Video settings
 `VideoSettings` defaults:
 - 1080×1920, 30fps
-- micro-clip min/max seconds
-- images per video (slideshow **non–pro** mode)
-- **`pro_mode` / `pro_clip_seconds`**: when `pro_mode` is true and slideshow is on, the pipeline generates **round(pro_clip_seconds × fps)** diffusion frames (one per output frame), uses the SDXL reference chain between frames, encodes a fixed-length timeline, and trims/pads narration to `pro_clip_seconds`. Optional env **`AQUADUCT_PRO_MAX_FRAMES`** caps the frame count.
+- micro-scene min/max seconds (slideshow segment length)
+- images per video (slideshow **non–Pro** mode)
+- **`pro_mode` / `pro_clip_seconds`**: when **`pro_mode`** is true and **slideshow is off** (normal UI), [`main.py`](../main.py) runs **text-to-video** in **scene** segments (`pro_clip_seconds` each, with script-driven splits). When **`pro_mode`** is true and **slideshow is on** (legacy / hand-edited settings), the pipeline may still generate **round(pro_clip_seconds × fps)** diffusion frames (one per output frame), SDXL reference chain between frames, fixed-length timeline, and trim/pad narration to `pro_clip_seconds`. Optional env **`AQUADUCT_PRO_MAX_FRAMES`** caps that frame count.
+- **`clips_per_video` / `clip_seconds`**: used for **motion mode** (slideshow off, Pro off): number and duration of **scene** segments from the Video model path (UI labels say “scenes”; keys stay historical).
 - bitrate preset (low/med/high)
-- export micro-clips toggle
+- export micro-scenes toggle (`export_microclips` in settings — key name unchanged)
 - **`platform_preset_id`**: last selected **platform template** id from the Video tab tiles (empty string = **Custom**). See [`src/settings/video_platform_presets.py`](../src/settings/video_platform_presets.py).
 
 ## App settings (UI + pipeline)

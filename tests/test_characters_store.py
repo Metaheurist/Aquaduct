@@ -72,7 +72,8 @@ def test_resolve_character_for_pipeline_first_saved_when_no_active(patch_paths, 
     d = new_character(name="Alpha")
     save_all([c, d])
     got = resolve_character_for_pipeline(AppSettings(active_character_id=""), video_format="news")
-    assert got.id == d.id
+    # Saved characters are only used when explicitly selected.
+    assert got.id not in (c.id, d.id)
 
 
 def test_resolve_character_for_pipeline_prefers_active(patch_paths, tmp_repo_root):

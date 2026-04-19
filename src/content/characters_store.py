@@ -214,9 +214,13 @@ def _ephemeral_character_for_show(
     tag_hint = ", ".join((topic_tags or [])[:4]) or "general audience"
 
     if vf == "unhinged":
+        foil_first = rng.choice(["Blake", "Taylor", "Harper", "Rowan", "Reese", "Parker", "Sam", "Alex"])
+        foil_last = rng.choice(["Buzzer", "Muffin", "Staple", "Sprocket", "Gizmo", "Biscuit", "Pebble", "Widget"])
+        foil = f"{foil_first} {foil_last}"
         identity = (
-            f"The show's core cast for this vertical: {name} is the cynical host who commits to the bit; "
-            "a recurring off-screen foil (voice-only) interrupts with fake moral authority. "
+            "Cast for this vertical (at least 2 characters):\n"
+            f"- {name}: cynical host who commits to the bit\n"
+            f"- {foil}: recurring foil who interrupts with fake moral authority\n\n"
             f"Topic vibe: {tag_hint}. Invent original jokes — do not reference real shows or celebrities."
         )
         visual = (
@@ -224,8 +228,13 @@ def _ephemeral_character_for_show(
             "backgrounds when needed, 9:16 vertical"
         )
     elif vf == "cartoon":
+        side_first = rng.choice(["Milo", "Luna", "Nova", "Pip", "Zoe", "Kai", "Nico", "Sunny", "Scout", "Bean"])
+        side_last = rng.choice(["Spark", "Pogo", "Waffle", "Tinker", "Doodle", "Bop", "Marble", "Popcorn", "Chirp", "Twig"])
+        side = f"{side_first} {side_last}"
         identity = (
-            f"Host character {name}: playful, expressive, slightly chaotic energy for cartoon comedy. "
+            "Cast for this vertical (at least 2 characters):\n"
+            f"- {name}: playful, expressive, slightly chaotic energy\n"
+            f"- {side}: the straight-man friend who reacts and escalates the joke\n\n"
             f"Topic vibe: {tag_hint}."
         )
         visual = "Bright 2D cartoon, bold outlines, rubber-hose motion, friendly palette, 9:16 vertical"
@@ -262,6 +271,63 @@ def _ephemeral_character_for_show(
     )
 
 
+def fallback_cast_for_show(*, video_format: str, topic_tags: list[str] | None, headline_seed: str) -> list[dict[str, Any]]:
+    """
+    Deterministic heuristic cast when LLM cast generation fails.
+    Returns a structured list suitable for saving under assets/generated_cast.json.
+    """
+    vf = normalize_video_format(video_format)
+    seed = f"{headline_seed}|{vf}|{'|'.join(topic_tags or [])}"
+    digest = zlib.adler32(seed.encode("utf-8", errors="ignore")) & 0xFFFFFFFF
+    rng = random.Random(digest)
+
+    def _nm() -> str:
+        first = rng.choice(["Jordan", "Riley", "Casey", "Morgan", "Quinn", "Avery", "Jamie", "Drew", "Sage", "Remy"])
+        last = rng.choice(["Vex", "Noodle", "Kettle", "Flux", "Spindle", "Gribble", "Wobble", "Thunk", "Pocket", "Lint"])
+        return f"{first} {last}"
+
+    tag_hint = ", ".join((topic_tags or [])[:4]) or "general audience"
+    neg = "Slurs, hate, harassment, or real-person cruelty; do not copy real shows or characters."
+    if vf in ("news", "explainer"):
+        host = _nm()
+        return [
+            {
+                "name": host,
+                "role": "Narrator/host",
+                "identity": f"Host {host}: clear, credible, plain language. Topic vibe: {tag_hint}.",
+                "visual_style": (
+                    "Clean modern vertical studio look, readable overlays, 9:16"
+                    if vf == "news"
+                    else "Clean infographic-adjacent visuals, diagrams, readable labels, 9:16"
+                ),
+                "negatives": neg,
+            }
+        ]
+
+    a = _nm()
+    b = _nm()
+    return [
+        {
+            "name": a,
+            "role": "Lead / instigator",
+            "identity": f"{a}: commits to the bit, pushes the premise. Topic vibe: {tag_hint}.",
+            "visual_style": "Bright 2D cartoon, bold outlines, expressive acting, 9:16 vertical"
+            if vf == "cartoon"
+            else "Flat 2D adult-animation satire, exaggerated expressions, 9:16 vertical",
+            "negatives": neg,
+        },
+        {
+            "name": b,
+            "role": "Foil / straight-man",
+            "identity": f"{b}: reacts, questions, escalates the joke without narrating neutrally.",
+            "visual_style": "Bright 2D cartoon, bold outlines, expressive acting, 9:16 vertical"
+            if vf == "cartoon"
+            else "Flat 2D adult-animation satire, exaggerated expressions, 9:16 vertical",
+            "negatives": neg,
+        },
+    ]
+
+
 def resolve_character_for_pipeline(
     settings: AppSettings,
     *,
@@ -272,19 +338,100 @@ def resolve_character_for_pipeline(
     """
     Character for script, visuals, and optional voice overrides.
 
-    Uses the active character when set; otherwise the first saved character (by name);
-    otherwise generates a one-off in-memory character for this run (no disk write).
+    Uses the active character when set; otherwise generates a one-off in-memory character for this run
+    (no disk write). Saved characters are only used when explicitly selected.
     """
     ch = resolve_active_character(settings)
     if ch is not None:
         return ch
-    all_c = load_all()
-    if all_c:
-        return sorted(all_c, key=lambda x: x.name.lower())[0]
     return _ephemeral_character_for_show(
         video_format=video_format,
         topic_tags=topic_tags,
         headline_seed=headline_seed or "",
+    )
+
+
+def character_selected_in_settings(settings: AppSettings) -> bool:
+    """True when the user explicitly picked a character (active_character_id non-empty)."""
+    return bool(str(getattr(settings, "active_character_id", "") or "").strip())
+
+
+def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str) -> Character:
+    """
+    Convert a generated cast list into a single Character profile that can be injected into the brain prompt.
+    This keeps the rest of the pipeline compatible (Character is currently a single object).
+    """
+    vf = normalize_video_format(video_format)
+    # Ensure at least one item exists.
+    safe = [c for c in cast if isinstance(c, dict) and str(c.get("name") or "").strip()]
+    if not safe:
+        return _ephemeral_character_for_show(video_format=vf, topic_tags=None, headline_seed="")
+
+    if vf in ("news", "explainer"):
+        c0 = safe[0]
+        name = str(c0.get("name") or "Narrator").strip()[:_MAX_NAME]
+        identity = str(c0.get("identity") or "").strip()
+        if not identity:
+            identity = "Narrator/host: clear, credible, plain language; avoids speculation; hedges uncertainty."
+        visual = str(c0.get("visual_style") or "").strip()
+        negatives = str(c0.get("negatives") or "").strip()
+        return Character(
+            id=uuid.uuid4().hex,
+            name=name or "Narrator",
+            identity=_clip(identity, _MAX_FIELD),
+            visual_style=_clip(visual, _MAX_FIELD),
+            negatives=_clip(negatives, _MAX_FIELD),
+            reference_image_rel="",
+            use_default_voice=True,
+            pyttsx3_voice_id="",
+            kokoro_voice="",
+            elevenlabs_voice_id="",
+        )
+
+    # Comedy modes: embed multiple characters as a cast block.
+    names = [str(c.get("name") or "").strip() for c in safe][:4]
+    name_line = " & ".join([n for n in names[:2] if n]) or (names[0] if names else "Cast")
+    disp = _clip(f"Cast: {name_line}", _MAX_NAME)
+
+    cast_lines: list[str] = []
+    visual_bits: list[str] = []
+    neg_bits: list[str] = []
+    for c in safe[:4]:
+        nm = str(c.get("name") or "").strip()
+        role = str(c.get("role") or "").strip()
+        ident = str(c.get("identity") or "").strip()
+        vis = str(c.get("visual_style") or "").strip()
+        neg = str(c.get("negatives") or "").strip()
+        if nm:
+            head = f"- {nm}" + (f" ({role})" if role else "")
+            body = f"{head}\n  {ident}" if ident else head
+            cast_lines.append(body)
+        if vis:
+            visual_bits.append(vis)
+        if neg:
+            neg_bits.append(neg)
+
+    identity_block = (
+        "Cast (mandatory):\n"
+        + "\n".join(cast_lines)
+        + "\n\nNarration must be in-character dialogue between the cast (or first-person lines), not a neutral announcer.\n"
+    )
+    visual_style = " | ".join([v for v in visual_bits if v])[:_MAX_FIELD]
+    negatives = ", ".join([n for n in neg_bits if n])[:_MAX_FIELD]
+    if not negatives:
+        negatives = "Slurs, hate, harassment, real-person cruelty; do not copy real shows or characters."
+
+    return Character(
+        id=uuid.uuid4().hex,
+        name=disp or "Cast",
+        identity=_clip(identity_block, _MAX_FIELD),
+        visual_style=_clip(visual_style, _MAX_FIELD),
+        negatives=_clip(negatives, _MAX_FIELD),
+        reference_image_rel="",
+        use_default_voice=True,
+        pyttsx3_voice_id="",
+        kokoro_voice="",
+        elevenlabs_voice_id="",
     )
 
 

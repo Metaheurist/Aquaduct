@@ -171,13 +171,12 @@ def attach_video_tab(win) -> None:
     win.use_slideshow_chk.setChecked(bool(win.settings.video.use_image_slideshow))
     form_video.addRow("", win.use_slideshow_chk)
 
-    win.pro_mode_chk = QCheckBox("Pro mode (one generated image per output frame)")
+    win.pro_mode_chk = QCheckBox("Pro mode (text-to-video; multiple scenes from script)")
     win.pro_mode_chk.setChecked(bool(getattr(win.settings.video, "pro_mode", False)))
     win.pro_mode_chk.setToolTip(
-        "Frame-accurate slideshow: generates one still per output frame (round(clip length × FPS)); "
-        "each frame is text-to-image from that beat’s prompt (no cross-frame style blending). "
-        "Encodes to a normal MP4; PNGs in assets are intermediates. "
-        "For true motion from a video diffusion model, turn off slideshow and use clip/motion mode instead."
+        "Uses the Video model slot only (e.g. ZeroScope). The script is turned into one or more text-to-video prompts; "
+        "each generation is a scene segment, then segments are concatenated. Slideshow must be off. "
+        "See preflight for model requirements."
     )
     form_video.addRow("", win.pro_mode_chk)
 
@@ -186,18 +185,21 @@ def attach_video_tab(win) -> None:
     win.pro_clip_seconds_spin.setSingleStep(0.5)
     win.pro_clip_seconds_spin.setDecimals(1)
     win.pro_clip_seconds_spin.setValue(float(getattr(win.settings.video, "pro_clip_seconds", 4.0)))
-    win.pro_clip_seconds_spin.setToolTip("Output duration in seconds; frame count ≈ this × FPS (see preflight for caps).")
-    form_video.addRow("Pro clip length (seconds)", win.pro_clip_seconds_spin)
+    win.pro_clip_seconds_spin.setToolTip(
+        "Target duration per generated scene (seconds). Long beats may split into extra scenes. "
+        "See preflight for model caps."
+    )
+    form_video.addRow("Pro scene length (seconds)", win.pro_clip_seconds_spin)
 
     win.clips_spin = QSpinBox()
     win.clips_spin.setRange(1, 10)
     win.clips_spin.setValue(int(getattr(win.settings.video, "clips_per_video", 3)))
-    form_video.addRow("Clips per video (clip mode)", win.clips_spin)
+    form_video.addRow("Scenes per video (motion mode, slideshow off)", win.clips_spin)
 
     win.clip_seconds_spin = QSpinBox()
     win.clip_seconds_spin.setRange(2, 12)
     win.clip_seconds_spin.setValue(int(round(float(getattr(win.settings.video, "clip_seconds", 4.0)))))
-    form_video.addRow("Seconds per clip (clip mode)", win.clip_seconds_spin)
+    form_video.addRow("Seconds per scene (motion mode, slideshow off)", win.clip_seconds_spin)
 
     win.fps_spin = QSpinBox()
     win.fps_spin.setRange(15, 60)
@@ -207,12 +209,12 @@ def attach_video_tab(win) -> None:
     win.min_clip_spin = QSpinBox()
     win.min_clip_spin.setRange(2, 12)
     win.min_clip_spin.setValue(int(round(win.settings.video.microclip_min_s)))
-    form_video.addRow("Micro-clip min seconds", win.min_clip_spin)
+    form_video.addRow("Micro-scene min seconds", win.min_clip_spin)
 
     win.max_clip_spin = QSpinBox()
     win.max_clip_spin.setRange(3, 15)
     win.max_clip_spin.setValue(int(round(win.settings.video.microclip_max_s)))
-    form_video.addRow("Micro-clip max seconds", win.max_clip_spin)
+    form_video.addRow("Micro-scene max seconds", win.max_clip_spin)
 
     win.bitrate_combo = QComboBox()
     win.bitrate_combo.addItems(["low", "med", "high"])
@@ -222,7 +224,7 @@ def attach_video_tab(win) -> None:
     win.bitrate_combo.currentIndexChanged.connect(lambda: win.bitrate_combo.setToolTip(win.bitrate_combo.currentText()))
     form_video.addRow("Bitrate preset", win.bitrate_combo)
 
-    win.export_microclips_chk = QCheckBox("Export intermediate micro-clips into assets/")
+    win.export_microclips_chk = QCheckBox("Export intermediate micro-scenes into assets/")
     win.export_microclips_chk.setChecked(bool(win.settings.video.export_microclips))
     form_video.addRow("", win.export_microclips_chk)
 
@@ -377,7 +379,7 @@ def attach_video_tab(win) -> None:
             win.pro_mode_chk.setChecked(bool(getattr(pr, "pro_mode", False)))
             win.pro_clip_seconds_spin.setValue(float(getattr(pr, "pro_clip_seconds", 4.0)))
             if getattr(pr, "pro_mode", False):
-                win.use_slideshow_chk.setChecked(True)
+                win.use_slideshow_chk.setChecked(False)
             _sync_pro_mode_ui()
         finally:
             win._applying_video_template = False
@@ -415,7 +417,7 @@ def attach_video_tab(win) -> None:
         win.images_spin.setVisible(not pro)
         win.pro_clip_seconds_spin.setEnabled(pro)
         if pro:
-            win.use_slideshow_chk.setChecked(True)
+            win.use_slideshow_chk.setChecked(False)
             win.use_slideshow_chk.setEnabled(False)
         else:
             win.use_slideshow_chk.setEnabled(True)

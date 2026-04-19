@@ -24,6 +24,27 @@ def _norm_repo_id(model_id: str) -> str:
     return (model_id or "").strip().lower()
 
 
+def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
+    """
+    Text-to-video pipelines often use CLIP text encoders with small context (e.g. 77 tokens).
+    Strip our diffusion-conditioning artifacts and cap by words conservatively.
+    """
+    s = " ".join((prompt or "").split()).strip()
+    if "\nNEGATIVE:" in s:
+        s = s.split("\nNEGATIVE:", 1)[0].strip()
+    low = s.lower()
+    if " negative :" in low:
+        s = s[: low.find(" negative :")].strip()
+    if " negative:" in low:
+        s = s[: low.find(" negative:")].strip()
+    # Conservative caps (word-based) to avoid CLIP overflow.
+    cap = 55 if "zeroscope" in _norm_repo_id(model_id) else 90
+    parts = [p for p in s.split() if p]
+    if len(parts) > cap:
+        s = " ".join(parts[:cap]).strip()
+    return s
+
+
 # Curated video-generation repo ids from ``model_manager.model_options`` (img→vid / text→vid).
 # Keep in sync when adding Hub entries used by ``generate_clips``.
 CURATED_VIDEO_CLIP_REPO_IDS: frozenset[str] = frozenset(
@@ -277,7 +298,7 @@ def generate_clips(
         f"img2vid={bool(init_images)}",
     )
     out_dir.mkdir(parents=True, exist_ok=True)
-    prompts = [p.strip() for p in prompts if p.strip()]
+    prompts = [_strip_negative_and_cap_for_clip(video_model_id, p) for p in prompts if (p or "").strip()]
     if not prompts:
         prompts = ["high-contrast cyberpunk UI, neon, sharp, cinematic, 9:16 composition"]
     prompts = prompts[: max(1, int(max_clips))]

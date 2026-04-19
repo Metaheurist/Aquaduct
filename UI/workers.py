@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import traceback
 from pathlib import Path
@@ -27,7 +28,14 @@ from src.models.model_manager import (
 
 import main as pipeline_main
 from src.render.artist import generate_images
-from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc, expand_custom_video_instructions, generate_script
+from src.content.brain import (
+    VideoPackage,
+    clip_article_excerpt,
+    enforce_arc,
+    expand_custom_video_instructions,
+    generate_cast_from_storyline_llm,
+    generate_script,
+)
 from src.content.story_context import build_script_context
 from src.content.story_pipeline import run_multistage_refinement
 from src.content.brain import expand_custom_field_text, generate_character_from_preset_llm
@@ -36,7 +44,13 @@ from src.content.character_presets import CharacterAutoPreset, GeneratedCharacte
 from src.models.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
 from src.models.model_integrity_cache import classify_integrity_status
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
-from src.content.characters_store import character_context_for_brain, resolve_character_for_pipeline
+from src.content.characters_store import (
+    cast_to_ephemeral_character,
+    character_context_for_brain,
+    character_selected_in_settings,
+    fallback_cast_for_show,
+    resolve_character_for_pipeline,
+)
 from src.render.branding_video import apply_palette_to_prompts
 from src.content.personality_auto import auto_pick_personality
 from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
@@ -1035,6 +1049,7 @@ class StoryboardWorker(QThread):
             models = pipeline_main.get_models()
             app = self.settings
             diffusion_ref_path: Path | None = None
+            generated_cast: list[dict] | None = None
 
             llm_id = (app.llm_model_id or "").strip() or models.llm_id
             img_id = (app.image_model_id or "").strip() or models.sdxl_turbo_id
@@ -1139,6 +1154,30 @@ class StoryboardWorker(QThread):
                         try_llm_4bit=try_llm_4bit,
                         on_llm_task=_ms_sb,
                     )
+                if not character_selected_in_settings(app):
+                    try:
+                        cast = generate_cast_from_storyline_llm(
+                            model_id=llm_id,
+                            video_format=vf,
+                            storyline_title=str(pkg.title or ""),
+                            storyline_text=pkg.narration_text(),
+                            topic_tags=tags,
+                            on_llm_task=_llm_task,
+                            try_llm_4bit=try_llm_4bit,
+                        )
+                        generated_cast = cast
+                        active_ch = cast_to_ephemeral_character(cast=cast, video_format=vf)
+                        char_ctx = character_context_for_brain(active_ch)
+                    except Exception:
+                        try:
+                            generated_cast = fallback_cast_for_show(
+                                video_format=vf, topic_tags=tags, headline_seed=str(pkg.title or "")
+                            )
+                            active_ch = cast_to_ephemeral_character(cast=generated_cast, video_format=vf)
+                            char_ctx = character_context_for_brain(active_ch)
+                        except Exception:
+                            pass
+                        pass
             else:
                 cm = news_cache_mode_for_run(app)
                 self.progress.emit(
@@ -1262,12 +1301,57 @@ class StoryboardWorker(QThread):
                         try_llm_4bit=try_llm_4bit,
                         on_llm_task=_ms2,
                     )
+                if not character_selected_in_settings(app):
+                    try:
+                        cast2 = generate_cast_from_storyline_llm(
+                            model_id=llm_id,
+                            video_format=vf,
+                            storyline_title=str(pkg.title or ""),
+                            storyline_text=pkg.narration_text(),
+                            topic_tags=tags,
+                            on_llm_task=_llm_task,
+                            try_llm_4bit=try_llm_4bit,
+                        )
+                        generated_cast = cast2
+                        active_ch = cast_to_ephemeral_character(cast=cast2, video_format=vf)
+                        char_ctx = character_context_for_brain(active_ch)
+                    except Exception:
+                        try:
+                            generated_cast = fallback_cast_for_show(
+                                video_format=vf,
+                                topic_tags=tags,
+                                headline_seed=str(sources[0].get("title") or "") if sources else "",
+                            )
+                            active_ch = cast_to_ephemeral_character(cast=generated_cast, video_format=vf)
+                            char_ctx = character_context_for_brain(active_ch)
+                        except Exception:
+                            pass
 
             prepare_for_next_model()
 
             safe_dir = pipeline_main.safe_title_to_dirname(pkg.title)
             video_dir = paths.videos_dir / safe_dir
             assets_dir = video_dir / "assets"
+            if not character_selected_in_settings(app):
+                try:
+                    assets_dir.mkdir(parents=True, exist_ok=True)
+                    cast_path = assets_dir / "generated_cast.json"
+                    if generated_cast is not None:
+                        cast_path.write_text(
+                            json.dumps({"video_format": vf, "characters": generated_cast}, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                    else:
+                        cast_path.write_text(
+                            json.dumps(
+                                {"video_format": vf, "character_context": character_context_for_brain(active_ch)},
+                                indent=2,
+                                ensure_ascii=False,
+                            ),
+                            encoding="utf-8",
+                        )
+                except Exception:
+                    pass
             previews_dir = assets_dir / "previews"
             previews_dir.mkdir(parents=True, exist_ok=True)
 

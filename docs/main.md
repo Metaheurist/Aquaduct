@@ -6,7 +6,7 @@
 2. Generate a structured script package (LLM or fallback); optional **character** context from settings ([Characters](characters.md)). In **custom** mode, `src/content/brain.py` first expands instructions (`expand_custom_video_instructions`), then `generate_script(..., creative_brief=..., video_format=...)`. Optional LLM factcheck rewrite applies when article text exists (preset runs with fetched text)
 3. TTS + captions ([Voice](voice.md): Kokoro target, `pyttsx3` fallback, optional ElevenLabs when configured)
 4. Images
-5. Edit micro-clips + final MP4
+5. Edit micro-scenes (slideshow) or concatenate motion / Pro **scene** segments + final MP4
 6. Write per-video outputs under `videos/<safe_video_title>/`
 
 It also exposes a `run_once(settings: AppSettings)` function that the desktop UI calls.

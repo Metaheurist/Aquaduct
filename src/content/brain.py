@@ -1572,6 +1572,102 @@ def generate_character_from_preset_llm(
     )
 
 
+def generate_cast_from_storyline_llm(
+    *,
+    model_id: str,
+    video_format: str,
+    storyline_title: str,
+    storyline_text: str,
+    topic_tags: list[str] | None = None,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 1200,
+    try_llm_4bit: bool = True,
+) -> list[dict[str, Any]]:
+    """
+    Generate an ephemeral per-run cast (not saved to global characters.json).
+
+    - News/explainer: 1 narrator/host character.
+    - Cartoon/unhinged: at least 2 distinct characters whose roles fit the plot.
+    """
+    vf = (video_format or "news").strip().lower()
+    min_chars = 1 if vf in ("news", "explainer") else 2
+    tags = [t.strip() for t in (topic_tags or []) if isinstance(t, str) and t.strip()][:12]
+    tags_line = json.dumps(tags, ensure_ascii=False)
+    st = (storyline_text or "").strip()
+    if len(st) > 8000:
+        st = st[:7999] + "…"
+    title = (storyline_title or "").strip()[:160]
+    prompt = (
+        "You create ORIGINAL characters for a short-form vertical video (9:16).\n"
+        "Goal: generate a cast that matches the storyline and the selected video format mode.\n"
+        f"Video format: {vf!r}\n"
+        f"Minimum characters: {min_chars}\n"
+        f"Topic tags (optional bias): {tags_line}\n\n"
+        "Story title:\n"
+        f"{title}\n\n"
+        "Storyline (spoken narration + beat summaries; use to align character roles and relationships):\n"
+        f"{st}\n\n"
+        "Output STRICT JSON ONLY with this schema:\n"
+        "{\n"
+        '  "characters": [\n'
+        "    {\n"
+        '      "name": string,\n'
+        '      "role": string,\n'
+        '      "identity": string,\n'
+        '      "visual_style": string,\n'
+        '      "negatives": string\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "Rules:\n"
+        f"- Return at least {min_chars} characters.\n"
+        "- Do not imitate real celebrities or copyrighted characters.\n"
+        "- For news/explainer: keep it a single narrator/host.\n"
+        "- For cartoon/unhinged: make the story playable as dialogue between the cast.\n"
+        "- Output ONLY valid JSON (no markdown fences, no extra text).\n"
+    )
+
+    with vram_guard():
+        raw = _generate_with_transformers(
+            model_id,
+            prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=max_new_tokens,
+            try_llm_4bit=try_llm_4bit,
+        )
+    blob = extract_first_json_object(raw or "")
+    if not isinstance(blob, dict):
+        raise ValueError("Cast generator did not return JSON object.")
+    chars = blob.get("characters")
+    if not isinstance(chars, list):
+        raise ValueError("Cast generator JSON missing characters[].")
+    out: list[dict[str, Any]] = []
+    for c in chars:
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name") or "").strip()
+        role = str(c.get("role") or "").strip()
+        identity = str(c.get("identity") or "").strip()
+        visual_style = str(c.get("visual_style") or "").strip()
+        negatives = str(c.get("negatives") or "").strip()
+        if not name:
+            continue
+        out.append(
+            {
+                "name": name[:120],
+                "role": role[:240],
+                "identity": identity[:8000],
+                "visual_style": visual_style[:8000],
+                "negatives": negatives[:8000],
+            }
+        )
+        if len(out) >= 6:
+            break
+    if len(out) < min_chars:
+        raise ValueError("Cast generator returned too few characters.")
+    return out
+
+
 def expand_custom_field_text(
     *,
     model_id: str,

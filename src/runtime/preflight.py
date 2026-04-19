@@ -40,51 +40,37 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         errors.append(f"Invalid resolution: {v.width}×{v.height}.")
     if not (1 <= int(v.fps) <= 120):
         errors.append(f"Invalid FPS: {v.fps}.")
-    if v.use_image_slideshow:
-        pro_on = bool(getattr(v, "pro_mode", False))
-        if pro_on:
-            vid = str(getattr(settings, "video_model_id", "") or "").strip()
-            if not vid:
+    pro_on = bool(getattr(v, "pro_mode", False))
+    if pro_on:
+        # Pro mode is true text-to-video. Slideshow stitching must be OFF.
+        if bool(getattr(v, "use_image_slideshow", True)):
+            errors.append("Pro mode disables slideshow stitching — turn off 'Generate images and stitch (slideshow mode)'.")
+        vid = str(getattr(settings, "video_model_id", "") or "").strip()
+        if not vid:
+            errors.append("Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope for text-to-video Pro).")
+        else:
+            rl = vid.lower()
+            if "stable-video-diffusion" in rl or "img2vid" in rl:
                 errors.append(
-                    "Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope for text-to-video Pro)."
+                    "Pro mode currently supports text-to-video only. Stable Video Diffusion is image-to-video. "
+                    "Choose ZeroScope in the Video slot, or turn off Pro."
                 )
-            else:
-                rl = vid.lower()
-                if "stable-video-diffusion" in rl or "img2vid" in rl:
-                    errors.append(
-                        "Pro mode cannot use Stable Video Diffusion (image-to-video). "
-                        "Choose ZeroScope in the Video slot, or turn off Pro."
-                    )
-            pc = float(getattr(v, "pro_clip_seconds", 0) or 0)
-            if pc <= 0:
-                errors.append("Pro mode: clip length (seconds) must be > 0.")
-            else:
-                try:
-                    from src.render.editor import pro_mode_frame_count
-
-                    nf = pro_mode_frame_count(pro_clip_seconds=pc, fps=int(v.fps))
-                    if nf > 600:
-                        warnings.append(
-                            f"Pro mode will generate {nf} diffusion frames — expect very long runtimes and high VRAM use "
-                            "(lower FPS or clip length, or set AQUADUCT_PRO_MAX_FRAMES)."
-                        )
-                    elif nf > 300:
-                        warnings.append(
-                            f"Pro mode will generate {nf} frames — this can take a long time on consumer GPUs."
-                        )
-                except Exception:
-                    pass
-        elif v.images_per_video < 1:
+        pc = float(getattr(v, "pro_clip_seconds", 0) or 0)
+        if pc <= 0:
+            errors.append("Pro mode: scene length (seconds) must be > 0.")
+        if v.clip_seconds <= 0 and not bool(getattr(v, "use_image_slideshow", True)):
+            # Clip seconds isn't used by pro, but keep legacy sanity.
+            pass
+    elif v.use_image_slideshow:
+        if v.images_per_video < 1:
             errors.append("Images per video must be >= 1 for slideshow mode.")
         if v.microclip_min_s <= 0 or v.microclip_max_s <= 0 or v.microclip_max_s < v.microclip_min_s:
-            errors.append("Micro-clip min/max seconds must be > 0 and max >= min.")
-    elif bool(getattr(v, "pro_mode", False)):
-        errors.append("Pro mode requires 'Generate images and stitch (slideshow mode)' to be enabled.")
+            errors.append("Micro-scene min/max seconds must be > 0 and max >= min.")
     else:
         if v.clips_per_video < 1:
-            errors.append("Clips per video must be >= 1 for clip mode.")
+            errors.append("Scenes per video must be >= 1 for motion mode (slideshow off).")
         if v.clip_seconds <= 0:
-            errors.append("Seconds per clip must be > 0 for clip mode.")
+            errors.append("Seconds per scene must be > 0 for motion mode (slideshow off).")
 
     # Branding watermark sanity (optional)
     try:
@@ -117,7 +103,7 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         "accelerate",
         "diffusers",
     ]
-    # Video clip mode needs imageio writer in our implementation
+    # Video motion (scene) mode needs imageio writer in our implementation
     if not v.use_image_slideshow:
         core_mods.append("imageio")
 

@@ -31,7 +31,7 @@ def test_preflight_pro_requires_video_model(monkeypatch):
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
     monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
-    v = VideoSettings(use_image_slideshow=True, pro_mode=True, pro_clip_seconds=4.0)
+    v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(video=v, video_model_id="")
     r = preflight_check(settings=s, strict=True)
     assert not r.ok
@@ -43,11 +43,23 @@ def test_preflight_pro_rejects_svd(monkeypatch):
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
     monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
-    v = VideoSettings(use_image_slideshow=True, pro_mode=True, pro_clip_seconds=4.0)
+    v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(video=v, video_model_id="stabilityai/stable-video-diffusion-img2vid-xt")
     r = preflight_check(settings=s, strict=True)
     assert not r.ok
-    assert any("Pro mode cannot use Stable Video Diffusion" in e for e in r.errors)
+    assert any("text-to-video" in e.lower() or "stable video diffusion" in e.lower() for e in r.errors)
+
+
+def test_preflight_pro_disables_slideshow(monkeypatch):
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    v = VideoSettings(use_image_slideshow=True, pro_mode=True, pro_clip_seconds=4.0)
+    s = AppSettings(video=v, video_model_id="cerspense/zeroscope_v2_576w")
+    r = preflight_check(settings=s, strict=True)
+    assert not r.ok
+    assert any("disables slideshow" in e.lower() for e in r.errors)
 
 
 def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):

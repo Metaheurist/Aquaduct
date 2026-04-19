@@ -16,7 +16,14 @@ except Exception:  # optional dependency
     load_dotenv = None
 
 from src.render.artist import apply_regenerated_image, generate_images, is_curated_text2image_repo
-from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc, expand_custom_video_instructions, generate_script
+from src.content.brain import (
+    VideoPackage,
+    clip_article_excerpt,
+    enforce_arc,
+    expand_custom_video_instructions,
+    generate_cast_from_storyline_llm,
+    generate_script,
+)
 from src.content.story_context import build_script_context
 from src.content.story_pipeline import run_multistage_refinement
 from src.core.config import (
@@ -44,7 +51,13 @@ from src.render.editor import (
 )
 from src.render.clips import extract_pngs_from_mp4, generate_clips
 from src.render.branding_video import apply_palette_to_prompts
-from src.content.characters_store import character_context_for_brain, resolve_character_for_pipeline
+from src.content.characters_store import (
+    cast_to_ephemeral_character,
+    character_context_for_brain,
+    character_selected_in_settings,
+    fallback_cast_for_show,
+    resolve_character_for_pipeline,
+)
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.content.factcheck import rewrite_with_uncertainty
 from src.content.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
@@ -145,6 +158,102 @@ def _write_video_folder(
             (video_dir / "preview.json").write_text(json.dumps(preview, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
+
+
+def _strip_negative_and_noise(prompt: str) -> str:
+    s = (prompt or "").strip()
+    if "\nNEGATIVE:" in s:
+        s = s.split("\nNEGATIVE:", 1)[0].strip()
+    # Some prompts contain "negative :" inline after conditioning.
+    low = s.lower()
+    if " negative :" in low:
+        s = s[: low.find(" negative :")].strip()
+    if " negative:" in low:
+        s = s[: low.find(" negative:")].strip()
+    return " ".join(s.split()).strip()
+
+
+def _cap_words(text: str, n_words: int) -> str:
+    parts = [p for p in (text or "").split() if p]
+    if len(parts) <= n_words:
+        return " ".join(parts).strip()
+    return (" ".join(parts[: max(1, int(n_words))])).strip()
+
+
+def _pro_prompt_for_text_to_video(*, pkg: VideoPackage, prompts: list[str]) -> str:
+    """
+    Build a short Pro prompt that won't exceed CLIP token limits (e.g. ZeroScope ~77 tokens).
+    """
+    title = " ".join(str(pkg.title or "").split()).strip()
+    beats: list[str] = []
+    # Prefer narration beats (storyline) for semantic guidance; keep very short.
+    for seg in (pkg.segments or [])[:3]:
+        t = " ".join(str(getattr(seg, "narration", "") or "").split()).strip()
+        if t:
+            beats.append(t)
+    # Fallback to visual prompts, but strip negatives/conditioning.
+    if not beats:
+        for p in prompts[:3]:
+            t = _strip_negative_and_noise(p)
+            if t:
+                beats.append(t)
+    core = " | ".join(([title] if title else []) + beats)
+    core = _strip_negative_and_noise(core)
+    # Hard cap to avoid CLIP overflow.
+    return _cap_words(core, 55)
+
+
+def _split_into_pro_scenes_from_script(*, pkg: VideoPackage, prompts: list[str]) -> list[str]:
+    """
+    Create a list of scene prompts for Pro text-to-video, covering the whole script.
+
+    If a beat is too long for CLIP (~77 tokens), we split it into multiple scenes instead of over-condensing.
+    """
+    title = " ".join(str(pkg.title or "").split()).strip()
+    out: list[str] = []
+
+    def _push(scene_text: str) -> None:
+        st = _strip_negative_and_noise(scene_text)
+        if not st:
+            return
+        # 55 words keeps us safely under CLIP 77 tokens in practice.
+        if len(st.split()) <= 55:
+            out.append(st)
+            return
+        words = st.split()
+        # Split into chunks; keep continuity by repeating the title prefix.
+        chunk = 45
+        start = 0
+        while start < len(words) and len(out) < 16:
+            part = " ".join(words[start : start + chunk]).strip()
+            if title:
+                part = f"{title} | {part}"
+            out.append(_cap_words(part, 55))
+            start += chunk
+
+    # Prefer script segments as scenes; include hook/CTA as their own scenes.
+    if (pkg.hook or "").strip():
+        _push(f"{title} | {pkg.hook}")
+    for seg in (pkg.segments or []):
+        nar = " ".join(str(getattr(seg, "narration", "") or "").split()).strip()
+        if nar:
+            _push(f"{title} | {nar}" if title else nar)
+    if (pkg.cta or "").strip():
+        _push(f"{title} | {pkg.cta}")
+
+    # Fallback: use visual prompts if narration is empty.
+    if not out:
+        for p in prompts:
+            t = _strip_negative_and_noise(p)
+            if t:
+                _push(f"{title} | {t}" if title else t)
+            if len(out) >= 8:
+                break
+
+    # Keep at least 1 scene.
+    if not out:
+        out = [_cap_words(title or "cinematic vertical video", 30)]
+    return out
 
 
 def run_once(
@@ -297,7 +406,7 @@ def run_once(
         except Exception:
             article_text = ""
 
-    # Cast: active character, else first saved, else ephemeral autogen for this run (not saved).
+    # Cast: if user explicitly selected a character, use it. Otherwise generate an ephemeral narrator/cast per run.
     _vf_cast = str(getattr(app, "video_format", "news") or "news")
     _tags_cast = list(effective_topic_tags(app))
     _head_seed = ""
@@ -458,6 +567,46 @@ def run_once(
         )
 
     assert personality_pick is not None
+
+    # If the user did NOT select a character, generate a storyline-aligned narrator/cast and store it under the video assets.
+    # This keeps cartoon/unhinged runs from using a single generic host, and keeps news/explainer as narrator-only.
+    if not character_selected_in_settings(app):
+        vf_cast2 = str(getattr(app, "video_format", "news") or "news")
+        storyline = pkg.narration_text()
+        cast: list[dict] | None = None
+        try:
+
+            def _cast_llm(task: str, pct: int, msg: str) -> None:
+                inner = max(0, min(100, int(pct)))
+                _pipe_progress(on_progress, 34, inner, msg or "Generating cast…")
+
+            cast = generate_cast_from_storyline_llm(
+                model_id=llm_id,
+                video_format=vf_cast2,
+                storyline_title=str(pkg.title or ""),
+                storyline_text=storyline,
+                topic_tags=list(effective_topic_tags(app)),
+                on_llm_task=_cast_llm,
+                try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
+            )
+        except Exception:
+            cast = fallback_cast_for_show(video_format=vf_cast2, topic_tags=list(effective_topic_tags(app)), headline_seed=_head_seed)
+
+        try:
+            assert cast is not None
+            active_character = cast_to_ephemeral_character(cast=cast, video_format=vf_cast2)
+            char_ctx = character_context_for_brain(active_character)
+
+            safe_dir_cast = safe_title_to_dirname(pkg.title)
+            video_dir_cast = paths.videos_dir / safe_dir_cast
+            assets_dir_cast = video_dir_cast / "assets"
+            assets_dir_cast.mkdir(parents=True, exist_ok=True)
+            (assets_dir_cast / "generated_cast.json").write_text(
+                json.dumps({"video_format": vf_cast2, "characters": cast}, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
     effective_personality_id = personality_pick.preset.id
     dprint(
         "pipeline",
@@ -617,6 +766,72 @@ def run_once(
             "external_reference_strength": 0.55,
         }
 
+    # Pro mode: true text-to-video using the Video model slot only (no slideshow stitching).
+    if bool(getattr(video_settings, "pro_mode", False)):
+        vid_slot = (clip_id or "").strip()
+        if not vid_slot:
+            raise RuntimeError("Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope).")
+        lowv = vid_slot.lower()
+        if "stable-video-diffusion" in lowv or "img2vid" in lowv:
+            raise RuntimeError(
+                "Pro mode currently supports text-to-video only. Stable Video Diffusion is image-to-video. "
+                "Choose ZeroScope in the Video slot, or turn off Pro."
+            )
+
+        T = float(getattr(video_settings, "pro_clip_seconds", 4.0))
+        T = max(0.5, T)
+        pro_scenes = _split_into_pro_scenes_from_script(pkg=pkg, prompts=prompts)
+        # Persist the exact prompts used for debugging.
+        (assets_dir / "pro_prompt.txt").write_text("\n\n".join(pro_scenes), encoding="utf-8")
+
+        _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
+        _rc(run_control)
+        clip_dir = assets_dir / "pro_clips"
+        gen_clips = generate_clips(
+            video_model_id=vid_slot,
+            prompts=pro_scenes,
+            init_images=None,
+            out_dir=clip_dir,
+            max_clips=len(pro_scenes),
+            fps=int(video_settings.fps),
+            seconds_per_clip=T,
+        )
+        clip_paths = [c.path for c in gen_clips]
+        if not clip_paths:
+            raise RuntimeError("Text-to-video produced no scene.")
+
+        # Align narration to the total Pro timeline so captions and audio match the generated clip duration.
+        total_T = float(T) * float(len(clip_paths))
+        mix_wav = final_voice_wav
+        try:
+            ffmpeg_bin = Path(ensure_ffmpeg(paths.ffmpeg_dir))
+            aligned = assets_dir / "voice_pro_timeline.wav"
+            from src.render.editor import _ffmpeg_align_wav_to_duration  # type: ignore
+
+            _ffmpeg_align_wav_to_duration(ffmpeg_bin, final_voice_wav, aligned, total_T)
+            mix_wav = aligned
+        except Exception:
+            mix_wav = final_voice_wav
+
+        _pipe_progress(on_progress, 91, -1, "Rendering Pro video & final MP4…")
+        _rc(run_control)
+        assemble_generated_clips_then_concat(
+            ffmpeg_dir=paths.ffmpeg_dir,
+            settings=video_settings,
+            clips=clip_paths,
+            voice_wav=mix_wav,
+            captions_json=captions_json,
+            out_final_mp4=out_final,
+            out_assets_dir=assets_dir,
+            background_music=None,
+            branding=branding,
+            article_text=article_text,
+            topic_tags=list(effective_topic_tags(app)),
+            video_format=str(getattr(app, "video_format", "news") or "news"),
+        )
+        _pipe_progress(on_progress, 93, -1, "Encode complete")
+        return out_final
+
     if video_settings.use_image_slideshow:
         _pro = bool(getattr(video_settings, "pro_mode", False))
         n_pro = (
@@ -760,7 +975,7 @@ def run_once(
                     seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
                 )
                 if not zc:
-                    raise RuntimeError("Text-to-video produced no clip for Pro mode.")
+                    raise RuntimeError("Text-to-video produced no scene for Pro mode.")
                 img_dir.mkdir(parents=True, exist_ok=True)
                 for old in img_dir.glob("img_*.png"):
                     try:
@@ -776,7 +991,7 @@ def run_once(
             elif "stable-video-diffusion" in lowv or "img2vid" in lowv:
                 raise RuntimeError(
                     "Pro mode does not support Stable Video Diffusion (it needs still keyframes). "
-                    "Pick ZeroScope in the Video slot for text-to-video Pro, or turn off Pro and use clip mode with Image + Video."
+                    "Pick ZeroScope in the Video slot for text-to-video Pro, or turn off Pro and use motion (scene) mode with Image + Video."
                 )
             else:
                 gen = generate_images(
@@ -889,7 +1104,7 @@ def run_once(
             on_progress,
             88,
             -1,
-            "Rendering pro frame sequence & final MP4…" if _pro else "Rendering micro-clips & final MP4…",
+            "Rendering Pro frame sequence & final MP4…" if _pro else "Rendering micro-scenes & final MP4…",
         )
         _rc(run_control)
 
@@ -926,8 +1141,8 @@ def run_once(
             )
         _pipe_progress(on_progress, 93, -1, "Encode complete")
     else:
-        # For img→vid clip models, first generate keyframe images (using the image model),
-        # then animate them into clips with the selected clip model.
+        # For img→vid models, first generate keyframe images (using the image model),
+        # then animate them into scene segments with the selected video model.
         dprint("pipeline", "mode=video_clips", f"clips_per_video={video_settings.clips_per_video}")
         key_dir = assets_dir / "keyframes"
         storyboard = build_storyboard(
@@ -1006,7 +1221,7 @@ def run_once(
         prepare_for_next_model()
 
         clip_dir = assets_dir / "clips"
-        _pipe_progress(on_progress, 82, -1, "Video diffusion (animate clips)…")
+        _pipe_progress(on_progress, 82, -1, "Video diffusion (animate scenes)…")
         gen_clips = generate_clips(
             video_model_id=(clip_id or img_id),
             prompts=prompts,
@@ -1017,7 +1232,7 @@ def run_once(
             seconds_per_clip=float(video_settings.clip_seconds),
         )
         clip_paths = [c.path for c in gen_clips]
-        _pipe_progress(on_progress, 88, -1, "Clips ready")
+        _pipe_progress(on_progress, 88, -1, "Scenes ready")
         mix_wav = final_voice_wav
         try:
             if music and music.exists():
@@ -1033,7 +1248,7 @@ def run_once(
         except Exception:
             mix_wav = final_voice_wav
 
-        _pipe_progress(on_progress, 91, -1, "Rendering micro-clips & final MP4…")
+        _pipe_progress(on_progress, 91, -1, "Rendering micro-scenes & final MP4…")
         _rc(run_control)
 
         assemble_generated_clips_then_concat(
