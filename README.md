@@ -13,6 +13,8 @@ This project builds **Aquaduct**, a **local-first** tool (with optional **API ex
 - [Outputs](#outputs)
 - [Desktop UI (PyQt6)](#desktop-ui-pyqt6)
 - [Build Windows EXE](#build-windows-exe)
+- [Build & verify (operator)](docs/building_windows_exe.md)
+- [Performance notes](docs/performance.md)
 - [Docs](#docs)
 - [Changelog](CHANGELOG.md)
 - [Dependencies](DEPENDENCIES.md)
