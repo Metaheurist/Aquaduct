@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.frameless_dialog import FramelessDialog, aquaduct_information, aquaduct_warning
+from UI.no_wheel_controls import NoWheelSpinBox
 
 
 class StoryboardPreviewDialog(FramelessDialog):
@@ -55,7 +56,7 @@ class StoryboardPreviewDialog(FramelessDialog):
 
         # Controls
         controls = QHBoxLayout()
-        self.scene_spin = QSpinBox()
+        self.scene_spin = NoWheelSpinBox()
         self.scene_spin.setRange(1, 12)
         controls.addWidget(QLabel("Scene #"))
         controls.addWidget(self.scene_spin)
@@ -83,7 +84,7 @@ class StoryboardPreviewDialog(FramelessDialog):
         self.prompt_edit = QLineEdit()
         form.addRow("Prompt", self.prompt_edit)
 
-        self.seed_spin = QSpinBox()
+        self.seed_spin = NoWheelSpinBox()
         self.seed_spin.setRange(0, 2_000_000_000)
         form.addRow("Seed", self.seed_spin)
 

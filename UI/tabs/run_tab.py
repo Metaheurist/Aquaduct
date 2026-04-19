@@ -18,6 +18,9 @@ from src.core.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
 from src.content.characters_store import load_all
 from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
+from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+
+
 def attach_run_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
@@ -30,7 +33,7 @@ def attach_run_tab(win) -> None:
     qty_lbl = QLabel("Videos to generate")
     qty_lbl.setStyleSheet("color: #B7B7C2;")
     qty_row.addWidget(qty_lbl)
-    win.run_qty_spin = QSpinBox()
+    win.run_qty_spin = NoWheelSpinBox()
     win.run_qty_spin.setRange(1, 50)
     win.run_qty_spin.setValue(1)
     qty_row.addWidget(win.run_qty_spin)
@@ -41,7 +44,7 @@ def attach_run_tab(win) -> None:
     fmt_lbl = QLabel("Video format")
     fmt_lbl.setStyleSheet("color: #B7B7C2;")
     fmt_row.addWidget(fmt_lbl)
-    win.video_format_combo = QComboBox()
+    win.video_format_combo = NoWheelComboBox()
     win.video_format_combo.addItem("News (headlines)", "news")
     win.video_format_combo.addItem("Cartoon", "cartoon")
     win.video_format_combo.addItem("Explainer", "explainer")
@@ -59,7 +62,7 @@ def attach_run_tab(win) -> None:
     style_lbl = QLabel("Art style (visual continuity)")
     style_lbl.setStyleSheet("color: #B7B7C2;")
     style_row.addWidget(style_lbl)
-    win.art_style_preset_combo = QComboBox()
+    win.art_style_preset_combo = NoWheelComboBox()
     win.art_style_preset_combo.setToolTip(
         "Biases diffusion toward a consistent look; after the first image, later frames use the last "
         "up to three renders as a style reference (img2img). Strong no-text negatives are always applied."
@@ -154,7 +157,7 @@ def attach_run_tab(win) -> None:
     p_lbl.setStyleSheet("color: #B7B7C2;")
     p_row.addWidget(p_lbl)
 
-    win.personality_combo = QComboBox()
+    win.personality_combo = NoWheelComboBox()
     win.personality_combo.addItem("Auto (recommended)", "auto")
     for p in get_personality_presets():
         win.personality_combo.addItem(p.label, p.id)
@@ -177,7 +180,7 @@ def attach_run_tab(win) -> None:
     c_lbl = QLabel("Character")
     c_lbl.setStyleSheet("color: #B7B7C2;")
     c_row.addWidget(c_lbl)
-    win.character_combo = QComboBox()
+    win.character_combo = NoWheelComboBox()
     win.character_combo.addItem("(None)", "")
     try:
         for ch in load_all():

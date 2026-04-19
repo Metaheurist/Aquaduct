@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.config import VIDEO_FORMATS
+from UI.no_wheel_controls import NoWheelComboBox
 
 
 def _pick_topics_dialog(parent: QWidget, topics: list[str]) -> list[str]:
@@ -105,7 +106,7 @@ def attach_topics_tab(win) -> None:
     mode_lbl = QLabel("Edit tags for")
     mode_lbl.setStyleSheet("color: #B7B7C2;")
     mode_row.addWidget(mode_lbl)
-    win.topics_mode_combo = QComboBox()
+    win.topics_mode_combo = NoWheelComboBox()
     win.topics_mode_combo.addItem("News", "news")
     win.topics_mode_combo.addItem("Cartoon", "cartoon")
     win.topics_mode_combo.addItem("Explainer", "explainer")

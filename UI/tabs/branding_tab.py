@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.config import BrandingSettings
+from UI.no_wheel_controls import NoWheelComboBox
 from UI.theme import PRESET_PALETTES, build_qss, resolve_palette
 
 
@@ -76,7 +77,7 @@ def attach_branding_tab(win) -> None:
     win.brand_theme_enable.setChecked(bool(getattr(win.settings, "branding", BrandingSettings()).theme_enabled))
     form.addRow("", win.brand_theme_enable)
 
-    win.brand_palette_combo = QComboBox()
+    win.brand_palette_combo = NoWheelComboBox()
     # Display labels, store preset IDs.
     palette_items = [
         ("Default (TikTok dark)", "default"),
@@ -224,7 +225,7 @@ def attach_branding_tab(win) -> None:
     vs_lbl = QLabel("Strength")
     vs_lbl.setStyleSheet("color: #B7B7C2;")
     vs_row.addWidget(vs_lbl)
-    win.brand_video_style_strength = QComboBox()
+    win.brand_video_style_strength = NoWheelComboBox()
     win.brand_video_style_strength.addItem("Subtle (readability first)", "subtle")
     win.brand_video_style_strength.addItem("Strong (dominant palette)", "strong")
     cur_strength = str(getattr(b, "video_style_strength", "subtle") or "subtle")
@@ -265,7 +266,7 @@ def attach_branding_tab(win) -> None:
 
     wm_form = QFormLayout()
 
-    win.brand_watermark_pos = QComboBox()
+    win.brand_watermark_pos = NoWheelComboBox()
     for label, value in [
         ("Top left", "top_left"),
         ("Top right", "top_right"),

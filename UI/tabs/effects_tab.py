@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from src.settings.effects_presets import EFFECT_PRESETS, find_best_preset_for_effects, preset_by_id
 from src.render.ffmpeg_slideshow import XFADE_TRANSITIONS
+from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 
 
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:
@@ -170,7 +171,7 @@ def attach_effects_tab(win) -> None:
     form_vis.setHorizontalSpacing(18)
     form_vis.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-    win.quality_retries_spin = QSpinBox()
+    win.quality_retries_spin = NoWheelSpinBox()
     win.quality_retries_spin.setRange(0, 5)
     win.quality_retries_spin.setValue(int(getattr(win.settings.video, "quality_retries", 2)))
     form_vis.addRow("Bad frame retries", win.quality_retries_spin)
@@ -179,7 +180,7 @@ def attach_effects_tab(win) -> None:
     win.enable_motion_chk.setChecked(bool(getattr(win.settings.video, "enable_motion", True)))
     form_vis.addRow(win.enable_motion_chk)
 
-    win.transition_combo = QComboBox()
+    win.transition_combo = NoWheelComboBox()
     win.transition_combo.addItem("Off", "off")
     win.transition_combo.addItem("Low (recommended)", "low")
     win.transition_combo.addItem("Medium", "med")
@@ -190,7 +191,7 @@ def attach_effects_tab(win) -> None:
     _prep_combo(win.transition_combo)
     form_vis.addRow("Transition strength", win.transition_combo)
 
-    win.xfade_transition_combo = QComboBox()
+    win.xfade_transition_combo = NoWheelComboBox()
     cur_xf = str(getattr(win.settings.video, "xfade_transition", "fade") or "fade")
     for name in XFADE_TRANSITIONS:
         win.xfade_transition_combo.addItem(_label_for_xfade(name), name)
@@ -224,7 +225,7 @@ def attach_effects_tab(win) -> None:
     form_audio.setHorizontalSpacing(18)
     form_audio.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-    win.audio_polish_combo = QComboBox()
+    win.audio_polish_combo = NoWheelComboBox()
     win.audio_polish_combo.addItem("Off", "off")
     win.audio_polish_combo.addItem("Basic (recommended)", "basic")
     win.audio_polish_combo.addItem("Strong", "strong")
@@ -239,17 +240,17 @@ def attach_effects_tab(win) -> None:
     win.music_ducking_chk.setChecked(bool(getattr(win.settings.video, "music_ducking", True)))
     form_audio.addRow(win.music_ducking_chk)
 
-    win.ducking_spin = QSpinBox()
+    win.ducking_spin = NoWheelSpinBox()
     win.ducking_spin.setRange(0, 100)
     win.ducking_spin.setValue(int(round(float(getattr(win.settings.video, "music_ducking_amount", 0.7)) * 100)))
     form_audio.addRow("Ducking intensity (%)", win.ducking_spin)
 
-    win.music_fade_spin = QSpinBox()
+    win.music_fade_spin = NoWheelSpinBox()
     win.music_fade_spin.setRange(0, 6)
     win.music_fade_spin.setValue(int(round(float(getattr(win.settings.video, "music_fade_s", 1.2)))))
     form_audio.addRow("Music fade seconds", win.music_fade_spin)
 
-    win.sfx_combo = QComboBox()
+    win.sfx_combo = NoWheelComboBox()
     win.sfx_combo.addItem("Off", "off")
     win.sfx_combo.addItem("Subtle (whoosh/click)", "subtle")
     cur_sfx = str(getattr(win.settings.video, "sfx_mode", "off") or "off")
