@@ -91,7 +91,7 @@ def _title_candidates(title: str) -> list[str]:
 
 def discover_topics_from_items(items: Iterable[NewsItem], *, limit: int = 30) -> list[str]:
     """
-    Returns a ranked list of candidate topic tags extracted from news titles.
+    Returns a ranked list of candidate topic tags extracted from page titles (headline mode or creative/story mode).
     """
     counter: Counter[str] = Counter()
     original: dict[str, str] = {}

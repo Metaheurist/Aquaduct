@@ -28,6 +28,32 @@ def test_fetch_latest_prefers_firecrawl_when_configured(monkeypatch: pytest.Monk
     assert "fc.example" in out[0].url
 
 
+def test_fetch_latest_cartoon_skips_google_news_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.content.crawler import fetch_latest_items
+
+    def fake_fc(*_a, **_k):
+        return []
+
+    def boom_rss(**_kw):
+        raise AssertionError("Google News RSS must not run for cartoon / unhinged modes")
+
+    monkeypatch.setattr("src.content.firecrawl_news.firecrawl_search_news", fake_fc)
+    monkeypatch.setattr("src.content.crawler._google_news_rss", boom_rss)
+    out = fetch_latest_items(limit=2, firecrawl_enabled=True, firecrawl_api_key="k", topic_mode="cartoon")
+    assert out == []
+
+
+def test_fetch_latest_cartoon_without_firecrawl_does_not_use_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.content.crawler import fetch_latest_items
+
+    def boom_rss(**_kw):
+        raise AssertionError("Headline RSS is only for news/explainer")
+
+    monkeypatch.setattr("src.content.crawler._google_news_rss", boom_rss)
+    out = fetch_latest_items(limit=3, firecrawl_enabled=False, topic_mode="cartoon")
+    assert out == []
+
+
 def test_fetch_latest_falls_back_to_rss_when_firecrawl_returns_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.content.crawler import NewsItem, fetch_latest_items
 

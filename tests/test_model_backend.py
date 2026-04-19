@@ -49,6 +49,23 @@ def test_provider_has_key_openai(monkeypatch):
     assert mb.provider_has_key(AppSettings(api_openai_key="sk-x"), "openai")
 
 
+def test_effective_llm_api_key_groq_env(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    s = AppSettings(api_openai_key="sk-shared")
+    assert mb.effective_llm_api_key(s, "groq") == "sk-shared"
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-env")
+    assert mb.effective_llm_api_key(s, "groq") == "gsk-env"
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+
+def test_provider_has_key_groq(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert not mb.provider_has_key(AppSettings(api_openai_key=""), "groq")
+    assert mb.provider_has_key(AppSettings(api_openai_key="gsk-x"), "groq")
+
+
 def test_api_preflight_errors_empty_when_local():
     s = AppSettings(model_execution_mode="local")
     assert mb.api_preflight_errors(s) == []

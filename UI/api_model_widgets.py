@@ -13,7 +13,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.settings.api_model_catalog import default_models_for_provider, providers_for_role
+from src.settings.api_model_catalog import (
+    default_models_for_provider,
+    default_openai_compatible_base_url_for_llm,
+    providers_for_role,
+    uses_openai_chat_protocol_for_llm,
+)
 from UI.no_wheel_controls import NoWheelComboBox
 
 
@@ -52,7 +57,11 @@ def _refill_model_combo(model_combo: QComboBox, *, role: str, provider: str, sav
 
 def build_generation_api_panel(win) -> QWidget:
     root = QGroupBox("Generation APIs (API execution mode)")
-    root.setToolTip("Used when Model tab is set to API. Keys: OPENAI_API_KEY and REPLICATE_API_TOKEN override saved values.")
+    root.setToolTip(
+        "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GROQ_API_KEY, "
+        "TOGETHER_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, "
+        "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, REPLICATE_API_TOKEN, …"
+    )
     root.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     root.setMinimumWidth(420)
     outer = QVBoxLayout(root)
@@ -60,9 +69,9 @@ def build_generation_api_panel(win) -> QWidget:
     keys_row = QFormLayout()
     win.api_gen_openai_key = QLineEdit()
     win.api_gen_openai_key.setEchoMode(QLineEdit.EchoMode.Password)
-    win.api_gen_openai_key.setPlaceholderText("sk-… (optional if OPENAI_API_KEY is set)")
+    win.api_gen_openai_key.setPlaceholderText("Bearer for OpenAI or compatible LLM (optional if env is set)")
     win.api_gen_openai_key.setText(str(getattr(win.settings, "api_openai_key", "") or ""))
-    keys_row.addRow("OpenAI API key", win.api_gen_openai_key)
+    keys_row.addRow("OpenAI / LLM API key", win.api_gen_openai_key)
 
     win.api_gen_replicate_token = QLineEdit()
     win.api_gen_replicate_token.setEchoMode(QLineEdit.EchoMode.Password)
@@ -110,6 +119,11 @@ def build_generation_api_panel(win) -> QWidget:
         def _on_prov_change(_i: int) -> None:
             pid = str(prov.currentData() or "").strip().lower()
             _refill_model_combo(mod, role=role, provider=pid, saved_model="")
+            if role == "llm" and base is not None and pid and uses_openai_chat_protocol_for_llm(pid):
+                if not base.text().strip():
+                    du = default_openai_compatible_base_url_for_llm(pid)
+                    if du:
+                        base.setText(du)
             if hasattr(win, "_sync_api_gen_row_states"):
                 win._sync_api_gen_row_states()
 
@@ -126,7 +140,10 @@ def build_generation_api_panel(win) -> QWidget:
     win.api_gen_video_provider, win.api_gen_video_model, _, _, _ = _role_block("Video API (Pro / Replicate)", "video")
     win.api_gen_voice_provider, win.api_gen_voice_model, _, _, win.api_gen_voice_id = _role_block("Voice API", "voice")
 
-    hint = QLabel("Env overrides: OPENAI_API_KEY, REPLICATE_API_TOKEN (take precedence over saved keys).")
+    hint = QLabel(
+        "Env overrides take precedence: OPENAI_API_KEY (and provider-specific keys such as GROQ_API_KEY), "
+        "REPLICATE_API_TOKEN, ELEVENLABS_API_KEY."
+    )
     hint.setWordWrap(True)
     hint.setStyleSheet("color:#9BB0C4;font-size:12px;")
     outer.addWidget(hint)

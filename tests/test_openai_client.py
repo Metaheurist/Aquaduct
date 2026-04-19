@@ -38,15 +38,25 @@ def test_map_http_error_429():
     assert "rate limited" in msg.lower()
 
 
+def test_build_openai_client_default_base_for_groq(monkeypatch):
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    s = AppSettings(
+        api_models=ApiModelRuntimeSettings(llm=ApiRoleConfig(provider="groq", model="llama-3.1-8b-instant"))
+    )
+    c = oc.build_openai_client_from_settings(s)
+    assert "groq.com" in c.base_url
+
+
 def test_build_client_requires_key():
     s = AppSettings(api_models=ApiModelRuntimeSettings(llm=ApiRoleConfig(provider="openai", model="gpt-4o-mini")))
     from src.platform import openai_client as oc
     from src.runtime import model_backend as mb
 
-    with patch.object(mb, "effective_openai_api_key", return_value=""):
+    with patch.object(mb, "effective_llm_api_key", return_value=""):
         try:
             oc.build_openai_client_from_settings(s)
         except OpenAIRequestError as e:
-            assert "No OpenAI API key" in str(e)
+            assert "No API key" in str(e)
         else:
             raise AssertionError("expected OpenAIRequestError")

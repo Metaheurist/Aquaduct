@@ -1,21 +1,15 @@
 from __future__ import annotations
-
 import argparse
-import json
-import os
-import tempfile
-import time
 from collections.abc import Callable
 from datetime import datetime
+import json
+import os
 from pathlib import Path
 import shutil
+import tempfile
+import time
 
-try:
-    from dotenv import load_dotenv
-except Exception:  # optional dependency
-    load_dotenv = None
-
-from src.render.artist import apply_regenerated_image, generate_images, is_curated_text2image_repo
+from debug import apply_cli_debug, dprint
 from src.content.brain import (
     VideoPackage,
     clip_article_excerpt,
@@ -23,17 +17,13 @@ from src.content.brain import (
     expand_custom_video_instructions,
     generate_cast_from_storyline_llm,
 )
-from src.content.story_context import build_script_context
-from src.content.story_pipeline import run_multistage_refinement
-from src.core.config import (
-    AppSettings,
-    SCRIPT_HEADLINE_FETCH_LIMIT,
-    VideoSettings,
-    get_models,
-    get_paths,
-    safe_title_to_dirname,
+from src.content.characters_store import (
+    cast_to_ephemeral_character,
+    character_context_for_brain,
+    character_selected_in_settings,
+    fallback_cast_for_show,
+    resolve_character_for_pipeline,
 )
-from src.settings.ui_settings import load_settings
 from src.content.crawler import (
     fetch_article_text,
     fetch_latest_items,
@@ -42,28 +32,45 @@ from src.content.crawler import (
     news_item_to_script_source,
     pick_one_item,
 )
+from src.content.factcheck import rewrite_with_uncertainty
+from src.content.personality_auto import AutoPickResult, auto_pick_personality
+from src.content.prompt_conditioning import (
+    assign_scene_types,
+    condition_prompt,
+    default_negative_prompt,
+)
+from src.content.story_context import build_script_context
+from src.content.story_pipeline import run_multistage_refinement
+from src.content.storyboard import build_storyboard, write_manifest
+from src.content.topics import effective_topic_tags, news_cache_mode_for_run
+from src.core.config import (
+    AppSettings,
+    SCRIPT_HEADLINE_FETCH_LIMIT,
+    VideoSettings,
+    get_models,
+    get_paths,
+    safe_title_to_dirname,
+)
+from src.render.artist import (
+    apply_regenerated_image,
+    generate_images,
+    is_curated_text2image_repo,
+)
+from src.render.branding_video import apply_palette_to_prompts
+from src.render.clips import extract_pngs_from_mp4, generate_clips
 from src.render.editor import (
     assemble_generated_clips_then_concat,
     assemble_microclips_then_concat,
     assemble_pro_frame_sequence_then_concat,
     pro_mode_frame_count,
 )
-from src.render.clips import extract_pngs_from_mp4, generate_clips
-from src.render.branding_video import apply_palette_to_prompts
-from src.content.characters_store import (
-    cast_to_ephemeral_character,
-    character_context_for_brain,
-    character_selected_in_settings,
-    fallback_cast_for_show,
-    resolve_character_for_pipeline,
-)
-from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
-from src.content.factcheck import rewrite_with_uncertainty
-from src.content.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
-from src.content.storyboard import build_storyboard, write_manifest
 from src.render.frame_quality import is_reject, score_frame
-from src.speech.voice import synthesize, synthesize_unhinged_rotating_pyttsx3
-from src.speech.tts_text import shape_tts_text
+from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
+from src.runtime.generation_facade import get_generation_facade
+from src.runtime.model_backend import is_api_mode
+from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
+from src.runtime.preflight import preflight_check
+from src.settings.ui_settings import load_settings
 from src.speech.audio_fx import (
     AudioPolishConfig,
     MusicMixConfig,
@@ -75,16 +82,21 @@ from src.speech.audio_fx import (
     render_sfx_track,
     schedule_sfx_events,
 )
-from src.runtime.generation_facade import get_generation_facade
-from src.runtime.model_backend import is_api_mode
-from src.runtime.preflight import preflight_check
-from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
-from src.content.personality_auto import AutoPickResult, auto_pick_personality
+from src.speech.elevenlabs_tts import (
+    effective_elevenlabs_api_key,
+    elevenlabs_available_for_app,
+)
+from src.speech.tts_text import shape_tts_text
+from src.speech.voice import synthesize, synthesize_unhinged_rotating_pyttsx3
 from src.util.single_instance import single_instance_guard
-from src.content.topics import effective_topic_tags, news_cache_mode_for_run
 from src.util.utils_vram import prepare_for_next_model
-from src.runtime.pipeline_control import PipelineRunControl, PipelineCancelled
-from debug import apply_cli_debug, dprint
+
+try:
+    from dotenv import load_dotenv
+except Exception:  # optional dependency
+    load_dotenv = None
+
+
 
 
 def _rc(run: PipelineRunControl | None) -> None:
@@ -459,6 +471,7 @@ def run_once(
                 want_refs=bool(getattr(video_settings, "story_reference_images", False)),
                 out_dir=run_assets,
                 extra_markdown=(article_text or "")[:12000],
+                video_format=vf,
             )
             if (script_digest or "").strip():
                 _pipe_progress(on_progress, 16, -1, "Script web context gathered…")

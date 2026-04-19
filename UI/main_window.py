@@ -568,11 +568,13 @@ class MainWindow(QMainWindow):
         )
         el_en = bool(self.api_el_enabled_chk.isChecked()) if hasattr(self, "api_el_enabled_chk") else False
 
+        from src.settings.api_model_catalog import uses_openai_chat_protocol_for_llm
+
         def row_ok(pid: str) -> bool:
             p = str(pid or "").strip().lower()
             if not p:
                 return False
-            if p == "openai":
+            if uses_openai_chat_protocol_for_llm(p):
                 return ok_oai
             if p == "replicate":
                 return ok_rep
@@ -733,9 +735,17 @@ class MainWindow(QMainWindow):
             return
         self.discover_btn.setEnabled(True)
         mode = self._topics_bucket_key()
-        self.discover_btn.setToolTip(
-            f'Discover: fetch headlines biased by your "{mode}" tag list; approved phrases are added to this list.'
-        )
+        if mode in ("news", "explainer"):
+            tip = (
+                f'Discover: fetch headline-style ideas using your "{mode}" tag list; '
+                "approved phrases are added to this list."
+            )
+        else:
+            tip = (
+                f'Discover: for Cartoon/Unhinged, fetch creative story seeds (not Google News headlines) '
+                f'using your "{mode}" tags — enable Firecrawl on the API tab for best results.'
+            )
+        self.discover_btn.setToolTip(tip)
 
     def _sync_tags_to_ui(self) -> None:
         from PyQt6.QtWidgets import QListWidgetItem

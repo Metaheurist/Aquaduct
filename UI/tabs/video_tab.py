@@ -286,15 +286,17 @@ def attach_video_tab(win) -> None:
     win.story_web_chk.setChecked(bool(getattr(win.settings.video, "story_web_context", False)))
     win.story_web_chk.setToolTip(
         "Requires Firecrawl enabled with a valid API key on the API tab. Builds a short digest saved under "
-        "the run folder and feeds it into script generation and refinement."
+        "the run folder and feeds it into script generation and refinement. "
+        "For Cartoon and Unhinged formats, searches bias toward memes / viral / templates and run extra queries."
     )
     lay.addWidget(win.story_web_chk)
 
     win.story_refimg_chk = QCheckBox("Download reference images for diffusion (from scraped pages)")
     win.story_refimg_chk.setChecked(bool(getattr(win.settings.video, "story_reference_images", False)))
     win.story_refimg_chk.setToolTip(
-        "Saves a few images under the run folder and uses the first as an img2img init for the first generated "
-        "frame when your image model supports image-to-image. Needs Firecrawl for discovery; SDXL-style models work best."
+        "Saves images from scraped pages (up to a few more for Cartoon / Unhinged when meme searches run) "
+        "under the run folder; the first is used as an img2img init for the first generated frame when your "
+        "image model supports image-to-image. Needs Firecrawl for discovery; SDXL-style models work best."
     )
     lay.addWidget(win.story_refimg_chk)
 

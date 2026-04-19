@@ -121,7 +121,9 @@ def attach_topics_tab(win) -> None:
     lay.addLayout(mode_row)
 
     mode_hint = QLabel(
-        "Lists are separate per format. Discover fetches headline ideas using this format’s tag list; picks are added here."
+        "Lists are separate per format. Discover uses headline-style ideas for News and Explainer; "
+        "for Cartoon and Unhinged it pulls creative / story-shaped seeds (not Google News headlines). "
+        "Picks are added here."
     )
     mode_hint.setWordWrap(True)
     mode_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
@@ -143,7 +145,10 @@ def attach_topics_tab(win) -> None:
 
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
-    win.discover_btn.setToolTip("Fetch headline ideas biased by this format’s tags; approve phrases to add them to this list.")
+    win.discover_btn.setToolTip(
+        "News/Explainer: headline ideas from your tags. Cartoon/Unhinged: creative and story-shaped seeds "
+        "(Firecrawl recommended). Approve phrases to add them to this list."
+    )
     win.discover_btn.clicked.connect(win._discover_topics)
     btn_row.addWidget(win.discover_btn)
 
