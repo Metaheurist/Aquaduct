@@ -1,4 +1,4 @@
-# `src/utils_ffmpeg.py` — FFmpeg auto-download
+# `src/render/utils_ffmpeg.py` — FFmpeg auto-download
 
 ## Purpose
 Ensure a working `ffmpeg` binary exists without requiring manual installation.

@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import QApplication
 
 from UI.main_window import MainWindow
 from UI.theme import TIKTOK_QSS, build_qss, resolve_palette
-from src.single_instance import single_instance_guard
-from src.ui_settings import load_settings
+from src.util.single_instance import single_instance_guard
+from src.settings.ui_settings import load_settings
 
 
 def _strip_debug_cli_args() -> None:

@@ -8,7 +8,7 @@ import pytest
 
 
 def test_generate_images_raises_when_diffusion_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import src.artist as artist
+    import src.render.artist as artist
 
     monkeypatch.setattr(
         artist,
@@ -28,7 +28,7 @@ def test_generate_images_raises_when_diffusion_fails(monkeypatch: pytest.MonkeyP
 
 
 def test_generate_images_placeholder_when_env_allows(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import src.artist as artist
+    import src.render.artist as artist
 
     monkeypatch.setenv("AQUADUCT_ALLOW_PLACEHOLDER_IMAGES", "1")
     monkeypatch.setattr(

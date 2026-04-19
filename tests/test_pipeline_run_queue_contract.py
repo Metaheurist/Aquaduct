@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import copy
 
-from src.config import AppSettings
+from src.core.config import AppSettings
 
 
 def test_pipeline_queue_item_fields():

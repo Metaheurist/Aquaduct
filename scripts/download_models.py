@@ -17,8 +17,8 @@ try:
 except Exception:
     pass
 
-from src.config import get_paths
-from src.model_manager import download_model_to_project, model_options
+from src.core.config import get_paths
+from src.models.model_manager import download_model_to_project, model_options
 
 
 def main() -> None:

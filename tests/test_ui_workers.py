@@ -9,8 +9,8 @@ import pytest
 @pytest.mark.qt
 def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
     from UI.workers import PreviewWorker
-    from src.brain import ScriptSegment, VideoPackage
-    from src.config import AppSettings
+    from src.content.brain import ScriptSegment, VideoPackage
+    from src.core.config import AppSettings
 
     import UI.workers as wmod
 
@@ -63,7 +63,7 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
 @pytest.mark.qt
 def test_pipeline_batch_worker_emits_done_when_no_items(qtbot, monkeypatch):
     from UI.workers import PipelineBatchWorker
-    from src.config import AppSettings
+    from src.core.config import AppSettings
 
     # Force run_once to always return None
     import UI.workers as wmod
@@ -81,8 +81,8 @@ def test_pipeline_batch_worker_emits_done_when_no_items(qtbot, monkeypatch):
 
 def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
     import main as pipeline_main
-    from src.brain import VideoPackage, ScriptSegment
-    from src.config import AppSettings, Paths
+    from src.content.brain import VideoPackage, ScriptSegment
+    from src.core.config import AppSettings, Paths
 
     # Avoid touching real repo folders
     ada = tmp_path / ".Aquaduct_data"

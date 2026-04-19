@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -19,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.video_platform_presets import (
+from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
     distinct_resolutions,
     find_best_preset_for_video,
@@ -327,6 +328,11 @@ def attach_video_tab(win) -> None:
             win.bitrate_combo.setCurrentText(pr.bitrate_preset)
             win.clips_spin.setValue(int(pr.clips_per_video))
             win.clip_seconds_spin.setValue(int(round(pr.clip_seconds)))
+            win.pro_mode_chk.setChecked(bool(getattr(pr, "pro_mode", False)))
+            win.pro_clip_seconds_spin.setValue(float(getattr(pr, "pro_clip_seconds", 4.0)))
+            if getattr(pr, "pro_mode", False):
+                win.use_slideshow_chk.setChecked(True)
+            _sync_pro_mode_ui()
         finally:
             win._applying_video_template = False
 
@@ -368,6 +374,8 @@ def attach_video_tab(win) -> None:
         win.clip_seconds_spin,
     ):
         _spin.valueChanged.connect(lambda *_: _mark_video_template_custom())
+    win.pro_mode_chk.toggled.connect(lambda *_: _mark_video_template_custom())
+    win.pro_clip_seconds_spin.valueChanged.connect(lambda *_: _mark_video_template_custom())
 
     # Restore template selection from settings (prefer saved id, else infer from numbers)
     v = win.settings.video
@@ -388,6 +396,8 @@ def attach_video_tab(win) -> None:
                 bitrate_preset=str(v.bitrate_preset),
                 clips_per_video=int(getattr(v, "clips_per_video", 3)),
                 clip_seconds=float(getattr(v, "clip_seconds", 4.0)),
+                pro_mode=bool(getattr(v, "pro_mode", False)),
+                pro_clip_seconds=float(getattr(v, "pro_clip_seconds", 4.0)),
             )
             if inferred and inferred in win._platform_preset_tile_buttons:
                 win._platform_preset_tile_buttons[inferred].setChecked(True)
@@ -397,3 +407,4 @@ def attach_video_tab(win) -> None:
                 win._video_platform_preset_id = ""
     finally:
         win._applying_video_template = False
+        _sync_pro_mode_ui()

@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QColorDialog,
 )
 
-from src.config import BrandingSettings
+from src.core.config import BrandingSettings
 from UI.theme import PRESET_PALETTES, build_qss, resolve_palette
 
 

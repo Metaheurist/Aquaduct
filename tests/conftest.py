@@ -15,9 +15,9 @@ def tmp_repo_root(tmp_path: Path) -> Path:
 @pytest.fixture()
 def patch_paths(monkeypatch: pytest.MonkeyPatch, tmp_repo_root: Path):
     """
-    Monkeypatch src.config.get_paths() to use a temp directory so tests don't touch real disk.
+    Monkeypatch src.core.config.get_paths() to use a temp directory so tests don't touch real disk.
     """
-    from src import config as config_mod
+    from src.core import config as config_mod
 
     def _fake_get_paths():
         root = tmp_repo_root
@@ -37,7 +37,7 @@ def patch_paths(monkeypatch: pytest.MonkeyPatch, tmp_repo_root: Path):
         )
 
     monkeypatch.setattr(config_mod, "get_paths", _fake_get_paths)
-    # MainWindow does `from src.config import get_paths` — keep the same binding in sync.
+    # MainWindow does `from src.core.config import get_paths` — keep the same binding in sync.
     try:
         import importlib
 
@@ -66,7 +66,7 @@ def write_ui_settings(tmp_repo_root: Path, monkeypatch: pytest.MonkeyPatch):
     """
     Helper to write ui_settings.json into a temp root and patch application_data_dir().
     """
-    from src import ui_settings as ui_mod
+    from src.settings import ui_settings as ui_mod
 
     monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from src.config import AppSettings, VideoSettings
-from src.topics import effective_topic_tags, news_cache_mode_for_run, normalize_video_format, video_format_uses_news_style_sourcing
-from src.ui_settings import load_settings, save_settings
+from src.core.config import AppSettings, VideoSettings
+from src.content.topics import effective_topic_tags, news_cache_mode_for_run, normalize_video_format, video_format_uses_news_style_sourcing
+from src.settings.ui_settings import load_settings, save_settings
 
 
 def test_ui_settings_roundtrip_defaults(write_ui_settings):
@@ -16,7 +16,7 @@ def test_ui_settings_roundtrip_defaults(write_ui_settings):
 
 
 def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
-    from src import ui_settings as ui_mod
+    from src.settings import ui_settings as ui_mod
 
     monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
 
@@ -34,8 +34,11 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
             height=1280,
             fps=24,
             images_per_video=5,
+            pro_mode=True,
+            pro_clip_seconds=5.5,
             cleanup_images_after_run=True,
             platform_preset_id="landscape_720p",
+            effects_preset_id="effects_dynamic",
         ),
         elevenlabs_enabled=True,
         elevenlabs_api_key="el_test_key",
@@ -54,14 +57,17 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     assert s2.video.height == 1280
     assert s2.video.fps == 24
     assert s2.video.images_per_video == 5
+    assert s2.video.pro_mode is True
+    assert abs(s2.video.pro_clip_seconds - 5.5) < 1e-6
     assert s2.video.cleanup_images_after_run is True
     assert s2.video.platform_preset_id == "landscape_720p"
+    assert s2.video.effects_preset_id == "effects_dynamic"
     # Audio defaults/persistence should not break loading
     assert s2.video.audio_polish in {"off", "basic", "strong"}
 
 
 def test_ui_settings_roundtrip_custom_video_fields(tmp_repo_root, monkeypatch):
-    from src import ui_settings as ui_mod
+    from src.settings import ui_settings as ui_mod
 
     monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     s = AppSettings(
@@ -75,8 +81,8 @@ def test_ui_settings_roundtrip_custom_video_fields(tmp_repo_root, monkeypatch):
 
 
 def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
-    from src import ui_settings as ui_mod
-    from src.config import AppSettings
+    from src.settings import ui_settings as ui_mod
+    from src.core.config import AppSettings
 
     monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     s = AppSettings(
@@ -96,7 +102,7 @@ def test_ui_settings_api_fields_roundtrip(tmp_repo_root, monkeypatch):
 
 
 def test_ui_settings_migrates_legacy_topic_tags_to_news(tmp_repo_root, monkeypatch):
-    from src import ui_settings as ui_mod
+    from src.settings import ui_settings as ui_mod
 
     monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     p = tmp_repo_root / "ui_settings.json"
@@ -147,7 +153,7 @@ def test_normalize_video_format_unhinged():
 
 
 def test_save_settings_calls_mark_hidden(tmp_repo_root, monkeypatch):
-    from src import ui_settings as ui_mod
+    from src.settings import ui_settings as ui_mod
 
     monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
     called: list = []

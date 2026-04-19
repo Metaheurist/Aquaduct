@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.hardware import AutoFitRanked, HardwareInfo, rank_models_for_auto_fit, voice_fit_marker
-from src.model_manager import model_options
+from src.models.hardware import AutoFitRanked, HardwareInfo, rank_models_for_auto_fit, voice_fit_marker
+from src.models.model_manager import model_options
 
 
 def test_rank_models_for_auto_fit_returns_ordered_lists() -> None:

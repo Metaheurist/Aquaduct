@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from src.config import AppSettings
-from src.characters_store import (
+from src.core.config import AppSettings
+from dataclasses import replace
+
+from src.content.characters_store import (
     Character,
     character_context_for_brain,
     load_all,
@@ -11,8 +13,9 @@ from src.characters_store import (
     save_all,
     upsert,
 )
-from src.brain import _prompt_for_items
-from src.personalities import get_personality_by_id
+from src.core.config import get_paths
+from src.content.brain import _prompt_for_items
+from src.content.personalities import get_personality_by_id
 
 
 def test_character_roundtrip(patch_paths, tmp_repo_root):
@@ -97,6 +100,17 @@ def test_character_context_for_brain():
     assert "gore" in text
 
 
+def test_character_context_for_brain_includes_reference_note(patch_paths, tmp_repo_root):
+    c = new_character(name="WithRef")
+    rel = f"characters/{c.id}/portrait.png"
+    p = get_paths().data_dir / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\xf8\x0f\x00\x01\x05\x01\x02\xcf\xa0.\xcd\x00\x00\x00\x00IEND\xaeB`\x82")
+    c2 = replace(c, reference_image_rel=rel)
+    text = character_context_for_brain(c2)
+    assert "Canonical host reference portrait" in text
+
+
 def test_prompt_for_items_character_block():
     pers = get_personality_by_id("neutral")
     ptext = _prompt_for_items(
@@ -106,4 +120,4 @@ def test_prompt_for_items_character_block():
         character_context="Channel host: Zed",
     )
     assert "Channel host: Zed" in ptext
-    assert "Character / host identity" in ptext
+    assert "Character / host (mandatory" in ptext

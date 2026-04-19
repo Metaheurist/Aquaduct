@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.resource_sample import ResourceSample, sample_aquaduct_resources
+from src.util.resource_sample import ResourceSample, sample_aquaduct_resources
 
 
 def test_resource_sample_returns_dataclass() -> None:

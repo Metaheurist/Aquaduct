@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from src.config import AppSettings, VideoSettings
-from src.preflight import preflight_check
+from src.core.config import AppSettings, VideoSettings
+from src.runtime.preflight import preflight_check
 
 
 def test_preflight_invalid_fps(monkeypatch):
     # Pretend ffmpeg exists
-    import src.preflight as pf
+    import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
     s = AppSettings(video=VideoSettings(fps=999))
@@ -16,7 +16,7 @@ def test_preflight_invalid_fps(monkeypatch):
 
 
 def test_preflight_strict_requires_ffmpeg(monkeypatch):
-    import src.preflight as pf
+    import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: None)  # type: ignore[arg-type]
     # Also don't fail imports in this test
@@ -27,8 +27,8 @@ def test_preflight_strict_requires_ffmpeg(monkeypatch):
 
 
 def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):
-    import src.preflight as pf
-    from src.config import BrandingSettings
+    import src.runtime.preflight as pf
+    from src.core.config import BrandingSettings
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
     monkeypatch.setattr(pf, "_check_imports", lambda mods: [])

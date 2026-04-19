@@ -3,8 +3,8 @@ from __future__ import annotations
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QLabel, QFormLayout, QFrame, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from src.hardware import get_hardware_info, rate_model_fit_for_repo
-from src.model_manager import model_options
+from src.models.hardware import get_hardware_info, rate_model_fit_for_repo
+from src.models.model_manager import model_options
 
 
 def _fit_colors(marker: str) -> tuple[QColor, QColor]:

@@ -6,7 +6,6 @@ from typing import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
-from UI.brain_expand import wrap_editor_with_brain
 from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
@@ -29,7 +28,6 @@ class StoryboardPreviewDialog(FramelessDialog):
         *,
         manifest_path: Path,
         grid_png_path: Path,
-        on_regenerate_scene: Callable[[int], None],
         on_regenerate_all: Callable[[], None],
         on_approve_render: Callable[[], None],
     ) -> None:
@@ -38,7 +36,6 @@ class StoryboardPreviewDialog(FramelessDialog):
 
         self.manifest_path = Path(manifest_path)
         self.grid_png_path = Path(grid_png_path)
-        self._on_regen_scene = on_regenerate_scene
         self._on_regen_all = on_regenerate_all
         self._on_approve_render = on_approve_render
 
@@ -63,10 +60,6 @@ class StoryboardPreviewDialog(FramelessDialog):
         controls.addWidget(QLabel("Scene #"))
         controls.addWidget(self.scene_spin)
 
-        regen_one = QPushButton("Regenerate scene")
-        regen_one.clicked.connect(lambda: self._on_regen_scene(int(self.scene_spin.value())))
-        controls.addWidget(regen_one)
-
         regen_all = QPushButton("Regenerate all")
         regen_all.clicked.connect(self._on_regen_all)
         controls.addWidget(regen_all)
@@ -88,11 +81,7 @@ class StoryboardPreviewDialog(FramelessDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
         self.prompt_edit = QLineEdit()
-        _mw = parent if parent is not None and hasattr(parent, "settings") else None
-        if _mw is not None:
-            form.addRow("Prompt", wrap_editor_with_brain(self.prompt_edit, "Scene image prompt", _mw))
-        else:
-            form.addRow("Prompt", self.prompt_edit)
+        form.addRow("Prompt", self.prompt_edit)
 
         self.seed_spin = QSpinBox()
         self.seed_spin.setRange(0, 2_000_000_000)

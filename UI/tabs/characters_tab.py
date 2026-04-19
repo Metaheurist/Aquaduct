@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import replace
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,23 +16,36 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyle,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from src.character_presets import (
+from src.content.character_presets import (
     GeneratedCharacterFields,
     get_character_auto_preset_by_id,
     get_character_auto_presets,
 )
-from src.characters_store import Character, delete_by_id, get_by_id, load_all, new_character, save_all, upsert
-from src.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
-from src.ui_settings import save_settings
-from src.voice import list_pyttsx3_voices as list_sys_voices
-from UI.brain_expand import resolve_llm_model_id, wrap_editor_with_brain
+from src.content.characters_store import (
+    Character,
+    character_portrait_abs_path,
+    character_portrait_relpath,
+    character_reference_image_resolved,
+    delete_by_id,
+    delete_character_assets,
+    get_by_id,
+    load_all,
+    new_character,
+    save_all,
+    upsert,
+)
+from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
+from src.settings.ui_settings import save_settings
+from src.speech.voice import list_pyttsx3_voices as list_sys_voices
+from UI.brain_expand import image_model_id_from_ui, resolve_llm_model_id
 from UI.frameless_dialog import aquaduct_question, aquaduct_warning
-from UI.workers import CharacterGenerateWorker
+from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
 
 class _ElevenLabsVoicesThread(QThread):
@@ -43,11 +58,20 @@ class _ElevenLabsVoicesThread(QThread):
 
     def run(self) -> None:
         try:
-            from src.elevenlabs_tts import list_voices
+            from src.speech.elevenlabs_tts import list_voices
 
             self.finished_ok.emit(list_voices(self._api_key))
         except Exception as e:
             self.failed.emit(str(e))
+
+
+def _first_non_empty_standard_icon(style: QStyle, *pixmaps: QStyle.StandardPixmap) -> QIcon:
+    """``SP_DialogSaveAllButton`` is often blank on Windows + Fusion; try alternatives."""
+    for px in pixmaps:
+        ic = style.standardIcon(px)
+        if not ic.isNull():
+            return ic
+    return QIcon()
 
 
 def _fill_voice_combo(combo: QComboBox, current_id: str) -> None:
@@ -141,12 +165,33 @@ def attach_characters_tab(win) -> None:
 
     btn_row = QHBoxLayout()
     btn_row.setSpacing(6)
-    win.characters_add_btn = QPushButton("Add")
-    win.characters_dup_btn = QPushButton("Duplicate")
-    win.characters_del_btn = QPushButton("Delete")
+    _sty = w.style()
+    win.characters_add_btn = QPushButton()
+    win.characters_add_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder))
+    win.characters_add_btn.setToolTip("Add character")
+    win.characters_add_btn.setAccessibleName("Add character")
+    win.characters_dup_btn = QPushButton()
+    _dup_icon = _first_non_empty_standard_icon(
+        _sty,
+        QStyle.StandardPixmap.SP_FileLinkIcon,
+        QStyle.StandardPixmap.SP_DialogSaveAllButton,
+        QStyle.StandardPixmap.SP_DialogApplyButton,
+        QStyle.StandardPixmap.SP_FileDialogContentsView,
+    )
+    win.characters_dup_btn.setIcon(_dup_icon)
+    if _dup_icon.isNull():
+        win.characters_dup_btn.setText("⧉")
+    win.characters_dup_btn.setToolTip("Duplicate character")
+    win.characters_dup_btn.setAccessibleName("Duplicate character")
+    win.characters_del_btn = QPushButton()
+    win.characters_del_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+    win.characters_del_btn.setToolTip("Delete character")
+    win.characters_del_btn.setAccessibleName("Delete character")
     for b in (win.characters_add_btn, win.characters_dup_btn, win.characters_del_btn):
         b.setProperty("buttonRole", "secondary")
         b.setMaximumHeight(28)
+        b.setMinimumWidth(30)
+        b.setMaximumWidth(34)
     btn_row.addWidget(win.characters_add_btn)
     btn_row.addWidget(win.characters_dup_btn)
     btn_row.addWidget(win.characters_del_btn)
@@ -170,7 +215,7 @@ def attach_characters_tab(win) -> None:
     win.character_identity_edit.setPlaceholderText("Who is this host? Tone, channel, audience…")
     win.character_identity_edit.setAcceptRichText(False)
     win.character_identity_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    inner_lay.addWidget(wrap_editor_with_brain(win.character_identity_edit, "Identity / persona (script + on-screen)", win))
+    inner_lay.addWidget(win.character_identity_edit)
 
     lbl_vis = QLabel("Visual style (prepended to image prompts)")
     lbl_vis.setStyleSheet("color: #B7B7C2; font-size: 11px;")
@@ -181,7 +226,36 @@ def attach_characters_tab(win) -> None:
     win.character_visual_edit.setPlaceholderText("e.g. neon cyberpunk studio, warm key light, mascot host…")
     win.character_visual_edit.setAcceptRichText(False)
     win.character_visual_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    inner_lay.addWidget(wrap_editor_with_brain(win.character_visual_edit, "Visual style (image prompts)", win))
+    inner_lay.addWidget(win.character_visual_edit)
+
+    portrait_row = QHBoxLayout()
+    portrait_row.setSpacing(8)
+    win.character_portrait_generate_btn = QPushButton("Generate portrait")
+    win.character_portrait_generate_btn.setProperty("buttonRole", "secondary")
+    win.character_portrait_generate_btn.setMaximumHeight(28)
+    win.character_portrait_generate_btn.setMinimumWidth(132)
+    win.character_portrait_generate_btn.setToolTip(
+        "Render one reference still with the image model selected on the Model tab. Requires Visual style text."
+    )
+    portrait_row.addWidget(win.character_portrait_generate_btn)
+    win.character_portrait_preview = QLabel()
+    win.character_portrait_preview.setFixedSize(100, 120)
+    win.character_portrait_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    win.character_portrait_preview.setStyleSheet(
+        "QLabel { background-color: #14141A; border: 1px solid #2E2E38; border-radius: 6px; color: #6A6A78; font-size: 10px; }"
+    )
+    win.character_portrait_preview.setText("No portrait")
+    win.character_portrait_preview.setScaledContents(False)
+    portrait_row.addWidget(win.character_portrait_preview)
+    portrait_row.addStretch(1)
+    inner_lay.addLayout(portrait_row)
+    portrait_hint = QLabel(
+        "Uses the Model tab image weights. Fill Visual style above first — the portrait prompt is built from it. "
+        "Saved on this profile for the script LLM and for video storyboard consistency."
+    )
+    portrait_hint.setWordWrap(True)
+    portrait_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
+    inner_lay.addWidget(portrait_hint)
 
     lbl_neg = QLabel("Extra negatives for diffusion (comma phrases)")
     lbl_neg.setStyleSheet("color: #B7B7C2; font-size: 11px;")
@@ -191,7 +265,7 @@ def attach_characters_tab(win) -> None:
     win.character_negatives_edit.setPlaceholderText("e.g. extra fingers, watermark")
     win.character_negatives_edit.setAcceptRichText(False)
     win.character_negatives_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    inner_lay.addWidget(wrap_editor_with_brain(win.character_negatives_edit, "Extra negatives for diffusion", win))
+    inner_lay.addWidget(win.character_negatives_edit)
 
     win.character_default_voice_chk = QCheckBox("Use project default voice (Settings → Voice model)")
     win.character_default_voice_chk.setChecked(True)
@@ -282,6 +356,7 @@ def attach_characters_tab(win) -> None:
     _el_voices_cache: list[tuple[str, str]] = []
     _el_worker: _ElevenLabsVoicesThread | None = None
     _char_gen_worker: CharacterGenerateWorker | None = None
+    _portrait_worker: CharacterPortraitWorker | None = None
 
     def _update_el_visibility() -> None:
         ok = elevenlabs_available_for_app(win.settings)
@@ -349,6 +424,26 @@ def attach_characters_tab(win) -> None:
         elif win.characters_list.count():
             win.characters_list.setCurrentRow(0)
 
+    def _refresh_portrait_thumb() -> None:
+        ch = get_by_id(all_chars, str(_current_id)) if _current_id else None
+        p = character_reference_image_resolved(ch) if ch else None
+        win.character_portrait_preview.clear()
+        if p is not None and p.exists():
+            pm = QPixmap(str(p))
+            if not pm.isNull():
+                win.character_portrait_preview.setPixmap(
+                    pm.scaled(
+                        100,
+                        120,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+                win.character_portrait_preview.setText("")
+                return
+        win.character_portrait_preview.setPixmap(QPixmap())
+        win.character_portrait_preview.setText("No portrait")
+
     def _load_form(c: Character) -> None:
         win.character_name_edit.setText(c.name)
         win.character_identity_edit.setPlainText(c.identity)
@@ -361,6 +456,7 @@ def attach_characters_tab(win) -> None:
             _fill_el_voice_combo(win.character_el_voice_combo, c.elevenlabs_voice_id, _el_voices_cache)
         else:
             _fill_el_voice_combo(win.character_el_voice_combo, "", [])
+        _refresh_portrait_thumb()
 
     def _on_select() -> None:
         nonlocal _current_id
@@ -390,6 +486,7 @@ def attach_characters_tab(win) -> None:
             identity=win.character_identity_edit.toPlainText(),
             visual_style=win.character_visual_edit.toPlainText(),
             negatives=win.character_negatives_edit.toPlainText(),
+            reference_image_rel=str(getattr(base, "reference_image_rel", "") or "").strip(),
             use_default_voice=bool(win.character_default_voice_chk.isChecked()),
             pyttsx3_voice_id=str(win.character_voice_combo.currentData() or "").strip(),
             kokoro_voice=win.character_kokoro_edit.text().strip(),
@@ -429,12 +526,23 @@ def attach_characters_tab(win) -> None:
             aquaduct_warning(w, "Characters", "Select a character to duplicate.")
             return
         dup = new_character(name=f"{ch.name} (copy)")
+        ref_rel = ""
+        old_p = character_portrait_abs_path(ch.id)
+        if old_p.is_file():
+            new_p = character_portrait_abs_path(dup.id)
+            new_p.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(old_p, new_p)
+                ref_rel = character_portrait_relpath(dup.id)
+            except OSError:
+                ref_rel = ""
         dup = Character(
             id=dup.id,
             name=dup.name,
             identity=ch.identity,
             visual_style=ch.visual_style,
             negatives=ch.negatives,
+            reference_image_rel=ref_rel,
             use_default_voice=ch.use_default_voice,
             pyttsx3_voice_id=ch.pyttsx3_voice_id,
             kokoro_voice=ch.kokoro_voice,
@@ -508,6 +616,77 @@ def attach_characters_tab(win) -> None:
         th.finished.connect(th.deleteLater)
         th.start()
 
+    def _on_generate_portrait() -> None:
+        nonlocal all_chars, _portrait_worker
+        if _portrait_worker is not None and _portrait_worker.isRunning():
+            return
+        if not _current_id:
+            aquaduct_warning(w, "Characters", "Select a character first.")
+            return
+        vs = win.character_visual_edit.toPlainText().strip()
+        if not vs:
+            aquaduct_warning(
+                w,
+                "Characters",
+                "Fill in Visual style first — the portrait prompt is built from that field.",
+            )
+            return
+        img_id = image_model_id_from_ui(win)
+        if not img_id:
+            aquaduct_warning(
+                w,
+                "Characters",
+                "Choose an image model on the Model tab (same weights used for video slideshow images).",
+            )
+            return
+        base = get_by_id(all_chars, str(_current_id))
+        if not base:
+            return
+        th = CharacterPortraitWorker(
+            image_model_id=img_id,
+            character_id=base.id,
+            visual_style=vs,
+            allow_nsfw=bool(getattr(win.settings, "allow_nsfw", False)),
+            steps=4,
+            art_style_preset_id=str(getattr(win.settings, "art_style_preset_id", None) or "balanced"),
+        )
+        _portrait_worker = th
+        win.character_portrait_generate_btn.setEnabled(False)
+        win.character_portrait_generate_btn.setText("Generating…")
+
+        def _ok(rel: str) -> None:
+            nonlocal all_chars, _portrait_worker
+            _portrait_worker = None
+            win.character_portrait_generate_btn.setEnabled(True)
+            win.character_portrait_generate_btn.setText("Generate portrait")
+            cid = str(_current_id or "")
+            if not cid:
+                return
+            cur = get_by_id(all_chars, cid)
+            if not cur:
+                return
+            updated = replace(cur, reference_image_rel=str(rel or "").strip())
+            all_chars = upsert(all_chars, updated)
+            save_all(all_chars)
+            _refresh_portrait_thumb()
+            if hasattr(win, "_append_log"):
+                win._append_log("Saved character reference portrait for video consistency.")
+
+        def _fail(msg: str) -> None:
+            nonlocal _portrait_worker
+            _portrait_worker = None
+            win.character_portrait_generate_btn.setEnabled(True)
+            win.character_portrait_generate_btn.setText("Generate portrait")
+            short = (msg or "").strip()
+            if len(short) > 1600:
+                short = short[:1600] + "…"
+            aquaduct_warning(w, "Portrait generation", short)
+
+        th.done.connect(_ok)
+        th.failed.connect(_fail)
+        th.finished.connect(th.deleteLater)
+        th.start()
+
     def _on_delete() -> None:
         nonlocal all_chars, _current_id
         it = win.characters_list.currentItem()
@@ -524,6 +703,7 @@ def attach_characters_tab(win) -> None:
             default_no=True,
         ):
             return
+        delete_character_assets(ch.id)
         all_chars = delete_by_id(all_chars, ch.id)
         save_all(all_chars)
         _current_id = None
@@ -544,6 +724,7 @@ def attach_characters_tab(win) -> None:
     )
     win.character_el_refresh_btn.clicked.connect(_on_el_refresh_clicked)
     win.character_generate_btn.clicked.connect(_on_generate_character)
+    win.character_portrait_generate_btn.clicked.connect(_on_generate_portrait)
 
     _fill_voice_combo(win.character_voice_combo, "")
     _update_el_visibility()

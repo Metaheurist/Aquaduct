@@ -165,7 +165,7 @@ def dprint(category: str, *parts: object, ts: bool = True) -> None:
     line = prefix + " " + " ".join(str(p) for p in parts)
     print(prefix, *parts, file=sys.stderr, flush=True)
     try:
-        from src.repo_logs import append_debug_log
+        from src.util.repo_logs import append_debug_log
 
         append_debug_log(line)
     except Exception:

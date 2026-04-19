@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.model_manager import download_model_to_project, find_repo_dirs_in_folder, model_options, resolve_pretrained_load_path
+from src.models.model_manager import download_model_to_project, find_repo_dirs_in_folder, model_options, resolve_pretrained_load_path
 
 
 def test_model_options_enumerated_and_sorted():
@@ -48,11 +48,27 @@ def test_find_repo_dirs_in_folder_detects_safe_and_nested_paths(tmp_path):
 def test_resolve_pretrained_load_path_returns_nested_local_snapshot(tmp_path):
     nested = tmp_path / "owner" / "repo"
     nested.mkdir(parents=True)
-    assert resolve_pretrained_load_path("owner/repo", models_dir=tmp_path) == str(nested)
+    # Must meet min_bytes_for_snapshot() so we do not fall through to Hub id.
+    (nested / "weights.bin").write_bytes(b"x" * 300_000)
+    assert resolve_pretrained_load_path("owner/repo", models_dir=tmp_path) == str(nested.resolve())
+
+
+def test_resolve_pretrained_load_path_uses_hub_cache_when_project_empty(tmp_path, monkeypatch):
+    """If project snapshot is missing/too small but HF cache has files, use cache path."""
+    hub_path = tmp_path / "hf_cache" / "snap"
+    hub_path.mkdir(parents=True)
+
+    def fake_snapshot_download(repo_id, local_files_only=False, **_kw):
+        assert repo_id == "z/m"
+        assert local_files_only is True
+        return str(hub_path)
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
+    assert resolve_pretrained_load_path("z/m", models_dir=tmp_path) == str(hub_path.resolve())
 
 
 def test_prompt_conditioning_assigns_varied_scene_types():
-    from src.prompt_conditioning import assign_scene_types
+    from src.content.prompt_conditioning import assign_scene_types
 
     prompts = [
         "cyberpunk dashboard UI",
@@ -70,8 +86,8 @@ def test_prompt_conditioning_assigns_varied_scene_types():
 
 
 def test_storyboard_builds_deterministic_seeds_and_overlay_cap():
-    from src.brain import ScriptSegment, VideoPackage
-    from src.storyboard import build_storyboard
+    from src.content.brain import ScriptSegment, VideoPackage
+    from src.content.storyboard import build_storyboard
 
     pkg = VideoPackage(
         title="T",
@@ -97,7 +113,7 @@ def test_storyboard_builds_deterministic_seeds_and_overlay_cap():
 
 
 def test_audio_fx_builds_ffmpeg_cmds(tmp_path):
-    from src.audio_fx import AudioPolishConfig, MusicMixConfig, build_music_duck_cmd, build_voice_process_cmd
+    from src.speech.audio_fx import AudioPolishConfig, MusicMixConfig, build_music_duck_cmd, build_voice_process_cmd
 
     ffmpeg = tmp_path / "ffmpeg.exe"
     vin = tmp_path / "in.wav"

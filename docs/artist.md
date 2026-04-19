@@ -1,4 +1,4 @@
-# `src/artist.py` — Artist (Images)
+# `src/render/artist.py` — Artist (Images)
 
 ## Purpose
 Generate 5–10 visuals per video based on script beat prompts.

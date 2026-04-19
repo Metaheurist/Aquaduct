@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.video_platform_presets import (
+from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
     find_best_preset_for_video,
     preset_by_id,
@@ -33,6 +33,25 @@ def test_find_best_preset_matches_template() -> None:
         clip_seconds=p.clip_seconds,
     )
     assert got == p.id
+
+
+def test_find_best_preset_matches_pro_template() -> None:
+    p = preset_by_id("pro_shortform_60fps")
+    assert p is not None
+    got = find_best_preset_for_video(
+        width=p.width,
+        height=p.height,
+        fps=p.fps,
+        microclip_min_s=p.microclip_min_s,
+        microclip_max_s=p.microclip_max_s,
+        images_per_video=p.images_per_video,
+        bitrate_preset=p.bitrate_preset,
+        clips_per_video=p.clips_per_video,
+        clip_seconds=p.clip_seconds,
+        pro_mode=True,
+        pro_clip_seconds=p.pro_clip_seconds,
+    )
+    assert got == "pro_shortform_60fps"
 
 
 def test_find_best_preset_returns_empty_when_mismatch() -> None:

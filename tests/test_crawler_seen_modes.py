@@ -6,7 +6,7 @@ import pytest
 
 
 def test_news_seen_paths_matches_video_format_keys(tmp_path) -> None:
-    from src.crawler import news_seen_paths
+    from src.content.crawler import news_seen_paths
 
     d = tmp_path / "news_cache"
     seen, titles = news_seen_paths(d, "cartoon")
@@ -17,7 +17,7 @@ def test_news_seen_paths_matches_video_format_keys(tmp_path) -> None:
 
 def test_default_cache_mode_reads_legacy_seen_for_news(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Omitted `cache_mode` defaults to news and migrates from flat `seen.json`."""
-    from src.crawler import NewsItem, get_latest_items
+    from src.content.crawler import NewsItem, get_latest_items
 
     news_cache = tmp_path / "news_cache"
     news_cache.mkdir(parents=True)
@@ -25,7 +25,7 @@ def test_default_cache_mode_reads_legacy_seen_for_news(monkeypatch: pytest.Monke
     (news_cache / "seen.json").write_text(json.dumps([u]), encoding="utf-8")
 
     monkeypatch.setattr(
-        "src.crawler._fetch_headlines",
+        "src.content.crawler._fetch_headlines",
         lambda **_kw: [
             NewsItem(title="T", url=u, source="GoogleNews"),
             NewsItem(title="T2", url="https://example.com/n2", source="GoogleNews"),
@@ -38,7 +38,7 @@ def test_default_cache_mode_reads_legacy_seen_for_news(monkeypatch: pytest.Monke
 
 
 def test_explainer_mode_never_reads_legacy_seen(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    from src.crawler import NewsItem, get_latest_items
+    from src.content.crawler import NewsItem, get_latest_items
 
     news_cache = tmp_path / "news_cache"
     news_cache.mkdir(parents=True)
@@ -46,7 +46,7 @@ def test_explainer_mode_never_reads_legacy_seen(monkeypatch: pytest.MonkeyPatch,
     (news_cache / "seen.json").write_text(json.dumps([u]), encoding="utf-8")
 
     monkeypatch.setattr(
-        "src.crawler._fetch_headlines",
+        "src.content.crawler._fetch_headlines",
         lambda **_kw: [NewsItem(title="T", url=u, source="GoogleNews")],
     )
 
@@ -57,7 +57,7 @@ def test_explainer_mode_never_reads_legacy_seen(monkeypatch: pytest.MonkeyPatch,
 
 
 def test_per_mode_seen_isolates_from_legacy_news(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    from src.crawler import NewsItem, get_latest_items
+    from src.content.crawler import NewsItem, get_latest_items
 
     news_cache = tmp_path / "news_cache"
     news_cache.mkdir(parents=True)
@@ -70,7 +70,7 @@ def test_per_mode_seen_isolates_from_legacy_news(monkeypatch: pytest.MonkeyPatch
             NewsItem(title="New", url="https://example.com/fresh", source="GoogleNews"),
         ]
 
-    monkeypatch.setattr("src.crawler._fetch_headlines", fake_fetch)
+    monkeypatch.setattr("src.content.crawler._fetch_headlines", fake_fetch)
 
     cartoon = get_latest_items(news_cache, limit=3, cache_mode="cartoon")
     assert len(cartoon) == 2
@@ -82,7 +82,7 @@ def test_per_mode_seen_isolates_from_legacy_news(monkeypatch: pytest.MonkeyPatch
 
 
 def test_legacy_seen_titles_migrates_for_news_scored(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    from src.crawler import NewsItem, get_scored_items
+    from src.content.crawler import NewsItem, get_scored_items
 
     news_cache = tmp_path / "news_cache"
     news_cache.mkdir(parents=True)
@@ -93,8 +93,8 @@ def test_legacy_seen_titles_migrates_for_news_scored(monkeypatch: pytest.MonkeyP
         NewsItem(title="Totally different story", url="https://b.example/u2", source="GoogleNews"),
     ]
 
-    monkeypatch.setattr("src.crawler.fetch_latest_items", lambda **_kw: raw)
-    monkeypatch.setattr("src.content_quality.diversify", lambda ranked, **_kw: ranked)
+    monkeypatch.setattr("src.content.crawler.fetch_latest_items", lambda **_kw: raw)
+    monkeypatch.setattr("src.content.content_quality.diversify", lambda ranked, **_kw: ranked)
 
     get_scored_items(news_cache, limit=1, fetch_n=2, cache_mode="news")
     # Titles persisted to per-mode file
@@ -107,7 +107,7 @@ def test_legacy_seen_titles_migrates_for_news_scored(monkeypatch: pytest.MonkeyP
 
 def test_cartoon_scored_uses_separate_seen_titles(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Non-news modes do not load legacy `seen_titles.json`."""
-    from src.crawler import NewsItem, get_scored_items
+    from src.content.crawler import NewsItem, get_scored_items
 
     news_cache = tmp_path / "news_cache"
     news_cache.mkdir(parents=True)
@@ -115,8 +115,8 @@ def test_cartoon_scored_uses_separate_seen_titles(monkeypatch: pytest.MonkeyPatc
 
     raw = [NewsItem(title="Legacy title noise", url="https://x.example/a", source="GoogleNews")]
 
-    monkeypatch.setattr("src.crawler.fetch_latest_items", lambda **_kw: raw)
-    monkeypatch.setattr("src.content_quality.diversify", lambda ranked, **_kw: ranked)
+    monkeypatch.setattr("src.content.crawler.fetch_latest_items", lambda **_kw: raw)
+    monkeypatch.setattr("src.content.content_quality.diversify", lambda ranked, **_kw: ranked)
 
     get_scored_items(news_cache, limit=1, fetch_n=1, cache_mode="cartoon")
     path = news_cache / "seen_titles_cartoon.json"
@@ -126,7 +126,7 @@ def test_cartoon_scored_uses_separate_seen_titles(monkeypatch: pytest.MonkeyPatc
 
 
 def test_unhinged_scored_persist_cache_false_skips_disk(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    from src.crawler import NewsItem, get_scored_items
+    from src.content.crawler import NewsItem, get_scored_items
 
     news_cache = tmp_path / "news_cache"
     news_cache.mkdir(parents=True)
@@ -136,8 +136,8 @@ def test_unhinged_scored_persist_cache_false_skips_disk(monkeypatch: pytest.Monk
         NewsItem(title="Headline B", url="https://b.example/u2", source="GoogleNews"),
     ]
 
-    monkeypatch.setattr("src.crawler.fetch_latest_items", lambda **_kw: raw)
-    monkeypatch.setattr("src.content_quality.diversify", lambda ranked, **_kw: ranked)
+    monkeypatch.setattr("src.content.crawler.fetch_latest_items", lambda **_kw: raw)
+    monkeypatch.setattr("src.content.content_quality.diversify", lambda ranked, **_kw: ranked)
 
     get_scored_items(news_cache, limit=1, fetch_n=2, cache_mode="unhinged", persist_cache=False)
     assert not any(news_cache.glob("seen*.json"))
@@ -145,7 +145,7 @@ def test_unhinged_scored_persist_cache_false_skips_disk(monkeypatch: pytest.Monk
 
 
 def test_clear_news_seen_cache_files_removes_legacy_and_per_mode(tmp_path) -> None:
-    from src.crawler import clear_news_seen_cache_files
+    from src.content.crawler import clear_news_seen_cache_files
 
     d = tmp_path / "news_cache"
     d.mkdir(parents=True)
@@ -162,10 +162,11 @@ def test_clear_news_seen_cache_files_removes_legacy_and_per_mode(tmp_path) -> No
 
 
 def test_effective_query_mode_tailors_search_bias() -> None:
-    from src.crawler import _default_headline_query, _effective_query
+    from src.content.crawler import _default_headline_query, _effective_query
 
     n = _effective_query(query="", topic_tags=["Acme"], topic_mode="news")
-    assert "Acme" in n and ("AI" in n or "ai" in n)
+    assert "Acme" in n
+    assert "AI tool" not in n
 
     c = _effective_query(query="", topic_tags=["slapstick"], topic_mode="cartoon")
     assert "slapstick" in c
@@ -191,7 +192,7 @@ def test_effective_query_mode_tailors_search_bias() -> None:
 
 
 def test_clear_news_seen_cache_files_empty_dir(tmp_path) -> None:
-    from src.crawler import clear_news_seen_cache_files
+    from src.content.crawler import clear_news_seen_cache_files
 
     d = tmp_path / "news_cache"
     d.mkdir(parents=True)

@@ -1,4 +1,4 @@
-# `src/utils_vram.py` — VRAM / memory cleanup
+# `src/util/utils_vram.py` — VRAM / memory cleanup
 
 ## Purpose
 Keep the pipeline stable on **8GB VRAM** by aggressively freeing memory between stages.

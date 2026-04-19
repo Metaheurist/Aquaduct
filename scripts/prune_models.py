@@ -27,10 +27,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config import AppSettings, get_paths
-from src.fs_delete import rmtree_robust, unlink_file
-from src.model_manager import project_model_dirname
-from src.ui_settings import load_settings
+from src.core.config import AppSettings, get_paths
+from src.util.fs_delete import rmtree_robust, unlink_file
+from src.models.model_manager import project_model_dirname
+from src.settings.ui_settings import load_settings
 
 # Screenshot defaults: Qwen2.5 1.5B, SVD+SDXL pair, Kokoro 82M
 PRESETS: dict[str, list[str]] = {

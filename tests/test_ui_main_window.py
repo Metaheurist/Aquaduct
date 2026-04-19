@@ -59,7 +59,6 @@ def test_storyboard_dialog_constructs(qtbot, tmp_path):
         None,
         manifest_path=manifest,
         grid_png_path=grid,
-        on_regenerate_scene=lambda _i: None,
         on_regenerate_all=lambda: None,
         on_approve_render=lambda: None,
     )
@@ -89,6 +88,29 @@ def test_on_run_queues_when_pipeline_worker_running(qtbot, monkeypatch, patch_pa
     assert w._pipeline_run_queue[0]["kind"] == "pipeline"
     assert w._pipeline_run_queue[0]["qty"] == 3
     assert w._pipeline_run_queue[0]["settings"] is not w.settings
+
+
+@pytest.mark.qt
+def test_on_run_queues_when_preview_worker_running(qtbot, monkeypatch, patch_paths, write_ui_settings):
+    """Run uses preview_worker/storyboard_worker — queue must trigger while those are busy, not only pipeline worker."""
+    write_ui_settings({"topic_tags": []})
+    from UI.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w.show()
+
+    mock_pw = MagicMock()
+    mock_pw.isRunning.return_value = True
+    w.preview_worker = mock_pw
+    w.worker = None
+    w.run_qty_spin.setValue(2)
+
+    w._on_run()
+
+    assert len(w._pipeline_run_queue) == 1
+    assert w._pipeline_run_queue[0]["kind"] == "pipeline"
+    assert w._pipeline_run_queue[0]["qty"] == 2
 
 
 @pytest.mark.qt

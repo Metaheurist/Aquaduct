@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -15,7 +18,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.ffmpeg_slideshow import XFADE_TRANSITIONS
+from src.settings.effects_presets import EFFECT_PRESETS, find_best_preset_for_effects, preset_by_id
+from src.render.ffmpeg_slideshow import XFADE_TRANSITIONS
 
 
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:
@@ -62,6 +66,96 @@ def attach_effects_tab(win) -> None:
     header = QLabel("Effects & audio")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
+    lay.addSpacing(2)
+
+    preset_header = QLabel("Effects template")
+    preset_header.setStyleSheet("font-size: 13px; font-weight: 600;")
+    lay.addWidget(preset_header)
+
+    _TILE_QSS = """
+        QPushButton#effectsPresetTile {
+            background-color: #1A1A22;
+            border: 2px solid #2E2E38;
+            border-radius: 8px;
+            padding: 6px 8px;
+            min-height: 44px;
+            max-height: 64px;
+            text-align: left;
+            font-size: 10px;
+            color: #E8E8EE;
+        }
+        QPushButton#effectsPresetTile:hover {
+            border-color: #4A90D9;
+            background-color: #22222C;
+        }
+        QPushButton#effectsPresetTile:checked {
+            border-color: #25F4EE;
+            background-color: #252532;
+        }
+        QPushButton#effectsPresetTile:pressed {
+            background-color: #2A2A36;
+        }
+    """
+
+    tile_wrap = QWidget()
+    tile_grid = QGridLayout(tile_wrap)
+    tile_grid.setHorizontalSpacing(8)
+    tile_grid.setVerticalSpacing(8)
+    tile_grid.setContentsMargins(0, 0, 0, 0)
+
+    win._effects_preset_tile_group = QButtonGroup(win)
+    win._effects_preset_tile_group.setExclusive(True)
+    win._effects_preset_tile_buttons: dict[str, QPushButton] = {}
+
+    cols = 4
+    r, c = 0, 0
+    for p in EFFECT_PRESETS:
+        btn = QPushButton()
+        btn.setObjectName("effectsPresetTile")
+        btn.setCheckable(True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(_TILE_QSS)
+        btn.setText(f"{p.title}\n{p.subtitle}")
+        btn.setToolTip(f"{p.title}\n\n{p.description}")
+        btn.setProperty("preset_id", p.id)
+        btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        win._effects_preset_tile_group.addButton(btn)
+        win._effects_preset_tile_buttons[p.id] = btn
+        tile_grid.addWidget(btn, r, c)
+        c += 1
+        if c >= cols:
+            c = 0
+            r += 1
+
+    custom_tile = QPushButton()
+    custom_tile.setObjectName("effectsPresetTile")
+    custom_tile.setCheckable(True)
+    custom_tile.setCursor(Qt.CursorShape.PointingHandCursor)
+    custom_tile.setStyleSheet(_TILE_QSS)
+    custom_tile.setText("Custom\nManual settings")
+    custom_tile.setToolTip("Keep your own mix. Pick a template first, then tweak fields below.")
+    custom_tile.setProperty("preset_id", "")
+    custom_tile.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+    win._effects_preset_tile_group.addButton(custom_tile)
+    win._effects_preset_custom_tile = custom_tile
+    tile_grid.addWidget(custom_tile, r, c)
+    for col in range(cols):
+        tile_grid.setColumnStretch(col, 1)
+
+    lay.addWidget(tile_wrap)
+
+    preset_hint = QLabel(
+        "Click a card to apply an effects profile (like graphics presets). "
+        "Editing any value below switches selection to Custom."
+    )
+    preset_hint.setWordWrap(True)
+    preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    lay.addWidget(preset_hint)
+
+    sub = QLabel("Visual & motion")
+    sub.setStyleSheet("font-size: 13px; font-weight: 600; margin-top: 8px;")
+    lay.addWidget(sub)
+
     hint = QLabel(
         "Motion between images, slideshow transitions, image seed, and mix options. "
         "Transition strength controls duration; type picks the FFmpeg xfade style."
@@ -69,7 +163,6 @@ def attach_effects_tab(win) -> None:
     hint.setWordWrap(True)
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lay.addWidget(hint)
-    lay.addSpacing(4)
 
     form_vis = QFormLayout()
     form_vis.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -175,14 +268,125 @@ def attach_effects_tab(win) -> None:
         win.music_fade_spin.setEnabled(enabled)
         win.sfx_combo.setEnabled(enabled)
 
-    win.audio_polish_combo.currentIndexChanged.connect(_sync_audio_controls)
-    win.music_ducking_chk.stateChanged.connect(_sync_audio_controls)
-    _sync_audio_controls()
-
     tip = QLabel("Tip: Set transition strength to Off to disable crossfades; motion zoom may still apply.")
     tip.setWordWrap(True)
     tip.setStyleSheet("color: #B7B7C2; margin-top: 8px; font-size: 11px;")
     lay.addWidget(tip)
+
+    win._applying_effects_template = False
+
+    def _apply_effects_preset(preset_id: str) -> None:
+        pr = preset_by_id(preset_id)
+        if not pr:
+            return
+        win._applying_effects_template = True
+        try:
+            win.quality_retries_spin.setValue(int(pr.quality_retries))
+            win.enable_motion_chk.setChecked(bool(pr.enable_motion))
+            ts = str(pr.transition_strength)
+            tix = win.transition_combo.findData(ts)
+            if tix >= 0:
+                win.transition_combo.setCurrentIndex(tix)
+            xix = win.xfade_transition_combo.findData(str(pr.xfade_transition))
+            if xix >= 0:
+                win.xfade_transition_combo.setCurrentIndex(xix)
+            if pr.seed_base is None:
+                win.seed_base_input.setText("")
+            else:
+                win.seed_base_input.setText(str(int(pr.seed_base)))
+            ap = str(pr.audio_polish)
+            pix = win.audio_polish_combo.findData(ap)
+            if pix >= 0:
+                win.audio_polish_combo.setCurrentIndex(pix)
+            win.music_ducking_chk.setChecked(bool(pr.music_ducking))
+            win.ducking_spin.setValue(int(round(float(pr.music_ducking_amount) * 100)))
+            win.music_fade_spin.setValue(int(round(float(pr.music_fade_s))))
+            sx = str(pr.sfx_mode)
+            six = win.sfx_combo.findData(sx)
+            if six >= 0:
+                win.sfx_combo.setCurrentIndex(six)
+            _sync_audio_controls()
+        finally:
+            win._applying_effects_template = False
+
+    def _mark_effects_custom() -> None:
+        if getattr(win, "_applying_effects_template", False):
+            return
+        if not hasattr(win, "_effects_preset_custom_tile"):
+            return
+        win._applying_effects_template = True
+        try:
+            win._effects_preset_custom_tile.setChecked(True)
+            win._effects_preset_id = ""
+        finally:
+            win._applying_effects_template = False
+
+    def _on_audio_polish_changed() -> None:
+        _sync_audio_controls()
+        _mark_effects_custom()
+
+    def _on_music_ducking_changed() -> None:
+        _sync_audio_controls()
+        _mark_effects_custom()
+
+    win.audio_polish_combo.currentIndexChanged.connect(_on_audio_polish_changed)
+    win.music_ducking_chk.stateChanged.connect(_on_music_ducking_changed)
+    _sync_audio_controls()
+
+    def _on_effects_tile_clicked(btn: QPushButton) -> None:
+        if getattr(win, "_applying_effects_template", False):
+            return
+        raw = btn.property("preset_id")
+        pid = "" if raw is None else str(raw)
+        win._effects_preset_id = pid
+        if pid:
+            _apply_effects_preset(pid)
+
+    win._apply_effects_preset = _apply_effects_preset
+    win._mark_effects_template_custom = _mark_effects_custom
+    win._effects_preset_id = ""
+
+    win._effects_preset_tile_group.buttonClicked.connect(_on_effects_tile_clicked)
+
+    win.quality_retries_spin.valueChanged.connect(lambda *_: _mark_effects_custom())
+    win.enable_motion_chk.stateChanged.connect(lambda *_: _mark_effects_custom())
+    win.transition_combo.currentIndexChanged.connect(lambda *_: _mark_effects_custom())
+    win.xfade_transition_combo.currentIndexChanged.connect(lambda *_: _mark_effects_custom())
+    win.seed_base_input.textChanged.connect(lambda *_: _mark_effects_custom())
+    win.audio_polish_combo.currentIndexChanged.connect(lambda *_: _mark_effects_custom())
+    win.music_ducking_chk.stateChanged.connect(lambda *_: _mark_effects_custom())
+    win.ducking_spin.valueChanged.connect(lambda *_: _mark_effects_custom())
+    win.music_fade_spin.valueChanged.connect(lambda *_: _mark_effects_custom())
+    win.sfx_combo.currentIndexChanged.connect(lambda *_: _mark_effects_custom())
+
+    v = win.settings.video
+    saved_fx = str(getattr(v, "effects_preset_id", "") or "").strip()
+    win._applying_effects_template = True
+    try:
+        if saved_fx and preset_by_id(saved_fx) and saved_fx in win._effects_preset_tile_buttons:
+            win._effects_preset_tile_buttons[saved_fx].setChecked(True)
+            win._effects_preset_id = saved_fx
+        else:
+            inferred = find_best_preset_for_effects(
+                quality_retries=int(getattr(v, "quality_retries", 2)),
+                enable_motion=bool(getattr(v, "enable_motion", True)),
+                transition_strength=str(getattr(v, "transition_strength", "low") or "low"),
+                xfade_transition=str(getattr(v, "xfade_transition", "fade") or "fade"),
+                seed_base=getattr(v, "seed_base", None),
+                audio_polish=str(getattr(v, "audio_polish", "basic") or "basic"),
+                music_ducking=bool(getattr(v, "music_ducking", True)),
+                music_ducking_amount=float(getattr(v, "music_ducking_amount", 0.7)),
+                music_fade_s=float(getattr(v, "music_fade_s", 1.2)),
+                sfx_mode=str(getattr(v, "sfx_mode", "off") or "off"),
+            )
+            if inferred and inferred in win._effects_preset_tile_buttons:
+                win._effects_preset_tile_buttons[inferred].setChecked(True)
+                win._effects_preset_id = inferred
+            else:
+                win._effects_preset_custom_tile.setChecked(True)
+                win._effects_preset_id = ""
+    finally:
+        win._applying_effects_template = False
 
     hint_sz = lay.sizeHint()
     content.setMinimumHeight(max(hint_sz.height(), 360))

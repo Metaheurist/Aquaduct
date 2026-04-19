@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.artist import GeneratedImage, apply_regenerated_image
+from src.render.artist import GeneratedImage, apply_regenerated_image
 
 
 def test_apply_regenerated_image_same_path_keeps_file(tmp_path: Path) -> None:

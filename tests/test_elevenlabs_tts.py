@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.config import AppSettings
-from src.elevenlabs_tts import (
+from src.core.config import AppSettings
+from src.speech.elevenlabs_tts import (
     effective_elevenlabs_api_key,
     elevenlabs_available_for_app,
     list_voices,
@@ -25,7 +25,7 @@ def test_elevenlabs_available_requires_enabled_and_key() -> None:
     assert elevenlabs_available_for_app(AppSettings(elevenlabs_enabled=True, elevenlabs_api_key="x"))
 
 
-@patch("src.elevenlabs_tts.requests.get")
+@patch("src.speech.elevenlabs_tts.requests.get")
 def test_list_voices_parses(mock_get: MagicMock) -> None:
     mock_get.return_value.json.return_value = {
         "voices": [
@@ -39,10 +39,10 @@ def test_list_voices_parses(mock_get: MagicMock) -> None:
     assert ("Bob", "v2") in out
 
 
-@patch("src.elevenlabs_tts.synthesize_to_wav", return_value=True)
+@patch("src.speech.elevenlabs_tts.synthesize_to_wav", return_value=True)
 def test_voice_synthesize_calls_elevenlabs_first(mock_el: MagicMock, tmp_path: Path) -> None:
     pytest.importorskip("numpy")  # src.voice imports numpy
-    from src.voice import synthesize
+    from src.speech.voice import synthesize
 
     out_wav = tmp_path / "v.wav"
     caps = tmp_path / "c.json"

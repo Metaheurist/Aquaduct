@@ -8,14 +8,13 @@ import secrets
 from collections.abc import Callable
 import subprocess
 import sys
-import tempfile
 import threading
 import webbrowser
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PyQt6.QtGui import QDesktopServices, QGuiApplication
+from PyQt6.QtGui import QDesktopServices, QGuiApplication, QIcon
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -24,6 +23,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QTabWidget,
     QPushButton,
+    QStyle,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -37,7 +37,7 @@ from UI.frameless_dialog import (
     show_hf_token_dialog,
 )
 
-from src.config import (
+from src.core.config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
     AppSettings,
     BrandingSettings,
@@ -45,24 +45,25 @@ from src.config import (
     VIDEO_FORMATS,
     get_paths,
 )
-from src.model_integrity_cache import (
+from src.models.model_integrity_cache import (
     integrity_cache_path,
     load_integrity_cache,
     merge_integrity_cache,
     save_integrity_cache,
 )
-from src.crawler import clear_news_seen_cache_files
-from src.topics import normalize_video_format
-from src.fs_delete import rmtree_robust, unlink_file
-from src.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
-from src.preflight import preflight_check
-from src.pipeline_control import PipelineRunControl
-from src.utils_ffmpeg import find_ffmpeg
-from src.ui_settings import load_settings, save_settings, settings_path
-from src.personalities import get_personality_by_id
+from src.content.crawler import clear_news_seen_cache_files
+from src.content.topics import normalize_video_format
+from src.util.fs_delete import rmtree_robust, unlink_file
+from src.models.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
+from src.runtime.preflight import preflight_check
+from src.runtime.pipeline_control import PipelineRunControl
+from src.render.utils_ffmpeg import find_ffmpeg
+from src.settings.ui_settings import load_settings, save_settings, settings_path
+from src.content.personalities import get_personality_by_id
 from debug import dprint
 
 from UI.paths import project_root
+from UI.brain_expand import script_llm_model_id_from_ui
 from UI.tabs import (
     attach_api_tab,
     attach_branding_tab,
@@ -199,7 +200,7 @@ class MainWindow(QMainWindow):
         self._internet_bridge.finished.connect(self._on_internet_status)
 
         def _probe_internet() -> None:
-            from src.network_status import is_internet_likely_reachable
+            from src.util.network_status import is_internet_likely_reachable
 
             ok = is_internet_likely_reachable()
             self._internet_bridge.finished.emit(ok)
@@ -320,12 +321,10 @@ class MainWindow(QMainWindow):
 
     def _reset_run_session_state(self) -> None:
         """
-        Each app launch: clear Run tab progress, last-run scene #, and in-memory preview/storyboard
+        Each app launch: clear Run tab progress and in-memory preview/storyboard
         so the UI never shows a previous session's status (e.g. Preview failed / partial progress).
         """
         self._clear_tasks_active_row()
-        if hasattr(self, "regen_scene_spin"):
-            self.regen_scene_spin.setValue(1)
         if hasattr(self, "preview_btn"):
             self.preview_btn.setEnabled(True)
             self.preview_btn.setText("Preview")
@@ -353,6 +352,16 @@ class MainWindow(QMainWindow):
         if self.storyboard_worker and self.storyboard_worker.isRunning():
             out.append("storyboard preview")
         return out
+
+    def _pipeline_run_should_queue(self) -> bool:
+        """True while a pipeline, preview, or storyboard job is active — Run should enqueue instead of starting."""
+        if self.worker is not None and self.worker.isRunning():
+            return True
+        if self.preview_worker is not None and self.preview_worker.isRunning():
+            return True
+        if self.storyboard_worker is not None and self.storyboard_worker.isRunning():
+            return True
+        return False
 
     def _clear_all_data(self) -> None:
         """
@@ -508,7 +517,7 @@ class MainWindow(QMainWindow):
     def _refresh_character_combo(self) -> None:
         if not hasattr(self, "character_combo"):
             return
-        from src.characters_store import load_all
+        from src.content.characters_store import load_all
 
         cur = self.character_combo.currentData()
         self.character_combo.blockSignals(True)
@@ -571,7 +580,7 @@ class MainWindow(QMainWindow):
     def _append_log(self, line: str) -> None:
         msg = line.rstrip()
         try:
-            from src.repo_logs import append_ui_log
+            from src.util.repo_logs import append_ui_log
 
             append_ui_log(msg)
         except Exception:
@@ -770,6 +779,8 @@ class MainWindow(QMainWindow):
             export_microclips=bool(self.export_microclips_chk.isChecked()),
             bitrate_preset=self.bitrate_combo.currentText(),  # type: ignore[arg-type]
             use_image_slideshow=bool(self.use_slideshow_chk.isChecked()) if hasattr(self, "use_slideshow_chk") else True,
+            pro_mode=bool(self.pro_mode_chk.isChecked()) if hasattr(self, "pro_mode_chk") else False,
+            pro_clip_seconds=float(self.pro_clip_seconds_spin.value()) if hasattr(self, "pro_clip_seconds_spin") else 4.0,
             clips_per_video=int(self.clips_spin.value()) if hasattr(self, "clips_spin") else 3,
             clip_seconds=float(self.clip_seconds_spin.value()) if hasattr(self, "clip_seconds_spin") else 4.0,
             cleanup_images_after_run=bool(self.cleanup_images_chk.isChecked()) if hasattr(self, "cleanup_images_chk") else False,
@@ -807,6 +818,11 @@ class MainWindow(QMainWindow):
                 str(getattr(self, "_video_platform_preset_id", "") or "").strip()
                 if hasattr(self, "_video_platform_preset_id")
                 else str(getattr(self.settings.video, "platform_preset_id", "") or "")
+            ),
+            effects_preset_id=(
+                str(getattr(self, "_effects_preset_id", "") or "").strip()
+                if hasattr(self, "_effects_preset_id")
+                else str(getattr(self.settings.video, "effects_preset_id", "") or "")
             ),
         )
 
@@ -971,6 +987,11 @@ class MainWindow(QMainWindow):
             youtube_add_shorts_hashtag=yt_shorts_tag,
             youtube_auto_upload_after_render=yt_auto,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
+            art_style_preset_id=(
+                str(self.art_style_preset_combo.currentData())
+                if hasattr(self, "art_style_preset_combo")
+                else str(getattr(self.settings, "art_style_preset_id", "balanced") or "balanced")
+            ),
             active_character_id=str(self.character_combo.currentData()) if hasattr(self, "character_combo") else str(getattr(self.settings, "active_character_id", "") or ""),
             run_content_mode=(
                 "custom"
@@ -982,7 +1003,7 @@ class MainWindow(QMainWindow):
                 if hasattr(self, "custom_instructions_edit")
                 else str(getattr(self.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS]
             ),
-            llm_model_id=str(self.llm_combo.currentData()) if hasattr(self, "llm_combo") else self.settings.llm_model_id,
+            llm_model_id=script_llm_model_id_from_ui(self),
             image_model_id=image_model_id,
             video_model_id=video_model_id,
             voice_model_id=str(self.voice_combo.currentData()) if hasattr(self, "voice_combo") else self.settings.voice_model_id,
@@ -1123,7 +1144,7 @@ class MainWindow(QMainWindow):
 
     def _download_selected(self, kind: str) -> None:
         if kind == "script":
-            repo_ids = [str(self.llm_combo.currentData())]
+            repo_ids = [script_llm_model_id_from_ui(self)]
         elif kind == "video":
             d = self.img_combo.currentData()
             if isinstance(d, tuple) and len(d) == 2:
@@ -1147,7 +1168,7 @@ class MainWindow(QMainWindow):
         self._start_download(need, title="Downloading model")
 
     def _download_all_selected(self) -> None:
-        repo_ids: list[str] = [str(self.llm_combo.currentData())]
+        repo_ids: list[str] = [script_llm_model_id_from_ui(self)]
         img_d = self.img_combo.currentData()
         if isinstance(img_d, tuple) and len(img_d) == 2:
             repo_ids.extend([str(img_d[0]), str(img_d[1])])
@@ -1248,7 +1269,7 @@ class MainWindow(QMainWindow):
         folder_path = Path(folder)
 
         # Discover curated model folders in the selected source.
-        from src.model_manager import find_repo_dirs_in_folder, project_dirname_to_repo_id, model_options
+        from src.models.model_manager import find_repo_dirs_in_folder, project_dirname_to_repo_id, model_options
         opts = model_options()
         repo_ids = {opt.repo_id for opt in opts}
 
@@ -1385,7 +1406,7 @@ class MainWindow(QMainWindow):
         """Current LLM / image / voice selections, de-duplicated, only repos with a local snapshot."""
         if not hasattr(self, "llm_combo"):
             return []
-        repo_ids: list[str] = [str(self.llm_combo.currentData())]
+        repo_ids: list[str] = [script_llm_model_id_from_ui(self)]
         img_d = self.img_combo.currentData()
         if isinstance(img_d, tuple) and len(img_d) == 2:
             repo_ids.extend([str(img_d[0]), str(img_d[1])])
@@ -1792,7 +1813,7 @@ class MainWindow(QMainWindow):
         self._try_start_next_queued_pipeline()
 
     def _try_start_next_queued_pipeline(self) -> None:
-        if self.worker is not None and self.worker.isRunning():
+        if self._pipeline_run_should_queue():
             return
         if not self._pipeline_run_queue:
             try:
@@ -1856,7 +1877,7 @@ class MainWindow(QMainWindow):
     def _on_run(self) -> None:
         dprint("ui", "_on_run")
         self._save_settings()
-        if self.worker and self.worker.isRunning():
+        if self._pipeline_run_should_queue():
             qty = int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1
             self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": qty})
             n = len(self._pipeline_run_queue)
@@ -1960,6 +1981,7 @@ class MainWindow(QMainWindow):
                 on_approve_run=self._approve_preview_and_run,
             )
             dlg.exec()
+            self._try_start_next_queued_pipeline()
 
         def on_failed(err: str) -> None:
             self._release_run_control()
@@ -1972,6 +1994,7 @@ class MainWindow(QMainWindow):
                     pass
             self._append_log("Preview failed:")
             self._append_log(err)
+            self._try_start_next_queued_pipeline()
 
         self.preview_worker.progress.connect(on_prog)
         self.preview_worker.done.connect(on_done)
@@ -1987,7 +2010,7 @@ class MainWindow(QMainWindow):
             return
 
         self._save_settings()
-        if self.worker and self.worker.isRunning():
+        if self._pipeline_run_should_queue():
             self._pipeline_run_queue.append(
                 {
                     "kind": "prebuilt",
@@ -2025,104 +2048,6 @@ class MainWindow(QMainWindow):
             )
 
         self._run_when_ffmpeg_ready(_continue)
-
-    def _regenerate_scene_from_last_run(self) -> None:
-        """
-        Regenerate a single storyboard scene from the latest video folder manifest, then re-render final.mp4.
-        """
-        try:
-            idx = int(self.regen_scene_spin.value()) if hasattr(self, "regen_scene_spin") else 1
-        except Exception:
-            idx = 1
-        idx = max(1, idx)
-
-        try:
-            # Find latest video dir with manifest.json
-            vids = list(self.paths.videos_dir.glob("*"))
-            vids = [p for p in vids if p.is_dir() and (p / "assets" / "manifest.json").exists()]
-            if not vids:
-                self._append_log("No manifest.json found yet. Run once to generate a storyboard first.")
-                return
-            vids.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            video_dir = vids[0]
-            manifest = video_dir / "assets" / "manifest.json"
-
-            import json
-
-            m = json.loads(manifest.read_text(encoding="utf-8"))
-            scenes = m.get("scenes", []) if isinstance(m, dict) else []
-            if not isinstance(scenes, list) or not scenes:
-                self._append_log("Manifest has no scenes.")
-                return
-            if idx > len(scenes):
-                self._append_log(f"Scene #{idx} out of range (1..{len(scenes)}).")
-                return
-            sc = scenes[idx - 1] if isinstance(scenes[idx - 1], dict) else {}
-            prompt = str(sc.get("prompt", "")).strip()
-            seed = int(sc.get("seed", 0) or 0)
-            img_path = str(sc.get("image_path", "")).strip()
-            if not prompt or not img_path:
-                self._append_log("Manifest missing prompt/image_path for that scene.")
-                return
-
-            from pathlib import Path
-            from src.artist import apply_regenerated_image, generate_images
-            from src.editor import assemble_microclips_then_concat
-            from src.config import get_paths, get_models
-
-            paths = get_paths()
-            models = get_models()
-            settings = self._collect_settings_from_ui()
-            img_id = settings.image_model_id.strip() or models.sdxl_turbo_id
-
-            out_path = Path(img_path)
-            self._append_log(f"Regenerating scene #{idx}…")
-            with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
-                regen = generate_images(
-                    sdxl_turbo_model_id=img_id,
-                    prompts=[prompt],
-                    out_dir=Path(_td),
-                    max_images=1,
-                    seeds=[seed + 1],
-                    allow_nsfw=bool(getattr(settings, "allow_nsfw", False)),
-                )
-                if regen:
-                    apply_regenerated_image(regen, out_path)
-                sc["seed"] = seed + 1
-                sc["image_path"] = str(out_path)
-                scenes[idx - 1] = sc
-                m["scenes"] = scenes
-                manifest.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-
-            # Re-render final using current settings, reusing existing voice/captions.
-            voice_wav = video_dir / "assets" / "voice.wav"
-            captions_json = video_dir / "assets" / "captions.json"
-            final_mp4 = video_dir / "final.mp4"
-            images = [Path(str(s.get("image_path", ""))) for s in scenes if isinstance(s, dict) and str(s.get("image_path", "")).strip()]
-            images = [p for p in images if p.exists()]
-            article_r = ""
-            try:
-                ap = video_dir / "assets" / "article.txt"
-                if ap.exists():
-                    article_r = ap.read_text(encoding="utf-8")
-            except Exception:
-                pass
-            assemble_microclips_then_concat(
-                ffmpeg_dir=paths.ffmpeg_dir,
-                settings=settings.video,
-                images=images,
-                voice_wav=voice_wav,
-                captions_json=captions_json,
-                out_final_mp4=final_mp4,
-                out_assets_dir=video_dir / "assets",
-                background_music=Path(settings.background_music_path).resolve() if settings.background_music_path else None,
-                branding=getattr(settings, "branding", None),
-                article_text=article_r or None,
-                video_format=str(getattr(settings, "video_format", "news") or "news"),
-            )
-            self._append_log(f"Re-rendered: {final_mp4}")
-        except Exception as e:
-            self._append_log(f"Regenerate failed: {e}")
 
     def _on_storyboard_preview(self) -> None:
         if self.storyboard_worker and self.storyboard_worker.isRunning():
@@ -2164,11 +2089,11 @@ class MainWindow(QMainWindow):
                 self,
                 manifest_path=manifest_path,
                 grid_png_path=grid_png_path,
-                on_regenerate_scene=self._storyboard_regenerate_scene,
                 on_regenerate_all=self._on_storyboard_preview,
                 on_approve_render=self._approve_storyboard_and_render,
             )
             dlg.exec()
+            self._try_start_next_queued_pipeline()
 
         def on_failed(err: str) -> None:
             self._release_run_control()
@@ -2181,82 +2106,13 @@ class MainWindow(QMainWindow):
                     pass
             self._append_log("Storyboard preview failed:")
             self._append_log(err)
+            self._try_start_next_queued_pipeline()
 
         self.storyboard_worker.progress.connect(on_prog)
         self.storyboard_worker.done.connect(on_done)
         self.storyboard_worker.failed.connect(on_failed)
         self.storyboard_worker.cancelled.connect(self._on_storyboard_worker_cancelled)
         self.storyboard_worker.start()
-
-    def _storyboard_regenerate_scene(self, scene_idx: int) -> None:
-        """
-        Regenerate a scene preview image in the current storyboard manifest and refresh grid.
-        """
-        import json
-        from pathlib import Path
-
-        if not self._last_storyboard_manifest or not self._last_storyboard_grid:
-            return
-        manifest = Path(str(self._last_storyboard_manifest))
-        grid = Path(str(self._last_storyboard_grid))
-        if not manifest.exists():
-            return
-
-        m = json.loads(manifest.read_text(encoding="utf-8"))
-        scenes = m.get("scenes", []) if isinstance(m, dict) else []
-        if not isinstance(scenes, list) or not scenes:
-            return
-        idx = max(1, int(scene_idx))
-        if idx > len(scenes):
-            return
-        sc = scenes[idx - 1] if isinstance(scenes[idx - 1], dict) else {}
-
-        prompt = str(sc.get("prompt", "")).strip()
-        seed = int(sc.get("seed", 0) or 0)
-        lock = bool(sc.get("lock_seed", False))
-        prev_path = str(sc.get("preview_image_path", "")).strip()
-        if not prev_path:
-            # default preview location
-            prev_path = str(manifest.parent / "previews" / f"scene_{idx:02d}.png")
-        out_path = Path(prev_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        from src.artist import apply_regenerated_image, generate_images
-        from src.config import get_models
-
-        models = get_models()
-        settings = self._collect_settings_from_ui()
-        img_id = settings.image_model_id.strip() or models.sdxl_turbo_id
-
-        new_seed = seed if lock else (seed + 1)
-        gen = generate_images(
-            sdxl_turbo_model_id=img_id,
-            prompts=[prompt],
-            out_dir=out_path.parent,
-            max_images=1,
-            seeds=[new_seed],
-            steps=4,
-            allow_nsfw=bool(getattr(settings, "allow_nsfw", False)),
-        )
-        if gen:
-            apply_regenerated_image(gen, out_path)
-
-        sc["seed"] = int(new_seed)
-        sc["preview_image_path"] = str(out_path)
-        sc["status"] = "regenerated"
-        scenes[idx - 1] = sc
-        m["scenes"] = scenes
-        manifest.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-
-        # Rebuild grid
-        try:
-            from src.storyboard import render_preview_grid
-
-            paths = [Path(str(s.get("preview_image_path", ""))) for s in scenes if isinstance(s, dict)]
-            paths = [p for p in paths if p.exists()]
-            render_preview_grid(scene_paths=paths, out_grid=grid, cols=4, thumb=256)
-        except Exception:
-            pass
 
     def _approve_storyboard_and_render(self) -> None:
         """
@@ -2279,7 +2135,7 @@ class MainWindow(QMainWindow):
         seeds = [int(s.get("seed", 0) or 0) for s in scenes if isinstance(s, dict)]
 
         self._save_settings()
-        if self.worker and self.worker.isRunning():
+        if self._pipeline_run_should_queue():
             self._pipeline_run_queue.append(
                 {
                     "kind": "storyboard",
@@ -2325,7 +2181,7 @@ class MainWindow(QMainWindow):
         try:
             from pathlib import Path
 
-            from src.upload_tasks import append_task_for_video_dir
+            from src.platform.upload_tasks import append_task_for_video_dir
 
             p = Path(str(out_dir).strip())
             if p.is_dir() and (p / "final.mp4").is_file():
@@ -2416,13 +2272,32 @@ class MainWindow(QMainWindow):
         self._tasks_refresh()
         self._update_tasks_control_buttons()
 
+    def _sync_tasks_pause_button_appearance(self) -> None:
+        """Pause vs Resume: theme media icons are nearly invisible on dark Fusion; use high-contrast glyphs."""
+        if not hasattr(self, "tasks_pause_btn"):
+            return
+        btn = self.tasks_pause_btn
+        try:
+            rc = self._pipeline_control
+            paused = bool(rc is not None and rc.is_paused())
+            btn.setIcon(QIcon())
+            btn.setStyleSheet("color: #E8E8EE; font-size: 14px; font-weight: 600; padding: 0px;")
+            if paused:
+                btn.setText("▶")
+                btn.setToolTip("Resume pipeline")
+                btn.setAccessibleName("Resume")
+            else:
+                btn.setText("⏸")
+                btn.setToolTip(
+                    "Pause between pipeline steps (not mid–GPU operation). Click again to resume."
+                )
+                btn.setAccessibleName("Pause")
+        except Exception:
+            pass
+
     def _release_run_control(self) -> None:
         self._pipeline_control = None
-        if hasattr(self, "tasks_pause_btn"):
-            try:
-                self.tasks_pause_btn.setText("Pause")
-            except Exception:
-                pass
+        self._sync_tasks_pause_button_appearance()
         self._update_tasks_control_buttons()
 
     def _update_tasks_control_buttons(self) -> None:
@@ -2437,6 +2312,7 @@ class MainWindow(QMainWindow):
                 self.tasks_stop_btn.setEnabled(en)
             except Exception:
                 pass
+        self._sync_tasks_pause_button_appearance()
 
     def _on_tasks_pause_toggle(self) -> None:
         rc = self._pipeline_control
@@ -2444,13 +2320,11 @@ class MainWindow(QMainWindow):
             return
         if rc.is_paused():
             rc.request_resume()
-            if hasattr(self, "tasks_pause_btn"):
-                self.tasks_pause_btn.setText("Pause")
+            self._sync_tasks_pause_button_appearance()
             self._append_log("Resumed.")
         else:
             rc.request_pause()
-            if hasattr(self, "tasks_pause_btn"):
-                self.tasks_pause_btn.setText("Resume")
+            self._sync_tasks_pause_button_appearance()
             self._append_log("Pause requested — takes effect after the current step finishes.")
 
     def _on_tasks_stop(self) -> None:
@@ -2489,6 +2363,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._append_log("Preview cancelled.")
+        self._try_start_next_queued_pipeline()
 
     def _on_storyboard_worker_cancelled(self) -> None:
         self._clear_tasks_active_row()
@@ -2500,13 +2375,14 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._append_log("Storyboard preview cancelled.")
+        self._try_start_next_queued_pipeline()
 
     def _tasks_refresh(self) -> None:
         if not hasattr(self, "tasks_table"):
             return
         from pathlib import Path
 
-        from src.upload_tasks import load_tasks
+        from src.platform.upload_tasks import load_tasks
 
         self.tasks_table.setRowCount(0)
         if self._tasks_active_row:
@@ -2560,7 +2436,7 @@ class MainWindow(QMainWindow):
             return
         from pathlib import Path
 
-        from src.upload_tasks import load_tasks
+        from src.platform.upload_tasks import load_tasks
 
         for t in load_tasks():
             if t.id == tid:
@@ -2573,7 +2449,7 @@ class MainWindow(QMainWindow):
             return
         from pathlib import Path
 
-        from src.upload_tasks import load_tasks
+        from src.platform.upload_tasks import load_tasks
 
         for t in load_tasks():
             if t.id == tid:
@@ -2588,8 +2464,8 @@ class MainWindow(QMainWindow):
             return
         from pathlib import Path
 
-        from src.tiktok_post import build_caption_package
-        from src.upload_tasks import load_tasks
+        from src.platform.tiktok_post import build_caption_package
+        from src.platform.upload_tasks import load_tasks
 
         for t in load_tasks():
             if t.id == tid:
@@ -2602,7 +2478,7 @@ class MainWindow(QMainWindow):
         tid = self._tasks_selected_id()
         if not tid:
             return
-        from src.upload_tasks import set_task_status
+        from src.platform.upload_tasks import set_task_status
 
         set_task_status(tid, "posted")
         self._tasks_refresh()
@@ -2611,7 +2487,7 @@ class MainWindow(QMainWindow):
         tid = self._tasks_selected_id()
         if not tid:
             return
-        from src.upload_tasks import remove_task
+        from src.platform.upload_tasks import remove_task
 
         remove_task(tid)
         self._tasks_refresh()
@@ -2708,11 +2584,11 @@ class MainWindow(QMainWindow):
         port = int(getattr(self.settings, "tiktok_oauth_port", 8765) or 8765)
         redirect = str(getattr(self.settings, "tiktok_redirect_uri", "") or "").strip()
         if not redirect:
-            from src.tiktok_post import default_redirect_uri
+            from src.platform.tiktok_post import default_redirect_uri
 
             redirect = default_redirect_uri(port)
         state = secrets.token_urlsafe(24)
-        from src.tiktok_post import build_authorize_url, exchange_authorization_code, generate_pkce, parse_token_response
+        from src.platform.tiktok_post import build_authorize_url, exchange_authorization_code, generate_pkce, parse_token_response
 
         verifier, challenge = generate_pkce()
         scopes = ["user.info.basic", "video.upload"]
@@ -2720,7 +2596,7 @@ class MainWindow(QMainWindow):
         def work() -> None:
             import time
 
-            from src.tiktok_oauth_server import run_oauth_loopback
+            from src.platform.tiktok_oauth_server import run_oauth_loopback
 
             try:
                 code, oerr = run_oauth_loopback(port, state, timeout_s=300.0)
@@ -2787,14 +2663,14 @@ class MainWindow(QMainWindow):
         port = int(getattr(self.settings, "youtube_oauth_port", 8888) or 8888)
         redirect = str(getattr(self.settings, "youtube_redirect_uri", "") or "").strip()
         if not redirect:
-            from src.youtube_upload import default_youtube_redirect_uri
+            from src.platform.youtube_upload import default_youtube_redirect_uri
 
             redirect = default_youtube_redirect_uri(port)
         state = secrets.token_urlsafe(24)
-        from src.youtube_upload import build_authorization_url, exchange_authorization_code, parse_token_response
+        from src.platform.youtube_upload import build_authorization_url, exchange_authorization_code, parse_token_response
 
         def work() -> None:
-            from src.tiktok_oauth_server import run_oauth_loopback
+            from src.platform.tiktok_oauth_server import run_oauth_loopback
 
             try:
                 code, oerr = run_oauth_loopback(
