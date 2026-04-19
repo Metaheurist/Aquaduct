@@ -527,7 +527,7 @@ def attach_settings_tab(win) -> None:
 
     form.addRow("Script model (LLM)", llm_row)
     form.addRow("Image model (diffusion stills)", img_row)
-    form.addRow("Video model (motion / Pro / clips)", vid_row)
+    form.addRow("Video model (motion / Pro / scenes)", vid_row)
     form.addRow("Voice model (TTS)", voice_row)
     lay.addLayout(form)
 

@@ -3,14 +3,14 @@
 ## Where models are used
 - **Script model (LLM)**: [`src/content/brain.py`](../src/content/brain.py) (local inference; 4-bit target when supported)
 - **Image model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers text-to-image for stills and keyframes; SDXL Turbo default)
-- **Video model**: [`src/render/clips.py`](../src/render/clips.py) (motion: text-to-video / image-to-video). **Pro** slideshow uses this slot only (e.g. ZeroScope → one T2V clip, frames extracted; or a T2I repo id for per-frame stills). **Clip mode** (non-slideshow) still uses Image for keyframes + Video for animation.
+- **Video model**: [`src/render/clips.py`](../src/render/clips.py) (motion: text-to-video / image-to-video). **Pro** with slideshow off uses this slot for **multi-scene text-to-video** (e.g. ZeroScope). **Motion mode** (slideshow off, Pro off) uses Image for keyframes + Video to animate **scene** segments. Legacy **slideshow + Pro** may still use this slot for ZeroScope→frame extract or a T2I id for per-frame stills.
 - **Voice model (TTS)**: [`src/speech/voice.py`](../src/speech/voice.py) (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
 
 ## UI model selection
 In the UI **Model** tab you can pick and download models separately for:
 - Script (LLM)
 - Image (diffusion stills)
-- Video (motion / Pro / clip pipeline)
+- Video (motion / Pro / scene pipeline)
 - Voice (TTS)
 
 **Auto-fit for this PC** sets all four from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../src/models/hardware.py) (same heuristics as **My PC** fit badges). It saves settings after applying.
