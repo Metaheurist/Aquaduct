@@ -80,13 +80,13 @@ from UI.tabs import (
     attach_topics_tab,
     attach_video_tab,
     attach_effects_tab,
+    attach_library_tab,
 )
 from UI.download_popup import DownloadPopup, ImportPopup
 from UI.workers import (
     FFmpegEnsureWorker,
     ModelDownloadWorker,
     ModelIntegrityVerifyWorker,
-    PipelineBatchWorker,
     PipelineWorker,
     PreviewWorker,
     StoryboardWorker,
@@ -99,6 +99,7 @@ from UI.storyboard_dialog import StoryboardPreviewDialog
 from UI.progress_tasks import format_status_line
 
 _TASKS_ACTIVE_JOB_TOKEN = "__active_job__"
+_TASKS_QUEUED_PIPELINE_TOKEN = "__queued_pipeline__"
 
 
 class _InternetStatusBridge(QObject):
@@ -181,6 +182,7 @@ class MainWindow(QMainWindow):
         attach_characters_tab(self)
         attach_topics_tab(self)
         attach_tasks_tab(self)
+        attach_library_tab(self)
         attach_video_tab(self)
         attach_effects_tab(self)
         attach_captions_tab(self)
@@ -400,7 +402,8 @@ class MainWindow(QMainWindow):
             if n > 0:
                 self.tabs.setTabToolTip(
                     idx,
-                    f"{n} job(s) running or queued (pipeline, preview, storyboard, or upload).",
+                    f"{n} job(s) running or queued (pipeline, preview, storyboard, or upload). "
+                    "Pipeline jobs waiting in the FIFO queue appear as their own rows under the active run.",
                 )
             else:
                 self.tabs.setTabToolTip(
@@ -547,6 +550,8 @@ class MainWindow(QMainWindow):
         if tab_txt == "Model" and api_mode:
             # API page uses a scroll area; layout size hints can be too small before the panel lays out.
             page_h = max(page_h, 560)
+        if tab_txt == "Library":
+            page_h = max(page_h, 540)
 
         # Layout margins (top+bottom) + small padding inside tab pane.
         h = int(title_h + banner_h + tabbar_h + page_h + 10 + 10 + 48)
@@ -651,6 +656,8 @@ class MainWindow(QMainWindow):
         try:
             if self.tabs.tabText(idx) == "Run":
                 self._refresh_character_combo()
+            if self.tabs.tabText(idx) == "Library":
+                self._library_refresh()
             if self.tabs.tabText(idx) == "Characters" and hasattr(self, "_characters_refresh_elevenlabs"):
                 self._characters_refresh_elevenlabs()
         except Exception:
@@ -1267,6 +1274,91 @@ class MainWindow(QMainWindow):
     def _open_videos(self) -> None:
         self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.videos_dir)))
+
+    def _library_refresh(self) -> None:
+        self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
+        self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
+        if hasattr(self, "_library_fill_tables"):
+            try:
+                self._library_fill_tables()
+            except Exception:
+                pass
+
+    def _library_open_videos_root(self) -> None:
+        self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.videos_dir)))
+
+    def _library_open_runs_root(self) -> None:
+        self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.runs_dir)))
+
+    def _library_selected_video_path(self) -> Path | None:
+        if not hasattr(self, "library_videos_table"):
+            return None
+        items = self.library_videos_table.selectedItems()
+        if not items:
+            return None
+        row = items[0].row()
+        it = self.library_videos_table.item(row, 0)
+        if it is None:
+            return None
+        raw = it.data(Qt.ItemDataRole.UserRole)
+        if not raw:
+            return None
+        p = Path(str(raw))
+        return p if p.is_dir() else None
+
+    def _library_selected_run_path(self) -> Path | None:
+        if not hasattr(self, "library_runs_table"):
+            return None
+        items = self.library_runs_table.selectedItems()
+        if not items:
+            return None
+        row = items[0].row()
+        it = self.library_runs_table.item(row, 0)
+        if it is None:
+            return None
+        raw = it.data(Qt.ItemDataRole.UserRole)
+        if not raw:
+            return None
+        p = Path(str(raw))
+        return p if p.is_dir() else None
+
+    def _library_open_selected_video_dir(self) -> None:
+        p = self._library_selected_video_path()
+        if p is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
+
+    def _library_open_selected_video_assets(self) -> None:
+        p = self._library_selected_video_path()
+        if p is None:
+            return
+        a = p / "assets"
+        a.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(a)))
+
+    def _library_play_selected_video(self) -> None:
+        p = self._library_selected_video_path()
+        if p is None:
+            return
+        f = p / "final.mp4"
+        if f.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(f)))
+
+    def _library_open_selected_run_dir(self) -> None:
+        p = self._library_selected_run_path()
+        if p is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
+
+    def _library_open_selected_run_assets(self) -> None:
+        p = self._library_selected_run_path()
+        if p is None:
+            return
+        a = p / "assets"
+        if not a.is_dir():
+            aquaduct_information(self, "Library", "This run folder has no assets/ subfolder yet.")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(a)))
 
     def _pick_music(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -1939,14 +2031,12 @@ class MainWindow(QMainWindow):
         self,
         settings: AppSettings,
         *,
-        quantity: int = 1,
         prebuilt_pkg=None,
         prebuilt_sources=None,
         prebuilt_prompts=None,
         prebuilt_seeds=None,
     ) -> None:
-        """Preflight must have passed. Starts PipelineWorker or PipelineBatchWorker."""
-        qty = max(1, int(quantity))
+        """Preflight must have passed. Starts a single-video ``PipelineWorker`` (queue multiple jobs for N videos)."""
 
         def on_prog(tid: str, overall_pct: int, task_pct: int, status: str) -> None:
             self._update_tasks_active_progress(tid, overall_pct, task_pct, status)
@@ -1997,27 +2087,15 @@ class MainWindow(QMainWindow):
             self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
-        if qty <= 1:
-            self._set_tasks_active_row(
-                "Pipeline run",
-                format_status_line("pipeline_run", 0, -1, "Queued…"),
-                folder="In progress",
-            )
-            self._pipeline_control = PipelineRunControl()
-            self.worker = PipelineWorker(settings, run_control=self._pipeline_control)
-            self.worker.progress.connect(on_prog)
-            self.worker.done.connect(lambda out: self._on_done(out))
-            self.worker.failed.connect(self._on_failed)
-            self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
-            self.worker.start()
-            self._set_run_btn_allow_queue_while_pipeline_runs()
-            return
-
-        self._set_tasks_active_row(f"Batch pipeline ({qty} videos)", "Starting…", folder="Queued")
+        self._set_tasks_active_row(
+            "Pipeline run",
+            format_status_line("pipeline_run", 0, -1, "Queued…"),
+            folder="In progress",
+        )
         self._pipeline_control = PipelineRunControl()
-        self.worker = PipelineBatchWorker(settings, quantity=qty, run_control=self._pipeline_control)
+        self.worker = PipelineWorker(settings, run_control=self._pipeline_control)
         self.worker.progress.connect(on_prog)
-        self.worker.done.connect(self._on_batch_pipeline_message)
+        self.worker.done.connect(lambda out: self._on_done(out))
         self.worker.failed.connect(self._on_failed)
         self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
         self.worker.start()
@@ -2039,14 +2117,6 @@ class MainWindow(QMainWindow):
             pass
         self.worker = None
 
-    def _on_batch_pipeline_message(self, msg: str) -> None:
-        self._release_run_control()
-        self._clear_tasks_active_row()
-        self._drain_pipeline_worker()
-        self._append_log(msg)
-        self._resize_to_current_tab()
-        self._try_start_next_queued_pipeline()
-
     def _try_start_next_queued_pipeline(self) -> None:
         if self._pipeline_run_should_queue():
             return
@@ -2062,6 +2132,7 @@ class MainWindow(QMainWindow):
         self._append_log(f"Starting next queued job ({remaining} still waiting)…")
 
         def _continue() -> None:
+            self._tasks_refresh()
             kind = str(item.get("kind") or "")
             settings = item.get("settings")
             if not isinstance(settings, AppSettings):
@@ -2086,12 +2157,10 @@ class MainWindow(QMainWindow):
                     self._append_log("Queued job skipped (custom mode with empty instructions).")
                     self._try_start_next_queued_pipeline()
                     return
-                qty = int(item.get("qty") or 1)
-                self._attach_and_start_pipeline_worker(settings, quantity=qty)
+                self._attach_and_start_pipeline_worker(settings)
             elif kind == "prebuilt":
                 self._attach_and_start_pipeline_worker(
                     settings,
-                    quantity=1,
                     prebuilt_pkg=item.get("pkg"),
                     prebuilt_sources=item.get("sources"),
                     prebuilt_prompts=item.get("prompts"),
@@ -2099,7 +2168,6 @@ class MainWindow(QMainWindow):
             elif kind == "storyboard":
                 self._attach_and_start_pipeline_worker(
                     settings,
-                    quantity=1,
                     prebuilt_prompts=item.get("prompts"),
                     prebuilt_seeds=item.get("seeds"),
                 )
@@ -2113,11 +2181,12 @@ class MainWindow(QMainWindow):
         dprint("ui", "_on_run")
         self._save_settings()
         if self._pipeline_run_should_queue():
-            qty = int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1
-            self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": qty})
+            qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
+            for _ in range(qty):
+                self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
             n = len(self._pipeline_run_queue)
             self._append_log(f"Run queued ({n} job(s) waiting after the current one).")
-            self._update_tasks_tab_badge()
+            self._tasks_refresh()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -2142,8 +2211,13 @@ class MainWindow(QMainWindow):
                 self._append_log("Custom mode: enter video instructions in the Run tab first.")
                 return
 
-            qty = int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1
-            self._attach_and_start_pipeline_worker(self.settings, quantity=qty)
+            qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
+            if qty > 1:
+                for _ in range(qty - 1):
+                    self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
+                self._append_log(f"Starting {qty} pipeline runs (1 now, {qty - 1} queued).")
+                self._tasks_refresh()
+            self._attach_and_start_pipeline_worker(self.settings)
 
         self._run_when_ffmpeg_ready(_continue)
 
@@ -2258,7 +2332,7 @@ class MainWindow(QMainWindow):
             )
             n = len(self._pipeline_run_queue)
             self._append_log(f"Approved preview run queued ({n} job(s) waiting after the current one).")
-            self._update_tasks_tab_badge()
+            self._tasks_refresh()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -2383,7 +2457,7 @@ class MainWindow(QMainWindow):
             )
             n = len(self._pipeline_run_queue)
             self._append_log(f"Approved storyboard run queued ({n} job(s) waiting after the current one).")
-            self._update_tasks_tab_badge()
+            self._tasks_refresh()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -2414,6 +2488,7 @@ class MainWindow(QMainWindow):
         if not out_dir:
             self._append_log("No new items found.")
             self._try_start_next_queued_pipeline()
+            self._library_refresh()
             return
         self._append_log(f"Completed: {out_dir}")
         try:
@@ -2434,6 +2509,7 @@ class MainWindow(QMainWindow):
             dprint("tasks", "enqueue after run failed", str(e))
 
         self._try_start_next_queued_pipeline()
+        self._library_refresh()
 
     def _maybe_auto_tiktok_upload(self, task_id: str) -> None:
         s = self.settings
@@ -2615,6 +2691,14 @@ class MainWindow(QMainWindow):
         self._append_log("Storyboard preview cancelled.")
         self._try_start_next_queued_pipeline()
 
+    def _queued_pipeline_row_title(self, kind: str) -> str:
+        k = (kind or "pipeline").strip().lower()
+        if k == "prebuilt":
+            return "Queued pipeline (approved preview)"
+        if k == "storyboard":
+            return "Queued pipeline (approved storyboard)"
+        return "Queued pipeline run"
+
     def _tasks_refresh(self) -> None:
         if not hasattr(self, "tasks_table"):
             return
@@ -2623,23 +2707,40 @@ class MainWindow(QMainWindow):
         from src.platform.upload_tasks import load_tasks
 
         self.tasks_table.setRowCount(0)
+        row = 0
         if self._tasks_active_row:
             ar = self._tasks_active_row
-            self.tasks_table.insertRow(0)
+            self.tasks_table.insertRow(row)
             t0 = QTableWidgetItem(str(ar.get("title", "Working…"))[:120])
             t0.setData(Qt.ItemDataRole.UserRole, _TASKS_ACTIVE_JOB_TOKEN)
-            self.tasks_table.setItem(0, 0, t0)
-            self.tasks_table.setItem(0, 1, QTableWidgetItem(str(ar.get("status", "running"))[:200]))
-            self.tasks_table.setItem(0, 2, QTableWidgetItem(str(ar.get("youtube", ""))[:80]))
-            self.tasks_table.setItem(0, 3, QTableWidgetItem(str(ar.get("created", ""))[:24]))
-            self.tasks_table.setItem(0, 4, QTableWidgetItem(str(ar.get("folder", "—"))[:120]))
+            self.tasks_table.setItem(row, 0, t0)
+            self.tasks_table.setItem(row, 1, QTableWidgetItem(str(ar.get("status", "running"))[:200]))
+            self.tasks_table.setItem(row, 2, QTableWidgetItem(str(ar.get("youtube", ""))[:80]))
+            self.tasks_table.setItem(row, 3, QTableWidgetItem(str(ar.get("created", ""))[:24]))
+            self.tasks_table.setItem(row, 4, QTableWidgetItem(str(ar.get("folder", "—"))[:120]))
+            row += 1
+
+        for qi, qitem in enumerate(getattr(self, "_pipeline_run_queue", None) or []):
+            if not isinstance(qitem, dict):
+                continue
+            qkind = str(qitem.get("kind") or "pipeline")
+            self.tasks_table.insertRow(row)
+            tq = QTableWidgetItem(self._queued_pipeline_row_title(qkind))
+            tq.setData(Qt.ItemDataRole.UserRole, _TASKS_QUEUED_PIPELINE_TOKEN)
+            tq.setData(Qt.ItemDataRole.UserRole + 1, int(qi))
+            self.tasks_table.setItem(row, 0, tq)
+            self.tasks_table.setItem(row, 1, QTableWidgetItem("Waiting in queue…"))
+            self.tasks_table.setItem(row, 2, QTableWidgetItem(""))
+            self.tasks_table.setItem(row, 3, QTableWidgetItem("—"))
+            self.tasks_table.setItem(row, 4, QTableWidgetItem("Queued"))
+            row += 1
+
         for t in load_tasks():
-            r = self.tasks_table.rowCount()
-            self.tasks_table.insertRow(r)
+            self.tasks_table.insertRow(row)
             title_item = QTableWidgetItem(t.title[:120])
             title_item.setData(Qt.ItemDataRole.UserRole, t.id)
-            self.tasks_table.setItem(r, 0, title_item)
-            self.tasks_table.setItem(r, 1, QTableWidgetItem(t.status))
+            self.tasks_table.setItem(row, 0, title_item)
+            self.tasks_table.setItem(row, 1, QTableWidgetItem(t.status))
             yt_cell = ""
             if str(getattr(t, "youtube_status", "") or "") == "posted" and str(getattr(t, "youtube_video_id", "") or ""):
                 yv = str(t.youtube_video_id)
@@ -2648,10 +2749,11 @@ class MainWindow(QMainWindow):
                 yt_cell = "failed"
             elif str(getattr(t, "youtube_status", "") or ""):
                 yt_cell = str(t.youtube_status)
-            self.tasks_table.setItem(r, 2, QTableWidgetItem(yt_cell))
-            self.tasks_table.setItem(r, 3, QTableWidgetItem(t.created_at[:19] if t.created_at else ""))
+            self.tasks_table.setItem(row, 2, QTableWidgetItem(yt_cell))
+            self.tasks_table.setItem(row, 3, QTableWidgetItem(t.created_at[:19] if t.created_at else ""))
             vd = Path(t.video_dir).name
-            self.tasks_table.setItem(r, 4, QTableWidgetItem(vd))
+            self.tasks_table.setItem(row, 4, QTableWidgetItem(vd))
+            row += 1
         self._update_tasks_tab_badge()
 
     def _tasks_selected_id(self) -> str | None:
@@ -2666,6 +2768,8 @@ class MainWindow(QMainWindow):
             return None
         tid = it.data(Qt.ItemDataRole.UserRole)
         if tid == _TASKS_ACTIVE_JOB_TOKEN:
+            return None
+        if tid == _TASKS_QUEUED_PIPELINE_TOKEN:
             return None
         return str(tid) if tid else None
 

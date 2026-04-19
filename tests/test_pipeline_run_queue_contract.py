@@ -12,10 +12,11 @@ from src.core.config import AppSettings
 
 
 def test_pipeline_queue_item_fields():
+    """Each queue entry is one full pipeline run; ``qty`` is always ``1`` (use multiple items for N videos)."""
     s = AppSettings()
-    item = {"kind": "pipeline", "settings": copy.deepcopy(s), "qty": 3}
+    item = {"kind": "pipeline", "settings": copy.deepcopy(s), "qty": 1}
     assert item["kind"] == "pipeline"
-    assert item["qty"] == 3
+    assert item["qty"] == 1
     assert item["settings"] is not s
 
 

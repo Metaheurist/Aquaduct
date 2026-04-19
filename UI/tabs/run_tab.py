@@ -19,6 +19,7 @@ from src.content.characters_store import load_all
 from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
 from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.tab_sections import add_section_spacing, section_title
 
 
 def attach_run_tab(win) -> None:
@@ -29,6 +30,7 @@ def attach_run_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
+    lay.addWidget(section_title("Output"))
     qty_row = QHBoxLayout()
     qty_lbl = QLabel("Videos to generate")
     qty_lbl.setStyleSheet("color: #B7B7C2;")
@@ -36,6 +38,10 @@ def attach_run_tab(win) -> None:
     win.run_qty_spin = NoWheelSpinBox()
     win.run_qty_spin.setRange(1, 50)
     win.run_qty_spin.setValue(1)
+    win.run_qty_spin.setToolTip(
+        "Each count is one full pipeline run (one video). "
+        "Runs after the first are queued and start automatically when the previous run finishes."
+    )
     qty_row.addWidget(win.run_qty_spin)
     qty_row.addStretch(1)
     lay.addLayout(qty_row)
@@ -76,6 +82,8 @@ def attach_run_tab(win) -> None:
     style_row.addStretch(1)
     lay.addLayout(style_row)
 
+    add_section_spacing(lay)
+    lay.addWidget(section_title("Script & content"))
     mode_row = QHBoxLayout()
     mode_lbl = QLabel("Content source")
     mode_lbl.setStyleSheet("color: #B7B7C2;")
@@ -196,6 +204,8 @@ def attach_run_tab(win) -> None:
     c_row.addStretch(1)
     lay.addLayout(c_row)
 
+    add_section_spacing(lay)
+    lay.addWidget(section_title("Actions"))
     run_hint = QLabel("While a job runs, live status appears as the top row on the **Tasks** tab.")
     run_hint.setWordWrap(True)
     run_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
