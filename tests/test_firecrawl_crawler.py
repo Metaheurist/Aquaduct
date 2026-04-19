@@ -28,30 +28,64 @@ def test_fetch_latest_prefers_firecrawl_when_configured(monkeypatch: pytest.Monk
     assert "fc.example" in out[0].url
 
 
-def test_fetch_latest_cartoon_skips_google_news_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_topic_discover_cartoon_skips_google_news_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Topics → Discover: cartoon/unhinged avoid headline RSS; rely on Firecrawl + creative queries."""
     from src.content.crawler import fetch_latest_items
 
     def fake_fc(*_a, **_k):
         return []
 
     def boom_rss(**_kw):
-        raise AssertionError("Google News RSS must not run for cartoon / unhinged modes")
+        raise AssertionError("Google News RSS must not run for Discover in cartoon / unhinged modes")
 
     monkeypatch.setattr("src.content.firecrawl_news.firecrawl_search_news", fake_fc)
     monkeypatch.setattr("src.content.crawler._google_news_rss", boom_rss)
-    out = fetch_latest_items(limit=2, firecrawl_enabled=True, firecrawl_api_key="k", topic_mode="cartoon")
+    out = fetch_latest_items(
+        limit=2,
+        firecrawl_enabled=True,
+        firecrawl_api_key="k",
+        topic_mode="cartoon",
+        topic_discover_only=True,
+    )
     assert out == []
 
 
-def test_fetch_latest_cartoon_without_firecrawl_does_not_use_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_topic_discover_cartoon_without_firecrawl_does_not_use_rss(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.content.crawler import fetch_latest_items
 
     def boom_rss(**_kw):
-        raise AssertionError("Headline RSS is only for news/explainer")
+        raise AssertionError("Discover path skips headline RSS for cartoon when Firecrawl is off")
 
     monkeypatch.setattr("src.content.crawler._google_news_rss", boom_rss)
-    out = fetch_latest_items(limit=3, firecrawl_enabled=False, topic_mode="cartoon")
+    out = fetch_latest_items(
+        limit=3,
+        firecrawl_enabled=False,
+        topic_mode="cartoon",
+        topic_discover_only=True,
+    )
     assert out == []
+
+
+def test_fetch_latest_cartoon_pipeline_falls_back_to_rss_when_firecrawl_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preset / storyboard / pipeline: cartoon can use RSS when Firecrawl returns nothing."""
+    from src.content.crawler import NewsItem, fetch_latest_items
+
+    def fake_fc(*_a, **_k):
+        return []
+
+    def rss(**_kw):
+        return [
+            NewsItem(title="RSS seed", url="https://news.example/pipeline", source="GoogleNews", published_at=None),
+        ]
+
+    monkeypatch.setattr("src.content.firecrawl_news.firecrawl_search_news", fake_fc)
+    monkeypatch.setattr("src.content.crawler._google_news_rss", rss)
+    monkeypatch.setattr("src.content.crawler._marktechpost_latest", lambda **_k: [])
+    out = fetch_latest_items(limit=2, firecrawl_enabled=True, firecrawl_api_key="k", topic_mode="cartoon")
+    assert len(out) >= 1
+    assert out[0].source == "GoogleNews"
 
 
 def test_fetch_latest_falls_back_to_rss_when_firecrawl_returns_nothing(monkeypatch: pytest.MonkeyPatch) -> None:

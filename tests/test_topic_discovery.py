@@ -4,6 +4,15 @@ from src.content.crawler import NewsItem
 from src.content.topic_discovery import discover_topics_from_items
 
 
+def test_discover_topics_fallback_uses_title_when_parsing_empty():
+    """Meme-style or stopword-heavy titles should still yield at least one line."""
+    items = [
+        NewsItem(title="the a an of", url="u1", source="Firecrawl"),
+    ]
+    topics = discover_topics_from_items(items, limit=10)
+    assert topics == ["the a an of"]
+
+
 def test_discover_topics_from_items_ranks_reasonably():
     items = [
         NewsItem(title="OpenAI launches new Agents API for developers", url="u1", source="GoogleNews"),

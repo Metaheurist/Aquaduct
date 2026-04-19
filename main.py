@@ -40,6 +40,7 @@ from src.content.prompt_conditioning import (
     default_negative_prompt,
 )
 from src.content.story_context import build_script_context
+from src.content.topic_research_assets import topic_research_digest_for_script
 from src.content.story_pipeline import run_multistage_refinement
 from src.content.storyboard import build_storyboard, write_manifest
 from src.content.topics import effective_topic_tags, news_cache_mode_for_run
@@ -462,6 +463,14 @@ def run_once(
             getattr(video_settings, "story_reference_images", False)
         ):
             titles_ctx = [str(s.get("title", "")) for s in sources if isinstance(s, dict)]
+            tr_block = topic_research_digest_for_script(paths.data_dir, vf)
+            art_block = (article_text or "")[:12000]
+            if tr_block.strip() and art_block.strip():
+                extra_md = f"{tr_block.strip()}\n\n## Scraped article\n{art_block.strip()}"
+            elif tr_block.strip():
+                extra_md = tr_block.strip()
+            else:
+                extra_md = art_block
             script_digest, _scr_paths, diffusion_reference_image, script_ref_notes = build_script_context(
                 topic_tags=tags,
                 source_titles=titles_ctx,
@@ -470,7 +479,7 @@ def run_once(
                 want_web=bool(getattr(video_settings, "story_web_context", False)),
                 want_refs=bool(getattr(video_settings, "story_reference_images", False)),
                 out_dir=run_assets,
-                extra_markdown=(article_text or "")[:12000],
+                extra_markdown=extra_md,
                 video_format=vf,
             )
             if (script_digest or "").strip():

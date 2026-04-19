@@ -11,6 +11,8 @@
 
 It also exposes a `run_once(settings: AppSettings)` function that the desktop UI calls.
 
+For **Cartoon** and **Cartoon (unhinged)** preset runs, when **Gather web context** and/or **Download reference images** is enabled on the Video tab, `run_once` prepends the latest **Topics → Discover** research digest from **`data/topic_research/<mode>/`** into the Firecrawl `build_script_context` `extra_markdown` bundle (same helper as storyboard preview in [`UI/workers.py`](../UI/workers.py)); see [Crawler](crawler.md).
+
 ## Commands
 
 ### Run once (recommended for testing)

@@ -22,6 +22,23 @@ def _headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
+def image_url_from_firecrawl_row(row: dict[str, Any]) -> str | None:
+    """Best-effort preview image URL from Firecrawl v2 search row (shape varies by source)."""
+    if not isinstance(row, dict):
+        return None
+    for key in ("image", "ogImage", "thumbnail"):
+        v = row.get(key)
+        if isinstance(v, str) and v.strip().startswith("http"):
+            return v.strip()
+    meta = row.get("metadata")
+    if isinstance(meta, dict):
+        for key in ("ogImage", "image", "twitter:image", "og:image"):
+            v = meta.get(key)
+            if isinstance(v, str) and v.strip().startswith("http"):
+                return v.strip()
+    return None
+
+
 def firecrawl_search_news(
     query: str,
     *,
@@ -69,14 +86,16 @@ def firecrawl_search_news(
             continue
         pub = row.get("date")
         published_at = str(pub).strip() if pub else None
-        out.append(
-            {
-                "title": title,
-                "url": url,
-                "source": "Firecrawl",
-                "published_at": published_at,
-            }
-        )
+        img = image_url_from_firecrawl_row(row)
+        row_out: dict[str, Any] = {
+            "title": title,
+            "url": url,
+            "source": "Firecrawl",
+            "published_at": published_at,
+        }
+        if img:
+            row_out["image_url"] = img
+        out.append(row_out)
         if len(out) >= limit:
             break
     return out

@@ -92,7 +92,7 @@ from UI.workers import (
     TikTokUploadWorker,
     YouTubeUploadWorker,
 )
-from UI.workers import TopicDiscoverWorker
+from UI.workers import TopicDiscoverWorker, firecrawl_search_ready
 from UI.preview_dialog import PreviewDialog
 from UI.storyboard_dialog import StoryboardPreviewDialog
 from UI.progress_tasks import format_status_line
@@ -742,8 +742,9 @@ class MainWindow(QMainWindow):
             )
         else:
             tip = (
-                f'Discover: for Cartoon/Unhinged, fetch creative story seeds (not Google News headlines) '
-                f'using your "{mode}" tags — enable Firecrawl on the API tab for best results.'
+                f'Discover: for Cartoon/Unhinged, Firecrawl searches the web for memes, jokes, stories, and art pages '
+                f'(using your "{mode}" tags when set) and suggests topic phrases from page titles — '
+                "enable Firecrawl on the API tab with a key."
             )
         self.discover_btn.setToolTip(tip)
 
@@ -800,7 +801,7 @@ class MainWindow(QMainWindow):
                 pass
         self.topic_worker = TopicDiscoverWorker(
             settings=self._collect_settings_from_ui(),
-            limit=12,
+            limit=24,
             topic_mode=self._topic_discover_target_mode,
         )
         self.topic_worker.done.connect(self._on_topics_discovered)
@@ -815,13 +816,18 @@ class MainWindow(QMainWindow):
                 pass
             self._update_discover_for_topic_mode()
         topics = [t for t in (topics or []) if isinstance(t, str)]
+        dm = normalize_video_format(
+            str(getattr(self, "_topic_discover_target_mode", None) or self._topics_bucket_key())
+        )
+        app = self._collect_settings_from_ui()
+        fc_ok = firecrawl_search_ready(app)
         if not topics:
             if hasattr(self, "_no_topics_dialog"):
-                self._no_topics_dialog(self)
+                self._no_topics_dialog(self, topic_mode=dm, firecrawl_ready=fc_ok)
             return
 
         if hasattr(self, "_pick_topics_dialog"):
-            picked = self._pick_topics_dialog(self, topics)
+            picked = self._pick_topics_dialog(self, topics, topic_mode=dm, firecrawl_ready=fc_ok)
         else:
             picked = topics
 
@@ -848,6 +854,10 @@ class MainWindow(QMainWindow):
         self._sync_tags_to_ui()
         self._save_settings()
         self._append_log(f"Added {added} topic tag(s) to {key}.")
+        if dm in ("cartoon", "unhinged"):
+            pack_dir = self.paths.data_dir / "topic_research" / dm
+            if (pack_dir / "manifest.json").exists():
+                self._append_log(f"Topic research folder (manifest + reference images): {pack_dir}")
 
     def _on_topics_failed(self, err: str) -> None:
         if hasattr(self, "discover_btn"):
@@ -857,7 +867,12 @@ class MainWindow(QMainWindow):
                 pass
             self._update_discover_for_topic_mode()
         if hasattr(self, "_no_topics_dialog"):
-            self._no_topics_dialog(self)
+            dm = normalize_video_format(
+                str(getattr(self, "_topic_discover_target_mode", None) or self._topics_bucket_key())
+            )
+            app = self._collect_settings_from_ui()
+            self._no_topics_dialog(self, topic_mode=dm, firecrawl_ready=firecrawl_search_ready(app))
+            self._append_log(f"Topic discovery failed: {err}")
         else:
             self._append_log("Topic discovery failed:")
             self._append_log(err)

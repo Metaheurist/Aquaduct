@@ -12,7 +12,8 @@ from src.content.brain_api import (
     generate_character_from_preset_openai,
     generate_script_openai,
 )
-from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings
+from src.content.firecrawl_news import resolve_firecrawl_api_key
+from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings, get_paths
 from src.runtime.api_generation import generate_still_png_bytes
 from src.runtime.model_backend import is_api_mode
 from src.content.crawler import (
@@ -25,6 +26,7 @@ from src.content.crawler import (
 )
 from src.content.topics import effective_topic_tags, news_cache_mode_for_run, topic_tags_for_mode
 from src.content.topic_discovery import discover_topics_from_items
+from src.content.topic_research_assets import topic_research_digest_for_script, write_topic_research_pack
 from src.models.model_manager import (
     download_model_to_project,
     load_hf_size_cache,
@@ -113,6 +115,13 @@ def _firecrawl_kwargs(app: AppSettings) -> dict:
         firecrawl_enabled=bool(getattr(app, "firecrawl_enabled", False)),
         firecrawl_api_key=str(getattr(app, "firecrawl_api_key", "") or ""),
     )
+
+
+def firecrawl_search_ready(app: AppSettings) -> bool:
+    """True when Firecrawl is enabled and an API key is available (UI or FIRECRAWL_API_KEY)."""
+    if not bool(getattr(app, "firecrawl_enabled", False)):
+        return False
+    return bool(resolve_firecrawl_api_key(str(getattr(app, "firecrawl_api_key", "") or "")))
 
 
 def _fmt_bytes(n: int | float | None) -> str:
@@ -290,9 +299,21 @@ class TopicDiscoverWorker(QThread):
                 limit=max(5, int(self.limit)),
                 topic_tags=topic_tags_for_mode(app, self.topic_mode),
                 topic_mode=self.topic_mode,
+                topic_discover_only=True,
                 **_firecrawl_kwargs(app),
             )
             topics = discover_topics_from_items(items, limit=40)
+            if self.topic_mode in ("cartoon", "unhinged") and items:
+                try:
+                    pack = write_topic_research_pack(
+                        items=items,
+                        mode=self.topic_mode,
+                        data_dir=get_paths().data_dir,
+                    )
+                    if pack is not None:
+                        dprint("topics", "topic research pack", str(pack))
+                except Exception:
+                    pass
             self.done.emit(topics)
         except Exception as e:
             tb = traceback.format_exc()
@@ -1184,6 +1205,9 @@ class StoryboardWorker(QThread):
                 ):
                     ctx_dir = paths.cache_dir / "storyboard_script_context"
                     ctx_dir.mkdir(parents=True, exist_ok=True)
+                    tr = topic_research_digest_for_script(paths.data_dir, vf)
+                    ri = raw_inst[:8000]
+                    extra_md = f"{tr}\n\n{ri}" if tr.strip() and ri.strip() else (tr.strip() or ri)
                     script_digest, _, diffusion_ref_path, script_ref_notes = build_script_context(
                         topic_tags=tags,
                         source_titles=[first_line],
@@ -1192,7 +1216,7 @@ class StoryboardWorker(QThread):
                         want_web=bool(getattr(app.video, "story_web_context", False)),
                         want_refs=bool(getattr(app.video, "story_reference_images", False)),
                         out_dir=ctx_dir,
-                        extra_markdown=raw_inst[:8000],
+                        extra_markdown=extra_md,
                         video_format=vf,
                     )
 
@@ -1353,6 +1377,9 @@ class StoryboardWorker(QThread):
                 ):
                     ctx_dir = paths.cache_dir / "storyboard_script_context"
                     ctx_dir.mkdir(parents=True, exist_ok=True)
+                    tr = topic_research_digest_for_script(paths.data_dir, vf)
+                    ax = (article_excerpt or "")[:12000]
+                    extra_md = f"{tr}\n\n{ax}" if tr.strip() and ax.strip() else (tr.strip() or ax)
                     script_digest, _, diffusion_ref_path, script_ref_notes = build_script_context(
                         topic_tags=tags,
                         source_titles=titles,
@@ -1361,7 +1388,7 @@ class StoryboardWorker(QThread):
                         want_web=bool(getattr(app.video, "story_web_context", False)),
                         want_refs=bool(getattr(app.video, "story_reference_images", False)),
                         out_dir=ctx_dir,
-                        extra_markdown=(article_excerpt or "")[:12000],
+                        extra_markdown=extra_md,
                         video_format=vf,
                     )
 

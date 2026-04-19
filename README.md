@@ -134,7 +134,7 @@ Alerts, confirmations, and most modal dialogs are **borderless** with a custom *
 
 Tabs:
 - **Run**: one-shot or **batch** quantity; **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
-- **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** biases headlines on the selected format’s tag list and adds picks to that list
+- **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl results (**Cartoon** / **Unhinged**: memes/jokes/story pages + saved pack under `data/topic_research/`; **News** / **Explainer**: headline-style). Approved picks are added to that format’s list ([UI](docs/ui.md), [Crawler](docs/crawler.md))
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
 - **Video**: **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities

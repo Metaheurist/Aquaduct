@@ -68,17 +68,23 @@ class NewsItem:
     url: str
     source: str
     published_at: str | None = None
+    # Optional preview image from Firecrawl search metadata (creative topic research).
+    image_url: str | None = None
 
 
 def news_item_to_script_source(item: NewsItem) -> dict[str, str]:
     """Fields passed to the script LLM (headlines JSON); includes recency when available."""
     pub = getattr(item, "published_at", None)
-    return {
+    out = {
         "title": item.title,
         "url": item.url,
         "source": item.source,
         "published_at": (pub or "").strip(),
     }
+    iu = (getattr(item, "image_url", None) or "").strip()
+    if iu:
+        out["image_url"] = iu
+    return out
 
 
 def _load_seen(seen_path: Path) -> set[str]:
@@ -126,18 +132,19 @@ def _default_headline_query(mode: str | None) -> str:
     if video_format_uses_news_style_sourcing(m):
         return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
     if m == "cartoon":
-        # Creative seeds: stories, prompts, communities — not press headlines (Discover / crawl).
+        # Creative seeds: jokes, memes, stories, art — not press headlines (Discover uses Firecrawl).
         return (
-            "(writing prompt OR \"short story\" OR reddit OR listicle OR \"funny story\" OR trivia OR "
-            "wholesome OR parody OR sketch OR \"cool story\") "
-            "(animation OR cartoon OR comic OR character OR illustration OR meme OR art OR fandom)"
+            "(writing prompt OR \"short story\" OR reddit OR listicle OR joke OR jokes OR meme OR memes OR "
+            "\"funny story\" OR humor OR viral OR trivia OR wholesome OR parody OR sketch OR \"cool story\") "
+            "(animation OR cartoon OR comic OR character OR illustration OR meme OR art OR fandom OR "
+            "webcomic OR \"funny images\")"
         )
     if m == "unhinged":
-        # Chaotic internet culture and story-shaped material — not news RSS headlines.
+        # Chaotic internet culture — jokes, memes, stories (Discover uses Firecrawl).
         return (
-            "(reddit OR tumblr OR meme OR \"internet lore\" OR chaotic OR absurd OR cursed OR copypasta OR "
-            "\"shower thought\" OR discourse OR viral OR \"wtf\") "
-            "(comedy OR satire OR parody OR animation OR cartoon OR sketch OR shitpost)"
+            "(reddit OR tumblr OR meme OR memes OR joke OR jokes OR \"internet lore\" OR chaotic OR absurd OR "
+            "cursed OR copypasta OR \"shower thought\" OR discourse OR viral OR \"wtf\") "
+            "(comedy OR satire OR parody OR animation OR cartoon OR sketch OR shitpost OR meme)"
         )
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
@@ -193,11 +200,15 @@ def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[s
         rest = [
             "(reddit OR boredpanda OR tumblr OR \"writing prompt\") (cartoon OR animation OR comic OR funny OR art)",
             "(wholesome OR absurd OR parody OR trivia OR listicle) (character OR illustration OR meme OR animated)",
+            "(meme OR memes OR jokes OR humor OR \"reaction gif\" OR imgur OR tiktok) (reddit OR comedy OR cartoon OR funny)",
+            "(short story OR webcomic OR humor OR satire) (illustration OR animation OR meme OR art OR fandom)",
         ]
     else:
         rest = [
             "(reddit OR tumblr OR meme OR copypasta OR chaotic) (comedy OR satire OR cartoon OR sketch)",
             "(viral OR discourse OR absurd OR \"internet culture\") (animation OR parody OR comedy short)",
+            "(meme OR memes OR shitpost OR cursed OR copypasta) (reddit OR tumblr OR twitter OR funny)",
+            "(jokes OR chaotic OR viral OR \"wtf\") (meme OR sketch OR cartoon OR comedy)",
         ]
     return [f"{tag_prefix}{q}".strip() for q in rest]
 
@@ -211,10 +222,15 @@ def _fetch_headlines(
     firecrawl_enabled: bool = False,
     firecrawl_api_key: str | None = None,
     timeout_s: int = 30,
+    topic_discover_only: bool = False,
 ) -> list[NewsItem]:
-    """Try Firecrawl search when enabled + key; then (news/explainer only) Google News RSS + MarkTechPost.
+    """Try Firecrawl search when enabled + key; then optional Google News RSS + MarkTechPost.
 
-    Cartoon and unhinged modes skip headline RSS / tech-blog fallbacks and use extra Firecrawl queries instead.
+    For **news/explainer**, RSS/MarkTechPost run when Firecrawl under-fills.
+
+    For **cartoon/unhinged**: extra Firecrawl meme-oriented queries run first. If still short,
+    RSS + MarkTechPost run **unless** ``topic_discover_only`` is True (Topics tab **Discover** only),
+    so preset runs / storyboard can still get URLs without Firecrawl.
     """
     q = _effective_query(query=query, topic_tags=topic_tags, topic_mode=topic_mode)
     fetched: list[NewsItem] = []
@@ -240,12 +256,15 @@ def _fetch_headlines(
                 continue
             pub = d.get("published_at")
             pa = str(pub).strip() if pub else None
+            img = d.get("image_url")
+            iu = str(img).strip() if isinstance(img, str) and img.strip().startswith("http") else None
             fetched.append(
                 NewsItem(
                     title=title,
                     url=url,
                     source=str(d.get("source") or "Firecrawl"),
                     published_at=pa,
+                    image_url=iu,
                 )
             )
             have.add(url)
@@ -314,6 +333,43 @@ def _fetch_headlines(
             if len(fetched) >= need:
                 break
 
+    # Pipeline / runs / storyboard: cartoon & unhinged still get RSS+MarkTechPost if Firecrawl did not fill.
+    # Topics → Discover passes topic_discover_only=True to keep headline RSS off for those modes.
+    if (
+        not use_headlines
+        and len(fetched) < need
+        and not topic_discover_only
+    ):
+        try:
+            more = _google_news_rss(query=q, limit=need, timeout_s=timeout_s)
+        except Exception:
+            more = []
+        have = {x.url for x in fetched}
+        for it in more:
+            if it.url in have:
+                continue
+            fetched.append(it)
+            have.add(it.url)
+            if len(fetched) >= need:
+                break
+    if (
+        not use_headlines
+        and len(fetched) < need
+        and not topic_discover_only
+    ):
+        try:
+            more = _marktechpost_latest(limit=need - len(fetched), timeout_s=timeout_s)
+        except Exception:
+            more = []
+        have = {x.url for x in fetched}
+        for it in more:
+            if it.url in have:
+                continue
+            fetched.append(it)
+            have.add(it.url)
+            if len(fetched) >= need:
+                break
+
     return fetched[:need]
 
 
@@ -368,6 +424,7 @@ def get_latest_items(
         topic_mode=cache_mode,
         firecrawl_enabled=firecrawl_enabled,
         firecrawl_api_key=firecrawl_api_key,
+        topic_discover_only=False,
     )
 
     # Normalize and filter unseen
@@ -392,10 +449,14 @@ def fetch_latest_items(
     firecrawl_enabled: bool = False,
     firecrawl_api_key: str | None = None,
     topic_mode: str | None = "news",
+    topic_discover_only: bool = False,
 ) -> list[NewsItem]:
     """
     Fetches up to `limit` items from sources WITHOUT applying the seen-cache filter.
-    Use this for UI discovery features where "newest headlines" matters more than "unseen".
+
+    Set ``topic_discover_only=True`` only for the Topics tab **Discover** button (cartoon/unhinged skip
+    headline RSS in that path). Pipeline and ``get_scored_items`` use the default ``False`` so runs
+    can fall back to Google News RSS when Firecrawl returns nothing.
     """
     fetched = _fetch_headlines(
         limit=limit,
@@ -404,6 +465,7 @@ def fetch_latest_items(
         topic_mode=topic_mode,
         firecrawl_enabled=firecrawl_enabled,
         firecrawl_api_key=firecrawl_api_key,
+        topic_discover_only=topic_discover_only,
     )
 
     # Basic dedupe by URL
