@@ -302,7 +302,7 @@ class TopicDiscoverWorker(QThread):
                 topic_discover_only=True,
                 **_firecrawl_kwargs(app),
             )
-            topics = discover_topics_from_items(items, limit=40)
+            topics = discover_topics_from_items(items, limit=40, topic_mode=self.topic_mode)
             if self.topic_mode in ("cartoon", "unhinged") and items:
                 try:
                     pack = write_topic_research_pack(

@@ -89,8 +89,12 @@ class ResourceGraphDialog(FramelessDialog):
         self.setMinimumHeight(460)
 
         hint = QLabel(
-            "This Aquaduct process: CPU (share of one core), RAM (% of system memory), "
-            "GPU VRAM (% of total) when CUDA is active. Updates every 1 second."
+            "CPU includes **this process plus child processes** (e.g. FFmpeg during encode) — the main Python "
+            "thread alone often looks idle while helpers run. RAM is RSS for the **process tree** (may slightly "
+            "over-count shared pages). GPU VRAM is **current** CUDA use: it **drops after** text-to-video / "
+            "diffusion steps finish, so it can look low during **final MP4 mux/caption** even though the GPU "
+            "was busy earlier. The pipeline runs **stages one after another** (script → voice → video → encode) "
+            "to avoid OOM — it does not load every model at full tilt at once. Updates every 1s."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
@@ -143,8 +147,8 @@ class ResourceGraphDialog(FramelessDialog):
             s = sample_aquaduct_resources()
             self._cpu_chart.push(s.process_cpu_pct)
             self._ram_chart.push(s.process_ram_pct)
-            self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}% (process, vs one core = 100%)")
-            self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system (this process RSS)")
+            self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}% (process tree vs all cores, 100% = fully busy)")
+            self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system (process tree RSS)")
 
             if s.gpu_mem_pct is not None:
                 self._gpu_chart.push(s.gpu_mem_pct)

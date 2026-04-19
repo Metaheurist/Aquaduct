@@ -13,6 +13,25 @@ def test_discover_topics_fallback_uses_title_when_parsing_empty():
     assert topics == ["the a an of"]
 
 
+def test_discover_creative_drops_platform_tokens_and_listicles():
+    items = [
+        NewsItem(title="Top 10 Sketch Comedy Channels on YouTube 2025", url="u1", source="Firecrawl"),
+        NewsItem(title="Netflix", url="u2", source="Firecrawl"),
+        NewsItem(title="Instagram Photos And Videos From Festival", url="u3", source="Firecrawl"),
+        NewsItem(
+            title="Absurdist cartoon short about a tired moon — indie animation meme",
+            url="u4",
+            source="Firecrawl",
+        ),
+    ]
+    topics = discover_topics_from_items(items, limit=20, topic_mode="cartoon")
+    lowered = " ".join(topics).lower()
+    assert "youtube" not in lowered or "animation" in lowered
+    assert "top 10" not in lowered
+    assert "netflix" not in lowered
+    assert any("animation" in t.lower() or "cartoon" in t.lower() or "meme" in t.lower() for t in topics)
+
+
 def test_discover_topics_from_items_ranks_reasonably():
     items = [
         NewsItem(title="OpenAI launches new Agents API for developers", url="u1", source="GoogleNews"),

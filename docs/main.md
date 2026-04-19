@@ -38,6 +38,9 @@ python main.py --once --music "D:\path\to\music.mp3"
 ### Desktop UI (default)
 With no `--once` and no `--cli`, `python main.py` launches the **Aquaduct** PyQt6 window. Use `python main.py --cli --once` (or `--cli` with the loop) for headless CLI-only runs.
 
+### Structured headless CLI (subcommands)
+For cloud / SSH / automation, use subcommands that share **`ui_settings.json`** with the desktop app: `run`, `preflight`, `config`, `models`, `tasks`, `version`. The watch loop reloads settings from disk each iteration (same as saving in the UI). See **[CLI reference](cli.md)** (`python main.py help`).
+
 ## Performance
 
 Import-time and cold-start notes (including `main`, `pipeline_api`, and `UI.app` profiling) are summarized in [performance.md](performance.md). Packaging verification for frozen builds: [building_windows_exe.md](building_windows_exe.md).

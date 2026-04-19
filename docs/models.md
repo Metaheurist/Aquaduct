@@ -22,8 +22,10 @@ Each option is labeled with a relative speed marker:
 - `fastest` / `faster` / `slow`
 
 ## How downloads work
-Downloads use Hugging Face Hub snapshot download into a project-local folder:
-- `models/<repo_as_dirname>/`
+Downloads use Hugging Face Hub snapshot download into the **active** project models folder (same layout everywhere):
+- `<models_dir>/<repo_as_dirname>/`
+
+**Default** location is **`.Aquaduct_data/models/`** next to the repo. In the desktop app you can set **External** on the **Model** tab and choose another directory (saved as `models_storage_mode` / `models_external_path` in `ui_settings.json`); see [Config](config.md). The CLI `models` subcommands resolve the same folder from saved settings.
 
 This is implemented in:
 - [`src/models/model_manager.py`](../src/models/model_manager.py)
@@ -48,15 +50,20 @@ Notes:
 ## Python packages (PyTorch, transformers, …)
 Hub downloads above are **model weights only**. The **Python** stack (PyTorch, `transformers`, etc.) is installed separately: **`python scripts/install_pytorch.py --with-rest`** or, from the app, **Model → Install dependencies** (same steps; see [Dependencies](../DEPENDENCIES.md), [Desktop UI](ui.md)).
 
-## Portable downloader (optional)
-For machines without running the full app, you can snapshot the same repos into `./models`:
+## Portable downloaders (optional)
+
+### From a full clone (uses curated list in code)
+With the repo on the machine and `HF_TOKEN` in the environment (or `.env`):
 
 ```powershell
 pip install huggingface_hub tqdm
-python scripts/download_hf_models.py
+python scripts/download_models.py
 ```
 
-See `scripts/download_hf_models.py` for `--out`, tokens, and repo lists.
+This uses [`get_paths().models_dir`](../src/core/config.py) (default **`.Aquaduct_data/models`**). See also [`scripts/download_hf_models.py`](../scripts/download_hf_models.py) for extra flags.
+
+### Offsite PC (standalone bundle, embedded token)
+To download on **another computer** without the full app and copy folders back (USB, etc.), use **[`Model-Downloads/generate_offsite_bundle.py`](../Model-Downloads/generate_offsite_bundle.py)** from the repo root — it writes **`Model-Downloads/offsite/`** (gitignored; may contain a **live Hub token**). See **[`Model-Downloads/README.md`](../Model-Downloads/README.md)** for `pip install -r requirements-offsite.txt` and running `download_all_models.py`. Treat the generated folder like a secret; revoke the token if it leaks.
 
 ## Model overrides
 Selected model repo IDs are persisted in `ui_settings.json` and passed into the pipeline through:

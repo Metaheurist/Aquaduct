@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from src.core.config import get_paths
+from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
@@ -253,7 +253,7 @@ def _try_sdxl_turbo(
     from diffusers import AutoPipelineForText2Image
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
     try:
         pipe = AutoPipelineForText2Image.from_pretrained(
@@ -307,7 +307,7 @@ def _try_sdxl_turbo_seeded(
     from diffusers import AutoPipelineForText2Image
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
     try:
         pipe = AutoPipelineForText2Image.from_pretrained(
@@ -371,7 +371,7 @@ def _try_sdxl_reference_chain(
     from diffusers import AutoPipelineForImage2Image
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
     try:
         pipe = AutoPipelineForImage2Image.from_pretrained(
@@ -450,7 +450,7 @@ def _try_external_ref_then_txt2img(
     from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
     stg = float(external_strength)
     stg = max(0.15, min(0.95, stg))

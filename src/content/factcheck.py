@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .brain import VideoPackage, ScriptSegment, _extract_json, load_causal_lm_from_pretrained
-from src.core.config import get_paths
+from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 
 
@@ -112,7 +112,7 @@ def rewrite_with_uncertainty(
 
         _, AutoTokenizer, _ = causal_lm_stack()
 
-        load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+        load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
         tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
         model = load_causal_lm_from_pretrained(load_path, try_4bit=bool(try_llm_4bit), on_status=None)
 

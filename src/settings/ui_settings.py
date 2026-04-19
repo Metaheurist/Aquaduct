@@ -64,6 +64,11 @@ def _norm_model_execution_mode(s: Any) -> ModelExecutionMode:
     return t if t in ("local", "api") else "local"
 
 
+def _norm_models_storage_mode(s: Any) -> str:
+    t = str(s or "default").strip().lower()
+    return t if t in ("default", "external") else "default"
+
+
 def _parse_api_role(raw: Any) -> ApiRoleConfig:
     if not isinstance(raw, dict):
         return ApiRoleConfig()
@@ -109,6 +114,14 @@ def load_settings() -> AppSettings:
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
+        return AppSettings()
+
+    return app_settings_from_dict(data)
+
+
+def app_settings_from_dict(data: Any) -> AppSettings:
+    """Build AppSettings from a dict (same shape as ``ui_settings.json`` or a CLI merge payload)."""
+    if not isinstance(data, dict):
         return AppSettings()
 
     video_raw = data.get("video", {}) if isinstance(data, dict) else {}
@@ -206,11 +219,15 @@ def load_settings() -> AppSettings:
     video_format = _norm_video_format(data.get("video_format")) if isinstance(data, dict) else "news"
     api_models = _parse_api_models(data.get("api_models")) if isinstance(data, dict) else default_api_models()
     model_execution_mode = _norm_model_execution_mode(data.get("model_execution_mode")) if isinstance(data, dict) else "local"
+    models_storage_mode = _norm_models_storage_mode(data.get("models_storage_mode")) if isinstance(data, dict) else "default"
+    models_external_path = str(data.get("models_external_path", "") or "") if isinstance(data, dict) else ""
 
     return AppSettings(
         topic_tags_by_mode=topic_map,
         video_format=video_format,
         model_execution_mode=model_execution_mode,
+        models_storage_mode=models_storage_mode,  # type: ignore[arg-type]
+        models_external_path=models_external_path,
         api_models=api_models,
         api_openai_key=str(data.get("api_openai_key", "")) if isinstance(data, dict) else "",
         api_replicate_token=str(data.get("api_replicate_token", "")) if isinstance(data, dict) else "",

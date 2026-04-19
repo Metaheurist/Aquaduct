@@ -139,4 +139,5 @@ def attach_tasks_tab(win) -> None:
     btn_row.addStretch(1)
     lay.addWidget(actions_group)
 
+    win._tasks_tab_widget = w
     win.tabs.addTab(w, "Tasks")

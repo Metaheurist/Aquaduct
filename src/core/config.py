@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 ModelExecutionMode = Literal["local", "api"]
+ModelsStorageMode = Literal["default", "external"]
 
 from .app_dirs import application_data_dir, installation_dir
 
@@ -234,6 +235,9 @@ class AppSettings:
     custom_video_instructions: str = ""  # used when run_content_mode == "custom"
     #: ``local`` = Hugging Face / local inference; ``api`` = HTTP providers (see ``api_models``).
     model_execution_mode: ModelExecutionMode = "local"
+    #: ``default`` = ``.Aquaduct_data/models``; ``external`` = separate folder (see ``models_external_path``).
+    models_storage_mode: ModelsStorageMode = "default"
+    models_external_path: str = ""
     api_models: ApiModelRuntimeSettings = field(default_factory=default_api_models)
     #: Keys for cloud generation (also mirrored on API tab). Prefer env: OPENAI_API_KEY, REPLICATE_API_TOKEN when set.
     api_openai_key: str = ""

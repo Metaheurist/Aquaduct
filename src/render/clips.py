@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.core.config import get_paths
+from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
@@ -122,7 +122,7 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
     from diffusers import DiffusionPipeline
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)
@@ -179,7 +179,7 @@ def _try_image_to_video(
     from PIL import Image
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)
@@ -212,17 +212,6 @@ def _try_image_to_video(
     del pipe
     cleanup_vram()
     return results
-
-
-def _fallback_clip_from_image(out_path: Path, *, fps: int, seconds: float, w: int = 1080, h: int = 1920) -> None:
-    """
-    Fallback: generate a solid-color clip so the pipeline can complete even if video models can't run.
-    """
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    frames_n = max(8, int(round(fps * seconds)))
-    fr = np.zeros((h, w, 3), dtype=np.uint8)
-    fr[:, :, :] = (10, 10, 16)
-    _write_mp4_from_frames([fr] * frames_n, out_path, fps=fps)
 
 
 def extract_pngs_from_mp4(
@@ -289,8 +278,9 @@ def generate_clips(
     seconds_per_clip: float,
 ) -> list[GeneratedClip]:
     """
-    Generates a small set of MP4 clips using a video generation model when possible.
-    Falls back to placeholder clips if the model can't run.
+    Generates a small set of MP4 clips with the configured video model.
+
+    On load or inference failure, raises the underlying exception (no placeholder clips).
     """
     from debug import dprint
 
@@ -309,19 +299,15 @@ def generate_clips(
     init_images = (init_images or [])[: len(prompts)]
 
     with vram_guard():
-        try:
-            if init_images:
-                r = _try_image_to_video(video_model_id, prompts, init_images, out_dir, fps=fps, seconds=seconds_per_clip)
-            else:
-                r = _try_text_to_video(video_model_id, prompts, out_dir, fps=fps, seconds=seconds_per_clip)
-            dprint("clips", "generate_clips done", f"count={len(r)}")
-            return r
-        except Exception:
-            clips: list[GeneratedClip] = []
-            for i, p in enumerate(prompts, start=1):
-                out_path = out_dir / f"clip_{i:03d}.mp4"
-                _fallback_clip_from_image(out_path, fps=fps, seconds=seconds_per_clip)
-                clips.append(GeneratedClip(path=out_path, prompt=p))
-            dprint("clips", "generate_clips fallback placeholders", f"count={len(clips)}")
-            return clips
+        if init_images:
+            r = _try_image_to_video(video_model_id, prompts, init_images, out_dir, fps=fps, seconds=seconds_per_clip)
+        else:
+            r = _try_text_to_video(video_model_id, prompts, out_dir, fps=fps, seconds=seconds_per_clip)
+        if not r:
+            raise RuntimeError(
+                f"Video model {video_model_id!r} produced no clips. "
+                "Check the Model tab, GPU/CUDA, and that the repo downloaded completely (e.g. unet/vae weights)."
+            )
+        dprint("clips", "generate_clips done", f"count={len(r)}")
+        return r
 

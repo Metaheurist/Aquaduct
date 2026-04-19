@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QStandardItem, QStandardItemModel
+from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
@@ -11,6 +12,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -19,7 +21,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.models.hardware import get_hardware_info, rate_model_fit_for_repo, rank_models_for_auto_fit, vram_requirement_hint
+from src.core.models_dir import models_dir_for_app
+
+from src.models.hardware import (
+    fit_marker_display,
+    get_hardware_info,
+    rate_model_fit_for_repo,
+    rank_models_for_auto_fit,
+    vram_requirement_hint,
+)
 from src.models.model_integrity_cache import worst_integrity_status
 from src.models.model_manager import (
     best_model_size_label,
@@ -28,7 +38,9 @@ from src.models.model_manager import (
     model_has_local_snapshot,
     model_options,
 )
+from UI.frameless_dialog import aquaduct_information
 from UI.model_execution_toggle import ModelExecutionModeToggle
+from UI.models_storage_toggle import ModelsStorageModeToggle
 from UI.no_wheel_controls import NoWheelComboBox
 from UI.workers import ModelSizePingWorker
 
@@ -132,7 +144,10 @@ def attach_settings_tab(win) -> None:
 
     win.clear_data_btn = QPushButton("Clear data")
     win.clear_data_btn.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
-    win.clear_data_btn.setToolTip("Wipe settings, downloaded models, and cache.")
+    win.clear_data_btn.setToolTip(
+        "Wipe settings, cache, and project outputs. Removes default models under .Aquaduct_data/models; "
+        "does not delete an external models folder."
+    )
     win.clear_data_btn.setObjectName("danger")
     win.clear_data_btn.clicked.connect(win._clear_all_data)
     actions_row.addWidget(win.clear_data_btn)
@@ -204,7 +219,7 @@ def attach_settings_tab(win) -> None:
             return True, ""
         repos = _required_repos_for_option(opt, kind)
         tips: list[str] = []
-        models_dir = win.paths.models_dir
+        models_dir = models_dir_for_app(win.settings)
         for r in repos:
             if model_has_local_snapshot(r, models_dir=models_dir):
                 continue
@@ -244,7 +259,7 @@ def attach_settings_tab(win) -> None:
             data = opt.repo_id
             sz = best_model_size_label(
                 opt.repo_id,
-                models_dir=win.paths.models_dir,
+                models_dir=models_dir_for_app(win.settings),
                 remote_sizes=win._hf_remote_sizes,
                 size_hint=getattr(opt, "size_hint", ""),
             )
@@ -373,7 +388,7 @@ def attach_settings_tab(win) -> None:
             return "font-size:12px;font-weight:700;min-width:8.5em;"
 
         def set_dl_badge(lbl: QLabel, repos: list[str]) -> None:
-            ms = win.paths.models_dir
+            ms = models_dir_for_app(win.settings)
             cache = getattr(win, "_model_integrity_by_repo", {}) or {}
             uniq: list[str] = []
             seen: set[str] = set()
@@ -392,6 +407,16 @@ def attach_settings_tab(win) -> None:
                 return " · ".join(f"{r}: {local_model_size_label(r, models_dir=ms)}" for r in uniq)
 
             have = [r for r in uniq if model_has_local_snapshot(r, models_dir=ms)]
+            # Must check empty first: len(have) < len(uniq) is True when have is [] and uniq is non-empty,
+            # which wrongly showed "Partial" for models that do not exist at all.
+            if not have:
+                lbl.setText("○ Not on disk")
+                lbl.setStyleSheet(_dl_badge_base_style() + "color:#9BB0C4;")
+                lbl.setToolTip(
+                    "No local snapshot under models/ yet (or below minimum size).\n"
+                    + "\n".join(f"{r}: not downloaded" for r in uniq)
+                )
+                return
             if len(have) < len(uniq):
                 lbl.setText("◐ Partial")
                 lbl.setStyleSheet(_dl_badge_base_style() + "color:#6EC8FF;")
@@ -404,11 +429,6 @@ def attach_settings_tab(win) -> None:
                         for r in uniq
                     )
                 )
-                return
-            if not have:
-                lbl.setText("")
-                lbl.setStyleSheet(_dl_badge_base_style() + "color:#9BB0C4;")
-                lbl.setToolTip("No local copy detected under models/ yet.")
                 return
 
             integ = [cache.get(r) for r in uniq]
@@ -478,7 +498,7 @@ def attach_settings_tab(win) -> None:
                 vram_gb=win._hw_info.vram_gb,
                 ram_gb=win._hw_info.ram_gb,
             )
-            lbl.setText(marker)
+            lbl.setText(fit_marker_display(marker))
             lbl.setStyleSheet(_fit_badge_style(marker))
             lbl.setToolTip(why)
 
@@ -602,6 +622,90 @@ def attach_settings_tab(win) -> None:
 
     win.auto_fit_models_btn.clicked.connect(_auto_fit_models)
     win._auto_fit_models = _auto_fit_models
+
+    storage_title = QHBoxLayout()
+    storage_header = QLabel("Model files location")
+    storage_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 14px;")
+    storage_title.addWidget(storage_header)
+    storage_title.addStretch(1)
+    win.models_storage_mode_combo = ModelsStorageModeToggle()
+    _msm = str(getattr(win.settings, "models_storage_mode", "default") or "default").strip().lower()
+    win.models_storage_mode_combo.setCurrentIndex(1 if _msm == "external" else 0)
+    storage_title.addWidget(win.models_storage_mode_combo)
+    ll.addLayout(storage_title)
+
+    win.models_external_path_edit = QLineEdit()
+    win.models_external_path_edit.setPlaceholderText("Absolute path to folder for Hugging Face model snapshots…")
+    win.models_external_browse_btn = QPushButton("Browse…")
+    win.models_external_apply_btn = QPushButton("Apply")
+    win.models_external_apply_btn.setObjectName("primary")
+    win.models_external_apply_btn.setToolTip("Save path and storage mode to settings.")
+    win.models_external_detect_btn = QPushButton("Detect")
+    win.models_external_detect_btn.setToolTip("List model snapshots found under the resolved folder (uses path field when External).")
+    win.models_external_path_edit.setText(str(getattr(win.settings, "models_external_path", "") or ""))
+
+    ext_row = QHBoxLayout()
+    ext_row.addWidget(win.models_external_path_edit, 1)
+    ext_row.addWidget(win.models_external_browse_btn, 0)
+    ext_row.addWidget(win.models_external_apply_btn, 0)
+    ext_row.addWidget(win.models_external_detect_btn, 0)
+    ll.addLayout(ext_row)
+
+    storage_hint = QLabel(
+        "Default uses the project folder .Aquaduct_data/models. External uses another folder for downloads and loading weights — Apply saves the path."
+    )
+    storage_hint.setWordWrap(True)
+    storage_hint.setStyleSheet("color:#8A8A96;font-size:11px;padding:0 0 4px 0;")
+    ll.addWidget(storage_hint)
+
+    def _apply_models_storage_ui() -> None:
+        ext = str(win.models_storage_mode_combo.currentData() or "default") == "external"
+        win.models_external_path_edit.setVisible(ext)
+        win.models_external_browse_btn.setVisible(ext)
+        win.models_external_apply_btn.setVisible(ext)
+        win.models_external_detect_btn.setVisible(ext)
+
+    def _browse_models_dir() -> None:
+        start = win.models_external_path_edit.text().strip() or str(win.paths.data_dir)
+        d = QFileDialog.getExistingDirectory(win, "Select models folder", start)
+        if d:
+            win.models_external_path_edit.setText(d)
+
+    def _apply_models_storage_path() -> None:
+        if hasattr(win, "_save_settings"):
+            win._save_settings()
+        if hasattr(win, "_refresh_settings_model_combos"):
+            win._refresh_settings_model_combos()
+
+    def _detect_models_in_folder() -> None:
+        from dataclasses import replace
+
+        mode = str(win.models_storage_mode_combo.currentData() or "default")
+        raw = win.models_external_path_edit.text().strip()
+        app = replace(win.settings, models_storage_mode=mode, models_external_path=raw)  # type: ignore[arg-type]
+        md = models_dir_for_app(app)
+        from src.models.model_manager import list_installed_repo_ids_from_disk
+
+        ids = list_installed_repo_ids_from_disk(md)
+        preview = "\n".join(ids[:50]) + ("\n…" if len(ids) > 50 else "")
+        aquaduct_information(
+            win,
+            "Detect models",
+            f"Resolved folder:\n{md}\n\nFound {len(ids)} model snapshot(s) on disk:\n\n{preview or '(none)'}",
+        )
+
+    def _on_models_storage_mode_changed(_i: int = 0) -> None:
+        _apply_models_storage_ui()
+        if hasattr(win, "_save_settings"):
+            win._save_settings()
+        if hasattr(win, "_refresh_settings_model_combos"):
+            win._refresh_settings_model_combos()
+
+    win.models_external_browse_btn.clicked.connect(_browse_models_dir)
+    win.models_external_apply_btn.clicked.connect(_apply_models_storage_path)
+    win.models_external_detect_btn.clicked.connect(_detect_models_in_folder)
+    win.models_storage_mode_combo.currentIndexChanged.connect(_on_models_storage_mode_changed)
+    _apply_models_storage_ui()
 
     _update_fit_badges()
     win.llm_combo.setToolTip(win.llm_combo.currentText())
