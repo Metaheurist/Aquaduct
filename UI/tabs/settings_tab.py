@@ -27,6 +27,7 @@ from src.models.model_manager import (
     model_has_local_snapshot,
     model_options,
 )
+from UI.model_execution_toggle import ModelExecutionModeToggle
 from UI.workers import ModelSizePingWorker
 
 
@@ -56,9 +57,7 @@ def attach_settings_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     title_row.addWidget(header)
     title_row.addStretch(1)
-    win.model_execution_mode_combo = QComboBox()
-    win.model_execution_mode_combo.addItem("Local models", "local")
-    win.model_execution_mode_combo.addItem("API providers", "api")
+    win.model_execution_mode_combo = ModelExecutionModeToggle()
     _mem = str(getattr(win.settings, "model_execution_mode", "local") or "local").strip().lower()
     win.model_execution_mode_combo.setCurrentIndex(1 if _mem == "api" else 0)
     title_row.addWidget(win.model_execution_mode_combo)
