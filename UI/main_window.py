@@ -17,6 +17,7 @@ from pathlib import Path
 from PyQt6.QtGui import QDesktopServices, QGuiApplication, QIcon
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -36,6 +37,7 @@ from UI.frameless_dialog import (
     aquaduct_warning,
     show_hf_token_dialog,
 )
+from UI.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
 
 from src.core.config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
@@ -142,16 +144,41 @@ class MainWindow(QMainWindow):
         save_btn = QPushButton("💾")
         save_btn.setObjectName("saveBtn")
         save_btn.setFixedSize(44, 32)
-        save_btn.setToolTip("Save settings")
+        save_btn.setToolTip(
+            help_tooltip_rich(
+                "Save — writes every tab’s settings to ui_settings.json (same as Run → Save settings).",
+                "welcome",
+                slide=1,
+            )
+        )
         save_btn.clicked.connect(self._save_settings)
         title_row.addWidget(save_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         graph_btn = QPushButton("📈")
         graph_btn.setObjectName("graphBtn")
         graph_btn.setFixedSize(44, 32)
-        graph_btn.setToolTip("Resource usage (this process) — updates every 1s")
+        graph_btn.setToolTip(
+            help_tooltip_rich(
+                "Resource graph — live CPU, RAM, and GPU memory for this process (about once per second).",
+                "welcome",
+                slide=1,
+            )
+        )
         graph_btn.clicked.connect(self._show_resource_graph)
         title_row.addWidget(graph_btn, 0, Qt.AlignmentFlag.AlignRight)
+
+        help_btn = QPushButton("?")
+        help_btn.setObjectName("helpBtn")
+        help_btn.setFixedSize(44, 32)
+        help_btn.setToolTip(
+            help_tooltip_rich(
+                "Help — opens tutorials and tips (this window).",
+                "welcome",
+                slide=0,
+            )
+        )
+        help_btn.clicked.connect(lambda: self._show_tutorial_dialog(first_run=False))
+        title_row.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         close_btn = QPushButton("✕")
         close_btn.setObjectName("closeBtn")
@@ -199,6 +226,8 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._tasks_refresh)
         # Prompt for HF token once the window is ready (if needed).
         QTimer.singleShot(0, self._maybe_prompt_hf_token)
+        # After optional HF token modal (same startup tick), so the help window does not stack on it.
+        QTimer.singleShot(1800, self._maybe_show_first_run_tutorial)
         QTimer.singleShot(0, self._update_hf_api_warnings)
         if hasattr(self, "personality_combo"):
             self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
@@ -241,6 +270,11 @@ class MainWindow(QMainWindow):
         self._last_storyboard_grid = None
 
         self._reset_run_session_state()
+
+        app = QApplication.instance()
+        if app is not None:
+            self._rich_help_tooltip_filter = RichHelpTooltipFilter(self._open_tutorial_topic, self)
+            app.installEventFilter(self._rich_help_tooltip_filter)
 
     def _has_explicit_hf_env_token(self) -> bool:
         """Return True when HF token env vars are explicitly set with a non-empty value."""
@@ -1217,6 +1251,7 @@ class MainWindow(QMainWindow):
             youtube_privacy_status=yt_priv,  # type: ignore[arg-type]
             youtube_add_shorts_hashtag=yt_shorts_tag,
             youtube_auto_upload_after_render=yt_auto,
+            tutorial_completed=bool(getattr(self.settings, "tutorial_completed", False)),
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             art_style_preset_id=(
                 str(self.art_style_preset_combo.currentData())
@@ -1256,6 +1291,34 @@ class MainWindow(QMainWindow):
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()
+
+    def _mark_tutorial_completed(self) -> None:
+        if bool(getattr(self.settings, "tutorial_completed", False)):
+            return
+        self.settings = replace(self.settings, tutorial_completed=True)
+        save_settings(self.settings)
+
+    def _open_tutorial_topic(self, topic_id: str, slide: int = 0) -> None:
+        self._show_tutorial_dialog(first_run=False, topic_id=topic_id, slide=slide)
+
+    def _show_tutorial_dialog(
+        self,
+        *,
+        first_run: bool = False,
+        topic_id: str | None = None,
+        slide: int = 0,
+    ) -> None:
+        from UI.tutorial_dialog import TutorialDialog
+
+        dlg = TutorialDialog(self, start_topic_id=topic_id, start_slide=slide)
+        if first_run:
+            dlg.finished.connect(lambda _code: self._mark_tutorial_completed())
+        dlg.exec()
+
+    def _maybe_show_first_run_tutorial(self) -> None:
+        if bool(getattr(self.settings, "tutorial_completed", False)):
+            return
+        self._show_tutorial_dialog(first_run=True)
 
     def _save_settings(self) -> None:
         self.settings = self._collect_settings_from_ui()

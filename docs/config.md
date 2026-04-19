@@ -8,8 +8,9 @@ Central place for:
 - UI/pipeline settings overrides (via `AppSettings`)
 
 ## Environment variables (host CPU)
-Optional tuning for OpenMP/BLAS and PyTorch CPU thread pools (see [`performance.md`](performance.md)):
+Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores for host-side math — not GPU multithreading; see [`performance.md`](performance.md)):
 - **`AQUADUCT_CPU_THREADS`** — target thread count (default `min(32, os.cpu_count())`). Does not override **`OMP_NUM_THREADS`** / **`MKL_NUM_THREADS`** / etc. if you already set them in the environment.
+- **`AQUADUCT_TORCH_INTEROP_THREADS`** — optional `torch.set_num_interop_threads` (1–32). If unset, the app picks a higher value on CPU-only machines and a modest value when CUDA/MPS is available.
 
 ## Paths
 `get_paths()` defines:
@@ -40,6 +41,7 @@ Optional tuning for OpenMP/BLAS and PyTorch CPU thread pools (see [`performance.
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
+- `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](ui.md))
 - `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
 - `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in [`src/core/config.py`](../src/core/config.py))

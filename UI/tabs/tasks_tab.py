@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from UI.tutorial_links import help_tooltip_rich
+
 
 def attach_tasks_tab(win) -> None:
     w = QWidget()
@@ -46,7 +48,13 @@ def attach_tasks_tab(win) -> None:
 
     win.tasks_refresh_btn = QPushButton()
     win.tasks_refresh_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
-    win.tasks_refresh_btn.setToolTip("Refresh task list")
+    win.tasks_refresh_btn.setToolTip(
+        help_tooltip_rich(
+            "Refresh task list",
+            "tasks_library",
+            slide=0,
+        )
+    )
     win.tasks_refresh_btn.setAccessibleName("Refresh task list")
     win.tasks_refresh_btn.clicked.connect(win._tasks_refresh)
     win.tasks_refresh_btn.setMinimumWidth(30)
@@ -59,7 +67,13 @@ def attach_tasks_tab(win) -> None:
     win.tasks_pause_btn.setIcon(QIcon())
     win.tasks_pause_btn.setText("⏸")
     win.tasks_pause_btn.setStyleSheet("color: #E8E8EE; font-size: 14px; font-weight: 600; padding: 0px;")
-    win.tasks_pause_btn.setToolTip("Pause between pipeline steps (not mid–GPU operation). Click again to resume.")
+    win.tasks_pause_btn.setToolTip(
+        help_tooltip_rich(
+            "Pause between pipeline steps (not mid–GPU operation). Click again to resume.",
+            "tasks_library",
+            slide=0,
+        )
+    )
     win.tasks_pause_btn.setAccessibleName("Pause")
     win.tasks_pause_btn.setEnabled(False)
     win.tasks_pause_btn.clicked.connect(win._on_tasks_pause_toggle)
@@ -70,7 +84,13 @@ def attach_tasks_tab(win) -> None:
 
     win.tasks_stop_btn = QPushButton()
     win.tasks_stop_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_MediaStop))
-    win.tasks_stop_btn.setToolTip("Request cancel at the next checkpoint (may take a few seconds).")
+    win.tasks_stop_btn.setToolTip(
+        help_tooltip_rich(
+            "Request cancel at the next checkpoint (may take a few seconds).",
+            "tasks_library",
+            slide=0,
+        )
+    )
     win.tasks_stop_btn.setAccessibleName("Stop")
     win.tasks_stop_btn.setObjectName("danger")
     win.tasks_stop_btn.setEnabled(False)

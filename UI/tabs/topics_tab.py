@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from src.content.topics import normalize_video_format
 from src.core.config import VIDEO_FORMATS
 from UI.no_wheel_controls import NoWheelComboBox
+from UI.tutorial_links import help_tooltip_rich
 
 
 def _is_creative_topics_mode(topic_mode: str | None) -> bool:
@@ -203,8 +204,12 @@ def attach_topics_tab(win) -> None:
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
     win.discover_btn.setToolTip(
-        "News/Explainer: headline ideas from your tags. Cartoon/Unhinged: Firecrawl searches for memes, jokes, "
-        "stories, and image-heavy pages, then suggests tags from titles. Requires Firecrawl on the API tab."
+        help_tooltip_rich(
+            "News/Explainer: headline ideas from your tags. Cartoon/Unhinged: Firecrawl searches for memes, jokes, "
+            "stories, and image-heavy pages, then suggests tags from titles. Requires Firecrawl on the API tab.",
+            "topics_chars",
+            slide=1,
+        )
     )
     win.discover_btn.clicked.connect(win._discover_topics)
     btn_row.addWidget(win.discover_btn)

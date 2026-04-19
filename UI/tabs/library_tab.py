@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from UI.library_fs import format_byte_size, scan_finished_videos, scan_run_workspaces
 from UI.tab_sections import add_section_spacing
+from UI.tutorial_links import help_tooltip_rich
 
 
 def attach_library_tab(win) -> None:
@@ -43,7 +44,13 @@ def attach_library_tab(win) -> None:
 
     win.library_refresh_btn = QPushButton()
     win.library_refresh_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
-    win.library_refresh_btn.setToolTip("Rescan videos/ and runs/")
+    win.library_refresh_btn.setToolTip(
+        help_tooltip_rich(
+            "Rescan videos/ and runs/",
+            "tasks_library",
+            slide=1,
+        )
+    )
     win.library_refresh_btn.setAccessibleName("Refresh library")
     win.library_refresh_btn.clicked.connect(win._library_refresh)
     win.library_refresh_btn.setMinimumWidth(30)

@@ -20,6 +20,7 @@ from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
 from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.tab_sections import add_section_spacing, section_title
+from UI.tutorial_links import help_tooltip_rich
 
 
 def attach_run_tab(win) -> None:
@@ -39,8 +40,12 @@ def attach_run_tab(win) -> None:
     win.run_qty_spin.setRange(1, 50)
     win.run_qty_spin.setValue(1)
     win.run_qty_spin.setToolTip(
-        "Each count is one full pipeline run (one video). "
-        "Runs after the first are queued and start automatically when the previous run finishes."
+        help_tooltip_rich(
+            "Each count is one full pipeline run (one video). "
+            "Runs after the first are queued and start automatically when the previous run finishes.",
+            "run",
+            slide=0,
+        )
     )
     qty_row.addWidget(win.run_qty_spin)
     qty_row.addStretch(1)
@@ -70,8 +75,12 @@ def attach_run_tab(win) -> None:
     style_row.addWidget(style_lbl)
     win.art_style_preset_combo = NoWheelComboBox()
     win.art_style_preset_combo.setToolTip(
-        "Biases diffusion toward a consistent look; after the first image, later frames use the last "
-        "up to three renders as a style reference (img2img). Strong no-text negatives are always applied."
+        help_tooltip_rich(
+            "Biases diffusion toward a consistent look; after the first image, later frames use the last "
+            "up to three renders as a style reference (img2img). Strong no-text negatives are always applied.",
+            "run",
+            slide=2,
+        )
     )
     for asp in ART_STYLE_PRESETS:
         win.art_style_preset_combo.addItem(asp.label, asp.id)
