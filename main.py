@@ -15,23 +15,42 @@ try:
 except Exception:  # optional dependency
     load_dotenv = None
 
-from src.artist import apply_regenerated_image, generate_images
-from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
-from src.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
-from src.ui_settings import load_settings
-from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item, fetch_article_text
-from src.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
-from src.clips import generate_clips
-from src.branding_video import apply_palette_to_prompts
-from src.characters_store import character_context_for_brain, resolve_character_for_pipeline
-from src.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
-from src.factcheck import rewrite_with_uncertainty
-from src.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
-from src.storyboard import build_storyboard, write_manifest
-from src.frame_quality import is_reject, score_frame
-from src.voice import synthesize, synthesize_unhinged_rotating_pyttsx3
-from src.tts_text import shape_tts_text
-from src.audio_fx import (
+from src.render.artist import apply_regenerated_image, generate_images
+from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc, expand_custom_video_instructions, generate_script
+from src.core.config import (
+    AppSettings,
+    SCRIPT_HEADLINE_FETCH_LIMIT,
+    VideoSettings,
+    get_models,
+    get_paths,
+    safe_title_to_dirname,
+)
+from src.settings.ui_settings import load_settings
+from src.content.crawler import (
+    fetch_article_text,
+    fetch_latest_items,
+    get_latest_items,
+    get_scored_items,
+    news_item_to_script_source,
+    pick_one_item,
+)
+from src.render.editor import (
+    assemble_generated_clips_then_concat,
+    assemble_microclips_then_concat,
+    assemble_pro_frame_sequence_then_concat,
+    pro_mode_frame_count,
+)
+from src.render.clips import generate_clips
+from src.render.branding_video import apply_palette_to_prompts
+from src.content.characters_store import character_context_for_brain, resolve_character_for_pipeline
+from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
+from src.content.factcheck import rewrite_with_uncertainty
+from src.content.prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
+from src.content.storyboard import build_storyboard, write_manifest
+from src.render.frame_quality import is_reject, score_frame
+from src.speech.voice import synthesize, synthesize_unhinged_rotating_pyttsx3
+from src.speech.tts_text import shape_tts_text
+from src.speech.audio_fx import (
     AudioPolishConfig,
     MusicMixConfig,
     build_sfx_mix_cmd,
@@ -42,13 +61,13 @@ from src.audio_fx import (
     render_sfx_track,
     schedule_sfx_events,
 )
-from src.preflight import preflight_check
-from src.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
-from src.personality_auto import auto_pick_personality
-from src.single_instance import single_instance_guard
-from src.topics import effective_topic_tags, news_cache_mode_for_run
-from src.utils_vram import prepare_for_next_model
-from src.pipeline_control import PipelineRunControl, PipelineCancelled
+from src.runtime.preflight import preflight_check
+from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
+from src.content.personality_auto import AutoPickResult, auto_pick_personality
+from src.util.single_instance import single_instance_guard
+from src.content.topics import effective_topic_tags, news_cache_mode_for_run
+from src.util.utils_vram import prepare_for_next_model
+from src.runtime.pipeline_control import PipelineRunControl, PipelineCancelled
 from debug import apply_cli_debug, dprint
 
 
@@ -195,25 +214,39 @@ def run_once(
                 if bool(getattr(video_settings, "high_quality_topic_selection", True)):
                     items = get_scored_items(
                         paths.news_cache_dir,
-                        limit=3,
+                        limit=SCRIPT_HEADLINE_FETCH_LIMIT,
                         topic_tags=tags,
                         cache_mode=cm,
                         persist_cache=False,
                         **fc,
                     )
                 else:
-                    items = fetch_latest_items(limit=3, topic_tags=tags, topic_mode=cm, **fc)
+                    items = fetch_latest_items(
+                        limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc
+                    )
             elif bool(getattr(video_settings, "high_quality_topic_selection", True)):
-                items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                items = get_scored_items(
+                    paths.news_cache_dir,
+                    limit=SCRIPT_HEADLINE_FETCH_LIMIT,
+                    topic_tags=tags,
+                    cache_mode=cm,
+                    **fc,
+                )
             else:
-                items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                items = get_latest_items(
+                    paths.news_cache_dir,
+                    limit=SCRIPT_HEADLINE_FETCH_LIMIT,
+                    topic_tags=tags,
+                    cache_mode=cm,
+                    **fc,
+                )
             item = pick_one_item(items)
             if not item:
                 dprint("crawler", "no item picked — stopping run_once")
                 _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
                 return None
             dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
-            sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+            sources = [news_item_to_script_source(it) for it in items]
     else:
         sources = list(prebuilt_sources or [])
         if not sources:
@@ -278,6 +311,8 @@ def run_once(
     )
     char_ctx = character_context_for_brain(active_character)
 
+    personality_pick: AutoPickResult | None = None
+
     # Brain
     if prebuilt_pkg is None:
         tags = list(effective_topic_tags(app))
@@ -308,6 +343,7 @@ def run_once(
                 raw_instructions=raw_inst,
                 video_format=vf,
                 personality_id=picked.preset.id,
+                character_context=char_ctx,
                 on_llm_task=_expand_llm,
                 try_llm_4bit=try_llm_4bit,
             )
@@ -322,8 +358,10 @@ def run_once(
                 creative_brief=expanded,
                 video_format=vf,
                 try_llm_4bit=try_llm_4bit,
+                article_excerpt=clip_article_excerpt(article_text),
             )
-            pkg = enforce_arc(pkg)
+            pkg = enforce_arc(pkg, video_format=vf)
+            personality_pick = picked
             dprint("pipeline", "script ready (custom)", f"title={pkg.title[:100]!r}")
         else:
             titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
@@ -344,8 +382,9 @@ def run_once(
                 character_context=char_ctx,
                 video_format=vf,
                 try_llm_4bit=try_llm_4bit,
+                article_excerpt=clip_article_excerpt(article_text),
             )
-            pkg = enforce_arc(pkg)
+            pkg = enforce_arc(pkg, video_format=vf)
             # Best-effort safety rewrite (uses article text snippet when available).
             if bool(getattr(video_settings, "llm_factcheck", True)):
                 pkg = rewrite_with_uncertainty(
@@ -356,11 +395,33 @@ def run_once(
                     try_llm_4bit=try_llm_4bit,
                 )
             dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
+            personality_pick = picked
     else:
         pkg = prebuilt_pkg
         dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")
+        tags_voice = list(effective_topic_tags(app))
+        personality_pick = auto_pick_personality(
+            requested_id=getattr(app, "personality_id", "auto"),
+            llm_model_id=llm_id,
+            titles=[str(pkg.title or "Short video")],
+            topic_tags=tags_voice,
+            extra_scoring_text="",
+        )
 
-    _pipe_progress(on_progress, 44, -1, "Script ready")
+    assert personality_pick is not None
+    effective_personality_id = personality_pick.preset.id
+    dprint(
+        "pipeline",
+        "effective personality for voice/TTS",
+        effective_personality_id,
+        personality_pick.reason,
+    )
+    _pipe_progress(
+        on_progress,
+        44,
+        -1,
+        f"Script ready — tone: {personality_pick.preset.label} ({personality_pick.reason})",
+    )
     _rc(run_control)
 
     # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
@@ -377,7 +438,7 @@ def run_once(
     captions_json = assets_dir / "captions.json"
     vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
     narration = pkg.narration_text()
-    pid_voice = str(getattr(app, "personality_id", "neutral") or "neutral")
+    pid_voice = effective_personality_id
     py_tts_voice: str | None = None
     kokoro_sp: str | None = None
     el_vid: str | None = None
@@ -495,41 +556,102 @@ def run_once(
     _rc(run_control)
 
     _allow_nsfw = bool(getattr(app, "allow_nsfw", False))
+    _art_style_id = str(getattr(app, "art_style_preset_id", None) or "balanced")
 
     if video_settings.use_image_slideshow:
-        dprint("pipeline", "mode=slideshow", f"images_per_video={video_settings.images_per_video}")
+        _pro = bool(getattr(video_settings, "pro_mode", False))
+        n_pro = (
+            pro_mode_frame_count(
+                pro_clip_seconds=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
+                fps=int(video_settings.fps),
+            )
+            if _pro
+            else 0
+        )
+        dprint(
+            "pipeline",
+            "mode=slideshow",
+            f"pro_mode={_pro}",
+            f"images_per_video={video_settings.images_per_video}",
+            f"n_pro_frames={n_pro}" if _pro else "",
+        )
         img_dir = assets_dir / "images"
         if prebuilt_prompts is not None:
-            storyboard_prompts = prompts[: max(1, int(video_settings.images_per_video))]
-            storyboard_seeds = (seeds or [])[: len(storyboard_prompts)]
-            if len(storyboard_seeds) < len(storyboard_prompts):
-                base = getattr(video_settings, "seed_base", None)
-                base_i = int(base) if base is not None else 123
-                storyboard_seeds = storyboard_seeds + [base_i + (i + 1) * 9973 for i in range(len(storyboard_prompts) - len(storyboard_seeds))]
-            storyboard = build_storyboard(
-                pkg,
-                seed_base=getattr(video_settings, "seed_base", None),
-                branding=getattr(app, "branding", None),
-                max_scenes=len(storyboard_prompts),
-                character=active_character,
-            )
-            # Persist approved prompt/seed into manifest scenes (best-effort)
-            try:
-                for i in range(min(len(storyboard.scenes), len(storyboard_prompts))):
-                    sc = storyboard.scenes[i]
-                    storyboard.scenes[i] = type(sc)(**{**sc.__dict__, "prompt": storyboard_prompts[i], "seed": int(storyboard_seeds[i])})  # type: ignore[misc]
-            except Exception:
-                pass
+            if _pro:
+                head_n = min(32, max(1, len(prompts)), n_pro)
+                storyboard_prompts_head = prompts[:head_n]
+                storyboard_seeds = (seeds or [])[:head_n]
+                if len(storyboard_seeds) < len(storyboard_prompts_head):
+                    base = getattr(video_settings, "seed_base", None)
+                    base_i = int(base) if base is not None else 123
+                    storyboard_seeds = storyboard_seeds + [
+                        base_i + (i + 1) * 9973 for i in range(len(storyboard_prompts_head) - len(storyboard_seeds))
+                    ]
+                storyboard = build_storyboard(
+                    pkg,
+                    seed_base=getattr(video_settings, "seed_base", None),
+                    branding=getattr(app, "branding", None),
+                    max_scenes=len(storyboard_prompts_head),
+                    character=active_character,
+                )
+                try:
+                    for i in range(min(len(storyboard.scenes), len(storyboard_prompts_head))):
+                        sc = storyboard.scenes[i]
+                        storyboard.scenes[i] = type(sc)(  # type: ignore[misc]
+                            **{**sc.__dict__, "prompt": storyboard_prompts_head[i], "seed": int(storyboard_seeds[i])}
+                        )
+                except Exception:
+                    pass
+                ns = max(1, len(storyboard.scenes))
+                storyboard_prompts = [storyboard.scenes[i % ns].prompt for i in range(n_pro)]
+                storyboard_seeds = [int(storyboard.scenes[i % ns].seed) + (i // ns) * 7919 for i in range(n_pro)]
+            else:
+                storyboard_prompts = prompts[: max(1, int(video_settings.images_per_video))]
+                storyboard_seeds = (seeds or [])[: len(storyboard_prompts)]
+                if len(storyboard_seeds) < len(storyboard_prompts):
+                    base = getattr(video_settings, "seed_base", None)
+                    base_i = int(base) if base is not None else 123
+                    storyboard_seeds = storyboard_seeds + [
+                        base_i + (i + 1) * 9973 for i in range(len(storyboard_prompts) - len(storyboard_seeds))
+                    ]
+                storyboard = build_storyboard(
+                    pkg,
+                    seed_base=getattr(video_settings, "seed_base", None),
+                    branding=getattr(app, "branding", None),
+                    max_scenes=len(storyboard_prompts),
+                    character=active_character,
+                )
+                try:
+                    for i in range(min(len(storyboard.scenes), len(storyboard_prompts))):
+                        sc = storyboard.scenes[i]
+                        storyboard.scenes[i] = type(sc)(  # type: ignore[misc]
+                            **{**sc.__dict__, "prompt": storyboard_prompts[i], "seed": int(storyboard_seeds[i])}
+                        )
+                except Exception:
+                    pass
         else:
-            storyboard = build_storyboard(
-                pkg,
-                seed_base=getattr(video_settings, "seed_base", None),
-                branding=getattr(app, "branding", None),
-                max_scenes=max(1, int(video_settings.images_per_video)),
-                character=active_character,
-            )
-            storyboard_prompts = [s.prompt for s in storyboard.scenes]
-            storyboard_seeds = [s.seed for s in storyboard.scenes]
+            if _pro:
+                sb_cap = min(32, max(3, n_pro))
+                storyboard = build_storyboard(
+                    pkg,
+                    seed_base=getattr(video_settings, "seed_base", None),
+                    branding=getattr(app, "branding", None),
+                    max_scenes=sb_cap,
+                    character=active_character,
+                )
+                ns = max(1, len(storyboard.scenes))
+                storyboard_prompts = [storyboard.scenes[i % ns].prompt for i in range(n_pro)]
+                storyboard_seeds = [int(storyboard.scenes[i % ns].seed) + (i // ns) * 7919 for i in range(n_pro)]
+            else:
+                storyboard = build_storyboard(
+                    pkg,
+                    seed_base=getattr(video_settings, "seed_base", None),
+                    branding=getattr(app, "branding", None),
+                    max_scenes=max(1, int(video_settings.images_per_video)),
+                    character=active_character,
+                )
+                storyboard_prompts = [s.prompt for s in storyboard.scenes]
+                storyboard_seeds = [s.seed for s in storyboard.scenes]
         manifest_path = assets_dir / "manifest.json"
         write_manifest(
             manifest_path,
@@ -537,20 +659,22 @@ def run_once(
             settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "voice": voice_id}},
         )
         _pipe_progress(on_progress, 68, -1, "Generating images (diffusion)…")
+        gen_max = n_pro if _pro else max(1, int(video_settings.images_per_video))
         gen = generate_images(
             sdxl_turbo_model_id=img_id,
             prompts=storyboard_prompts,
             out_dir=img_dir,
-            max_images=max(1, int(video_settings.images_per_video)),
+            max_images=gen_max,
             seeds=storyboard_seeds,
             allow_nsfw=_allow_nsfw,
+            art_style_preset_id=_art_style_id,
         )
         image_paths = [g.path for g in gen]
         _pipe_progress(on_progress, 80, -1, "Images ready")
 
-        # Quality reject/regenerate (best-effort; re-inits model on retry).
+        # Quality reject/regenerate (best-effort; pro mode skips — too many frames).
         retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
-        if retries > 0:
+        if retries > 0 and not _pro:
             for si, (p, base_seed, out_path) in enumerate(zip(storyboard_prompts, storyboard_seeds, image_paths), start=1):
                 attempt = 0
                 while attempt < retries:
@@ -569,6 +693,8 @@ def run_once(
                             max_images=1,
                             seeds=[int(base_seed) + attempt],
                             allow_nsfw=_allow_nsfw,
+                            art_style_preset_id=_art_style_id,
+                            use_style_continuity=False,
                         )
                         if regen:
                             apply_regenerated_image(regen, out_path)
@@ -584,6 +710,8 @@ def run_once(
                     m["scenes"][i - 1]["image_path"] = str(pth)
                 except Exception:
                     pass
+            if _pro:
+                m["pro_generated_frames"] = len(image_paths)
             mp.write_text(_json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
@@ -604,7 +732,12 @@ def run_once(
             if str(getattr(video_settings, "sfx_mode", "off") or "off") != "off":
                 sfx_paths = ensure_builtin_sfx(assets_dir / "sfx")
                 dur_s = float(duration_seconds(mix_wav))
-                events = schedule_sfx_events(duration_s=dur_s, clip_count=len(image_paths), sfx_paths=sfx_paths)
+                sfx_clip_count = (
+                    max(3, min(24, int(dur_s / max(1.0, float(video_settings.microclip_max_s)))))
+                    if _pro
+                    else len(image_paths)
+                )
+                events = schedule_sfx_events(duration_s=dur_s, clip_count=sfx_clip_count, sfx_paths=sfx_paths)
                 sfx_track = assets_dir / "sfx_track.wav"
                 render_sfx_track(sr=44100, duration_s=dur_s, events=events, out_wav=sfx_track)
                 import subprocess as _sub
@@ -618,23 +751,45 @@ def run_once(
         except Exception:
             mix_wav = final_voice_wav
 
-        _pipe_progress(on_progress, 88, -1, "Rendering micro-clips & final MP4…")
+        _pipe_progress(
+            on_progress,
+            88,
+            -1,
+            "Rendering pro frame sequence & final MP4…" if _pro else "Rendering micro-clips & final MP4…",
+        )
         _rc(run_control)
 
-        assemble_microclips_then_concat(
-            ffmpeg_dir=paths.ffmpeg_dir,
-            settings=video_settings,
-            images=image_paths,
-            voice_wav=mix_wav,
-            captions_json=captions_json,
-            out_final_mp4=out_final,
-            out_assets_dir=assets_dir,
-            background_music=None,
-            branding=branding,
-            article_text=article_text,
-            topic_tags=list(effective_topic_tags(app)),
-            video_format=str(getattr(app, "video_format", "news") or "news"),
-        )
+        if _pro:
+            assemble_pro_frame_sequence_then_concat(
+                ffmpeg_dir=paths.ffmpeg_dir,
+                settings=video_settings,
+                images=image_paths,
+                voice_wav=mix_wav,
+                captions_json=captions_json,
+                out_final_mp4=out_final,
+                out_assets_dir=assets_dir,
+                timeline_seconds=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
+                background_music=None,
+                branding=branding,
+                article_text=article_text,
+                topic_tags=list(effective_topic_tags(app)),
+                video_format=str(getattr(app, "video_format", "news") or "news"),
+            )
+        else:
+            assemble_microclips_then_concat(
+                ffmpeg_dir=paths.ffmpeg_dir,
+                settings=video_settings,
+                images=image_paths,
+                voice_wav=mix_wav,
+                captions_json=captions_json,
+                out_final_mp4=out_final,
+                out_assets_dir=assets_dir,
+                background_music=None,
+                branding=branding,
+                article_text=article_text,
+                topic_tags=list(effective_topic_tags(app)),
+                video_format=str(getattr(app, "video_format", "news") or "news"),
+            )
         _pipe_progress(on_progress, 93, -1, "Encode complete")
     else:
         # For img→vid clip models, first generate keyframe images (using the image model),
@@ -664,6 +819,7 @@ def run_once(
             max_images=max(1, int(video_settings.clips_per_video)),
             seeds=storyboard_seeds,
             allow_nsfw=_allow_nsfw,
+            art_style_preset_id=_art_style_id,
         )
         keyframes = [g.path for g in key_gen]
         _pipe_progress(on_progress, 76, -1, "Keyframes ready")
@@ -688,6 +844,8 @@ def run_once(
                             max_images=1,
                             seeds=[int(base_seed) + attempt],
                             allow_nsfw=_allow_nsfw,
+                            art_style_preset_id=_art_style_id,
+                            use_style_continuity=False,
                         )
                         if regen:
                             apply_regenerated_image(regen, out_path)

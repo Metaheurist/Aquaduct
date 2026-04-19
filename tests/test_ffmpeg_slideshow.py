@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.ffmpeg_slideshow import sanitize_xfade_transition
+from src.render.ffmpeg_slideshow import sanitize_xfade_transition
 
 
 def test_sanitize_xfade_transition_known() -> None:

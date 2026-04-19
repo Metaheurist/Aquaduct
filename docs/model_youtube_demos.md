@@ -2,7 +2,7 @@
 
 Third-party tutorials and demos for models exposed in **Settings → Models**. These are **not** official Aquaduct endorsements—channels, titles, and availability change over time. Some videos cover a **family** of checkpoints (e.g. “Qwen 2.5” generally) when no exact match exists.
 
-**Source of truth for IDs:** `src/model_manager.py` → `model_options()`.
+**Source of truth for IDs:** `src/models/model_manager.py` → `model_options()`.
 
 ---
 

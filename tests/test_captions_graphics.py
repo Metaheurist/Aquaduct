@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.captions import CaptionWord, caption_window_for_time, render_caption_overlay_rgba
-from src.config import VideoSettings
-from src.facts_card import extract_candidate_facts, pick_top_facts
+from src.render.captions import CaptionWord, caption_window_for_time, render_caption_overlay_rgba
+from src.core.config import VideoSettings
+from src.render.facts_card import extract_candidate_facts, pick_top_facts
 
 
 def test_caption_window_active_word():
@@ -41,7 +41,7 @@ def test_render_caption_non_empty_rgba():
 
 
 def test_wrap_preserves_all_words_long_window():
-    from src.captions import _wrap_words_to_lines
+    from src.render.captions import _wrap_words_to_lines
     from PIL import Image, ImageDraw, ImageFont
 
     words = [f"w{i}" for i in range(14)]

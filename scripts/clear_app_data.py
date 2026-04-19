@@ -21,9 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config import AppSettings, get_paths
-from src.fs_delete import rmtree_robust, unlink_file
-from src.ui_settings import save_settings, settings_path
+from src.core.config import AppSettings, get_paths
+from src.util.fs_delete import rmtree_robust, unlink_file
+from src.settings.ui_settings import save_settings, settings_path
 
 
 def main() -> None:

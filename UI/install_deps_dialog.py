@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 
 from UI.frameless_dialog import FramelessDialog
 
-from src.torch_install import (
+from src.models.torch_install import (
     PipSubprocessRef,
     install_pytorch_for_hardware,
     install_requirements_runtime,
@@ -297,7 +297,7 @@ def install_dependencies_with_dialog(parent) -> tuple[int, str]:
     d.exec()
     code, log = d.result_payload()
     try:
-        from src.repo_logs import write_install_dependencies_log
+        from src.util.repo_logs import write_install_dependencies_log
 
         write_install_dependencies_log(log)
     except Exception:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.config import video_format_supports_facts_card
+from src.core.config import video_format_supports_facts_card
 
 
 def test_facts_card_only_news_and_explainer() -> None:

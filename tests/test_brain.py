@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.brain import _extract_json, enforce_arc, generate_script
+from src.content.brain import _extract_json, enforce_arc, generate_script
 
 
 def test_extract_json_from_fenced_block():
@@ -17,7 +17,7 @@ def test_extract_json_from_fenced_block():
 
 
 def test_generate_script_custom_brief_uses_creative_prompt(monkeypatch):
-    import src.brain as brain_mod
+    import src.content.brain as brain_mod
 
     captured: dict[str, str] = {}
 
@@ -46,13 +46,13 @@ def test_extract_json_from_inline_object():
 
 
 @pytest.mark.parametrize("pid,expected_phrase", [
-    ("hype", "insane"),
-    ("skeptical", "believe the hype"),
-    ("urgent", "Breaking"),
+    ("hype", "stop scrolling"),
+    ("skeptical", "honest read"),
+    ("urgent", "moving fast"),
 ])
 def test_generate_script_fallback_tone_changes(monkeypatch, pid, expected_phrase):
     # Force LLM path to raise so fallback triggers
-    import src.brain as brain_mod
+    import src.content.brain as brain_mod
 
     monkeypatch.setattr(brain_mod, "_generate_with_transformers", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
     pkg = generate_script(model_id="x", items=[{"title": "Tool X released", "url": "u", "source": "s"}], personality_id=pid)
@@ -60,7 +60,7 @@ def test_generate_script_fallback_tone_changes(monkeypatch, pid, expected_phrase
 
 
 def test_enforce_arc_injects_missing_beats():
-    from src.brain import ScriptSegment, VideoPackage
+    from src.content.brain import ScriptSegment, VideoPackage
 
     pkg = VideoPackage(
         title="t",

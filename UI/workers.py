@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import shutil
 import traceback
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.config import AppSettings
-from src.crawler import fetch_latest_items, get_latest_items, get_scored_items, pick_one_item
-from src.topics import effective_topic_tags, news_cache_mode_for_run, topic_tags_for_mode
-from src.topic_discovery import discover_topics_from_items
-from src.model_manager import (
+from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings
+from src.content.crawler import (
+    fetch_article_text,
+    fetch_latest_items,
+    get_latest_items,
+    get_scored_items,
+    news_item_to_script_source,
+    pick_one_item,
+)
+from src.content.topics import effective_topic_tags, news_cache_mode_for_run, topic_tags_for_mode
+from src.content.topic_discovery import discover_topics_from_items
+from src.models.model_manager import (
     download_model_to_project,
     load_hf_size_cache,
     probe_hf_model,
@@ -18,17 +26,19 @@ from src.model_manager import (
 )
 
 import main as pipeline_main
-from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
-from src.brain import expand_custom_field_text, generate_character_from_preset_llm
-from src.character_presets import CharacterAutoPreset, GeneratedCharacterFields
-from src.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
-from src.model_integrity_cache import classify_integrity_status
-from src.pipeline_control import PipelineCancelled, PipelineRunControl
-from src.characters_store import character_context_for_brain, resolve_character_for_pipeline
-from src.branding_video import apply_palette_to_prompts
-from src.personality_auto import auto_pick_personality
-from src.storyboard import build_storyboard, render_preview_grid, write_manifest
-from src.utils_vram import prepare_for_next_model
+from src.render.artist import generate_images
+from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc, expand_custom_video_instructions, generate_script
+from src.content.brain import expand_custom_field_text, generate_character_from_preset_llm
+from src.core.config import get_paths
+from src.content.character_presets import CharacterAutoPreset, GeneratedCharacterFields
+from src.models.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
+from src.models.model_integrity_cache import classify_integrity_status
+from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
+from src.content.characters_store import character_context_for_brain, resolve_character_for_pipeline
+from src.render.branding_video import apply_palette_to_prompts
+from src.content.personality_auto import auto_pick_personality
+from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
+from src.util.utils_vram import prepare_for_next_model
 from debug import dprint
 
 
@@ -238,7 +248,7 @@ class FFmpegEnsureWorker(QThread):
 
     def run(self) -> None:
         try:
-            from src.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
+            from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
 
             if find_ffmpeg(self.ffmpeg_dir):
                 self.finished_ok.emit()
@@ -264,8 +274,8 @@ class TikTokUploadWorker(QThread):
     def run(self) -> None:
         from pathlib import Path
 
-        from src.tiktok_post import ensure_fresh_access_token, upload_local_video_to_inbox
-        from src.upload_tasks import load_tasks, set_task_status
+        from src.platform.tiktok_post import ensure_fresh_access_token, upload_local_video_to_inbox
+        from src.platform.upload_tasks import load_tasks, set_task_status
 
         try:
             tasks = load_tasks()
@@ -291,7 +301,7 @@ class TikTokUploadWorker(QThread):
         except Exception as e:
             tb = traceback.format_exc()
             try:
-                from src.upload_tasks import set_task_status
+                from src.platform.upload_tasks import set_task_status
 
                 set_task_status(self.task_id, "failed", str(e))
             except Exception:
@@ -313,8 +323,8 @@ class YouTubeUploadWorker(QThread):
     def run(self) -> None:
         from pathlib import Path
 
-        from src.upload_tasks import load_tasks, set_task_status, set_youtube_upload_result
-        from src.youtube_upload import (
+        from src.platform.upload_tasks import load_tasks, set_task_status, set_youtube_upload_result
+        from src.platform.youtube_upload import (
             build_shorts_title_description,
             ensure_youtube_access_token,
             upload_mp4_resumable,
@@ -363,7 +373,7 @@ class YouTubeUploadWorker(QThread):
         except Exception as e:
             tb = traceback.format_exc()
             try:
-                from src.upload_tasks import set_youtube_upload_result
+                from src.platform.upload_tasks import set_youtube_upload_result
 
                 set_youtube_upload_result(self.task_id, video_id="", error=str(e))
             except Exception:
@@ -534,6 +544,7 @@ class TextExpandWorker(QThread):
         seed: str,
         hf_token: str = "",
         hf_api_enabled: bool = True,
+        try_llm_4bit: bool = True,
     ) -> None:
         super().__init__()
         self.model_id = str(model_id or "").strip()
@@ -541,6 +552,7 @@ class TextExpandWorker(QThread):
         self.seed = str(seed or "")
         self.hf_token = str(hf_token or "").strip()
         self.hf_api_enabled = bool(hf_api_enabled)
+        self.try_llm_4bit = bool(try_llm_4bit)
 
     def run(self) -> None:
         try:
@@ -552,6 +564,7 @@ class TextExpandWorker(QThread):
                 model_id=self.model_id,
                 field_label=self.field_label,
                 seed=self.seed,
+                try_llm_4bit=self.try_llm_4bit,
             )
             self.done.emit(out)
         except Exception as e:
@@ -601,6 +614,81 @@ class CharacterGenerateWorker(QThread):
             )
             assert isinstance(out, GeneratedCharacterFields)
             self.done.emit(out)
+        except Exception as e:
+            friendly = humanize_hf_hub_error(e)
+            if friendly:
+                self.failed.emit(friendly)
+                return
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class CharacterPortraitWorker(QThread):
+    """Generate a single host portrait with the project image model; saves under data/characters/<id>/portrait.png."""
+
+    done = pyqtSignal(str)  # reference_image_rel
+    failed = pyqtSignal(str)
+
+    def __init__(
+        self,
+        *,
+        image_model_id: str,
+        character_id: str,
+        visual_style: str,
+        allow_nsfw: bool = False,
+        steps: int = 4,
+        art_style_preset_id: str = "balanced",
+    ) -> None:
+        super().__init__()
+        self.image_model_id = str(image_model_id or "").strip()
+        self.character_id = str(character_id or "").strip()
+        self.visual_style = str(visual_style or "").strip()
+        self.allow_nsfw = bool(allow_nsfw)
+        self.steps = max(1, int(steps))
+        self.art_style_preset_id = str(art_style_preset_id or "balanced").strip() or "balanced"
+
+    def run(self) -> None:
+        try:
+            if not self.image_model_id:
+                self.failed.emit("No image model selected on the Model tab.")
+                return
+            if not self.character_id:
+                self.failed.emit("No character selected.")
+                return
+            if not self.visual_style.strip():
+                self.failed.emit("Fill in Visual style before generating a portrait.")
+                return
+
+            base = get_paths().data_dir / "characters" / self.character_id
+            base.mkdir(parents=True, exist_ok=True)
+            tmp = base / "_gen_tmp"
+            shutil.rmtree(tmp, ignore_errors=True)
+            tmp.mkdir(parents=True, exist_ok=True)
+
+            prompt = (
+                f"{self.visual_style.strip()}, single character portrait, one clear subject, "
+                "looking at camera, sharp focus, vertical 9:16 composition"
+            )
+            prepare_for_next_model()
+            gen = generate_images(
+                sdxl_turbo_model_id=self.image_model_id,
+                prompts=[prompt],
+                out_dir=tmp,
+                max_images=1,
+                steps=self.steps,
+                allow_nsfw=self.allow_nsfw,
+                art_style_preset_id=str(getattr(self, "art_style_preset_id", None) or "balanced"),
+                use_style_continuity=False,
+            )
+            if not gen:
+                self.failed.emit("Image generation returned no files.")
+                return
+            src = gen[0].path
+            dest = base / "portrait.png"
+            shutil.copy2(src, dest)
+            shutil.rmtree(tmp, ignore_errors=True)
+            rel = f"characters/{self.character_id}/portrait.png"
+            self.done.emit(rel)
         except Exception as e:
             friendly = humanize_hf_hub_error(e)
             if friendly:
@@ -779,6 +867,7 @@ class PreviewWorker(QThread):
                     extra_scoring_text=raw_inst[:2000],
                 )
                 self.progress.emit("personality", 100, -1, f"{picked.preset.label}")
+                dprint("workers", "PreviewWorker personality", picked.preset.id, picked.reason)
 
                 active_ch = resolve_character_for_pipeline(
                     app,
@@ -802,6 +891,7 @@ class PreviewWorker(QThread):
                     raw_instructions=raw_inst,
                     video_format=vf,
                     personality_id=picked.preset.id,
+                    character_context=char_ctx,
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                 )
@@ -817,7 +907,7 @@ class PreviewWorker(QThread):
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                 )
-                pkg = enforce_arc(pkg)
+                pkg = enforce_arc(pkg, video_format=vf)
             else:
                 cm = news_cache_mode_for_run(app)
                 self.progress.emit(
@@ -831,25 +921,25 @@ class PreviewWorker(QThread):
                     if bool(getattr(app.video, "high_quality_topic_selection", True)):
                         items = get_scored_items(
                             paths.news_cache_dir,
-                            limit=3,
+                            limit=SCRIPT_HEADLINE_FETCH_LIMIT,
                             topic_tags=tags,
                             cache_mode=cm,
                             persist_cache=False,
                             **fc,
                         )
                     else:
-                        items = fetch_latest_items(limit=3, topic_tags=tags, topic_mode=cm, **fc)
+                        items = fetch_latest_items(limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc)
                 elif bool(getattr(app.video, "high_quality_topic_selection", True)):
-                    items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                    items = get_scored_items(paths.news_cache_dir, limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, cache_mode=cm, **fc)
                 else:
-                    items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                    items = get_latest_items(paths.news_cache_dir, limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, cache_mode=cm, **fc)
                 self.progress.emit("headlines", 60, -1, "Choosing items…")
                 item = pick_one_item(items)
                 if not item:
                     self.failed.emit("No new items found.")
                     return
 
-                sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+                sources = [news_item_to_script_source(it) for it in items]
                 titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
                 self.progress.emit("headlines", 100, -1, f"Picked {len(sources)} headline(s)")
 
@@ -865,6 +955,7 @@ class PreviewWorker(QThread):
                     extra_scoring_text="",
                 )
                 self.progress.emit("personality", 100, -1, f"{picked.preset.label}")
+                dprint("workers", "PreviewWorker personality", picked.preset.id, picked.reason)
 
                 active_ch = resolve_character_for_pipeline(
                     app,
@@ -883,6 +974,15 @@ class PreviewWorker(QThread):
                 if self.run_control is not None:
                     self.run_control.checkpoint()
 
+                article_excerpt = ""
+                if bool(getattr(app.video, "fetch_article_text", True)) and item is not None:
+                    try:
+                        article_excerpt = clip_article_excerpt(
+                            fetch_article_text(str(getattr(item, "url", "") or ""), **_firecrawl_kwargs(app))
+                        )
+                    except Exception:
+                        article_excerpt = ""
+
                 pkg = generate_script(
                     model_id=llm_id,
                     items=sources,
@@ -893,15 +993,16 @@ class PreviewWorker(QThread):
                     video_format=vf,
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
+                    article_excerpt=article_excerpt,
                 )
-                pkg = enforce_arc(pkg)
+                pkg = enforce_arc(pkg, video_format=vf)
 
-            prompts = [s.visual_prompt for s in pkg.segments][:10]
+            prompts = [s.visual_prompt for s in pkg.segments][:18]
             prompts = apply_palette_to_prompts(prompts, getattr(app, "branding", None))
 
             self.progress.emit("preview", 100, -1, "Preview ready.")
             # Minimal confidence signal: more sources = better; tag match tends to correlate with relevance.
-            confidence = "High" if len(sources) >= 3 else ("Medium" if len(sources) == 2 else "Low")
+            confidence = "High" if len(sources) >= 5 else ("Medium" if len(sources) >= 2 else "Low")
             self.done.emit(pkg, sources, prompts, picked.preset.id, confidence)
         except PipelineCancelled:
             self.cancelled.emit()
@@ -958,6 +1059,7 @@ class StoryboardWorker(QThread):
                     extra_scoring_text=raw_inst[:2000],
                 )
                 self.progress.emit("personality", 100, -1, f"{picked.preset.label}")
+                dprint("workers", "StoryboardWorker personality", picked.preset.id, picked.reason)
 
                 active_ch = resolve_character_for_pipeline(
                     app,
@@ -981,6 +1083,7 @@ class StoryboardWorker(QThread):
                     raw_instructions=raw_inst,
                     video_format=vf,
                     personality_id=picked.preset.id,
+                    character_context=char_ctx,
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                 )
@@ -996,7 +1099,7 @@ class StoryboardWorker(QThread):
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                 )
-                pkg = enforce_arc(pkg)
+                pkg = enforce_arc(pkg, video_format=vf)
             else:
                 cm = news_cache_mode_for_run(app)
                 self.progress.emit(
@@ -1010,24 +1113,24 @@ class StoryboardWorker(QThread):
                     if bool(getattr(app.video, "high_quality_topic_selection", True)):
                         items = get_scored_items(
                             paths.news_cache_dir,
-                            limit=3,
+                            limit=SCRIPT_HEADLINE_FETCH_LIMIT,
                             topic_tags=tags,
                             cache_mode=cm,
                             persist_cache=False,
                             **fc,
                         )
                     else:
-                        items = fetch_latest_items(limit=3, topic_tags=tags, topic_mode=cm, **fc)
+                        items = fetch_latest_items(limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc)
                 elif bool(getattr(app.video, "high_quality_topic_selection", True)):
-                    items = get_scored_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                    items = get_scored_items(paths.news_cache_dir, limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, cache_mode=cm, **fc)
                 else:
-                    items = get_latest_items(paths.news_cache_dir, limit=3, topic_tags=tags, cache_mode=cm, **fc)
+                    items = get_latest_items(paths.news_cache_dir, limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, cache_mode=cm, **fc)
                 self.progress.emit("headlines", 60, -1, "Choosing items…")
                 item = pick_one_item(items)
                 if not item:
                     self.failed.emit("No new items found.")
                     return
-                sources = [{"title": it.title, "url": it.url, "source": it.source} for it in items]
+                sources = [news_item_to_script_source(it) for it in items]
                 titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
                 self.progress.emit("headlines", 100, -1, f"Picked {len(sources)} headline(s)")
 
@@ -1043,6 +1146,7 @@ class StoryboardWorker(QThread):
                     extra_scoring_text="",
                 )
                 self.progress.emit("personality", 100, -1, f"{picked.preset.label}")
+                dprint("workers", "StoryboardWorker personality", picked.preset.id, picked.reason)
 
                 active_ch = resolve_character_for_pipeline(
                     app,
@@ -1061,6 +1165,15 @@ class StoryboardWorker(QThread):
                 if self.run_control is not None:
                     self.run_control.checkpoint()
 
+                article_excerpt = ""
+                if bool(getattr(app.video, "fetch_article_text", True)) and item is not None:
+                    try:
+                        article_excerpt = clip_article_excerpt(
+                            fetch_article_text(str(getattr(item, "url", "") or ""), **_firecrawl_kwargs(app))
+                        )
+                    except Exception:
+                        article_excerpt = ""
+
                 pkg = generate_script(
                     model_id=llm_id,
                     items=sources,
@@ -1071,8 +1184,9 @@ class StoryboardWorker(QThread):
                     video_format=vf,
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
+                    article_excerpt=article_excerpt,
                 )
-                pkg = enforce_arc(pkg)
+                pkg = enforce_arc(pkg, video_format=vf)
 
             prepare_for_next_model()
 
@@ -1092,7 +1206,7 @@ class StoryboardWorker(QThread):
             )
             self.progress.emit("storyboard_build", 100, -1, "Storyboard structured")
 
-            from src.artist import generate_images
+            from src.render.artist import generate_images
 
             prompts = [s.prompt for s in sb.scenes]
             seeds = [s.seed for s in sb.scenes]
@@ -1113,6 +1227,7 @@ class StoryboardWorker(QThread):
                 steps=4,  # quality-first preview
                 allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
                 on_image_progress=_img_pct,
+                art_style_preset_id=str(getattr(app, "art_style_preset_id", None) or "balanced"),
             )
             scene_paths = [g.path for g in gen]
 

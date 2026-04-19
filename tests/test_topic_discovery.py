@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.crawler import NewsItem
-from src.topic_discovery import discover_topics_from_items
+from src.content.crawler import NewsItem
+from src.content.topic_discovery import discover_topics_from_items
 
 
 def test_discover_topics_from_items_ranks_reasonably():
@@ -18,7 +18,7 @@ def test_discover_topics_from_items_ranks_reasonably():
 
 
 def test_content_quality_scoring_prefers_non_clickbait(tmp_path):
-    from src.content_quality import load_seen_titles, save_seen_titles, score_item
+    from src.content.content_quality import load_seen_titles, save_seen_titles, score_item
 
     seen_path = tmp_path / "seen_titles.json"
     # Seed with a different title so we don't penalize the "good" item as a duplicate.

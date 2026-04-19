@@ -17,9 +17,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.hardware import get_hardware_info, rate_model_fit_for_repo, rank_models_for_auto_fit, vram_requirement_hint
-from src.model_integrity_cache import worst_integrity_status
-from src.model_manager import (
+from src.models.hardware import get_hardware_info, rate_model_fit_for_repo, rank_models_for_auto_fit, vram_requirement_hint
+from src.models.model_integrity_cache import worst_integrity_status
+from src.models.model_manager import (
     best_model_size_label,
     load_hf_size_cache,
     local_model_size_label,
@@ -235,7 +235,7 @@ def attach_settings_tab(win) -> None:
                     opt.pair_image_repo_id,
                     models_dir=win.paths.models_dir,
                     remote_sizes=win._hf_remote_sizes,
-                    size_hint="≈6–8GB",
+                    size_hint="~6-8GB",
                 )
                 sz = f"{img_sz}+{vid_sz}"
             else:

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from src.config import BrandingSettings
+from src.core.config import BrandingSettings
 from UI.theme import build_qss, resolve_palette
-from src.branding_video import apply_palette_to_prompt, palette_prompt_suffix
+from src.render.branding_video import apply_palette_to_prompt, palette_prompt_suffix
 
 
 def test_resolve_palette_invalid_hex_falls_back():

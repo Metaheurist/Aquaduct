@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import TypedDict
 
-from src.config import BrandingSettings
+from src.core.config import BrandingSettings
 
 
 class Palette(TypedDict):

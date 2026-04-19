@@ -11,23 +11,26 @@ from PyQt6.QtWidgets import QLineEdit, QSizePolicy, QTextEdit, QToolButton, QWid
 
 from UI.frameless_dialog import aquaduct_warning
 
-from src.config import get_models
+from src.core.config import get_models
+
+# Qt.UserRole matches QStandardItem.setData(..., UserRole) in settings_tab combo population.
+_USER_ROLE = Qt.ItemDataRole.UserRole
 
 if TYPE_CHECKING:
     pass
 
 
-def resolve_llm_model_id(win) -> str:
+def script_llm_model_id_from_ui(win) -> str:
     """
-    Script (LLM) repo id for brain features — must match what the user sees on the Model tab.
+    Script (LLM) Hugging Face repo id — **must** match `_collect_settings_from_ui().llm_model_id` / the next Run.
 
-    Prefer ``llm_combo.currentData()`` so unsaved combo changes still load the same weights as the next Run;
-    then saved ``settings.llm_model_id``; then the default from ``get_models()``.
+    Order: Model tab ``llm_combo`` (current selection, explicit UserRole), then saved ``settings.llm_model_id``,
+    then ``get_models().llm_id``.
     """
     models = get_models()
     try:
         if hasattr(win, "llm_combo"):
-            data = win.llm_combo.currentData()
+            data = win.llm_combo.currentData(_USER_ROLE)
             if data is not None:
                 cur = str(data).strip()
                 if cur:
@@ -36,6 +39,28 @@ def resolve_llm_model_id(win) -> str:
         pass
     mid = str(getattr(getattr(win, "settings", None), "llm_model_id", "") or "").strip()
     return mid or models.llm_id
+
+
+def resolve_llm_model_id(win) -> str:
+    """Alias for :func:`script_llm_model_id_from_ui` (brain expand, character LLM, etc.)."""
+    return script_llm_model_id_from_ui(win)
+
+
+def image_model_id_from_ui(win) -> str:
+    """
+    Image diffusion Hugging Face repo id — matches Model tab ``img_combo`` / Run pipeline.
+
+    Paired img→vid selections store ``(image_repo_id, video_repo_id)``; we only need the image id.
+    """
+    try:
+        img_data = win.img_combo.currentData() if hasattr(win, "img_combo") else None  # type: ignore[attr-defined]
+    except Exception:
+        img_data = None
+    if img_data is None:
+        img_data = getattr(getattr(win, "settings", None), "image_model_id", "") or ""
+    if isinstance(img_data, tuple) and len(img_data) >= 1:
+        return str(img_data[0] or "").strip()
+    return str(img_data or "").strip()
 
 
 class BrainAugmentedEditor(QWidget):
@@ -130,7 +155,7 @@ class BrainAugmentedEditor(QWidget):
             return
         from UI.workers import TextExpandWorker
 
-        mid = resolve_llm_model_id(self._win)
+        mid = script_llm_model_id_from_ui(self._win)
         self._btn.setEnabled(False)
         self._btn.setToolTip("Working… (loading model may take a while)")
         st = getattr(self._win, "settings", None)
@@ -140,6 +165,7 @@ class BrainAugmentedEditor(QWidget):
             seed=self._seed_text(),
             hf_token=str(getattr(st, "hf_token", "") or "") if st is not None else "",
             hf_api_enabled=bool(getattr(st, "hf_api_enabled", True)) if st is not None else True,
+            try_llm_4bit=bool(getattr(st, "try_llm_4bit", True)) if st is not None else True,
         )
 
         def _ok(out: str) -> None:

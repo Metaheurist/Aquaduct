@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from UI.frameless_dialog import FramelessDialog
 
-from src.resource_sample import sample_aquaduct_resources
+from src.util.resource_sample import sample_aquaduct_resources
 
 _HISTORY = 120  # 2 minutes at 1 Hz
 

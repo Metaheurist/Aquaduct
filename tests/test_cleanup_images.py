@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.config import AppSettings, VideoSettings
+from src.core.config import AppSettings, VideoSettings
 
 
 def _touch(p: Path) -> None:
@@ -56,7 +56,7 @@ def test_cleanup_images_after_run_disabled(tmp_path):
 
 def test_frame_quality_rejects_blank(tmp_path):
     from PIL import Image
-    from src.frame_quality import is_reject, score_frame
+    from src.render.frame_quality import is_reject, score_frame
 
     p = tmp_path / "blank.png"
     Image.new("RGB", (256, 256), (10, 10, 16)).save(p)

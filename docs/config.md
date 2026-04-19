@@ -1,4 +1,4 @@
-# `src/config.py` — Configuration
+# `src/core/config.py` — Configuration
 
 ## Purpose
 Central place for:
@@ -21,23 +21,24 @@ Central place for:
 - Voice: `hexgrad/Kokoro-82M`
 
 ## Video format vs facts card
-[`video_format_supports_facts_card()`](../src/config.py) is **True** only for `news` and `explainer`. The **Key facts** overlay uses the article fetch path; **Cartoon** / **Unhinged** runs do not show the card even if `facts_card_enabled` is on.
+[`video_format_supports_facts_card()`](../src/core/config.py) is **True** only for `news` and `explainer`. The **Key facts** overlay uses the article fetch path; **Cartoon** / **Unhinged** runs do not show the card even if `facts_card_enabled` is on.
 
 ## Video settings
 `VideoSettings` defaults:
 - 1080×1920, 30fps
 - micro-clip min/max seconds
-- images per video
+- images per video (slideshow **non–pro** mode)
+- **`pro_mode` / `pro_clip_seconds`**: when `pro_mode` is true and slideshow is on, the pipeline generates **round(pro_clip_seconds × fps)** diffusion frames (one per output frame), uses the SDXL reference chain between frames, encodes a fixed-length timeline, and trims/pads narration to `pro_clip_seconds`. Optional env **`AQUADUCT_PRO_MAX_FRAMES`** caps the frame count.
 - bitrate preset (low/med/high)
 - export micro-clips toggle
-- **`platform_preset_id`**: last selected **platform template** id from the Video tab tiles (empty string = **Custom**). See [`src/video_platform_presets.py`](../src/video_platform_presets.py).
+- **`platform_preset_id`**: last selected **platform template** id from the Video tab tiles (empty string = **Custom**). See [`src/settings/video_platform_presets.py`](../src/settings/video_platform_presets.py).
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
 - `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
-- `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in `src/config.py`)
-- `topic_tags_by_mode`: per-format tag lists (bias crawling + scripting for the active format); use `src/topics.py` `effective_topic_tags()` for the current format
+- `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in [`src/core/config.py`](../src/core/config.py))
+- `topic_tags_by_mode`: per-format tag lists (bias crawling + scripting for the active format); use [`src/content/topics.py`](../src/content/topics.py) `effective_topic_tags()` for the current format
 - `background_music_path`
 - model overrides (repo IDs):
   - `llm_model_id`

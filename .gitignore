@@ -33,8 +33,8 @@ build/ai-news-factory*/
 **/.cache/torch/
 **/.cache/pip/
 
-# Local model downloads can be huge; never commit them
-models/
+# Local model downloads at repo root can be huge; never commit them (not src/models package)
+/models/
 
 # Local app state (do not commit)
 .Aquaduct_data/

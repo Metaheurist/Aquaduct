@@ -6,7 +6,7 @@ import pytest
 
 
 def test_append_task_dedupes_by_folder(tmp_path, monkeypatch):
-    from src import upload_tasks as ut_mod
+    from src.platform import upload_tasks as ut_mod
 
     monkeypatch.setattr(ut_mod, "upload_tasks_path", lambda: tmp_path / "upload_tasks.json")
 
@@ -23,7 +23,7 @@ def test_append_task_dedupes_by_folder(tmp_path, monkeypatch):
 
 
 def test_load_save_roundtrip(tmp_path, monkeypatch):
-    from src import upload_tasks as ut_mod
+    from src.platform import upload_tasks as ut_mod
 
     monkeypatch.setattr(ut_mod, "upload_tasks_path", lambda: tmp_path / "upload_tasks.json")
 

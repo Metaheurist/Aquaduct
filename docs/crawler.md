@@ -1,4 +1,4 @@
-# `src/crawler.py` — Crawler
+# `src/content/crawler.py` — Crawler
 
 ## Purpose
 Fetch trending AI-tool news with a **free default path** (no paid news APIs), optionally using **Firecrawl** when configured in the app/API tab.
@@ -12,7 +12,7 @@ Fetch trending AI-tool news with a **free default path** (no paid news APIs), op
 
 ### Mode-aware search strings
 Headline search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode`):
-- **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/topics.py`](../src/topics.py)); Explainer does **not** use a separate “tutorial / science education” query track.
+- **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/content/topics.py`](../src/content/topics.py)); Explainer does **not** use a separate “tutorial / science education” query track.
 - **cartoon** — newest animation / streaming / premiere / trailer / buzz (entertainment industry headlines), not framed as how-to tutorials.
 - **unhinged** — internet culture / viral / meme / trend–oriented headline seeds for satire.
 
@@ -27,7 +27,7 @@ Returns a list of `NewsItem`:
 
 ## Dedupe / caching
 Persisted under `data/news_cache/`:
-- **Per video format**: `seen_<mode>.json` (URLs already used) and `seen_titles_<mode>.json` (title novelty / scoring history), where `<mode>` is `news`, `cartoon`, or `explainer`. The active bucket matches `AppSettings.video_format` (`cache_mode` / `news_cache_mode_for_run()` in `src/topics.py`).
+- **Per video format**: `seen_<mode>.json` (URLs already used) and `seen_titles_<mode>.json` (title novelty / scoring history), where `<mode>` is `news`, `cartoon`, or `explainer`. The active bucket matches `AppSettings.video_format` (`cache_mode` / `news_cache_mode_for_run()` in `src/content/topics.py`).
 - **Legacy migration**: if `seen_news.json` is missing but flat `seen.json` exists, **news** loads the legacy file once; new writes go to `seen_news.json`. Other formats do not read the legacy flat file.
 
 `fetch_latest_items()` does **not** consult the seen files (used for topic discovery “newest headlines” flows).

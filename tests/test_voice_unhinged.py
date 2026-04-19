@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from src.voice import concat_pcm16_wavs
+from src.speech.voice import concat_pcm16_wavs
 
 
 def test_concat_pcm16_wavs_same_sample_rate(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ import pytest
 
 
 def test_migrates_legacy_repo_layout_into_app_data(monkeypatch, tmp_path):
-    import src.app_dirs as ad
+    import src.core.app_dirs as ad
 
     monkeypatch.setattr(ad, "_migrated", False)
     monkeypatch.setattr(ad, "installation_dir", lambda: tmp_path)
@@ -24,8 +24,8 @@ def test_migrates_legacy_repo_layout_into_app_data(monkeypatch, tmp_path):
 
 
 def test_get_paths_uses_app_data_subdirs(monkeypatch, tmp_path):
-    import src.app_dirs as ad
-    from src.config import get_paths
+    import src.core.app_dirs as ad
+    from src.core.config import get_paths
 
     monkeypatch.setattr(ad, "_migrated", False)
     monkeypatch.setattr(ad, "installation_dir", lambda: tmp_path)
@@ -38,7 +38,7 @@ def test_get_paths_uses_app_data_subdirs(monkeypatch, tmp_path):
 
 
 def test_repo_logs_under_installation_dir(monkeypatch, tmp_path):
-    from src import repo_logs
+    from src.util import repo_logs
 
     monkeypatch.setattr(repo_logs, "installation_dir", lambda: tmp_path)
 

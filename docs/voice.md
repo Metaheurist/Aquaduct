@@ -1,4 +1,4 @@
-# `src/voice.py` — Voice (TTS + captions)
+# `src/speech/voice.py` — Voice (TTS + captions)
 
 ## Purpose
 Turn narration text into:

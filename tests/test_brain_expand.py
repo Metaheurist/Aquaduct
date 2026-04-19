@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def test_expand_custom_field_text_strips_code_fence(monkeypatch):
-    from src import brain as b
+    from src.content import brain as b
 
     def fake_gen(model_id: str, prompt: str, **kwargs):
         return "```\nExpanded identity text here.\n```"
@@ -16,7 +16,7 @@ def test_expand_custom_field_text_strips_code_fence(monkeypatch):
 
 
 def test_expand_custom_video_instructions_returns_trimmed_text(monkeypatch):
-    from src import brain as b
+    from src.content import brain as b
 
     def fake_gen(model_id: str, prompt: str, **kwargs):
         assert "User's raw notes" in prompt
@@ -33,7 +33,7 @@ def test_expand_custom_video_instructions_returns_trimmed_text(monkeypatch):
 
 
 def test_expand_custom_field_text_strips_quotes(monkeypatch):
-    from src import brain as b
+    from src.content import brain as b
 
     def fake_gen(model_id: str, prompt: str, **kwargs):
         return '"Single paragraph output."'

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.personality_auto import auto_pick_personality
+from src.content.personality_auto import auto_pick_personality
 
 
 def test_auto_pick_rules_urgent():
@@ -23,6 +23,16 @@ def test_auto_pick_manual_passthrough():
     assert r.preset.id == "analytical"
 
 
+def test_auto_pick_cartoon_comedy_biases_comedic():
+    r = auto_pick_personality(
+        requested_id="auto",
+        llm_model_id="unused",
+        titles=["cartoon satire skit night"],
+        topic_tags=["comedy", "animation"],
+    )
+    assert r.preset.id == "comedic"
+
+
 def test_auto_pick_close_tie_still_returns_preset():
     r = auto_pick_personality(
         requested_id="auto",
@@ -35,7 +45,7 @@ def test_auto_pick_close_tie_still_returns_preset():
 
 
 def test_factcheck_extract_claims_finds_numbers_and_superlatives():
-    from src.factcheck import extract_claims
+    from src.content.factcheck import extract_claims
 
     claims = extract_claims("It is 30% faster and the best tool ever. It always works.")
     kinds = {c.kind for c in claims}

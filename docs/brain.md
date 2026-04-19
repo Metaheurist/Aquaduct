@@ -1,4 +1,4 @@
-# `src/brain.py` — Brain (Script generator)
+# `src/content/brain.py` — Brain (Script generator)
 
 ## Purpose
 Convert scraped headlines/links into a short-form **tool review** package:
@@ -42,10 +42,10 @@ If `topic_tags` are provided (from the UI Topics tab list for the **current vide
 - the hashtag set
 
 ## UI field expansion (`expand_custom_field_text`)
-For free-form text in the desktop app (character fields, topic tag line, storyboard scene prompt), the **🧠** button calls **`expand_custom_field_text`** with the user’s draft (or empty) and a short field label. It reuses the same local transformer path as script generation (`_generate_with_transformers`), then strips common markdown wrappers from the reply. Implemented in [`src/brain.py`](../src/brain.py); runs off the GUI thread via **`TextExpandWorker`** in [`UI/workers.py`](../UI/workers.py), which applies the saved Hugging Face token via [`ensure_hf_token_in_env`](../src/hf_access.py) when needed and maps gated-repo / 401 errors with [`humanize_hf_hub_error`](../src/hf_access.py).
+For free-form text in the desktop app (character fields, topic tag line, storyboard scene prompt), the **🧠** button calls **`expand_custom_field_text`** with the user’s draft (or empty) and a short field label. It reuses the same local transformer path as script generation (`_generate_with_transformers`), then strips common markdown wrappers from the reply. Implemented in [`src/content/brain.py`](../src/content/brain.py); runs off the GUI thread via **`TextExpandWorker`** in [`UI/workers.py`](../UI/workers.py), which applies the saved Hugging Face token via [`ensure_hf_token_in_env`](../src/models/hf_access.py) when needed and maps gated-repo / 401 errors with [`humanize_hf_hub_error`](../src/models/hf_access.py).
 
 ## Character generation from presets (`generate_character_from_preset_llm`)
-The **Characters** tab can fill all text fields from a built-in archetype: **`generate_character_from_preset_llm`** in [`src/brain.py`](../src/brain.py) asks the script LLM for a single JSON object (`name`, `identity`, `visual_style`, `negatives`, `use_default_voice`). Preset definitions live in [`src/character_presets.py`](../src/character_presets.py). The **Script (LLM)** repo id comes from **`resolve_llm_model_id`** in [`UI/brain_expand.py`](../UI/brain_expand.py) (Model tab combo first, then saved settings).
+The **Characters** tab can fill all text fields from a built-in archetype: **`generate_character_from_preset_llm`** in [`src/content/brain.py`](../src/content/brain.py) asks the script LLM for a single JSON object (`name`, `identity`, `visual_style`, `negatives`, `use_default_voice`). Preset definitions live in [`src/content/character_presets.py`](../src/content/character_presets.py). The **Script (LLM)** repo id comes from **`resolve_llm_model_id`** in [`UI/brain_expand.py`](../UI/brain_expand.py) (Model tab combo first, then saved settings).
 
 ## Which repo id is used for “brain” UI tasks?
 **`resolve_llm_model_id(win)`** returns, in order: **`llm_combo.currentData()`** if set, else **`settings.llm_model_id`**, else the default from **`get_models()`**. This keeps 🧠 expand and character generation aligned with the **Model** tab selection even before the user clicks **Save settings**.

@@ -14,12 +14,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
-from src.characters_store import load_all
-from src.personalities import get_personality_presets
-from UI.brain_expand import wrap_editor_with_brain
-
-
+from src.core.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
+from src.content.characters_store import load_all
+from src.content.personalities import get_personality_presets
+from src.settings.art_style_presets import ART_STYLE_PRESETS
 def attach_run_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
@@ -57,6 +55,24 @@ def attach_run_tab(win) -> None:
     fmt_row.addStretch(1)
     lay.addLayout(fmt_row)
 
+    style_row = QHBoxLayout()
+    style_lbl = QLabel("Art style (visual continuity)")
+    style_lbl.setStyleSheet("color: #B7B7C2;")
+    style_row.addWidget(style_lbl)
+    win.art_style_preset_combo = QComboBox()
+    win.art_style_preset_combo.setToolTip(
+        "Biases diffusion toward a consistent look; after the first image, later frames use the last "
+        "up to three renders as a style reference (img2img). Strong no-text negatives are always applied."
+    )
+    for asp in ART_STYLE_PRESETS:
+        win.art_style_preset_combo.addItem(asp.label, asp.id)
+    cur_as = str(getattr(win.settings, "art_style_preset_id", "balanced") or "balanced")
+    ix_as = win.art_style_preset_combo.findData(cur_as)
+    win.art_style_preset_combo.setCurrentIndex(ix_as if ix_as >= 0 else 0)
+    style_row.addWidget(win.art_style_preset_combo, 1)
+    style_row.addStretch(1)
+    lay.addLayout(style_row)
+
     mode_row = QHBoxLayout()
     mode_lbl = QLabel("Content source")
     mode_lbl.setStyleSheet("color: #B7B7C2;")
@@ -84,8 +100,7 @@ def attach_run_tab(win) -> None:
     win.custom_instructions_edit.setPlainText(str(getattr(win.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS])
     win.custom_instructions_edit.setMinimumHeight(72)
     win.custom_instructions_edit.setMaximumHeight(160)
-    custom_wrap = wrap_editor_with_brain(win.custom_instructions_edit, "Custom video instructions", win)
-    lay.addWidget(custom_wrap)
+    lay.addWidget(win.custom_instructions_edit)
 
     vf_hint = QLabel("")
     vf_hint.setWordWrap(True)
@@ -102,7 +117,7 @@ def attach_run_tab(win) -> None:
 
     def _sync_content_mode_ui() -> None:
         custom = win.run_content_custom_radio.isChecked()
-        custom_wrap.setVisible(custom)
+        win.custom_instructions_edit.setVisible(custom)
         vf = str(win.video_format_combo.currentData() or "news")
         win.run_content_preset_radio.setText(_preset_mode_caption(vf))
         if custom:
@@ -207,23 +222,5 @@ def attach_run_tab(win) -> None:
 
     row.addStretch(1)
     lay.addLayout(row)
-
-    regen_header = QLabel("Regenerate a scene (last run)")
-    regen_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 10px;")
-    lay.addWidget(regen_header)
-
-    regen_row = QHBoxLayout()
-    regen_lbl = QLabel("Scene #")
-    regen_lbl.setStyleSheet("color: #B7B7C2;")
-    regen_row.addWidget(regen_lbl)
-    win.regen_scene_spin = QSpinBox()
-    win.regen_scene_spin.setRange(1, 12)
-    win.regen_scene_spin.setValue(1)
-    regen_row.addWidget(win.regen_scene_spin)
-    win.regen_scene_btn = QPushButton("Regenerate scene")
-    win.regen_scene_btn.clicked.connect(win._regenerate_scene_from_last_run)
-    regen_row.addWidget(win.regen_scene_btn)
-    regen_row.addStretch(1)
-    lay.addLayout(regen_row)
 
     win.tabs.addTab(w, "Run")

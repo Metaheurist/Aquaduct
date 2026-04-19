@@ -1,4 +1,4 @@
-from src.character_presets import (
+from src.content.character_presets import (
     coerce_generated_character_fields,
     extract_first_json_object,
     get_character_auto_preset_by_id,

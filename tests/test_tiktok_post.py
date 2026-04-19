@@ -9,7 +9,7 @@ import pytest
 
 
 def test_parse_token_response_success() -> None:
-    from src.tiktok_post import parse_token_response
+    from src.platform.tiktok_post import parse_token_response
 
     out = parse_token_response(
         {
@@ -25,14 +25,14 @@ def test_parse_token_response_success() -> None:
 
 
 def test_parse_token_response_oauth_error() -> None:
-    from src.tiktok_post import parse_token_response
+    from src.platform.tiktok_post import parse_token_response
 
     with pytest.raises(ValueError, match="bad"):
         parse_token_response({"error": "invalid_request", "error_description": "bad"})
 
 
 def test_exchange_authorization_code_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src import tiktok_post as tt
+    from src.platform import tiktok_post as tt
 
     fake = json.dumps(
         {

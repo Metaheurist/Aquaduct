@@ -1,9 +1,9 @@
 # Models + downloads
 
 ## Where models are used
-- **Script model (LLM)**: `src/brain.py` (local inference; 4-bit target when supported)
-- **Video/images model**: `src/artist.py` (diffusers text-to-image, SDXL Turbo default)
-- **Voice model (TTS)**: `src/voice.py` (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
+- **Script model (LLM)**: [`src/content/brain.py`](../src/content/brain.py) (local inference; 4-bit target when supported)
+- **Video/images model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers text-to-image, SDXL Turbo default)
+- **Voice model (TTS)**: [`src/speech/voice.py`](../src/speech/voice.py) (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
 
 ## UI model selection
 In the UI **Model** tab you can pick and download models separately for:
@@ -11,7 +11,7 @@ In the UI **Model** tab you can pick and download models separately for:
 - Video/images
 - Voice
 
-**Auto-fit for this PC** sets all three from detected VRAM/RAM using `rank_models_for_auto_fit` in `src/hardware.py` (same heuristics as **My PC** fit badges). It saves settings after applying.
+**Auto-fit for this PC** sets all three from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../src/models/hardware.py) (same heuristics as **My PC** fit badges). It saves settings after applying.
 
 **Script model and UI “brain” features** (🧠 expand, **Characters → Generate with LLM**) resolve the repo id from the **Script (LLM)** dropdown’s **current selection** first, then saved settings — so they load the same weights as the visible combo without requiring **Save** first (`resolve_llm_model_id` in [`UI/brain_expand.py`](../UI/brain_expand.py)).
 
@@ -23,10 +23,19 @@ Downloads use Hugging Face Hub snapshot download into a project-local folder:
 - `models/<repo_as_dirname>/`
 
 This is implemented in:
-- `src/model_manager.py`
+- [`src/models/model_manager.py`](../src/models/model_manager.py)
+
+### Why it looked like “downloading” when the model was “already there”
+Aquaduct only treats a **project** copy under `.Aquaduct_data/models/` as usable when the folder has enough bytes on disk (same threshold as the Model tab). **`resolve_pretrained_load_path`** (used by the script LLM, diffusers, etc.):
+
+1. Uses that **project** snapshot when it is complete enough.
+2. Otherwise tries the **Hugging Face default cache** (e.g. `C:\Users\…\.cache\huggingface\hub\`) with **`local_files_only=True`** — if you downloaded the same repo with another tool, loads from there **without** re-fetching into the project folder.
+3. Otherwise passes the **repo id** to `from_pretrained`, which may hit the Hub for missing files (and gated models need a token).
+
+So weights might exist in the **global HF cache** while the Model tab still showed **Partial** because nothing large enough lived under **this app’s** `models/` folder. The UI label **\[29.9 GB • slow\]** is the remote size hint, not necessarily what is on disk.
 
 Notes:
-- **Gated models** (e.g. Meta Llama): accept the license on the model’s Hugging Face page, then set **API → Hugging Face API** + token and **Save**. Background workers that load the LLM also call [`ensure_hf_token_in_env`](../src/hf_access.py) so `HF_TOKEN` is set from saved settings when the process env had none. Hub errors 401 / gated-repo are shortened for dialogs via [`humanize_hf_hub_error`](../src/hf_access.py).
+- **Gated models** (e.g. Meta Llama): accept the license on the model’s Hugging Face page, then paste a **read** token under **API** and **Save**. [`ensure_hf_token_in_env`](../src/models/hf_access.py) copies the saved token into `HF_TOKEN` whenever the process env had none — including when **Hugging Face API** is toggled off (downloads still need auth). [`_generate_with_transformers`](../src/content/brain.py) also refreshes the token from `ui_settings.json` before loading the tokenizer. Hub errors 401 / gated-repo are shortened for dialogs via [`humanize_hf_hub_error`](../src/models/hf_access.py).
 - **Download ▾ → Download all voice models** queues every curated TTS snapshot (including Microsoft **SpeechT5** / **MMS-TTS**, Kokoro, MeloTTS, Parler, XTTS, Bark, …), skipping repos already present under `models/`. Same mechanism as **Download ALL models**, but voice-only (smaller total than full script+video+voice).
 - Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
 - In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.
@@ -52,7 +61,7 @@ Selected model repo IDs are persisted in `ui_settings.json` and passed into the 
 - `AppSettings.image_model_id`
 - `AppSettings.voice_model_id`
 
-If an override is blank, the pipeline falls back to `src/config.py:get_models()`.
+If an override is blank, the pipeline falls back to `src/core/config.py:get_models()`.
 
 ## Tokens / gated models
 Most public repos download without a token.
@@ -66,8 +75,8 @@ The desktop **Model** tab → **Download ▾** includes **Verify checksums**:
 
 Verification calls Hugging Face Hub (`huggingface_hub.HfApi.verify_repo_checksums` against the **main** tree): LFS weight files are checked with **SHA-256**; smaller files use the git **blob** id. **Missing** files and **hash mismatches** usually mean an incomplete or corrupted download (delete the folder and download again). Needs **internet**; gated repos need a token (same as downloads).
 
-Helpers live in `src/model_manager.py` (`verify_project_model_integrity`, `list_installed_repo_ids_from_disk`, `project_dirname_to_repo_id`). The UI runs checks in a background thread (`ModelIntegrityVerifyWorker` in `UI/workers.py`); large models can take several minutes.
+Helpers live in `src/models/model_manager.py` (`verify_project_model_integrity`, `list_installed_repo_ids_from_disk`, `project_dirname_to_repo_id`). The UI runs checks in a background thread (`ModelIntegrityVerifyWorker` in `UI/workers.py`); large models can take several minutes.
 
 ## Integrity status in the UI (badges)
-After verification, per-repo outcomes are merged into `data/model_integrity_status.json` (see `src/model_integrity_cache.py`). The **Model** tab uses that file to label each dropdown row (script / video / voice), so you can see **Verified** vs **Missing** / **Corrupt** without re-running the full scan. Clear **Clear data** removes the cache file alongside other local state.
+After verification, per-repo outcomes are merged into `data/model_integrity_status.json` (see `src/models/model_integrity_cache.py`). The **Model** tab uses that file to label each dropdown row (script / video / voice), so you can see **Verified** vs **Missing** / **Corrupt** without re-running the full scan. Clear **Clear data** removes the cache file alongside other local state.
 

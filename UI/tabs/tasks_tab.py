@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -16,6 +19,7 @@ from PyQt6.QtWidgets import (
 def attach_tasks_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
+    lay.setSpacing(10)
 
     header = QLabel("Tasks (finished videos)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
@@ -41,25 +45,67 @@ def attach_tasks_tab(win) -> None:
     win.tasks_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     lay.addWidget(win.tasks_table, 1)
 
-    row = QHBoxLayout()
-    ref = QPushButton("Refresh")
-    ref.clicked.connect(win._tasks_refresh)
-    row.addWidget(ref)
-    win.tasks_pause_btn = QPushButton("Pause")
+    _sty = w.style()
+
+    run_group = QGroupBox("Run controls")
+    run_group.setStyleSheet(
+        "QGroupBox { font-size: 12px; font-weight: 600; margin-top: 6px; } "
+        "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #B7B7C2; }"
+    )
+    row = QHBoxLayout(run_group)
+    row.setSpacing(8)
+    row.setContentsMargins(10, 14, 10, 10)
+
+    win.tasks_refresh_btn = QPushButton()
+    win.tasks_refresh_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+    win.tasks_refresh_btn.setToolTip("Refresh task list")
+    win.tasks_refresh_btn.setAccessibleName("Refresh task list")
+    win.tasks_refresh_btn.clicked.connect(win._tasks_refresh)
+    win.tasks_refresh_btn.setMinimumWidth(30)
+    win.tasks_refresh_btn.setMaximumWidth(34)
+    win.tasks_refresh_btn.setMaximumHeight(28)
+    row.addWidget(win.tasks_refresh_btn)
+
+    win.tasks_pause_btn = QPushButton()
+    # SP_MediaPause is very low-contrast on dark Fusion; glyphs stay readable (see _sync_tasks_pause_button_appearance).
+    win.tasks_pause_btn.setIcon(QIcon())
+    win.tasks_pause_btn.setText("⏸")
+    win.tasks_pause_btn.setStyleSheet("color: #E8E8EE; font-size: 14px; font-weight: 600; padding: 0px;")
     win.tasks_pause_btn.setToolTip("Pause between pipeline steps (not mid–GPU operation). Click again to resume.")
+    win.tasks_pause_btn.setAccessibleName("Pause")
     win.tasks_pause_btn.setEnabled(False)
     win.tasks_pause_btn.clicked.connect(win._on_tasks_pause_toggle)
+    win.tasks_pause_btn.setMinimumWidth(30)
+    win.tasks_pause_btn.setMaximumWidth(34)
+    win.tasks_pause_btn.setMaximumHeight(28)
     row.addWidget(win.tasks_pause_btn)
-    win.tasks_stop_btn = QPushButton("Stop")
+
+    win.tasks_stop_btn = QPushButton()
+    win.tasks_stop_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_MediaStop))
     win.tasks_stop_btn.setToolTip("Request cancel at the next checkpoint (may take a few seconds).")
+    win.tasks_stop_btn.setAccessibleName("Stop")
     win.tasks_stop_btn.setObjectName("danger")
     win.tasks_stop_btn.setEnabled(False)
     win.tasks_stop_btn.clicked.connect(win._on_tasks_stop)
+    win.tasks_stop_btn.setMinimumWidth(30)
+    win.tasks_stop_btn.setMaximumWidth(34)
+    win.tasks_stop_btn.setMaximumHeight(28)
     row.addWidget(win.tasks_stop_btn)
     row.addStretch(1)
-    lay.addLayout(row)
+    lay.addWidget(run_group)
 
-    btn_row = QHBoxLayout()
+    if hasattr(win, "_sync_tasks_pause_button_appearance"):
+        win._sync_tasks_pause_button_appearance()
+
+    actions_group = QGroupBox("Selected task")
+    actions_group.setStyleSheet(
+        "QGroupBox { font-size: 12px; font-weight: 600; margin-top: 6px; } "
+        "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #B7B7C2; }"
+    )
+    btn_row = QHBoxLayout(actions_group)
+    btn_row.setSpacing(8)
+    btn_row.setContentsMargins(10, 14, 10, 10)
+
     win.tasks_open_btn = QPushButton("Open folder")
     win.tasks_open_btn.setObjectName("primary")
     win.tasks_open_btn.clicked.connect(win._tasks_open_folder)
@@ -91,6 +137,6 @@ def attach_tasks_tab(win) -> None:
     btn_row.addWidget(win.tasks_remove_btn)
 
     btn_row.addStretch(1)
-    lay.addLayout(btn_row)
+    lay.addWidget(actions_group)
 
     win.tabs.addTab(w, "Tasks")

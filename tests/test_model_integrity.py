@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_project_dirname_roundtrip():
-    from src.model_manager import project_dirname_to_repo_id, project_model_dirname
+    from src.models.model_manager import project_dirname_to_repo_id, project_model_dirname
 
     rid = "hexgrad/Kokoro-82M"
     dname = project_model_dirname(rid)
@@ -14,7 +14,7 @@ def test_project_dirname_roundtrip():
 
 
 def test_verify_skips_empty_or_missing(tmp_path):
-    from src import model_manager as mm
+    from src.models import model_manager as mm
 
     r = mm.verify_project_model_integrity("", models_dir=tmp_path)
     assert not r.ok
@@ -26,8 +26,8 @@ def test_verify_skips_empty_or_missing(tmp_path):
 
 
 def test_integrity_classify_and_worst():
-    from src.model_integrity_cache import classify_integrity_status, merge_integrity_cache, worst_integrity_status
-    from src.model_manager import ModelIntegrityReport
+    from src.models.model_integrity_cache import classify_integrity_status, merge_integrity_cache, worst_integrity_status
+    from src.models.model_manager import ModelIntegrityReport
 
     assert classify_integrity_status(ModelIntegrityReport(repo_id="a/b", ok=True)) == "ok"
     assert classify_integrity_status(ModelIntegrityReport(repo_id="a/b", ok=False, error="x")) == "error"
@@ -48,7 +48,7 @@ def test_integrity_classify_and_worst():
 
 
 def test_list_installed_repo_ids_from_disk(tmp_path, monkeypatch):
-    from src import model_manager as mm
+    from src.models import model_manager as mm
 
     monkeypatch.setattr(mm, "min_bytes_for_snapshot", lambda: 10)
     (tmp_path / "a__b").mkdir(parents=True)

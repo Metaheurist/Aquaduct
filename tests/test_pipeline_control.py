@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from src.pipeline_control import PipelineCancelled, PipelineRunControl
+from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 
 
 def test_checkpoint_raises_when_cancelled() -> None:
