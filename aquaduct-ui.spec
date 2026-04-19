@@ -37,6 +37,8 @@ hiddenimports = [
     "UI.paths",
     "UI.library_fs",
     "UI.tab_sections",
+    "UI.tutorial_dialog",
+    "UI.tutorial_links",
     "UI.no_wheel_controls",
     "UI.model_execution_toggle",
     "UI.api_model_widgets",

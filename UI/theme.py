@@ -111,6 +111,16 @@ QPushButton#graphBtn {{
 }}
 QPushButton#graphBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
 QPushButton#graphBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
+QPushButton#helpBtn {{
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: {muted};
+  font-weight: 800;
+  padding: 4px 10px;
+}}
+QPushButton#helpBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
+QPushButton#helpBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
 QCheckBox {{ spacing: 10px; color: {text}; font-weight: 600; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid {border}; background: {control_bg}; }}
 QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}

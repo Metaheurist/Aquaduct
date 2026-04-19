@@ -274,6 +274,8 @@ class AppSettings:
     youtube_privacy_status: Literal["public", "unlisted", "private"] = "private"
     youtube_add_shorts_hashtag: bool = True
     youtube_auto_upload_after_render: bool = False
+    #: Set True after the user dismisses the first-run tutorial (stored in ``ui_settings.json``).
+    tutorial_completed: bool = False
 
 
 def safe_title_to_dirname(title: str) -> str:

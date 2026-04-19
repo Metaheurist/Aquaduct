@@ -291,6 +291,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         youtube_auto_upload_after_render=bool(data.get("youtube_auto_upload_after_render", False))
         if isinstance(data, dict)
         else False,
+        tutorial_completed=bool(data.get("tutorial_completed", False)) if isinstance(data, dict) else False,
     )
 
 

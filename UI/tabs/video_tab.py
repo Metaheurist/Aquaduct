@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from UI.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
 from UI.tab_sections import add_section_spacing, section_title
+from UI.tutorial_links import help_tooltip_rich
 from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
     distinct_resolutions,
@@ -173,9 +174,13 @@ def attach_video_tab(win) -> None:
     win.pro_mode_chk = QCheckBox("Pro mode (multi-scene video from script)")
     win.pro_mode_chk.setChecked(bool(getattr(win.settings.video, "pro_mode", False)))
     win.pro_mode_chk.setToolTip(
-        "Splits the script into scene prompts. Text-to-video models (e.g. ZeroScope) animate prompts directly. "
-        "Image-to-video models (e.g. Stable Video Diffusion) first render each scene as a still with the Image model, "
-        "then animate those keyframes. Slideshow must be off."
+        help_tooltip_rich(
+            "Splits the script into scene prompts. Text-to-video models (e.g. ZeroScope) animate prompts directly. "
+            "Image-to-video models (e.g. Stable Video Diffusion) first render each scene as a still with the Image model, "
+            "then animate those keyframes. Slideshow must be off.",
+            "video",
+            slide=1,
+        )
     )
     form_video.addRow("", win.pro_mode_chk)
 
@@ -275,9 +280,13 @@ def attach_video_tab(win) -> None:
     win.story_web_chk = QCheckBox("Gather web context for the script (Firecrawl search + scrape)")
     win.story_web_chk.setChecked(bool(getattr(win.settings.video, "story_web_context", False)))
     win.story_web_chk.setToolTip(
-        "Requires Firecrawl enabled with a valid API key on the API tab. Builds a short digest saved under "
-        "the run folder and feeds it into script generation and refinement. "
-        "For Cartoon and Unhinged formats, searches bias toward memes / viral / templates and run extra queries."
+        help_tooltip_rich(
+            "Requires Firecrawl enabled with a valid API key on the API tab. Builds a short digest saved under "
+            "the run folder and feeds it into script generation and refinement. "
+            "For Cartoon and Unhinged formats, searches bias toward memes / viral / templates and run extra queries.",
+            "video",
+            slide=2,
+        )
     )
     lay.addWidget(win.story_web_chk)
 

@@ -44,3 +44,18 @@ def test_configure_does_not_override_existing_omp(monkeypatch: pytest.MonkeyPatc
 def test_pool_helpers_are_sane() -> None:
     assert cp.io_bound_pool_workers() >= 4
     assert 1 <= cp.disk_bound_verify_workers() <= 4
+
+
+def test_torch_interop_cpu_only_uses_more_threads_than_accel(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AQUADUCT_TORCH_INTEROP_THREADS", raising=False)
+    n = 16
+    cpu_only = cp.torch_interop_thread_count(n, accelerator_available=False)
+    with_accel = cp.torch_interop_thread_count(n, accelerator_available=True)
+    assert with_accel <= 8
+    assert cpu_only >= with_accel
+
+
+def test_torch_interop_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AQUADUCT_TORCH_INTEROP_THREADS", "5")
+    assert cp.torch_interop_thread_count(99, accelerator_available=True) == 5
+    assert cp.torch_interop_thread_count(99, accelerator_available=False) == 5

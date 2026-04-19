@@ -24,3 +24,8 @@ def test_import_brain_api() -> None:
 def test_import_ui_api_model_widgets() -> None:
     pytest.importorskip("PyQt6.QtWidgets")
     importlib.import_module("UI.api_model_widgets")
+
+
+def test_import_ui_tutorial_links() -> None:
+    pytest.importorskip("PyQt6.QtWidgets")
+    importlib.import_module("UI.tutorial_links")

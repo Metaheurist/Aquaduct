@@ -43,6 +43,7 @@ from UI.model_execution_toggle import ModelExecutionModeToggle
 from UI.models_storage_toggle import ModelsStorageModeToggle
 from UI.no_wheel_controls import NoWheelComboBox
 from UI.tab_sections import add_section_spacing, section_title
+from UI.tutorial_links import help_tooltip_rich
 from UI.workers import ModelSizePingWorker
 
 
@@ -573,8 +574,12 @@ def attach_settings_tab(win) -> None:
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
     win.auto_fit_models_btn.setObjectName("primary")
     win.auto_fit_models_btn.setToolTip(
-        "Re-detect GPU/RAM and select the best script, image, video, and voice models for this machine "
-        "(same heuristics as the fit badges). Skips grayed-out entries that are unavailable on Hugging Face."
+        help_tooltip_rich(
+            "Re-detect GPU/RAM and select the best script, image, video, and voice models for this machine "
+            "(same heuristics as the fit badges). Skips grayed-out entries that are unavailable on Hugging Face.",
+            "models",
+            slide=0,
+        )
     )
     auto_fit_row.addWidget(win.auto_fit_models_btn)
     auto_fit_row.addStretch(1)

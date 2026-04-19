@@ -126,6 +126,8 @@ if ($UI) {
     "--hidden-import", "UI.tabs.library_tab",
     "--hidden-import", "UI.library_fs",
     "--hidden-import", "UI.tab_sections",
+    "--hidden-import", "UI.tutorial_dialog",
+    "--hidden-import", "UI.tutorial_links",
     "--hidden-import", "src.util.cpu_parallelism",
     "--hidden-import", "src.runtime.pipeline_api",
     "--hidden-import", "src.runtime.generation_facade",

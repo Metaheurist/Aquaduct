@@ -47,6 +47,7 @@ from src.speech.voice import list_pyttsx3_voices as list_sys_voices
 from UI.brain_expand import image_model_id_from_ui, resolve_llm_model_id
 from UI.frameless_dialog import aquaduct_question, aquaduct_warning
 from UI.no_wheel_controls import NoWheelComboBox
+from UI.tutorial_links import help_tooltip_rich
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
 
@@ -150,7 +151,11 @@ def attach_characters_tab(win) -> None:
     win.character_generate_btn.setMaximumHeight(28)
     win.character_generate_btn.setMinimumWidth(132)
     win.character_generate_btn.setToolTip(
-        "Fill name, identity, visual style, and negatives using the Model-tab script LLM (loads weights like other brain tasks)."
+        help_tooltip_rich(
+            "Fill name, identity, visual style, and negatives using the Model-tab script LLM (loads weights like other brain tasks).",
+            "topics_chars",
+            slide=2,
+        )
     )
     gen_row.addWidget(win.character_generate_btn)
     inner_lay.addLayout(gen_row)

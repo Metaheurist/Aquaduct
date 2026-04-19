@@ -31,15 +31,18 @@ Replace `NAME` with `main`, `src.runtime.pipeline_api`, or `UI.app`.
 - **First torch / diffusers / transformers load** — Large GPU RAM and seconds of startup when a local model is first materialized; normal for HF stacks.
 - **FFmpeg download** — One-time network + disk cost under `.cache/ffmpeg/` (see [ffmpeg.md](ffmpeg.md)).
 
-## CPU threads (OpenMP, BLAS, PyTorch)
+## CPU cores (OpenMP, BLAS, PyTorch CPU pools)
+
+This section is **host CPU** parallelism: OpenMP/BLAS and PyTorch **CPU** thread settings so numerical and library code can use **multiple logical cores**. It is **not** “multithreading the GPU” (CUDA kernels and streams are separate; we do not try to run two diffusion jobs on one GPU in parallel here).
 
 On startup, [`src/util/cpu_parallelism.py`](../src/util/cpu_parallelism.py) sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, and **`VECLIB_MAXIMUM_THREADS`** (unless you already set them) so NumPy/BLAS-backed work uses multiple cores instead of defaulting to one thread per library. The target count defaults to **`min(32, os.cpu_count())`**.
 
-After **`import torch`**, the same helper applies **`torch.set_num_interop_threads`** (modest) and **`torch.set_num_threads`** so CPU-side PyTorch ops match that budget.
+After **`import torch`**, the same helper applies **`torch.set_num_threads`** to that budget (intra-op CPU parallelism) and **`torch.set_num_interop_threads`** to allow overlapping **CPU-side** operations where PyTorch can schedule them in parallel. On **CPU-only** machines (no CUDA/MPS), inter-op is **higher** so more cores can participate; when **CUDA or MPS** is available, inter-op stays **modest** to reduce CPU contention while the accelerator runs the heavy work.
 
 | Variable | Role |
 |----------|------|
 | `AQUADUCT_CPU_THREADS` | Override the target (1–256). Also drives BLAS env vars and `torch.set_num_threads`. |
+| `AQUADUCT_TORCH_INTEROP_THREADS` | Optional override (1–32) for `torch.set_num_interop_threads` if you want to tune CPU-side overlap manually. |
 
 **UI workers**: Hugging Face **model size probes** (startup) run **concurrent HTTP** tasks via a thread pool; **checksum verification** across multiple repos can verify **several folders in parallel** (capped so disk I/O does not thrash). GPU inference for diffusion stays **sequential per pipeline** — parallelizing two models on one GPU would usually hurt more than help.
 

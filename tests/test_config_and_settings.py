@@ -66,6 +66,16 @@ def test_ui_settings_roundtrip_persist(tmp_repo_root, monkeypatch):
     assert s2.video.audio_polish in {"off", "basic", "strong"}
 
 
+def test_ui_settings_tutorial_completed_roundtrip(tmp_repo_root, monkeypatch):
+    from src.settings import ui_settings as ui_mod
+
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
+    s = AppSettings(tutorial_completed=True)
+    save_settings(s)
+    s2 = load_settings()
+    assert s2.tutorial_completed is True
+
+
 def test_ui_settings_roundtrip_custom_video_fields(tmp_repo_root, monkeypatch):
     from src.settings import ui_settings as ui_mod
 
