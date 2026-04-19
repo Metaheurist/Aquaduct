@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.config import AppSettings, VideoSettings
-from src.topics import effective_topic_tags, news_cache_mode_for_run, normalize_video_format
+from src.topics import effective_topic_tags, news_cache_mode_for_run, normalize_video_format, video_format_uses_news_style_sourcing
 from src.ui_settings import load_settings, save_settings
 
 
@@ -119,6 +119,13 @@ def test_effective_topic_tags_unhinged():
         video_format="unhinged",
     )
     assert effective_topic_tags(s) == ["meme", "sketch"]
+
+
+def test_video_format_uses_news_style_sourcing_only_news_and_explainer():
+    assert video_format_uses_news_style_sourcing("news") is True
+    assert video_format_uses_news_style_sourcing("explainer") is True
+    assert video_format_uses_news_style_sourcing("cartoon") is False
+    assert video_format_uses_news_style_sourcing("unhinged") is False
 
 
 def test_news_cache_mode_for_run_matches_video_format():

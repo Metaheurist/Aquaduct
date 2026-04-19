@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
-from .topics import normalize_video_format
+from .topics import normalize_video_format, video_format_uses_news_style_sourcing
 
 # Per `video_format`: separate seen URL + seen-title history so e.g. cartoon runs
 # do not consume the same "fresh URL" budget as news (legacy flat files map to `news`).
@@ -111,23 +111,23 @@ def _google_news_rss(query: str, limit: int = 3, timeout_s: int = 30) -> list[Ne
 def _default_headline_query(mode: str | None) -> str:
     """RSS/search baseline when there are no user topic tags (per video format)."""
     m = _cache_mode_key(mode)
+    # News + Explainer: same AI/product headline sourcing (not separate "tutorial science" track).
+    if video_format_uses_news_style_sourcing(m):
+        return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
     if m == "cartoon":
+        # Newest animation / cartoon industry stories — entertainment buzz, not how-to tutorials.
         return (
-            "(animation OR cartoon OR \"animated short\" OR series OR character OR comedy) "
-            "(premiere OR episode OR trailer OR festival OR reboot)"
+            "(animation OR cartoon OR anime OR \"animated series\" OR \"streaming\") "
+            "(premiere OR trailer OR \"new season\" OR episode OR release OR Netflix OR Disney OR "
+            "renewal OR cancelled OR review OR news OR buzz)"
         )
     if m == "unhinged":
+        # Internet culture / trends as headline seeds (then the script satirizes in cartoon voice).
         return (
-            "(\"adult animation\" OR \"animated sitcom\" OR \"dark comedy\" OR satire OR parody OR sketch OR "
-            "absurdist OR surreal OR \"shock comedy\" OR \"animated series\" OR \"black comedy\") "
-            "(episode OR short OR clip OR season OR reboot OR trailer OR comedy)"
+            "(viral OR meme OR trending OR TikTok OR \"internet culture\" OR Twitter OR Reddit OR "
+            "challenge OR discourse OR drama OR \"pop culture\" OR influencer) "
+            "(comedy OR satire OR parody OR absurd OR short OR clip OR animation OR cartoon)"
         )
-    if m == "explainer":
-        return (
-            "(explainer OR tutorial OR documentary OR guide) "
-            "(science OR technology OR education OR research OR breakthrough)"
-        )
-    # news
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
 
@@ -139,31 +139,26 @@ def _effective_query(
 ) -> str:
     """
     Build a Google News / Firecrawl search string. Tags + mode pick different bias:
-    news → AI releases; cartoon → animation/character; explainer → education/science.
+    news + explainer → AI/product releases (shared); cartoon → newest animation/cartoon buzz; unhinged → viral / internet-culture.
     """
     mode = _cache_mode_key(topic_mode)
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     if tags:
         tag_expr = " OR ".join(f'"{t}"' for t in tags[:12])
-        if mode == "news":
+        if video_format_uses_news_style_sourcing(mode):
             return (
                 f"({tag_expr}) (AI OR \"AI tool\" OR \"AI app\") "
                 f"(release OR launched OR introduces OR \"new tool\")"
             )
         if mode == "cartoon":
             return (
-                f"({tag_expr}) (animation OR cartoon OR animated OR character OR comedy OR "
-                f"trailer OR series OR short OR film OR festival)"
+                f"({tag_expr}) (animation OR cartoon OR anime OR series OR streaming) "
+                f"(premiere OR trailer OR episode OR season OR release OR review OR news OR buzz)"
             )
         if mode == "unhinged":
             return (
-                f"({tag_expr}) (\"adult animation\" OR satire OR parody OR sketch OR animated OR absurdist OR "
-                f"surreal OR \"dark comedy\" OR \"animated sitcom\" OR short OR series OR episode OR clip)"
-            )
-        if mode == "explainer":
-            return (
-                f"({tag_expr}) (explainer OR tutorial OR guide OR education OR science OR "
-                f'documentary OR "how it works" OR breakthrough)'
+                f"({tag_expr}) (viral OR meme OR trending OR \"internet culture\" OR TikTok OR comedy OR "
+                f"satire OR parody OR animation OR short OR discourse OR drama)"
             )
         return f"({tag_expr}) {_default_headline_query(mode)}"
     return _default_headline_query(mode)

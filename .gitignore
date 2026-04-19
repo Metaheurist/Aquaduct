@@ -61,3 +61,6 @@ logs/
 .cache/
 build/last-build.log
 build/exe-smoke-*.txt
+
+# MoviePy intermediate clips in repo root during encode
+*TEMP_MPY*.mp4

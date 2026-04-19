@@ -633,6 +633,7 @@ def run_once(
             branding=branding,
             article_text=article_text,
             topic_tags=list(effective_topic_tags(app)),
+            video_format=str(getattr(app, "video_format", "news") or "news"),
         )
         _pipe_progress(on_progress, 93, -1, "Encode complete")
     else:
@@ -754,6 +755,7 @@ def run_once(
             branding=branding,
             article_text=article_text,
             topic_tags=list(effective_topic_tags(app)),
+            video_format=str(getattr(app, "video_format", "news") or "news"),
         )
         _pipe_progress(on_progress, 93, -1, "Encode complete")
 

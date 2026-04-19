@@ -13,6 +13,8 @@ In the UI **Model** tab you can pick and download models separately for:
 
 **Auto-fit for this PC** sets all three from detected VRAM/RAM using `rank_models_for_auto_fit` in `src/hardware.py` (same heuristics as **My PC** fit badges). It saves settings after applying.
 
+**Script model and UI “brain” features** (🧠 expand, **Characters → Generate with LLM**) resolve the repo id from the **Script (LLM)** dropdown’s **current selection** first, then saved settings — so they load the same weights as the visible combo without requiring **Save** first (`resolve_llm_model_id` in [`UI/brain_expand.py`](../UI/brain_expand.py)).
+
 Each option is labeled with a relative speed marker:
 - `fastest` / `faster` / `slow`
 
@@ -24,6 +26,7 @@ This is implemented in:
 - `src/model_manager.py`
 
 Notes:
+- **Gated models** (e.g. Meta Llama): accept the license on the model’s Hugging Face page, then set **API → Hugging Face API** + token and **Save**. Background workers that load the LLM also call [`ensure_hf_token_in_env`](../src/hf_access.py) so `HF_TOKEN` is set from saved settings when the process env had none. Hub errors 401 / gated-repo are shortened for dialogs via [`humanize_hf_hub_error`](../src/hf_access.py).
 - **Download ▾ → Download all voice models** queues every curated TTS snapshot (including Microsoft **SpeechT5** / **MMS-TTS**, Kokoro, MeloTTS, Parler, XTTS, Bark, …), skipping repos already present under `models/`. Same mechanism as **Download ALL models**, but voice-only (smaller total than full script+video+voice).
 - Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
 - In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.

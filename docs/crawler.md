@@ -11,10 +11,10 @@ Fetch trending AI-tool news with a **free default path** (no paid news APIs), op
 - MarkTechPost homepage (fallback)
 
 ### Mode-aware search strings
-Headline search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode` = `news`, `cartoon`, or `explainer`):
-- **news** — AI product / release–style phrases.
-- **cartoon** — animation / character / series / trailer style (no forced “AI tool” wording).
-- **explainer** — explainer / tutorial / education / science slant.
+Headline search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode`):
+- **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/topics.py`](../src/topics.py)); Explainer does **not** use a separate “tutorial / science education” query track.
+- **cartoon** — newest animation / streaming / premiere / trailer / buzz (entertainment industry headlines), not framed as how-to tutorials.
+- **unhinged** — internet culture / viral / meme / trend–oriented headline seeds for satire.
 
 `fetch_latest_items(..., topic_mode=...)` and pipeline fetches pass the current mode so **Discover** and runs match the selected format.
 

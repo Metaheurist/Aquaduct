@@ -174,16 +174,20 @@ def test_effective_query_mode_tailors_search_bias() -> None:
 
     e = _effective_query(query="", topic_tags=["physics"], topic_mode="explainer")
     assert "physics" in e
-    assert "explainer" in e.lower() or "tutorial" in e.lower()
+    assert "AI" in e or "ai" in e
+    assert "tutorial" not in e.lower()
 
     u = _effective_query(query="", topic_tags=["sketch"], topic_mode="unhinged")
     assert "sketch" in u
-    assert "meme" in u.lower() or "comedy" in u.lower()
+    assert "viral" in u.lower() or "meme" in u.lower() or "trending" in u.lower()
 
     assert "AI tool" in _default_headline_query("news") or "AI" in _default_headline_query("news")
-    assert "cartoon" in _default_headline_query("cartoon").lower()
+    assert _default_headline_query("explainer") == _default_headline_query("news")
+    cdef = _default_headline_query("cartoon").lower()
+    assert "premiere" in cdef or "trailer" in cdef or "animation" in cdef
+    assert "tutorial" not in cdef
     uh_def = _default_headline_query("unhinged").lower()
-    assert "meme" in uh_def or "comedy" in uh_def
+    assert "viral" in uh_def or "meme" in uh_def or "internet culture" in uh_def
 
 
 def test_clear_news_seen_cache_files_empty_dir(tmp_path) -> None:

@@ -20,6 +20,9 @@ Central place for:
 - Images: `stabilityai/sdxl-turbo`
 - Voice: `hexgrad/Kokoro-82M`
 
+## Video format vs facts card
+[`video_format_supports_facts_card()`](../src/config.py) is **True** only for `news` and `explainer`. The **Key facts** overlay uses the article fetch path; **Cartoon** / **Unhinged** runs do not show the card even if `facts_card_enabled` is on.
+
 ## Video settings
 `VideoSettings` defaults:
 - 1080×1920, 30fps

@@ -8,6 +8,12 @@ def normalize_video_format(value: str | None) -> str:
     return t if t in VIDEO_FORMATS else "news"
 
 
+def video_format_uses_news_style_sourcing(value: str | None) -> bool:
+    """News and Explainer share the same headline search bias (AI / product news) and news-style script defaults."""
+    v = normalize_video_format(value)
+    return v in ("news", "explainer")
+
+
 def effective_topic_tags(app: AppSettings) -> list[str]:
     """Tags for the current pipeline mode (`video_format`)."""
     m = getattr(app, "topic_tags_by_mode", None) or {}

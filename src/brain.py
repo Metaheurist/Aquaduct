@@ -8,6 +8,12 @@ from typing import Any
 
 from .utils_vram import cleanup_vram, vram_guard
 from .personalities import PersonalityPreset, get_personality_by_id
+from .character_presets import (
+    CharacterAutoPreset,
+    GeneratedCharacterFields,
+    coerce_generated_character_fields,
+    extract_first_json_object,
+)
 from .config import BrandingSettings, get_paths
 from .model_manager import resolve_pretrained_load_path
 from .branding_video import palette_prompt_suffix, video_style_strength
@@ -173,7 +179,8 @@ def _prompt_for_unhinged_items(
         "shock-satire punchlines, grotesque-cute or liminal-weird imagery — like classic adult animated sitcoms, "
         "NOT kids' TV or product reviews. Do not name, quote, or imitate any real show, character, or creator; "
         "invent original voices and settings. Stay playful; no slurs, hate, harassment, or real-person cruelty.\n"
-        "Pick ONE headline below as a loose seed (twist or parody it freely — you do NOT review products).\n"
+        "Headlines below skew toward internet culture / viral stories — pick ONE as a loose seed to satirize "
+        "(twist or parody freely; this is NOT a neutral news report and NOT a tutorial).\n"
         "Storytelling rule: The `hook` and every segment's `narration` must be in character voice — "
         "first-person, dialogue between characters, or close third tied to a named character. "
         "Do NOT default to a neutral news announcer; the story is told through the cast.\n"
@@ -248,7 +255,8 @@ def _prompt_for_cartoon_items(
         "first-person, dialogue between characters, or close third tied to a named character. "
         "Do NOT use a neutral TV announcer or product-demo narrator unless the joke is explicitly about that. "
         "The audience should hear the cast living the story.\n"
-        "Pick ONE headline below as a loose seed (parody or twist freely — you are NOT reviewing products).\n"
+        "Pick ONE headline below as a loose seed — these favor **new animation / cartoon buzz** (releases, trailers, streaming news). "
+        "Parody or twist freely. Do NOT write a tutorial, drawing lesson, or step-by-step explainer; stay comedy/entertainment.\n"
         "Write a ~50 second script with 6-10 few-second beats. Keep language family-friendly; no slurs or hate.\n"
         "Visual style: bright 2D cartoon, bold shapes, expressive faces, rubber-hose or modern toon energy.\n"
         "Enforce this structure (keep it tight):\n"
@@ -351,16 +359,18 @@ def _prompt_for_items(
 
 def _vf_hint(video_format: str) -> str:
     f = (video_format or "news").strip().lower()
+    # News + Explainer: same short-form "AI news" voice and structure (see _prompt_for_items).
+    if f in ("news", "explainer"):
+        return "timely angle; connect to current AI tooling news when plausible"
     if f == "cartoon":
         return (
-            "character-driven cartoon story: narrate through the cast (dialogue / first-person), playful exaggerated visuals, snappy pacing"
+            "character-driven cartoon comedy riffing on fresh animation/cartoon headlines (releases, trailers, buzz) — "
+            "entertainment only; not a tutorial, not a how-to lesson"
         )
-    if f == "explainer":
-        return "teach clearly: define terms, use simple on-screen labels"
     if f == "unhinged":
         return (
-            "adult-animation comedy: absurdist satire, cynical banter, shock-cartoon punchlines, surreal or gross-out gags; "
-            "invent original characters — no cruelty or hate, playful only"
+            "adult-animation comedy satirizing internet trends / viral discourse — absurdist satire, cynical banter, "
+            "shock-cartoon punchlines; invent original characters — no cruelty or hate, playful only"
         )
     return "timely angle; connect to current AI tooling news when plausible"
 
@@ -1215,6 +1225,64 @@ def generate_script(
                 )
             dprint("brain", "generate_script ok (fallback template)", f"title={pkg.title[:100]!r}")
             return pkg
+
+
+def generate_character_from_preset_llm(
+    *,
+    model_id: str,
+    preset: CharacterAutoPreset,
+    extra_notes: str = "",
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 1400,
+    try_llm_4bit: bool = True,
+) -> GeneratedCharacterFields:
+    """
+    Use the script LLM to invent a full character profile (text fields) from a built-in archetype.
+    Does not assign pyttsx3 / ElevenLabs IDs — user picks voices in the UI.
+    """
+    from .characters_store import CHARACTER_FIELD_MAX_LEN, CHARACTER_NAME_MAX_LEN
+
+    notes = (extra_notes or "").strip()
+    notes_block = f"Extra notes from the user (optional):\n{notes}\n" if notes else ""
+
+    arch = (preset.llm_directive or "").strip() or "Original short-form video host."
+    prompt = (
+        "You help users of a desktop short-form video app (9:16 vertical).\n"
+        "Invent ONE original host character — not a real celebrity, brand mascot, or copyrighted figure.\n\n"
+        f"Archetype label: {preset.label}\n"
+        f"Creative direction for this archetype:\n{arch}\n\n"
+        f"{notes_block}"
+        "Output a single JSON object with EXACTLY these keys:\n"
+        '- "name": short memorable display name (string)\n'
+        '- "identity": persona for script + on-screen context — tone, audience, how they talk (string, several sentences)\n'
+        '- "visual_style": string to prepend to image prompts — look, lighting, wardrobe, set (several short sentences)\n'
+        '- "negatives": comma-separated diffusion negative prompts to reduce artifacts (string)\n'
+        '- "use_default_voice": boolean — true if a generic project TTS is fine; false if the character needs a distinct voice pick\n'
+        "\n"
+        "Rules:\n"
+        "- Output ONLY valid JSON. No markdown fences, no commentary before or after.\n"
+        "- Do not include keys other than the five above.\n"
+        "- Keep everything original; no real-person imitation.\n"
+    )
+    with vram_guard():
+        raw = _generate_with_transformers(
+            model_id,
+            prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=max_new_tokens,
+            try_llm_4bit=try_llm_4bit,
+        )
+    blob = extract_first_json_object(raw or "")
+    coerced = coerce_generated_character_fields(blob)
+    if coerced is None:
+        raise ValueError("Model did not return usable JSON with name, identity, and visual fields.")
+    return GeneratedCharacterFields(
+        name=coerced.name[:CHARACTER_NAME_MAX_LEN],
+        identity=coerced.identity[:CHARACTER_FIELD_MAX_LEN],
+        visual_style=coerced.visual_style[:CHARACTER_FIELD_MAX_LEN],
+        negatives=coerced.negatives[:CHARACTER_FIELD_MAX_LEN],
+        use_default_voice=coerced.use_default_voice,
+    )
 
 
 def expand_custom_field_text(

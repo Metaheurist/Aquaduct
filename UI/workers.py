@@ -19,7 +19,9 @@ from src.model_manager import (
 
 import main as pipeline_main
 from src.brain import VideoPackage, enforce_arc, expand_custom_video_instructions, generate_script
-from src.brain import expand_custom_field_text
+from src.brain import expand_custom_field_text, generate_character_from_preset_llm
+from src.character_presets import CharacterAutoPreset, GeneratedCharacterFields
+from src.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
 from src.model_integrity_cache import classify_integrity_status
 from src.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.characters_store import character_context_for_brain, resolve_character_for_pipeline
@@ -524,17 +526,28 @@ class TextExpandWorker(QThread):
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
 
-    def __init__(self, *, model_id: str, field_label: str, seed: str) -> None:
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        field_label: str,
+        seed: str,
+        hf_token: str = "",
+        hf_api_enabled: bool = True,
+    ) -> None:
         super().__init__()
         self.model_id = str(model_id or "").strip()
         self.field_label = str(field_label or "").strip()
         self.seed = str(seed or "")
+        self.hf_token = str(hf_token or "").strip()
+        self.hf_api_enabled = bool(hf_api_enabled)
 
     def run(self) -> None:
         try:
             if not self.model_id:
                 self.failed.emit("No script (LLM) model selected in Model tab.")
                 return
+            ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
             out = expand_custom_field_text(
                 model_id=self.model_id,
                 field_label=self.field_label,
@@ -542,6 +555,57 @@ class TextExpandWorker(QThread):
             )
             self.done.emit(out)
         except Exception as e:
+            friendly = humanize_hf_hub_error(e)
+            if friendly:
+                self.failed.emit(friendly)
+                return
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
+class CharacterGenerateWorker(QThread):
+    """Run ``generate_character_from_preset_llm`` off the GUI thread."""
+
+    done = pyqtSignal(object)  # GeneratedCharacterFields
+    failed = pyqtSignal(str)
+
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        preset: CharacterAutoPreset,
+        extra_notes: str = "",
+        try_llm_4bit: bool = True,
+        hf_token: str = "",
+        hf_api_enabled: bool = True,
+    ) -> None:
+        super().__init__()
+        self.model_id = str(model_id or "").strip()
+        self.preset = preset
+        self.extra_notes = str(extra_notes or "")
+        self.try_llm_4bit = bool(try_llm_4bit)
+        self.hf_token = str(hf_token or "").strip()
+        self.hf_api_enabled = bool(hf_api_enabled)
+
+    def run(self) -> None:
+        try:
+            if not self.model_id:
+                self.failed.emit("No script (LLM) model selected in Model tab.")
+                return
+            ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
+            out = generate_character_from_preset_llm(
+                model_id=self.model_id,
+                preset=self.preset,
+                extra_notes=self.extra_notes,
+                try_llm_4bit=self.try_llm_4bit,
+            )
+            assert isinstance(out, GeneratedCharacterFields)
+            self.done.emit(out)
+        except Exception as e:
+            friendly = humanize_hf_hub_error(e)
+            if friendly:
+                self.failed.emit(friendly)
+                return
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
