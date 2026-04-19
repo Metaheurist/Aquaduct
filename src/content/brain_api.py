@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from typing import Callable
 
+from src.content.character_presets import (
+    CharacterAutoPreset,
+    GeneratedCharacterFields,
+    coerce_generated_character_fields,
+    extract_first_json_object,
+)
 from src.content.brain import (
     VideoPackage,
     _prompt_for_creative_brief,
@@ -11,8 +17,9 @@ from src.content.brain import (
     get_personality_by_id,
     video_package_from_llm_output,
 )
+from src.content.characters_store import CHARACTER_FIELD_MAX_LEN, CHARACTER_NAME_MAX_LEN
 from src.core.config import AppSettings, BrandingSettings
-from src.platform.openai_client import OpenAIClient, build_openai_client_from_settings
+from src.platform.openai_client import build_openai_client_from_settings
 
 SCRIPT_JSON_SYSTEM = (
     "You are an expert short-form vertical video writer. "
@@ -126,3 +133,62 @@ def expand_custom_field_text_openai(
         user=user,
         json_mode=False,
     ).strip()
+
+
+CHARACTER_JSON_SYSTEM = (
+    "Return ONLY valid JSON for one character profile. Keys: name, identity, visual_style, "
+    "negatives, use_default_voice (boolean). No markdown or commentary."
+)
+
+
+def generate_character_from_preset_openai(
+    *,
+    settings: AppSettings,
+    preset: CharacterAutoPreset,
+    extra_notes: str = "",
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+) -> GeneratedCharacterFields:
+    """Same JSON contract as :func:`src.content.brain.generate_character_from_preset_llm` via OpenAI."""
+    notes = (extra_notes or "").strip()
+    notes_block = f"Extra notes from the user (optional):\n{notes}\n" if notes else ""
+    arch = (preset.llm_directive or "").strip() or "Original short-form video host."
+    user = (
+        "You help users of a desktop short-form video app (9:16 vertical).\n"
+        "Invent ONE original host character — not a real celebrity, brand mascot, or copyrighted figure.\n\n"
+        f"Archetype label: {preset.label}\n"
+        f"Creative direction for this archetype:\n{arch}\n\n"
+        f"{notes_block}"
+        "Output a single JSON object with EXACTLY these keys:\n"
+        '- "name": short memorable display name (string)\n'
+        '- "identity": persona for script + on-screen context — tone, audience, how they talk (string, several sentences)\n'
+        '- "visual_style": string to prepend to image prompts — look, lighting, wardrobe, set (several short sentences)\n'
+        '- "negatives": comma-separated diffusion negative prompts to reduce artifacts (string)\n'
+        '- "use_default_voice": boolean — true if a generic project TTS is fine; false if the character needs a distinct voice pick\n'
+        "\n"
+        "Rules:\n"
+        "- Output ONLY valid JSON. No markdown fences, no commentary before or after.\n"
+        "- Do not include keys other than the five above.\n"
+        "- Keep everything original; no real-person imitation.\n"
+    )
+    if on_llm_task:
+        on_llm_task("llm_generate", 10, "Calling OpenAI for character JSON…")
+    client = build_openai_client_from_settings(settings)
+    raw = client.chat_completion_text(
+        model=_llm_model(settings),
+        system=CHARACTER_JSON_SYSTEM,
+        user=user,
+        json_mode=True,
+    )
+    if on_llm_task:
+        on_llm_task("llm_generate", 100, "Character JSON received")
+    blob = extract_first_json_object(raw or "")
+    coerced = coerce_generated_character_fields(blob)
+    if coerced is None:
+        raise ValueError("Model did not return usable JSON with name, identity, and visual fields.")
+    return GeneratedCharacterFields(
+        name=coerced.name[:CHARACTER_NAME_MAX_LEN],
+        identity=coerced.identity[:CHARACTER_FIELD_MAX_LEN],
+        visual_style=coerced.visual_style[:CHARACTER_FIELD_MAX_LEN],
+        negatives=coerced.negatives[:CHARACTER_FIELD_MAX_LEN],
+        use_default_voice=coerced.use_default_voice,
+    )

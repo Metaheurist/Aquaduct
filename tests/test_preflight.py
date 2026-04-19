@@ -62,6 +62,18 @@ def test_preflight_pro_disables_slideshow(monkeypatch):
     assert any("disables slideshow" in e.lower() for e in r.errors)
 
 
+def test_preflight_local_explicit_matches_default(monkeypatch):
+    """Regression: explicit ``model_execution_mode='local'`` should not add API-only checks."""
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    r0 = preflight_check(settings=AppSettings(), strict=True)
+    r1 = preflight_check(settings=AppSettings(model_execution_mode="local"), strict=True)
+    assert r0.ok is r1.ok
+    assert r0.errors == r1.errors
+
+
 def test_preflight_api_mode_requires_keys(monkeypatch):
     import src.runtime.preflight as pf
     from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig, AppSettings

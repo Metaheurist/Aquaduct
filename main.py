@@ -22,7 +22,6 @@ from src.content.brain import (
     enforce_arc,
     expand_custom_video_instructions,
     generate_cast_from_storyline_llm,
-    generate_script,
 )
 from src.content.story_context import build_script_context
 from src.content.story_pipeline import run_multistage_refinement
@@ -76,6 +75,7 @@ from src.speech.audio_fx import (
     render_sfx_track,
     schedule_sfx_events,
 )
+from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import is_api_mode
 from src.runtime.preflight import preflight_check
 from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
@@ -515,7 +515,8 @@ def run_once(
                 try_llm_4bit=try_llm_4bit,
             )
             _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
-            pkg = generate_script(
+            pkg = get_generation_facade(app).generate_script_package(
+                settings=app,
                 model_id=llm_id,
                 items=sources,
                 topic_tags=tags,
@@ -542,7 +543,8 @@ def run_once(
                 extra_scoring_text="",
             )
             _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
-            pkg = generate_script(
+            pkg = get_generation_facade(app).generate_script_package(
+                settings=app,
                 model_id=llm_id,
                 items=sources,
                 topic_tags=tags,

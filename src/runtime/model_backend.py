@@ -69,6 +69,24 @@ def resolve_model_execution_mode(settings: AppSettings) -> ModelExecutionMode:
     return "api" if m == "api" else "local"
 
 
+def resolve_local_vs_api(settings: AppSettings | None) -> ModelExecutionMode:
+    """Same as :func:`resolve_model_execution_mode` — plan-facing name for local vs API routing."""
+    if settings is None:
+        return "local"
+    return resolve_model_execution_mode(settings)
+
+
+def api_role_ready(settings: AppSettings, role: Role) -> bool:
+    """True when API mode is on and the role has provider+model plus the required credential."""
+    if not is_api_mode(settings):
+        return False
+    rc = _role_cfg(settings, role)
+    if not role_filled(rc):
+        return False
+    prov = str(rc.provider or "").strip().lower()
+    return provider_has_key(settings, prov)
+
+
 def api_preflight_errors(settings: AppSettings) -> list[str]:
     """Return blocking error strings for API mode (empty if none)."""
     if not is_api_mode(settings):

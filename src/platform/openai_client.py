@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import os
+import random
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +11,14 @@ from src.core.config import AppSettings
 from urllib.parse import urljoin
 
 import requests
+
+_POST_RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+_POST_MAX_ATTEMPTS = 4
+
+
+def _sleep_backoff(attempt: int) -> None:
+    base = min(8.0, 0.35 * (2**attempt))
+    time.sleep(base + random.random() * 0.12)
 
 
 class OpenAIRequestError(RuntimeError):
@@ -53,6 +63,24 @@ class OpenAIClient:
             h["OpenAI-Organization"] = str(self.organization).strip()
         return h
 
+    def _post_json(self, url: str, payload: dict[str, Any], *, err_prefix: str) -> requests.Response:
+        """POST with limited retries on transient HTTP statuses and connection errors."""
+        last_exc: BaseException | None = None
+        for attempt in range(_POST_MAX_ATTEMPTS):
+            try:
+                r = requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt >= _POST_MAX_ATTEMPTS - 1:
+                    raise OpenAIRequestError(f"{err_prefix}OpenAI network error: {e}") from e
+                _sleep_backoff(attempt)
+                continue
+            if r.status_code in _POST_RETRY_STATUSES and attempt < _POST_MAX_ATTEMPTS - 1:
+                _sleep_backoff(attempt)
+                continue
+            return r
+        raise OpenAIRequestError(f"{err_prefix}OpenAI network error: {last_exc!r}")
+
     def chat_completion_text(
         self,
         *,
@@ -72,10 +100,7 @@ class OpenAIClient:
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
-        try:
-            r = requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
-        except requests.RequestException as e:
-            raise OpenAIRequestError(f"OpenAI network error: {e}") from e
+        r = self._post_json(url, payload, err_prefix="")
         if r.status_code >= 400:
             try:
                 from debug import dprint
@@ -95,10 +120,7 @@ class OpenAIClient:
         """Returns PNG bytes (DALL·E)."""
         url = urljoin(self.base_url.rstrip("/") + "/", "images/generations")
         payload = {"model": model, "prompt": prompt, "size": size, "response_format": "b64_json", "n": 1}
-        try:
-            r = requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
-        except requests.RequestException as e:
-            raise OpenAIRequestError(f"OpenAI image network error: {e}") from e
+        r = self._post_json(url, payload, err_prefix="OpenAI image ")
         if r.status_code >= 400:
             try:
                 from debug import dprint
@@ -118,10 +140,7 @@ class OpenAIClient:
     def speech_to_file(self, *, model: str, text: str, voice: str, out_path: str) -> None:
         url = urljoin(self.base_url.rstrip("/") + "/", "audio/speech")
         payload = {"model": model, "input": text, "voice": voice}
-        try:
-            r = requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
-        except requests.RequestException as e:
-            raise OpenAIRequestError(f"OpenAI TTS network error: {e}") from e
+        r = self._post_json(url, payload, err_prefix="OpenAI TTS ")
         if r.status_code >= 400:
             raise OpenAIRequestError(_map_http_error(r.status_code, r.text), status_code=r.status_code)
         from pathlib import Path
