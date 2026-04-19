@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Local vs API model execution
+- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `model_execution_mode` (`local` \| `api`), nested `api_models` per role, `api_openai_key`, `api_replicate_token`; env `OPENAI_API_KEY`, `REPLICATE_API_TOKEN` override saved keys.
+- **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py), [`src/runtime/model_backend.py`](src/runtime/model_backend.py)): API mode validates providers/keys and Pro + Replicate rules; skips requiring torch/diffusers for API-only runs.
+- **Pipeline** ([`main.py`](main.py), [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py), [`src/content/brain_api.py`](src/content/brain_api.py), [`src/runtime/api_generation.py`](src/runtime/api_generation.py), [`src/platform/openai_client.py`](src/platform/openai_client.py), [`src/platform/replicate_client.py`](src/platform/replicate_client.py)): OpenAI script JSON, DALL·E / Replicate stills, OpenAI TTS or local/ElevenLabs voice, slideshow assembly; Pro uses Replicate MP4 segments when configured.
+- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/tabs/api_tab.py`](UI/tabs/api_tab.py), [`UI/api_model_widgets.py`](UI/api_model_widgets.py), [`UI/main_window.py`](UI/main_window.py)): Model tab Local/API toggle; Generation APIs panel (reparented between API and Model tabs); gather/save wiring.
+- **Workers** ([`UI/workers.py`](UI/workers.py), [`UI/brain_expand.py`](UI/brain_expand.py)): Preview/storyboard/brain-expand use API LLM/images when mode is API.
+- **Docs**: [`docs/api_generation.md`](docs/api_generation.md); [`docs/config.md`](docs/config.md) (`AppSettings` API fields).
+- **Tests**: [`tests/test_model_backend.py`](tests/test_model_backend.py), [`tests/test_api_generation.py`](tests/test_api_generation.py), [`tests/test_replicate_client.py`](tests/test_replicate_client.py), [`tests/test_brain_api.py`](tests/test_brain_api.py), [`tests/test_api_model_catalog.py`](tests/test_api_model_catalog.py), plus existing [`tests/test_preflight.py`](tests/test_preflight.py), [`tests/test_ui_settings_api_models.py`](tests/test_ui_settings_api_models.py), [`tests/test_openai_client.py`](tests/test_openai_client.py).
+
 ### Automatic cast when no Character is selected
 - **Fallback + LLM cast** ([`src/content/characters_store.py`](src/content/characters_store.py), [`src/content/brain.py`](src/content/brain.py)): format-aware default cast (e.g. news-style narrator vs multi-voice cartoon), optional **`generate_cast_from_storyline_llm`** aligned to the storyline, and ephemeral **`Character`** shaping for diffusion when no saved character is active. Cast JSON may be written to each video’s **`assets/generated_cast.json`** from the storyboard / pipeline path ([`UI/workers.py`](UI/workers.py), [`main.py`](main.py)).
 - **Tests**: [`tests/test_generated_cast.py`](tests/test_generated_cast.py); [`tests/test_characters_store.py`](tests/test_characters_store.py) updated.

@@ -7,7 +7,9 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from src.content.brain_api import expand_custom_video_instructions_openai, generate_script_openai
 from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings
+from src.runtime.model_backend import is_api_mode
 from src.content.crawler import (
     fetch_article_text,
     fetch_latest_items,
@@ -56,6 +58,49 @@ from src.content.personality_auto import auto_pick_personality
 from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
 from src.util.utils_vram import prepare_for_next_model
 from debug import dprint
+
+
+def _expand_brief_unified(
+    *,
+    app: AppSettings,
+    model_id: str,
+    raw_instructions: str,
+    video_format: str,
+    personality_id: str,
+    character_context: str | None,
+    on_llm_task,
+    try_llm_4bit: bool,
+):
+    if is_api_mode(app):
+        return expand_custom_video_instructions_openai(
+            settings=app,
+            raw_instructions=raw_instructions,
+            video_format=video_format,
+            personality_id=personality_id,
+            on_llm_task=on_llm_task,
+        )
+    return expand_custom_video_instructions(
+        model_id=model_id,
+        raw_instructions=raw_instructions,
+        video_format=video_format,
+        personality_id=personality_id,
+        character_context=character_context,
+        on_llm_task=on_llm_task,
+        try_llm_4bit=try_llm_4bit,
+    )
+
+
+def _generate_script_unified(
+    *,
+    app: AppSettings,
+    model_id: str,
+    on_llm_task,
+    try_llm_4bit: bool,
+    **kw,
+):
+    if is_api_mode(app):
+        return generate_script_openai(settings=app, on_llm_task=on_llm_task, **kw)
+    return generate_script(model_id=model_id, on_llm_task=on_llm_task, try_llm_4bit=try_llm_4bit, **kw)
 
 
 def _firecrawl_kwargs(app: AppSettings) -> dict:
@@ -561,6 +606,7 @@ class TextExpandWorker(QThread):
         hf_token: str = "",
         hf_api_enabled: bool = True,
         try_llm_4bit: bool = True,
+        app_settings: AppSettings | None = None,
     ) -> None:
         super().__init__()
         self.model_id = str(model_id or "").strip()
@@ -569,9 +615,20 @@ class TextExpandWorker(QThread):
         self.hf_token = str(hf_token or "").strip()
         self.hf_api_enabled = bool(hf_api_enabled)
         self.try_llm_4bit = bool(try_llm_4bit)
+        self.app_settings = app_settings
 
     def run(self) -> None:
         try:
+            if self.app_settings is not None and is_api_mode(self.app_settings):
+                from src.content.brain_api import expand_custom_field_text_openai
+
+                out = expand_custom_field_text_openai(
+                    settings=self.app_settings,
+                    field_label=self.field_label,
+                    seed=self.seed,
+                )
+                self.done.emit(out)
+                return
             if not self.model_id:
                 self.failed.emit("No script (LLM) model selected in Model tab.")
                 return
@@ -902,7 +959,8 @@ class PreviewWorker(QThread):
                 if self.run_control is not None:
                     self.run_control.checkpoint()
 
-                expanded = expand_custom_video_instructions(
+                expanded = _expand_brief_unified(
+                    app=app,
                     model_id=llm_id,
                     raw_instructions=raw_inst,
                     video_format=vf,
@@ -911,7 +969,8 @@ class PreviewWorker(QThread):
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                 )
-                pkg = generate_script(
+                pkg = _generate_script_unified(
+                    app=app,
                     model_id=llm_id,
                     items=sources,
                     topic_tags=tags,
@@ -999,7 +1058,8 @@ class PreviewWorker(QThread):
                     except Exception:
                         article_excerpt = ""
 
-                pkg = generate_script(
+                pkg = _generate_script_unified(
+                    app=app,
                     model_id=llm_id,
                     items=sources,
                     topic_tags=tags,
@@ -1114,7 +1174,8 @@ class StoryboardWorker(QThread):
                         extra_markdown=raw_inst[:8000],
                     )
 
-                expanded = expand_custom_video_instructions(
+                expanded = _expand_brief_unified(
+                    app=app,
                     model_id=llm_id,
                     raw_instructions=raw_inst,
                     video_format=vf,
@@ -1123,7 +1184,8 @@ class StoryboardWorker(QThread):
                     on_llm_task=_llm_task,
                     try_llm_4bit=try_llm_4bit,
                 )
-                pkg = generate_script(
+                pkg = _generate_script_unified(
+                    app=app,
                     model_id=llm_id,
                     items=sources,
                     topic_tags=tags,
@@ -1137,7 +1199,7 @@ class StoryboardWorker(QThread):
                     supplement_context=script_digest,
                 )
                 pkg = enforce_arc(pkg, video_format=vf)
-                if bool(getattr(app.video, "story_multistage_enabled", False)):
+                if bool(getattr(app.video, "story_multistage_enabled", False)) and not is_api_mode(app):
 
                     def _ms_sb(task: str, pct: int, msg: str) -> None:
                         if task == "llm_load":
@@ -1155,20 +1217,7 @@ class StoryboardWorker(QThread):
                         on_llm_task=_ms_sb,
                     )
                 if not character_selected_in_settings(app):
-                    try:
-                        cast = generate_cast_from_storyline_llm(
-                            model_id=llm_id,
-                            video_format=vf,
-                            storyline_title=str(pkg.title or ""),
-                            storyline_text=pkg.narration_text(),
-                            topic_tags=tags,
-                            on_llm_task=_llm_task,
-                            try_llm_4bit=try_llm_4bit,
-                        )
-                        generated_cast = cast
-                        active_ch = cast_to_ephemeral_character(cast=cast, video_format=vf)
-                        char_ctx = character_context_for_brain(active_ch)
-                    except Exception:
+                    if is_api_mode(app):
                         try:
                             generated_cast = fallback_cast_for_show(
                                 video_format=vf, topic_tags=tags, headline_seed=str(pkg.title or "")
@@ -1177,7 +1226,30 @@ class StoryboardWorker(QThread):
                             char_ctx = character_context_for_brain(active_ch)
                         except Exception:
                             pass
-                        pass
+                    else:
+                        try:
+                            cast = generate_cast_from_storyline_llm(
+                                model_id=llm_id,
+                                video_format=vf,
+                                storyline_title=str(pkg.title or ""),
+                                storyline_text=pkg.narration_text(),
+                                topic_tags=tags,
+                                on_llm_task=_llm_task,
+                                try_llm_4bit=try_llm_4bit,
+                            )
+                            generated_cast = cast
+                            active_ch = cast_to_ephemeral_character(cast=cast, video_format=vf)
+                            char_ctx = character_context_for_brain(active_ch)
+                        except Exception:
+                            try:
+                                generated_cast = fallback_cast_for_show(
+                                    video_format=vf, topic_tags=tags, headline_seed=str(pkg.title or "")
+                                )
+                                active_ch = cast_to_ephemeral_character(cast=generated_cast, video_format=vf)
+                                char_ctx = character_context_for_brain(active_ch)
+                            except Exception:
+                                pass
+                            pass
             else:
                 cm = news_cache_mode_for_run(app)
                 self.progress.emit(
@@ -1270,7 +1342,8 @@ class StoryboardWorker(QThread):
                         extra_markdown=(article_excerpt or "")[:12000],
                     )
 
-                pkg = generate_script(
+                pkg = _generate_script_unified(
+                    app=app,
                     model_id=llm_id,
                     items=sources,
                     topic_tags=tags,
@@ -1284,7 +1357,7 @@ class StoryboardWorker(QThread):
                     supplement_context=script_digest,
                 )
                 pkg = enforce_arc(pkg, video_format=vf)
-                if bool(getattr(app.video, "story_multistage_enabled", False)):
+                if bool(getattr(app.video, "story_multistage_enabled", False)) and not is_api_mode(app):
 
                     def _ms2(task: str, pct: int, msg: str) -> None:
                         if task == "llm_load":
@@ -1302,20 +1375,7 @@ class StoryboardWorker(QThread):
                         on_llm_task=_ms2,
                     )
                 if not character_selected_in_settings(app):
-                    try:
-                        cast2 = generate_cast_from_storyline_llm(
-                            model_id=llm_id,
-                            video_format=vf,
-                            storyline_title=str(pkg.title or ""),
-                            storyline_text=pkg.narration_text(),
-                            topic_tags=tags,
-                            on_llm_task=_llm_task,
-                            try_llm_4bit=try_llm_4bit,
-                        )
-                        generated_cast = cast2
-                        active_ch = cast_to_ephemeral_character(cast=cast2, video_format=vf)
-                        char_ctx = character_context_for_brain(active_ch)
-                    except Exception:
+                    if is_api_mode(app):
                         try:
                             generated_cast = fallback_cast_for_show(
                                 video_format=vf,
@@ -1326,6 +1386,31 @@ class StoryboardWorker(QThread):
                             char_ctx = character_context_for_brain(active_ch)
                         except Exception:
                             pass
+                    else:
+                        try:
+                            cast2 = generate_cast_from_storyline_llm(
+                                model_id=llm_id,
+                                video_format=vf,
+                                storyline_title=str(pkg.title or ""),
+                                storyline_text=pkg.narration_text(),
+                                topic_tags=tags,
+                                on_llm_task=_llm_task,
+                                try_llm_4bit=try_llm_4bit,
+                            )
+                            generated_cast = cast2
+                            active_ch = cast_to_ephemeral_character(cast=cast2, video_format=vf)
+                            char_ctx = character_context_for_brain(active_ch)
+                        except Exception:
+                            try:
+                                generated_cast = fallback_cast_for_show(
+                                    video_format=vf,
+                                    topic_tags=tags,
+                                    headline_seed=str(sources[0].get("title") or "") if sources else "",
+                                )
+                                active_ch = cast_to_ephemeral_character(cast=generated_cast, video_format=vf)
+                                char_ctx = character_context_for_brain(active_ch)
+                            except Exception:
+                                pass
 
             prepare_for_next_model()
 
@@ -1376,7 +1461,7 @@ class StoryboardWorker(QThread):
             if self.run_control is not None:
                 self.run_control.checkpoint()
 
-            self.progress.emit("storyboard_images", 0, -1, "Loading image model…")
+            self.progress.emit("storyboard_images", 0, -1, "Loading image model…" if not is_api_mode(app) else "API images…")
             _ref_kw: dict = {}
             if (
                 diffusion_ref_path is not None
@@ -1387,19 +1472,30 @@ class StoryboardWorker(QThread):
                     "external_reference_image": diffusion_ref_path,
                     "external_reference_strength": 0.55,
                 }
-            gen = generate_images(
-                sdxl_turbo_model_id=img_id,
-                prompts=prompts,
-                out_dir=previews_dir,
-                max_images=len(prompts),
-                seeds=seeds,
-                steps=4,  # quality-first preview
-                allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
-                on_image_progress=_img_pct,
-                art_style_preset_id=str(getattr(app, "art_style_preset_id", None) or "balanced"),
-                **_ref_kw,
-            )
-            scene_paths = [g.path for g in gen]
+            if is_api_mode(app):
+                from src.runtime.api_generation import generate_still_png_bytes
+
+                scene_paths = []
+                for i, pr in enumerate(prompts):
+                    _img_pct(int(100 * i / max(len(prompts), 1)), f"API still {i + 1}/{len(prompts)}…")
+                    data = generate_still_png_bytes(settings=app, prompt=str(pr or ""))
+                    pth = previews_dir / f"prev_{i + 1:02d}.png"
+                    pth.write_bytes(data)
+                    scene_paths.append(pth)
+            else:
+                gen = generate_images(
+                    sdxl_turbo_model_id=img_id,
+                    prompts=prompts,
+                    out_dir=previews_dir,
+                    max_images=len(prompts),
+                    seeds=seeds,
+                    steps=4,  # quality-first preview
+                    allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
+                    on_image_progress=_img_pct,
+                    art_style_preset_id=str(getattr(app, "art_style_preset_id", None) or "balanced"),
+                    **_ref_kw,
+                )
+                scene_paths = [g.path for g in gen]
 
             # Persist manifest with preview paths
             for i, pth in enumerate(scene_paths, start=1):

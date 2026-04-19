@@ -5,9 +5,10 @@
 - **Image model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers text-to-image for stills and keyframes; SDXL Turbo default)
 - **Video model**: [`src/render/clips.py`](../src/render/clips.py) (motion: text-to-video / image-to-video). **Pro** with slideshow off uses this slot for **multi-scene text-to-video** (e.g. ZeroScope). **Motion mode** (slideshow off, Pro off) uses Image for keyframes + Video to animate **scene** segments. Legacy **slideshow + Pro** may still use this slot for ZeroScope→frame extract or a T2I id for per-frame stills.
 - **Voice model (TTS)**: [`src/speech/voice.py`](../src/speech/voice.py) (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
+- **API execution mode** (`model_execution_mode: api`): script / image / optional video / voice are chosen from **Generation APIs** (OpenAI, Replicate, ElevenLabs) instead of the HF combos above; see [API generation](api_generation.md) and [`src/runtime/pipeline_api.py`](../src/runtime/pipeline_api.py).
 
 ## UI model selection
-In the UI **Model** tab you can pick and download models separately for:
+In the UI **Model** tab (when **Local models** is selected) you can pick and download models separately for:
 - Script (LLM)
 - Image (diffusion stills)
 - Video (motion / Pro / scene pipeline)

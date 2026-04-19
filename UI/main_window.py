@@ -39,10 +39,13 @@ from UI.frameless_dialog import (
 
 from src.core.config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
+    ApiModelRuntimeSettings,
+    ApiRoleConfig,
     AppSettings,
     BrandingSettings,
     VideoSettings,
     VIDEO_FORMATS,
+    default_api_models,
     get_paths,
 )
 from src.models.model_integrity_cache import (
@@ -184,6 +187,8 @@ class MainWindow(QMainWindow):
         attach_api_tab(self)
         attach_settings_tab(self)
         attach_my_pc_tab(self)
+
+        self._setup_generation_api_panel_hosting()
 
         # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -503,9 +508,93 @@ class MainWindow(QMainWindow):
         h = max(min_h, min(max_h, int(h)))
         self.setFixedSize(self.width(), h)
 
+    def _setup_generation_api_panel_hosting(self) -> None:
+        self._offscreen_gen_host = QWidget(self)
+        self._offscreen_gen_host.setVisible(False)
+        self._offscreen_api_gen_layout = QVBoxLayout(self._offscreen_gen_host)
+        if hasattr(self, "api_el_enabled_chk"):
+            self.api_el_enabled_chk.toggled.connect(lambda _c: self._sync_api_gen_row_states())
+        if hasattr(self, "api_el_key_edit"):
+            self.api_el_key_edit.textChanged.connect(lambda _t: self._sync_api_gen_row_states())
+        QTimer.singleShot(0, self._sync_generation_api_panel_parent)
+        QTimer.singleShot(0, self._sync_api_gen_row_states)
+
+    def _sync_generation_api_panel_parent(self) -> None:
+        if not hasattr(self, "generation_api_panel"):
+            return
+        panel = self.generation_api_panel
+        lay_parent = panel.parentWidget()
+        if lay_parent and lay_parent.layout():
+            lay_parent.layout().removeWidget(panel)
+        panel.setParent(None)
+
+        idx = self.tabs.currentIndex()
+        tab_txt = self.tabs.tabText(idx) if idx >= 0 else ""
+        api_mode = hasattr(self, "model_execution_mode_combo") and str(self.model_execution_mode_combo.currentData() or "local") == "api"
+
+        if tab_txt == "API":
+            if hasattr(self, "_api_gen_panel_parent_layout"):
+                self._api_gen_panel_parent_layout.addWidget(panel)
+        elif tab_txt == "Model" and api_mode and hasattr(self, "_model_api_gen_layout"):
+            self._model_api_gen_layout.addWidget(panel)
+        else:
+            self._offscreen_api_gen_layout.addWidget(panel)
+
+    def _sync_api_gen_row_states(self) -> None:
+        if not hasattr(self, "api_gen_llm_provider"):
+            return
+        import os
+
+        from src.speech.elevenlabs_tts import effective_elevenlabs_api_key
+
+        ok_oai = bool((os.environ.get("OPENAI_API_KEY") or "").strip() or self.api_gen_openai_key.text().strip())
+        ok_rep = bool(
+            (os.environ.get("REPLICATE_API_TOKEN") or os.environ.get("REPLICATE_API_KEY") or "").strip()
+            or self.api_gen_replicate_token.text().strip()
+        )
+        el_ok = bool(
+            effective_elevenlabs_api_key(self.settings)
+            if hasattr(self, "settings")
+            else (os.environ.get("ELEVENLABS_API_KEY") or "").strip()
+        )
+        el_en = bool(self.api_el_enabled_chk.isChecked()) if hasattr(self, "api_el_enabled_chk") else False
+
+        def row_ok(pid: str) -> bool:
+            p = str(pid or "").strip().lower()
+            if not p:
+                return False
+            if p == "openai":
+                return ok_oai
+            if p == "replicate":
+                return ok_rep
+            if p == "elevenlabs":
+                return el_en and el_ok
+            return False
+
+        for prov, mod in (
+            (self.api_gen_llm_provider, self.api_gen_llm_model),
+            (self.api_gen_image_provider, self.api_gen_image_model),
+            (self.api_gen_video_provider, self.api_gen_video_model),
+            (self.api_gen_voice_provider, self.api_gen_voice_model),
+        ):
+            pid = str(prov.currentData() or "")
+            ok = row_ok(pid)
+            prov.setEnabled(True)
+            mod.setEnabled(ok)
+        for ed in (getattr(self, "api_gen_llm_base", None), getattr(self, "api_gen_llm_org", None), getattr(self, "api_gen_voice_id", None)):
+            if ed is not None:
+                try:
+                    ed.setEnabled(True)
+                except Exception:
+                    pass
+
     def _on_tab_changed(self, idx: int) -> None:
         self._resize_to_current_tab()
         self._update_hf_api_warnings()
+        try:
+            self._sync_generation_api_panel_parent()
+        except Exception:
+            pass
         try:
             if self.tabs.tabText(idx) == "Run":
                 self._refresh_character_combo()
@@ -949,9 +1038,56 @@ class MainWindow(QMainWindow):
         )
         topic_map = {str(k): list(v) for k, v in (self.settings.topic_tags_by_mode or {}).items()}
 
+        mex = (
+            str(self.model_execution_mode_combo.currentData() or "local")
+            if hasattr(self, "model_execution_mode_combo")
+            else str(getattr(self.settings, "model_execution_mode", "local") or "local")
+        )
+        if mex not in ("local", "api"):
+            mex = "local"
+        api_openai_key = (
+            str(self.api_gen_openai_key.text()).strip()
+            if hasattr(self, "api_gen_openai_key")
+            else str(getattr(self.settings, "api_openai_key", "") or "")
+        )
+        api_replicate_token = (
+            str(self.api_gen_replicate_token.text()).strip()
+            if hasattr(self, "api_gen_replicate_token")
+            else str(getattr(self.settings, "api_replicate_token", "") or "")
+        )
+        if hasattr(self, "api_gen_llm_provider"):
+            api_models = ApiModelRuntimeSettings(
+                llm=ApiRoleConfig(
+                    provider=str(self.api_gen_llm_provider.currentData() or "").strip(),
+                    model=str(self.api_gen_llm_model.currentText() or "").strip(),
+                    base_url=str(self.api_gen_llm_base.text()).strip() if hasattr(self, "api_gen_llm_base") else "",
+                    org_id=str(self.api_gen_llm_org.text()).strip() if hasattr(self, "api_gen_llm_org") else "",
+                    voice_id="",
+                ),
+                image=ApiRoleConfig(
+                    provider=str(self.api_gen_image_provider.currentData() or "").strip(),
+                    model=str(self.api_gen_image_model.currentText() or "").strip(),
+                ),
+                video=ApiRoleConfig(
+                    provider=str(self.api_gen_video_provider.currentData() or "").strip(),
+                    model=str(self.api_gen_video_model.currentText() or "").strip(),
+                ),
+                voice=ApiRoleConfig(
+                    provider=str(self.api_gen_voice_provider.currentData() or "").strip(),
+                    model=str(self.api_gen_voice_model.currentText() or "").strip(),
+                    voice_id=str(self.api_gen_voice_id.text()).strip() if hasattr(self, "api_gen_voice_id") else "",
+                ),
+            )
+        else:
+            api_models = getattr(self.settings, "api_models", None) or default_api_models()
+
         return AppSettings(
             topic_tags_by_mode=topic_map,
             video_format=vfmt,
+            model_execution_mode=mex,  # type: ignore[arg-type]
+            api_models=api_models,
+            api_openai_key=api_openai_key,
+            api_replicate_token=api_replicate_token,
             prefer_gpu=bool(self.prefer_gpu_chk.isChecked()) if hasattr(self, "prefer_gpu_chk") else bool(getattr(self.settings, "prefer_gpu", True)),
             try_llm_4bit=bool(getattr(self.settings, "try_llm_4bit", True)),
             try_sdxl_turbo=bool(getattr(self.settings, "try_sdxl_turbo", True)),

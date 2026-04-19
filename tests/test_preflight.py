@@ -62,6 +62,49 @@ def test_preflight_pro_disables_slideshow(monkeypatch):
     assert any("disables slideshow" in e.lower() for e in r.errors)
 
 
+def test_preflight_api_mode_requires_keys(monkeypatch):
+    import src.runtime.preflight as pf
+    from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig, AppSettings
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    s = AppSettings(
+        model_execution_mode="api",
+        api_models=ApiModelRuntimeSettings(
+            llm=ApiRoleConfig(provider="openai", model="gpt-4o-mini"),
+            image=ApiRoleConfig(provider="openai", model="dall-e-3"),
+            video=ApiRoleConfig(),
+            voice=ApiRoleConfig(provider="openai", model="tts-1"),
+        ),
+    )
+    r = preflight_check(settings=s, strict=True)
+    assert not r.ok
+    assert any("api key" in e.lower() or "configure" in e.lower() for e in r.errors)
+
+
+def test_preflight_api_mode_pro_requires_replicate(monkeypatch):
+    import src.runtime.preflight as pf
+    from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig, AppSettings, VideoSettings
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
+    s = AppSettings(
+        model_execution_mode="api",
+        video=v,
+        api_openai_key="x",
+        api_models=ApiModelRuntimeSettings(
+            llm=ApiRoleConfig(provider="openai", model="m"),
+            image=ApiRoleConfig(provider="openai", model="m"),
+            video=ApiRoleConfig(provider="openai", model="m"),
+            voice=ApiRoleConfig(provider="openai", model="m"),
+        ),
+    )
+    r = preflight_check(settings=s, strict=True)
+    assert not r.ok
+    assert any("replicate" in e.lower() for e in r.errors)
+
+
 def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):
     import src.runtime.preflight as pf
     from src.core.config import BrandingSettings

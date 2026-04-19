@@ -102,7 +102,11 @@ def _write_mp4_from_frames(frames: list[np.ndarray], out_path: Path, *, fps: int
     import imageio
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with imageio.get_writer(str(out_path), fps=fps, codec="libx264", quality=8) as w:
+    # Default macro_block_size=16 makes imageio pad widths like 1080 -> 1088 before libx264.
+    # Use 1 to preserve exact frame sizes (common 9:16 presets) and avoid noisy warnings.
+    with imageio.get_writer(
+        str(out_path), fps=fps, codec="libx264", quality=8, macro_block_size=1
+    ) as w:
         for fr in frames:
             if fr.dtype != np.uint8:
                 fr = np.clip(fr, 0, 255).astype(np.uint8)

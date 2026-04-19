@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from src.core.config import AppSettings
+from src.runtime.model_backend import api_preflight_errors, is_api_mode
 from src.render.utils_ffmpeg import find_ffmpeg
 from debug import dprint
 
@@ -36,12 +37,14 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
 
     # Settings sanity
     v = settings.video
+    if is_api_mode(settings):
+        errors.extend(api_preflight_errors(settings))
     if v.width <= 0 or v.height <= 0:
         errors.append(f"Invalid resolution: {v.width}×{v.height}.")
     if not (1 <= int(v.fps) <= 120):
         errors.append(f"Invalid FPS: {v.fps}.")
     pro_on = bool(getattr(v, "pro_mode", False))
-    if pro_on:
+    if pro_on and not is_api_mode(settings):
         # Pro mode is true text-to-video. Slideshow stitching must be OFF.
         if bool(getattr(v, "use_image_slideshow", True)):
             errors.append("Pro mode disables slideshow stitching — turn off 'Generate images and stitch (slideshow mode)'.")
@@ -61,16 +64,23 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         if v.clip_seconds <= 0 and not bool(getattr(v, "use_image_slideshow", True)):
             # Clip seconds isn't used by pro, but keep legacy sanity.
             pass
+    elif pro_on and is_api_mode(settings):
+        pc = float(getattr(v, "pro_clip_seconds", 0) or 0)
+        if pc <= 0:
+            errors.append("Pro mode: scene length (seconds) must be > 0.")
+        if bool(getattr(v, "use_image_slideshow", True)):
+            errors.append("API Pro mode: turn off slideshow — Pro uses cloud text-to-video clips.")
     elif v.use_image_slideshow:
         if v.images_per_video < 1:
             errors.append("Images per video must be >= 1 for slideshow mode.")
         if v.microclip_min_s <= 0 or v.microclip_max_s <= 0 or v.microclip_max_s < v.microclip_min_s:
             errors.append("Micro-scene min/max seconds must be > 0 and max >= min.")
     else:
-        if v.clips_per_video < 1:
-            errors.append("Scenes per video must be >= 1 for motion mode (slideshow off).")
-        if v.clip_seconds <= 0:
-            errors.append("Seconds per scene must be > 0 for motion mode (slideshow off).")
+        if not is_api_mode(settings):
+            if v.clips_per_video < 1:
+                errors.append("Scenes per video must be >= 1 for motion mode (slideshow off).")
+            if v.clip_seconds <= 0:
+                errors.append("Seconds per scene must be > 0 for motion mode (slideshow off).")
 
     # Branding watermark sanity (optional)
     try:
@@ -89,23 +99,35 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         pass
 
     # Python deps required to run end-to-end
-    core_mods = [
-        "requests",
-        "bs4",
-        "lxml",
-        "numpy",
-        "soundfile",
-        "PIL",
-        "moviepy",
-        "huggingface_hub",
-        "torch",
-        "transformers",
-        "accelerate",
-        "diffusers",
-    ]
-    # Video motion (scene) mode needs imageio writer in our implementation
-    if not v.use_image_slideshow:
-        core_mods.append("imageio")
+    if is_api_mode(settings):
+        core_mods = [
+            "requests",
+            "bs4",
+            "lxml",
+            "numpy",
+            "soundfile",
+            "PIL",
+            "moviepy",
+            "huggingface_hub",
+        ]
+    else:
+        core_mods = [
+            "requests",
+            "bs4",
+            "lxml",
+            "numpy",
+            "soundfile",
+            "PIL",
+            "moviepy",
+            "huggingface_hub",
+            "torch",
+            "transformers",
+            "accelerate",
+            "diffusers",
+        ]
+        # Video motion (scene) mode needs imageio writer in our implementation
+        if not v.use_image_slideshow:
+            core_mods.append("imageio")
 
     missing = _check_imports(core_mods)
     if missing:
