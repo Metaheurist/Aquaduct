@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc
-from src.content.brain_api import expand_custom_video_instructions_openai, generate_script_openai
+from src.content.brain_api import expand_custom_video_instructions_openai
 from src.content.characters_store import (
     cast_to_ephemeral_character,
     character_context_for_brain,
@@ -31,6 +31,7 @@ from src.render.branding_video import apply_palette_to_prompts
 from src.render.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
 from src.runtime.api_generation import generate_still_png_bytes, replicate_video_mp4_paths
+from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import assert_api_runtime_ready, is_api_mode
 from src.runtime.preflight import preflight_check
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
@@ -256,8 +257,9 @@ def run_once_api(
                 personality_id=picked.preset.id,
                 on_llm_task=_llm_api,
             )
-            pkg = generate_script_openai(
+            pkg = get_generation_facade(app).generate_script_package(
                 settings=app,
+                model_id=llm_id,
                 items=sources,
                 topic_tags=tags,
                 personality_id=picked.preset.id,
@@ -265,6 +267,7 @@ def run_once_api(
                 character_context=char_ctx,
                 creative_brief=expanded,
                 video_format=vf,
+                try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
                 article_excerpt=clip_article_excerpt(article_text),
                 supplement_context=script_digest,
                 on_llm_task=_llm_api,
@@ -296,8 +299,9 @@ def run_once_api(
                 except Exception:
                     article_excerpt = ""
 
-            pkg = generate_script_openai(
+            pkg = get_generation_facade(app).generate_script_package(
                 settings=app,
+                model_id=llm_id,
                 items=sources,
                 topic_tags=tags,
                 personality_id=picked.preset.id,
@@ -305,6 +309,7 @@ def run_once_api(
                 character_context=char_ctx,
                 creative_brief=None,
                 video_format=vf,
+                try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
                 article_excerpt=article_excerpt,
                 supplement_context="",
                 on_llm_task=_llm_api2,

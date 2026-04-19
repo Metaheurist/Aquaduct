@@ -7,8 +7,13 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.content.brain_api import expand_custom_video_instructions_openai, generate_script_openai
+from src.content.brain_api import (
+    expand_custom_video_instructions_openai,
+    generate_character_from_preset_openai,
+    generate_script_openai,
+)
 from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings
+from src.runtime.api_generation import generate_still_png_bytes
 from src.runtime.model_backend import is_api_mode
 from src.content.crawler import (
     fetch_article_text,
@@ -664,6 +669,7 @@ class CharacterGenerateWorker(QThread):
         try_llm_4bit: bool = True,
         hf_token: str = "",
         hf_api_enabled: bool = True,
+        app_settings: AppSettings | None = None,
     ) -> None:
         super().__init__()
         self.model_id = str(model_id or "").strip()
@@ -672,19 +678,27 @@ class CharacterGenerateWorker(QThread):
         self.try_llm_4bit = bool(try_llm_4bit)
         self.hf_token = str(hf_token or "").strip()
         self.hf_api_enabled = bool(hf_api_enabled)
+        self.app_settings = app_settings
 
     def run(self) -> None:
         try:
-            if not self.model_id:
-                self.failed.emit("No script (LLM) model selected in Model tab.")
-                return
-            ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
-            out = generate_character_from_preset_llm(
-                model_id=self.model_id,
-                preset=self.preset,
-                extra_notes=self.extra_notes,
-                try_llm_4bit=self.try_llm_4bit,
-            )
+            if self.app_settings is not None and is_api_mode(self.app_settings):
+                out = generate_character_from_preset_openai(
+                    settings=self.app_settings,
+                    preset=self.preset,
+                    extra_notes=self.extra_notes,
+                )
+            else:
+                if not self.model_id:
+                    self.failed.emit("No script (LLM) model selected in Model tab.")
+                    return
+                ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
+                out = generate_character_from_preset_llm(
+                    model_id=self.model_id,
+                    preset=self.preset,
+                    extra_notes=self.extra_notes,
+                    try_llm_4bit=self.try_llm_4bit,
+                )
             assert isinstance(out, GeneratedCharacterFields)
             self.done.emit(out)
         except Exception as e:
@@ -711,6 +725,7 @@ class CharacterPortraitWorker(QThread):
         allow_nsfw: bool = False,
         steps: int = 4,
         art_style_preset_id: str = "balanced",
+        app_settings: AppSettings | None = None,
     ) -> None:
         super().__init__()
         self.image_model_id = str(image_model_id or "").strip()
@@ -719,18 +734,20 @@ class CharacterPortraitWorker(QThread):
         self.allow_nsfw = bool(allow_nsfw)
         self.steps = max(1, int(steps))
         self.art_style_preset_id = str(art_style_preset_id or "balanced").strip() or "balanced"
+        self.app_settings = app_settings
 
     def run(self) -> None:
         try:
-            if not self.image_model_id:
-                self.failed.emit("No image model selected on the Model tab.")
-                return
             if not self.character_id:
                 self.failed.emit("No character selected.")
                 return
             if not self.visual_style.strip():
                 self.failed.emit("Fill in Visual style before generating a portrait.")
                 return
+            if self.app_settings is None or not is_api_mode(self.app_settings):
+                if not self.image_model_id:
+                    self.failed.emit("No image model selected on the Model tab.")
+                    return
 
             base = get_paths().data_dir / "characters" / self.character_id
             base.mkdir(parents=True, exist_ok=True)
@@ -742,23 +759,27 @@ class CharacterPortraitWorker(QThread):
                 f"{self.visual_style.strip()}, single character portrait, one clear subject, "
                 "looking at camera, sharp focus, vertical 9:16 composition"
             )
-            prepare_for_next_model()
-            gen = generate_images(
-                sdxl_turbo_model_id=self.image_model_id,
-                prompts=[prompt],
-                out_dir=tmp,
-                max_images=1,
-                steps=self.steps,
-                allow_nsfw=self.allow_nsfw,
-                art_style_preset_id=str(getattr(self, "art_style_preset_id", None) or "balanced"),
-                use_style_continuity=False,
-            )
-            if not gen:
-                self.failed.emit("Image generation returned no files.")
-                return
-            src = gen[0].path
             dest = base / "portrait.png"
-            shutil.copy2(src, dest)
+            if self.app_settings is not None and is_api_mode(self.app_settings):
+                png = generate_still_png_bytes(settings=self.app_settings, prompt=prompt)
+                dest.write_bytes(png)
+            else:
+                prepare_for_next_model()
+                gen = generate_images(
+                    sdxl_turbo_model_id=self.image_model_id,
+                    prompts=[prompt],
+                    out_dir=tmp,
+                    max_images=1,
+                    steps=self.steps,
+                    allow_nsfw=self.allow_nsfw,
+                    art_style_preset_id=str(getattr(self, "art_style_preset_id", None) or "balanced"),
+                    use_style_continuity=False,
+                )
+                if not gen:
+                    self.failed.emit("Image generation returned no files.")
+                    return
+                src = gen[0].path
+                shutil.copy2(src, dest)
             shutil.rmtree(tmp, ignore_errors=True)
             rel = f"characters/{self.character_id}/portrait.png"
             self.done.emit(rel)

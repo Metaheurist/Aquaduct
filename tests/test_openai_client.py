@@ -18,6 +18,21 @@ def test_chat_completion_parses_choice():
     post.assert_called_once()
 
 
+def test_chat_completion_retries_429_then_ok():
+    client = OpenAIClient(api_key="k", base_url="https://api.openai.com/v1/")
+    bad = MagicMock()
+    bad.status_code = 429
+    bad.text = "{}"
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.json.return_value = {"choices": [{"message": {"content": "done"}}]}
+    with patch("src.platform.openai_client.requests.post", side_effect=[bad, ok]) as post:
+        with patch("src.platform.openai_client._sleep_backoff"):
+            out = client.chat_completion_text(model="gpt-4o-mini", system="s", user="u", json_mode=False)
+    assert out == "done"
+    assert post.call_count == 2
+
+
 def test_map_http_error_429():
     msg = oc._map_http_error(429, "{}")
     assert "rate limited" in msg.lower()

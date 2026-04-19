@@ -101,3 +101,20 @@ def test_resolve_model_execution_mode():
     assert mb.resolve_model_execution_mode(AppSettings()) == "local"
     assert mb.resolve_model_execution_mode(AppSettings(model_execution_mode="api")) == "api"
     assert mb.resolve_model_execution_mode(AppSettings(model_execution_mode="bogus")) == "local"
+
+
+def test_resolve_local_vs_api():
+    assert mb.resolve_local_vs_api(None) == "local"
+    assert mb.resolve_local_vs_api(AppSettings(model_execution_mode="api")) == "api"
+
+
+def test_api_role_ready():
+    s = AppSettings(model_execution_mode="local", api_openai_key="sk-x")
+    assert not mb.api_role_ready(s, "llm")
+    s_api = AppSettings(
+        model_execution_mode="api",
+        api_openai_key="sk-x",
+        api_models=ApiModelRuntimeSettings(llm=ApiRoleConfig(provider="openai", model="gpt-4o-mini")),
+    )
+    assert mb.api_role_ready(s_api, "llm")
+    assert not mb.api_role_ready(s_api, "image")

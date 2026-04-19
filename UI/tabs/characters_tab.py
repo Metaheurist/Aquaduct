@@ -40,6 +40,7 @@ from src.content.characters_store import (
     save_all,
     upsert,
 )
+from src.runtime.model_backend import api_role_ready, is_api_mode
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.settings.ui_settings import save_settings
 from src.speech.voice import list_pyttsx3_voices as list_sys_voices
@@ -563,10 +564,21 @@ def attach_characters_tab(win) -> None:
         if not _current_id:
             aquaduct_warning(w, "Characters", "Add or select a character first.")
             return
-        mid = resolve_llm_model_id(win)
-        if not mid:
-            aquaduct_warning(w, "Characters", "Pick a script (LLM) model on the Model tab.")
-            return
+        s = getattr(win, "settings", None)
+        if s is not None and is_api_mode(s):
+            if not api_role_ready(s, "llm"):
+                aquaduct_warning(
+                    w,
+                    "Characters",
+                    "In API mode, configure the LLM provider and model (Generation APIs) and save settings.",
+                )
+                return
+            mid = ""
+        else:
+            mid = resolve_llm_model_id(win)
+            if not mid:
+                aquaduct_warning(w, "Characters", "Pick a script (LLM) model on the Model tab.")
+                return
         pid = str(win.character_preset_combo.currentData() or "").strip()
         preset = get_character_auto_preset_by_id(pid)
         if preset is None:
@@ -580,6 +592,7 @@ def attach_characters_tab(win) -> None:
             try_llm_4bit=bool(getattr(win.settings, "try_llm_4bit", True)),
             hf_token=str(getattr(win.settings, "hf_token", "") or ""),
             hf_api_enabled=bool(getattr(win.settings, "hf_api_enabled", True)),
+            app_settings=getattr(win, "settings", None),
         )
         _char_gen_worker = th
         win.character_generate_btn.setEnabled(False)
@@ -631,14 +644,25 @@ def attach_characters_tab(win) -> None:
                 "Fill in Visual style first — the portrait prompt is built from that field.",
             )
             return
-        img_id = image_model_id_from_ui(win)
-        if not img_id:
-            aquaduct_warning(
-                w,
-                "Characters",
-                "Choose an image model on the Model tab (same weights used for video slideshow images).",
-            )
-            return
+        s = getattr(win, "settings", None)
+        if s is not None and is_api_mode(s):
+            if not api_role_ready(s, "image"):
+                aquaduct_warning(
+                    w,
+                    "Characters",
+                    "In API mode, configure the Image provider and model (Generation APIs) and save settings.",
+                )
+                return
+            img_id = ""
+        else:
+            img_id = image_model_id_from_ui(win)
+            if not img_id:
+                aquaduct_warning(
+                    w,
+                    "Characters",
+                    "Choose an image model on the Model tab (same weights used for video slideshow images).",
+                )
+                return
         base = get_by_id(all_chars, str(_current_id))
         if not base:
             return
@@ -647,6 +671,7 @@ def attach_characters_tab(win) -> None:
             character_id=base.id,
             visual_style=vs,
             allow_nsfw=bool(getattr(win.settings, "allow_nsfw", False)),
+            app_settings=getattr(win, "settings", None),
             steps=4,
             art_style_preset_id=str(getattr(win.settings, "art_style_preset_id", None) or "balanced"),
         )

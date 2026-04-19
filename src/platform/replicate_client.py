@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import random
 import time
 from dataclasses import dataclass
 from typing import Any
 
 import requests
+
+_POST_RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+_POST_MAX_ATTEMPTS = 4
+
+
+def _sleep_backoff(attempt: int) -> None:
+    base = min(8.0, 0.35 * (2**attempt))
+    time.sleep(base + random.random() * 0.12)
 
 
 class ReplicateRequestError(RuntimeError):
@@ -37,10 +46,23 @@ class ReplicateClient:
         """Create a prediction and poll until terminal status. Returns parsed output field."""
         url = "https://api.replicate.com/v1/predictions"
         body = {"version": version.strip(), "input": input_payload}
-        try:
-            r = requests.post(url, headers=self._headers(), json=body, timeout=self.timeout)
-        except requests.RequestException as e:
-            raise ReplicateRequestError(f"Replicate network error: {e}") from e
+        last_exc: BaseException | None = None
+        r: requests.Response | None = None
+        for attempt in range(_POST_MAX_ATTEMPTS):
+            try:
+                r = requests.post(url, headers=self._headers(), json=body, timeout=self.timeout)
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt >= _POST_MAX_ATTEMPTS - 1:
+                    raise ReplicateRequestError(f"Replicate network error: {e}") from e
+                _sleep_backoff(attempt)
+                continue
+            if r.status_code in _POST_RETRY_STATUSES and attempt < _POST_MAX_ATTEMPTS - 1:
+                _sleep_backoff(attempt)
+                continue
+            break
+        if r is None:
+            raise ReplicateRequestError(f"Replicate network error: {last_exc!r}")
         if r.status_code >= 400:
             raise ReplicateRequestError(_map_err(r.status_code, r.text), status_code=r.status_code)
         pred = r.json()
