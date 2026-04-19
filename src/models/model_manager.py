@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import re
@@ -14,7 +14,7 @@ class ModelOption:
     label: str
     repo_id: str
     speed: str  # "fastest" | "faster" | "slow"
-    kind: str  # "script" | "video" | "voice"
+    kind: str  # "script" | "image" | "video" | "voice"
     order: int = 0  # UI enumeration within kind
     pair_image_repo_id: str = ""  # for img->vid options, which image model to use for keyframes
     size_hint: str = ""  # e.g. "82M", "3B", or "~6-8GB"
@@ -34,20 +34,19 @@ def model_options() -> list[ModelOption]:
         ModelOption("Mistral 7B Instruct v0.3 (heavier)", "mistralai/Mistral-7B-Instruct-v0.3", "slow", "script", size_hint="7B"),
         ModelOption("Qwen2.5 7B Instruct (heavier)", "Qwen/Qwen2.5-7B-Instruct", "slow", "script", size_hint="7B"),
         ModelOption("Llama 3.1 8B Instruct (heavier)", "meta-llama/Meta-Llama-3.1-8B-Instruct", "slow", "script", size_hint="8B"),
-        # Video/Images (diffusion)
-        ModelOption("SDXL Turbo (1-step images)", "stabilityai/sdxl-turbo", "fastest", "video", size_hint="~6-8GB"),
-        ModelOption("SD 1.5 (images, lightweight)", "runwayml/stable-diffusion-v1-5", "faster", "video", size_hint="~4-6GB"),
-        ModelOption("SDXL Base 1.0 (images, higher quality)", "stabilityai/stable-diffusion-xl-base-1.0", "slow", "video", size_hint="~8-10GB"),
-        # Paired pipelines (single selection): keyframes via SDXL Turbo, then animate with img->vid
+        # Image (text-to-image stills — slideshow, keyframes, SVD conditioning)
+        ModelOption("SDXL Turbo (1-step images)", "stabilityai/sdxl-turbo", "fastest", "image", size_hint="~6-8GB"),
+        ModelOption("SD 1.5 (images, lightweight)", "runwayml/stable-diffusion-v1-5", "faster", "image", size_hint="~4-6GB"),
+        ModelOption("SDXL Base 1.0 (images, higher quality)", "stabilityai/stable-diffusion-xl-base-1.0", "slow", "image", size_hint="~8-10GB"),
+        # Video (motion / text-to-video / img-to-vid — use with Image model for SVD keyframes)
         ModelOption(
-            "SVD XT (img->vid clips) + SDXL Turbo keyframes",
+            "Stable Video Diffusion XT (image-to-video clips)",
             "stabilityai/stable-video-diffusion-img2vid-xt",
             "slow",
             "video",
-            pair_image_repo_id="stabilityai/sdxl-turbo",
-            size_hint="~10-12GB",
+            size_hint="~8-12GB",
         ),
-        ModelOption("ZeroScope v2 576w (clips, text->vid)", "cerspense/zeroscope_v2_576w", "slow", "video", size_hint="~6-8GB"),
+        ModelOption("ZeroScope v2 576w (text-to-video clips)", "cerspense/zeroscope_v2_576w", "slow", "video", size_hint="~6-8GB"),
         # Voice (TTS) - Hugging Face snapshots for local weights (pipeline TTS path is still ElevenLabs -> Kokoro hook -> pyttsx3)
         ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice", size_hint="82M"),
         ModelOption("MMS-TTS English (Meta, lightweight)", "facebook/mms-tts-eng", "faster", "voice", size_hint="MMS-TTS"),
@@ -59,7 +58,7 @@ def model_options() -> list[ModelOption]:
     ]
 
     speed_rank = {"fastest": 0, "faster": 1, "slow": 2}
-    kind_rank = {"script": 0, "video": 1, "voice": 2}
+    kind_rank = {"script": 0, "image": 1, "video": 2, "voice": 3}
     opts.sort(key=lambda o: (kind_rank.get(o.kind, 99), speed_rank.get(o.speed, 99), o.label.lower()))
 
     # Enumerate within each kind (easiest-to-run first)

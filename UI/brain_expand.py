@@ -48,9 +48,7 @@ def resolve_llm_model_id(win) -> str:
 
 def image_model_id_from_ui(win) -> str:
     """
-    Image diffusion Hugging Face repo id — matches Model tab ``img_combo`` / Run pipeline.
-
-    Paired img→vid selections store ``(image_repo_id, video_repo_id)``; we only need the image id.
+    Image diffusion Hugging Face repo id — matches Model tab ``img_combo`` (still / keyframe model).
     """
     try:
         img_data = win.img_combo.currentData() if hasattr(win, "img_combo") else None  # type: ignore[attr-defined]

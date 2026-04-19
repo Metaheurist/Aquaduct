@@ -12,17 +12,12 @@ def test_curated_text2image_presets_match_registry():
 
 
 def test_model_options_image_models_have_t2i_preset():
-    """Every video-kind option used for still images has an explicit T2I preset."""
+    """Every image-kind option has an explicit T2I preset."""
     needed: set[str] = set()
     for o in model_options():
-        if o.kind != "video":
+        if o.kind != "image":
             continue
-        rid = o.repo_id.strip().lower()
-        if "stable-video" in rid or "zeroscope" in rid:
-            continue
-        needed.add(rid)
-        if o.pair_image_repo_id:
-            needed.add(o.pair_image_repo_id.strip().lower())
+        needed.add(o.repo_id.strip().lower())
     assert needed == CURATED_TEXT2IMAGE_REPO_IDS
     assert needed <= frozenset(_IMAGE_T2I_PRESETS.keys())
 
@@ -32,9 +27,7 @@ def test_model_options_video_clip_models_match_clip_registry():
     for o in model_options():
         if o.kind != "video":
             continue
-        rid = o.repo_id.strip().lower()
-        if "stable-video" in rid or "zeroscope" in rid:
-            needed.add(rid)
+        needed.add(o.repo_id.strip().lower())
     assert needed == CURATED_VIDEO_CLIP_REPO_IDS
 
 

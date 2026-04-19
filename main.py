@@ -15,8 +15,10 @@ try:
 except Exception:  # optional dependency
     load_dotenv = None
 
-from src.render.artist import apply_regenerated_image, generate_images
+from src.render.artist import apply_regenerated_image, generate_images, is_curated_text2image_repo
 from src.content.brain import VideoPackage, clip_article_excerpt, enforce_arc, expand_custom_video_instructions, generate_script
+from src.content.story_context import build_script_context
+from src.content.story_pipeline import run_multistage_refinement
 from src.core.config import (
     AppSettings,
     SCRIPT_HEADLINE_FETCH_LIMIT,
@@ -40,7 +42,7 @@ from src.render.editor import (
     assemble_pro_frame_sequence_then_concat,
     pro_mode_frame_count,
 )
-from src.render.clips import generate_clips
+from src.render.clips import extract_pngs_from_mp4, generate_clips
 from src.render.branding_video import apply_palette_to_prompts
 from src.content.characters_store import character_context_for_brain, resolve_character_for_pipeline
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
@@ -311,6 +313,8 @@ def run_once(
     )
     char_ctx = character_context_for_brain(active_character)
 
+    diffusion_reference_image: Path | None = None
+
     personality_pick: AutoPickResult | None = None
 
     # Brain
@@ -318,6 +322,47 @@ def run_once(
         tags = list(effective_topic_tags(app))
         vf = str(getattr(app, "video_format", "news") or "news")
         try_llm_4bit = bool(getattr(app, "try_llm_4bit", True))
+        script_digest = ""
+        script_ref_notes = ""
+        if bool(getattr(video_settings, "story_web_context", False)) or bool(
+            getattr(video_settings, "story_reference_images", False)
+        ):
+            titles_ctx = [str(s.get("title", "")) for s in sources if isinstance(s, dict)]
+            script_digest, _scr_paths, diffusion_reference_image, script_ref_notes = build_script_context(
+                topic_tags=tags,
+                source_titles=titles_ctx,
+                stored_firecrawl_key=str(getattr(app, "firecrawl_api_key", "") or ""),
+                firecrawl_enabled=bool(getattr(app, "firecrawl_enabled", False)),
+                want_web=bool(getattr(video_settings, "story_web_context", False)),
+                want_refs=bool(getattr(video_settings, "story_reference_images", False)),
+                out_dir=run_assets,
+                extra_markdown=(article_text or "")[:12000],
+            )
+            if (script_digest or "").strip():
+                _pipe_progress(on_progress, 16, -1, "Script web context gathered…")
+
+        def _maybe_multistage(p: VideoPackage) -> VideoPackage:
+            if not bool(getattr(video_settings, "story_multistage_enabled", False)):
+                return p
+
+            def _ms_llm(task: str, pct: int, msg: str) -> None:
+                if on_progress is None:
+                    return
+                inner = max(0, min(100, int(pct)))
+                overall = 24 + int(18 * inner / 100)
+                _pipe_progress(on_progress, overall, inner, msg or "Script refinement…")
+
+            _pipe_progress(on_progress, 24, -1, "Multi-stage script refinement…")
+            return run_multistage_refinement(
+                p,
+                video_format=vf,
+                model_id=llm_id,
+                web_digest=script_digest,
+                reference_notes=script_ref_notes,
+                try_llm_4bit=try_llm_4bit,
+                on_llm_task=_ms_llm,
+            )
+
         if str(getattr(app, "run_content_mode", "preset")) == "custom" and str(getattr(app, "custom_video_instructions", "") or "").strip():
             raw_inst = str(app.custom_video_instructions).strip()
             titles_for_pick = [sources[0].get("title", "Custom video")] if sources else ["Custom video"]
@@ -359,8 +404,10 @@ def run_once(
                 video_format=vf,
                 try_llm_4bit=try_llm_4bit,
                 article_excerpt=clip_article_excerpt(article_text),
+                supplement_context=script_digest,
             )
             pkg = enforce_arc(pkg, video_format=vf)
+            pkg = _maybe_multistage(pkg)
             personality_pick = picked
             dprint("pipeline", "script ready (custom)", f"title={pkg.title[:100]!r}")
         else:
@@ -383,8 +430,10 @@ def run_once(
                 video_format=vf,
                 try_llm_4bit=try_llm_4bit,
                 article_excerpt=clip_article_excerpt(article_text),
+                supplement_context=script_digest,
             )
             pkg = enforce_arc(pkg, video_format=vf)
+            pkg = _maybe_multistage(pkg)
             # Best-effort safety rewrite (uses article text snippet when available).
             if bool(getattr(video_settings, "llm_factcheck", True)):
                 pkg = rewrite_with_uncertainty(
@@ -557,6 +606,16 @@ def run_once(
 
     _allow_nsfw = bool(getattr(app, "allow_nsfw", False))
     _art_style_id = str(getattr(app, "art_style_preset_id", None) or "balanced")
+    _diffusion_ref_kw: dict = {}
+    if (
+        diffusion_reference_image is not None
+        and diffusion_reference_image.exists()
+        and bool(getattr(video_settings, "story_reference_images", False))
+    ):
+        _diffusion_ref_kw = {
+            "external_reference_image": diffusion_reference_image,
+            "external_reference_strength": 0.55,
+        }
 
     if video_settings.use_image_slideshow:
         _pro = bool(getattr(video_settings, "pro_mode", False))
@@ -656,20 +715,95 @@ def run_once(
         write_manifest(
             manifest_path,
             storyboard=storyboard,
-            settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "voice": voice_id}},
+            settings={
+                "video": dict(vars(video_settings)),
+                "models": {"llm": llm_id, "img": img_id, "clip": (clip_id or ""), "voice": voice_id},
+            },
         )
         _pipe_progress(on_progress, 68, -1, "Generating images (diffusion)…")
         gen_max = n_pro if _pro else max(1, int(video_settings.images_per_video))
-        gen = generate_images(
-            sdxl_turbo_model_id=img_id,
-            prompts=storyboard_prompts,
-            out_dir=img_dir,
-            max_images=gen_max,
-            seeds=storyboard_seeds,
-            allow_nsfw=_allow_nsfw,
-            art_style_preset_id=_art_style_id,
-        )
-        image_paths = [g.path for g in gen]
+        vid_slot = (clip_id or "").strip()
+        if _pro:
+            if not vid_slot:
+                raise RuntimeError(
+                    "Pro mode requires a Video (motion) model on the Model tab — e.g. ZeroScope (text-to-video) "
+                    "or a text-to-image repo id if you want per-frame stills from the Video slot."
+                )
+            lowv = vid_slot.lower()
+            if is_curated_text2image_repo(vid_slot):
+                gen = generate_images(
+                    sdxl_turbo_model_id=vid_slot,
+                    prompts=storyboard_prompts,
+                    out_dir=img_dir,
+                    max_images=gen_max,
+                    seeds=storyboard_seeds,
+                    allow_nsfw=_allow_nsfw,
+                    art_style_preset_id=_art_style_id,
+                    use_style_continuity=False,
+                    **_diffusion_ref_kw,
+                )
+                image_paths = [g.path for g in gen]
+            elif "zeroscope" in lowv:
+                merged = " ".join((p or "").strip() for p in storyboard_prompts[:6] if (p or "").strip())[:900]
+                if not merged.strip():
+                    merged = (pkg.title or "cinematic vertical video").strip()[:500]
+                tmp_clip = assets_dir / "pro_zeroscope"
+                tmp_clip.mkdir(parents=True, exist_ok=True)
+                _pipe_progress(on_progress, 70, -1, "Text-to-video (Pro)…")
+                zc = generate_clips(
+                    video_model_id=vid_slot,
+                    prompts=[merged],
+                    init_images=None,
+                    out_dir=tmp_clip,
+                    max_clips=1,
+                    fps=int(video_settings.fps),
+                    seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
+                )
+                if not zc:
+                    raise RuntimeError("Text-to-video produced no clip for Pro mode.")
+                img_dir.mkdir(parents=True, exist_ok=True)
+                for old in img_dir.glob("img_*.png"):
+                    try:
+                        old.unlink()
+                    except OSError:
+                        pass
+                image_paths = extract_pngs_from_mp4(
+                    zc[0].path,
+                    img_dir,
+                    n=gen_max,
+                    ffmpeg_dir=paths.ffmpeg_dir,
+                )
+            elif "stable-video-diffusion" in lowv or "img2vid" in lowv:
+                raise RuntimeError(
+                    "Pro mode does not support Stable Video Diffusion (it needs still keyframes). "
+                    "Pick ZeroScope in the Video slot for text-to-video Pro, or turn off Pro and use clip mode with Image + Video."
+                )
+            else:
+                gen = generate_images(
+                    sdxl_turbo_model_id=vid_slot,
+                    prompts=storyboard_prompts,
+                    out_dir=img_dir,
+                    max_images=gen_max,
+                    seeds=storyboard_seeds,
+                    allow_nsfw=_allow_nsfw,
+                    art_style_preset_id=_art_style_id,
+                    use_style_continuity=False,
+                    **_diffusion_ref_kw,
+                )
+                image_paths = [g.path for g in gen]
+        else:
+            gen = generate_images(
+                sdxl_turbo_model_id=img_id,
+                prompts=storyboard_prompts,
+                out_dir=img_dir,
+                max_images=gen_max,
+                seeds=storyboard_seeds,
+                allow_nsfw=_allow_nsfw,
+                art_style_preset_id=_art_style_id,
+                use_style_continuity=True,
+                **_diffusion_ref_kw,
+            )
+            image_paths = [g.path for g in gen]
         _pipe_progress(on_progress, 80, -1, "Images ready")
 
         # Quality reject/regenerate (best-effort; pro mode skips — too many frames).
@@ -820,6 +954,7 @@ def run_once(
             seeds=storyboard_seeds,
             allow_nsfw=_allow_nsfw,
             art_style_preset_id=_art_style_id,
+            **_diffusion_ref_kw,
         )
         keyframes = [g.path for g in key_gen]
         _pipe_progress(on_progress, 76, -1, "Keyframes ready")

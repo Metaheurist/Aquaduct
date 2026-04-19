@@ -788,6 +788,9 @@ class MainWindow(QMainWindow):
             fetch_article_text=bool(self.fetch_article_chk.isChecked()) if hasattr(self, "fetch_article_chk") else True,
             llm_factcheck=bool(getattr(self.settings.video, "llm_factcheck", True)),
             prompt_conditioning=bool(self.prompt_cond_chk.isChecked()) if hasattr(self, "prompt_cond_chk") else True,
+            story_multistage_enabled=bool(self.story_multistage_chk.isChecked()) if hasattr(self, "story_multistage_chk") else False,
+            story_web_context=bool(self.story_web_chk.isChecked()) if hasattr(self, "story_web_chk") else False,
+            story_reference_images=bool(self.story_refimg_chk.isChecked()) if hasattr(self, "story_refimg_chk") else False,
             seed_base=int(str(self.seed_base_input.text()).strip())
             if hasattr(self, "seed_base_input") and str(self.seed_base_input.text()).strip().lstrip("-").isdigit()
             else None,
@@ -869,17 +872,12 @@ class MainWindow(QMainWindow):
             except Exception:
                 branding = getattr(self.settings, "branding", BrandingSettings())
 
-        # Video/images selection can be either a simple repo_id (images or text→vid),
-        # or a paired selection: (image_repo_id, video_repo_id) for img→vid pipelines.
-        img_data = self.img_combo.currentData() if hasattr(self, "img_combo") else self.settings.image_model_id
-        image_model_id = self.settings.image_model_id
-        video_model_id = self.settings.video_model_id if hasattr(self.settings, "video_model_id") else ""
-        if isinstance(img_data, tuple) and len(img_data) == 2:
-            image_model_id = str(img_data[0])
-            video_model_id = str(img_data[1])
-        else:
-            image_model_id = str(img_data)
-            video_model_id = ""
+        image_model_id = (
+            str(self.img_combo.currentData()) if hasattr(self, "img_combo") else str(getattr(self.settings, "image_model_id", "") or "")
+        )
+        video_model_id = (
+            str(self.vid_combo.currentData()) if hasattr(self, "vid_combo") else str(getattr(self.settings, "video_model_id", "") or "")
+        )
 
         hf_tok = (
             str(self.api_hf_token_edit.text()).strip()
@@ -1145,12 +1143,10 @@ class MainWindow(QMainWindow):
     def _download_selected(self, kind: str) -> None:
         if kind == "script":
             repo_ids = [script_llm_model_id_from_ui(self)]
+        elif kind == "image":
+            repo_ids = [str(self.img_combo.currentData())] if hasattr(self, "img_combo") else []
         elif kind == "video":
-            d = self.img_combo.currentData()
-            if isinstance(d, tuple) and len(d) == 2:
-                repo_ids = [str(d[0]), str(d[1])]
-            else:
-                repo_ids = [str(d)]
+            repo_ids = [str(self.vid_combo.currentData())] if hasattr(self, "vid_combo") else []
         else:
             repo_ids = [str(self.voice_combo.currentData())]
         repo_ids = [r for r in repo_ids if r and str(r).strip()]
@@ -1169,11 +1165,10 @@ class MainWindow(QMainWindow):
 
     def _download_all_selected(self) -> None:
         repo_ids: list[str] = [script_llm_model_id_from_ui(self)]
-        img_d = self.img_combo.currentData()
-        if isinstance(img_d, tuple) and len(img_d) == 2:
-            repo_ids.extend([str(img_d[0]), str(img_d[1])])
-        else:
-            repo_ids.append(str(img_d))
+        if hasattr(self, "img_combo"):
+            repo_ids.append(str(self.img_combo.currentData()))
+        if hasattr(self, "vid_combo"):
+            repo_ids.append(str(self.vid_combo.currentData()))
         repo_ids.append(str(self.voice_combo.currentData()))
         seen: set[str] = set()
         deduped: list[str] = []
@@ -1406,12 +1401,11 @@ class MainWindow(QMainWindow):
         """Current LLM / image / voice selections, de-duplicated, only repos with a local snapshot."""
         if not hasattr(self, "llm_combo"):
             return []
-        repo_ids: list[str] = [script_llm_model_id_from_ui(self)]
-        img_d = self.img_combo.currentData()
-        if isinstance(img_d, tuple) and len(img_d) == 2:
-            repo_ids.extend([str(img_d[0]), str(img_d[1])])
-        else:
-            repo_ids.append(str(img_d))
+        repo_ids = [script_llm_model_id_from_ui(self)]
+        if hasattr(self, "img_combo"):
+            repo_ids.append(str(self.img_combo.currentData()))
+        if hasattr(self, "vid_combo"):
+            repo_ids.append(str(self.vid_combo.currentData()))
         repo_ids.append(str(self.voice_combo.currentData()))
         seen: set[str] = set()
         out: list[str] = []

@@ -26,6 +26,30 @@ def test_preflight_strict_requires_ffmpeg(monkeypatch):
     assert any("FFmpeg is not under" in e for e in r.errors)
 
 
+def test_preflight_pro_requires_video_model(monkeypatch):
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    v = VideoSettings(use_image_slideshow=True, pro_mode=True, pro_clip_seconds=4.0)
+    s = AppSettings(video=v, video_model_id="")
+    r = preflight_check(settings=s, strict=True)
+    assert not r.ok
+    assert any("Pro mode requires a Video" in e for e in r.errors)
+
+
+def test_preflight_pro_rejects_svd(monkeypatch):
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    v = VideoSettings(use_image_slideshow=True, pro_mode=True, pro_clip_seconds=4.0)
+    s = AppSettings(video=v, video_model_id="stabilityai/stable-video-diffusion-img2vid-xt")
+    r = preflight_check(settings=s, strict=True)
+    assert not r.ok
+    assert any("Pro mode cannot use Stable Video Diffusion" in e for e in r.errors)
+
+
 def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):
     import src.runtime.preflight as pf
     from src.core.config import BrandingSettings

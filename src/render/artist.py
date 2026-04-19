@@ -160,6 +160,10 @@ CURATED_TEXT2IMAGE_REPO_IDS: frozenset[str] = frozenset(
 )
 
 
+def is_curated_text2image_repo(repo_id: str) -> bool:
+    return _norm_repo_id(repo_id) in CURATED_TEXT2IMAGE_REPO_IDS
+
+
 def _preset_sdxl_turbo(steps: int) -> dict:
     st = max(1, int(steps))
     return {
@@ -355,6 +359,8 @@ def _try_sdxl_reference_chain(
     steps: int = 1,
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
+    external_reference: Path | None = None,
+    external_reference_strength: float = 0.55,
 ) -> list[GeneratedImage]:
     """
     Img2img chain: frame 0 uses full denoise from random init (strength=1.0); later frames blend the
@@ -397,8 +403,17 @@ def _try_sdxl_reference_chain(
         dev = "cuda" if str(pipe.device).startswith("cuda") else "cpu"
         gen = torch.Generator(device=dev).manual_seed(int(seed))
         if i == 1:
-            init = Image.fromarray(np.random.randint(0, 256, (h, w, 3), dtype=np.uint8))
-            strength = 1.0
+            if external_reference is not None and Path(external_reference).exists():
+                try:
+                    init = Image.open(external_reference).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+                    strength = float(external_reference_strength)
+                    strength = max(0.15, min(0.95, strength))
+                except Exception:
+                    init = Image.fromarray(np.random.randint(0, 256, (h, w, 3), dtype=np.uint8))
+                    strength = 1.0
+            else:
+                init = Image.fromarray(np.random.randint(0, 256, (h, w, 3), dtype=np.uint8))
+                strength = 1.0
         else:
             prev_paths = [results[j - 1].path for j in range(max(1, i - 3), i)]
             init = _blend_reference_images(prev_paths, (w, h))
@@ -418,6 +433,121 @@ def _try_sdxl_reference_chain(
     return results
 
 
+def _try_external_ref_then_txt2img(
+    model_id: str,
+    prompts: list[str],
+    seeds: list[int],
+    out_dir: Path,
+    external_reference: Path,
+    external_strength: float,
+    *,
+    steps: int = 1,
+    allow_nsfw: bool = False,
+    on_image_progress: Callable[[int, str], None] | None = None,
+) -> list[GeneratedImage]:
+    """First frame: img2img from external reference; remaining frames: text-to-image."""
+    import torch
+    from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image
+
+    _fp16 = torch_float16()
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stg = float(external_strength)
+    stg = max(0.15, min(0.95, stg))
+
+    try:
+        pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
+            load_path,
+            torch_dtype=_fp16,
+            variant="fp16",
+            low_cpu_mem_usage=True,
+        )
+    except TypeError:
+        pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
+            load_path,
+            torch_dtype=_fp16,
+            variant="fp16",
+        )
+    _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
+    _place_pipe_on_device(pipe_i2i)
+    kw_base = _diffusion_kw_for_model(model_id, steps=steps)
+    w = int(kw_base.get("width", 1024))
+    h = int(kw_base.get("height", 1024))
+    kw_i2i = {k: v for k, v in kw_base.items() if k not in ("width", "height")}
+
+    results: list[GeneratedImage] = []
+    n = len(prompts)
+    if n < 1:
+        del pipe_i2i
+        cleanup_vram()
+        return results
+
+    if on_image_progress:
+        on_image_progress(0, "Image 1/{n} (reference img2img)…".replace("{n}", str(n)))
+    try:
+        init = Image.open(external_reference).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+    except Exception:
+        del pipe_i2i
+        cleanup_vram()
+        raise
+    p0, seed0 = prompts[0], seeds[0]
+    pos, neg = _split_prompt_negative(p0)
+    dev = "cuda" if str(pipe_i2i.device).startswith("cuda") else "cpu"
+    gen = torch.Generator(device=dev).manual_seed(int(seed0))
+    call_kw: dict = {**kw_i2i, "image": init, "strength": stg, "prompt": pos, "generator": gen}
+    if neg:
+        call_kw["negative_prompt"] = neg
+    img0 = pipe_i2i(**call_kw).images[0]
+    out0 = out_dir / "img_001.png"
+    img0.save(out0)
+    results.append(GeneratedImage(path=out0, prompt=p0))
+    del pipe_i2i
+    cleanup_vram()
+
+    if n <= 1:
+        if on_image_progress:
+            on_image_progress(100, "Image 1/1 saved")
+        return results
+
+    try:
+        pipe_txt = AutoPipelineForText2Image.from_pretrained(
+            load_path,
+            torch_dtype=_fp16,
+            variant="fp16",
+            low_cpu_mem_usage=True,
+        )
+    except TypeError:
+        pipe_txt = AutoPipelineForText2Image.from_pretrained(
+            load_path,
+            torch_dtype=_fp16,
+            variant="fp16",
+        )
+    _maybe_disable_safety_checker(pipe_txt, allow_nsfw=allow_nsfw)
+    _place_pipe_on_device(pipe_txt)
+    dev = "cuda" if str(pipe_txt.device).startswith("cuda") else "cpu"
+
+    for i in range(2, n + 1):
+        if on_image_progress:
+            on_image_progress(int(100 * (i - 1) / max(1, n)), f"Image {i}/{n} (txt2img)…")
+        p, sd = prompts[i - 1], seeds[i - 1]
+        pos, neg = _split_prompt_negative(p)
+        gen = torch.Generator(device=dev).manual_seed(int(sd))
+        kw = _diffusion_kw_for_model(model_id, steps=steps)
+        call_kw2: dict = {"prompt": pos, "generator": gen, **kw}
+        if neg:
+            call_kw2["negative_prompt"] = neg
+        img = pipe_txt(**call_kw2).images[0]
+        outp = out_dir / f"img_{i:03d}.png"
+        img.save(outp)
+        results.append(GeneratedImage(path=outp, prompt=p))
+        if on_image_progress:
+            on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
+
+    del pipe_txt
+    cleanup_vram()
+    return results
+
+
 def generate_images(
     *,
     sdxl_turbo_model_id: str,
@@ -430,6 +560,8 @@ def generate_images(
     on_image_progress: Callable[[int, str], None] | None = None,
     art_style_preset_id: str | None = None,
     use_style_continuity: bool = True,
+    external_reference_image: Path | None = None,
+    external_reference_strength: float = 0.55,
 ) -> list[GeneratedImage]:
     """
     Generates images for the provided prompts.
@@ -469,6 +601,8 @@ def generate_images(
         "on",
     )
     try_chain = bool(use_style_continuity) and len(prompts) > 1 and not disable_chain
+    ext_path = external_reference_image if external_reference_image and Path(external_reference_image).exists() else None
+    ext_strength = float(external_reference_strength)
 
     with vram_guard():
         try:
@@ -483,11 +617,31 @@ def generate_images(
                         steps=steps,
                         allow_nsfw=allow_nsfw,
                         on_image_progress=on_image_progress,
+                        external_reference=ext_path,
+                        external_reference_strength=ext_strength,
                     )
                     dprint("artist", "generate_images done (style chain)", f"count={len(r)}")
                     return r
                 except Exception as e_chain:
                     dprint("artist", "reference chain failed; fallback txt2img", str(e_chain))
+
+            if ext_path is not None and len(prompts) >= 1:
+                try:
+                    r = _try_external_ref_then_txt2img(
+                        sdxl_turbo_model_id,
+                        prompts,
+                        seeds_eff,
+                        out_dir,
+                        ext_path,
+                        ext_strength,
+                        steps=steps,
+                        allow_nsfw=allow_nsfw,
+                        on_image_progress=on_image_progress,
+                    )
+                    dprint("artist", "generate_images done (external ref + txt2img)", f"count={len(r)}")
+                    return r
+                except Exception as e_hy:
+                    dprint("artist", "external ref hybrid failed; fallback txt2img", str(e_hy))
 
             r = _try_sdxl_turbo_seeded(
                 sdxl_turbo_model_id,

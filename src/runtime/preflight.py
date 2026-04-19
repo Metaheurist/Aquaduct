@@ -43,6 +43,18 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
     if v.use_image_slideshow:
         pro_on = bool(getattr(v, "pro_mode", False))
         if pro_on:
+            vid = str(getattr(settings, "video_model_id", "") or "").strip()
+            if not vid:
+                errors.append(
+                    "Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope for text-to-video Pro)."
+                )
+            else:
+                rl = vid.lower()
+                if "stable-video-diffusion" in rl or "img2vid" in rl:
+                    errors.append(
+                        "Pro mode cannot use Stable Video Diffusion (image-to-video). "
+                        "Choose ZeroScope in the Video slot, or turn off Pro."
+                    )
             pc = float(getattr(v, "pro_clip_seconds", 0) or 0)
             if pc <= 0:
                 errors.append("Pro mode: clip length (seconds) must be > 0.")

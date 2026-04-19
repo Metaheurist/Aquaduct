@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import platform
@@ -114,15 +114,15 @@ def rate_model_fit(*, kind: str, speed: str, vram_gb: float | None, ram_gb: floa
         return "UNKNOWN", "GPU VRAM not detected (will fall back to CPU / placeholders where possible)."
 
     # Baseline requirements by kind
-    if kind == "video":
-        # SDXL Turbo tends to want ~6-8GB VRAM
+    if kind in ("image", "video"):
+        # Image T2I / video diffusion: SDXL Turbo class ~6–8GB
         if vram_gb >= 10:
-            return "EXCELLENT", "Plenty of VRAM for SDXL Turbo + overhead."
+            return "EXCELLENT", "Plenty of VRAM for diffusion + overhead."
         if vram_gb >= 8:
-            return "OK", "Should run SDXL Turbo FP16; keep other models unloaded."
+            return "OK", "Should run FP16 image/video models; keep other models unloaded."
         if vram_gb >= 6:
             return "RISKY", "May run with tight headroom; expect occasional OOM depending on drivers."
-        return "NO_GPU", "Likely too little VRAM for SDXL Turbo; will use placeholder images."
+        return "NO_GPU", "Likely too little VRAM; may use placeholder images or fail to load."
 
     if kind == "script":
         # 3B 4-bit is relatively light; speed label influences expectations slightly.
@@ -172,6 +172,16 @@ def vram_requirement_hint(
             return "~ 4 GB VRAM"
         return "~ 6-8 GB VRAM"
 
+    if kind == "image":
+        rl = rid.lower()
+        if "stable-diffusion-xl-base" in rl and "turbo" not in rl:
+            return "~ 8-10 GB VRAM"
+        if "sdxl-turbo" in rl or rl.endswith("sdxl-turbo"):
+            return "~ 6-8 GB VRAM"
+        if "stable-diffusion-v1-5" in rl or "v1-5" in rl:
+            return "~ 4-6 GB VRAM"
+        return "~ 6-8 GB VRAM"
+
     if kind == "video":
         if pair:
             return "~ 10-12 GB VRAM"
@@ -211,13 +221,8 @@ def rate_model_fit_for_repo(
     rid = (repo_id or "").strip().lower()
     pair = (pair_image_repo_id or "").strip()
 
-    if k == "video":
-        # Convert repo choice into a rough VRAM band. This is a heuristic, not a guarantee.
-        if pair:
-            need_ok = 12.0
-            need_ex = 16.0
-            why = "Paired pipeline (keyframes + img->vid) is heavier; unloading between stages helps."
-        elif "stable-diffusion-v1-5" in rid or "v1-5" in rid:
+    if k == "image":
+        if "stable-diffusion-v1-5" in rid or "v1-5" in rid:
             need_ok = 6.0
             need_ex = 8.0
             why = "SD 1.5 is relatively light."
@@ -225,15 +230,36 @@ def rate_model_fit_for_repo(
             need_ok = 10.0
             need_ex = 14.0
             why = "SDXL Base is heavier than SDXL Turbo."
-        elif "stable-video-diffusion" in rid:
-            need_ok = 10.0
-            need_ex = 14.0
-            why = "Video diffusion models are heavier than image-only."
         else:
-            # Default to SDXL Turbo-ish expectation.
             need_ok = 8.0
             need_ex = 10.0
             why = "SDXL Turbo class expectation."
+        if vram_gb >= need_ex:
+            return "EXCELLENT", f"{why} VRAM looks comfortable."
+        if vram_gb >= need_ok:
+            return "OK", f"{why} Should run if models are unloaded between stages."
+        if vram_gb >= max(4.0, need_ok - 2.0):
+            return "RISKY", f"{why} Tight headroom; may OOM depending on drivers/settings."
+        return "NO_GPU", f"{why} Likely too little VRAM; will use placeholders or fail to load."
+
+    if k == "video":
+        # Motion / latent video models (not T2I — see kind "image").
+        if pair:
+            need_ok = 12.0
+            need_ex = 16.0
+            why = "Paired pipeline (keyframes + img->vid) is heavier; unloading between stages helps."
+        elif "stable-video-diffusion" in rid or "img2vid" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "Image-to-video diffusion is VRAM-heavy."
+        elif "zeroscope" in rid:
+            need_ok = 6.0
+            need_ex = 10.0
+            why = "Text-to-video at 576w is moderate weight."
+        else:
+            need_ok = 8.0
+            need_ex = 12.0
+            why = "Video diffusion class expectation."
 
         if vram_gb >= need_ex:
             return "EXCELLENT", f"{why} VRAM looks comfortable."
@@ -297,10 +323,13 @@ def voice_fit_marker(repo_id: str, vram_gb: float | None) -> tuple[str, str]:
 _SCRIPT_SPEED_RANK = {"fastest": 0, "faster": 1, "slow": 2}
 
 # Lower index = preferred when GPU fit is equal (SDXL Turbo default balance).
-_VIDEO_PREF_ORDER: tuple[str, ...] = (
+_IMAGE_PREF_ORDER: tuple[str, ...] = (
     "stabilityai/sdxl-turbo",
     "runwayml/stable-diffusion-v1-5",
     "stabilityai/stable-diffusion-xl-base-1.0",
+)
+
+_MOTION_VIDEO_PREF_ORDER: tuple[str, ...] = (
     "cerspense/zeroscope_v2_576w",
     "stabilityai/stable-video-diffusion-img2vid-xt",
 )
@@ -316,15 +345,16 @@ _VOICE_PREF_ORDER: tuple[str, ...] = (
 )
 
 
-def _video_combo_user_data(opt: ModelOption) -> str | tuple[str, str]:
-    if getattr(opt, "pair_image_repo_id", ""):
-        return (str(opt.pair_image_repo_id).strip(), str(opt.repo_id).strip())
-    return str(opt.repo_id).strip()
-
-
-def _video_pref_index(repo_id: str) -> int:
+def _image_pref_index(repo_id: str) -> int:
     try:
-        return _VIDEO_PREF_ORDER.index(repo_id)
+        return _IMAGE_PREF_ORDER.index(repo_id)
+    except ValueError:
+        return 50
+
+
+def _motion_video_pref_index(repo_id: str) -> int:
+    try:
+        return _MOTION_VIDEO_PREF_ORDER.index(repo_id)
     except ValueError:
         return 50
 
@@ -341,20 +371,22 @@ class AutoFitRanked:
     """Best-first repo choices for Settings -> Model -> Auto-fit (see ``rank_models_for_auto_fit``)."""
 
     script_repo_ids: tuple[str, ...]
-    video_combo_values: tuple[str | tuple[str, str], ...]
+    image_repo_ids: tuple[str, ...]
+    video_repo_ids: tuple[str, ...]
     voice_repo_ids: tuple[str, ...]
     log_summary: str
 
 
 def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo) -> AutoFitRanked:
     """
-    Order curated models by fit for this machine: script (LLM), video/images, voice (TTS).
+    Order curated models by fit for this machine: script (LLM), image (T2I), video (motion), voice (TTS).
     First entries are the strongest matches; the UI applies the first **enabled** row per combo.
     """
     vram = hw.vram_gb
     ram = hw.ram_gb
 
     script_opts = [o for o in model_options if o.kind == "script"]
+    image_opts = [o for o in model_options if o.kind == "image"]
     video_opts = [o for o in model_options if o.kind == "video"]
     voice_opts = [o for o in model_options if o.kind == "voice"]
 
@@ -370,6 +402,18 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
         spd = float(_SCRIPT_SPEED_RANK.get(o.speed, 0))
         return (-rk, -spd)
 
+    def image_key(o: ModelOption) -> tuple[float, float]:
+        m, _ = rate_model_fit_for_repo(
+            kind="image",
+            speed=o.speed,
+            repo_id=o.repo_id,
+            vram_gb=vram,
+            ram_gb=ram,
+        )
+        rk = float(marker_rank(m))
+        pref = float(_image_pref_index(o.repo_id))
+        return (-rk, pref)
+
     def video_key(o: ModelOption) -> tuple[float, float]:
         pair = str(getattr(o, "pair_image_repo_id", "") or "").strip()
         m, _ = rate_model_fit_for_repo(
@@ -381,7 +425,7 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
             ram_gb=ram,
         )
         rk = float(marker_rank(m))
-        pref = float(_video_pref_index(o.repo_id))
+        pref = float(_motion_video_pref_index(o.repo_id))
         return (-rk, pref)
 
     def voice_key(o: ModelOption) -> tuple[float, float]:
@@ -391,29 +435,29 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
         return (-rk, pref)
 
     script_sorted = sorted(script_opts, key=script_key)
-    video_sorted = sorted(video_opts, key=video_key)
-    # SD 1.5 can rate "EXCELLENT" before SDXL Turbo at exactly ~8 GB VRAM; prefer Turbo when it is still OK+
-    # so auto-fit matches the project default (SDXL Turbo) for typical gaming GPUs.
+    image_sorted = sorted(image_opts, key=image_key)
+    # Prefer SDXL Turbo over SD 1.5 at ~8GB when both are OK (project default balance).
     if vram is not None and vram >= 8.0:
-        turbo_o = next((o for o in video_opts if o.repo_id == "stabilityai/sdxl-turbo"), None)
+        turbo_o = next((o for o in image_opts if o.repo_id == "stabilityai/sdxl-turbo"), None)
         if turbo_o is not None:
             m_t, _ = rate_model_fit_for_repo(
-                kind="video",
+                kind="image",
                 speed=turbo_o.speed,
                 repo_id=turbo_o.repo_id,
-                pair_image_repo_id="",
                 vram_gb=vram,
                 ram_gb=ram,
             )
-            if marker_rank(m_t) >= marker_rank("OK") and video_sorted:
-                first = video_sorted[0]
+            if marker_rank(m_t) >= marker_rank("OK") and image_sorted:
+                first = image_sorted[0]
                 if first.repo_id == "runwayml/stable-diffusion-v1-5":
-                    rest = [o for o in video_sorted if o.repo_id != "stabilityai/sdxl-turbo"]
-                    video_sorted = [turbo_o] + rest
+                    rest = [o for o in image_sorted if o.repo_id != "stabilityai/sdxl-turbo"]
+                    image_sorted = [turbo_o] + rest
+    video_sorted = sorted(video_opts, key=video_key)
     voice_sorted = sorted(voice_opts, key=voice_key)
 
     script_ids = tuple(o.repo_id for o in script_sorted)
-    video_vals = tuple(_video_combo_user_data(o) for o in video_sorted)
+    image_ids = tuple(o.repo_id for o in image_sorted)
+    video_ids = tuple(o.repo_id for o in video_sorted)
     voice_ids = tuple(o.repo_id for o in voice_sorted)
 
     by_repo = {o.repo_id: o for o in model_options}
@@ -426,24 +470,19 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
         return o.label if o else rid
 
     pick_s = script_sorted[0].repo_id if script_sorted else ""
-    pick_v = video_sorted[0] if video_sorted else None
+    pick_i = image_sorted[0].repo_id if image_sorted else ""
+    pick_v = video_sorted[0].repo_id if video_sorted else ""
     pick_c = voice_sorted[0].repo_id if voice_sorted else ""
-
-    v_txt = ""
-    if pick_v is not None:
-        if getattr(pick_v, "pair_image_repo_id", ""):
-            v_txt = f"{_label(str(pick_v.pair_image_repo_id))} + {_label(pick_v.repo_id)}"
-        else:
-            v_txt = _label(pick_v.repo_id)
 
     log_summary = (
         f"Auto-fit ({gpu_lbl}, {v_lbl}, {r_lbl}) -> "
-        f"Script: {_label(pick_s)} | Video/images: {v_txt or '--'} | Voice: {_label(pick_c)}"
+        f"Script: {_label(pick_s)} | Image: {_label(pick_i)} | Video: {_label(pick_v)} | Voice: {_label(pick_c)}"
     )
 
     return AutoFitRanked(
         script_repo_ids=script_ids,
-        video_combo_values=video_vals,
+        image_repo_ids=image_ids,
+        video_repo_ids=video_ids,
         voice_repo_ids=voice_ids,
         log_summary=log_summary,
     )
