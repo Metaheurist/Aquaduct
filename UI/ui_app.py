@@ -93,6 +93,28 @@ _apply_debug_categories_from_argv()
 _maybe_attach_debug_console()
 _strip_debug_args()
 
+
+def _maybe_import_smoke_and_exit() -> None:
+    """Headless import check for frozen builds (set AQUADUCT_IMPORT_SMOKE=1). Exits 0 on success."""
+    val = os.environ.get("AQUADUCT_IMPORT_SMOKE", "").strip().lower()
+    if val not in ("1", "true", "yes"):
+        return
+    import importlib
+
+    for mod in (
+        "main",
+        "src.runtime.pipeline_api",
+        "src.runtime.generation_facade",
+        "UI.workers",
+        "UI.api_model_widgets",
+    ):
+        importlib.import_module(mod)
+    print("AQUADUCT_IMPORT_SMOKE_OK", flush=True)
+    raise SystemExit(0)
+
+
+_maybe_import_smoke_and_exit()
+
 from UI.app import main
 
 if __name__ == "__main__":

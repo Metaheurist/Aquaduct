@@ -3,7 +3,9 @@ Param(
   [string]$VenvDir = ".venv-build",
   [switch]$Clean,
   [switch]$OneFile,
-  [switch]$UI
+  [switch]$UI,
+  # Use repo-root aquaduct-ui.spec (portable paths). Builds onefile windowless per spec; use for parity checks.
+  [switch]$UseSpec
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +48,25 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Installing build dependencies (pytest + PyInstaller, etc.)"
 pip install -r requirements-dev.txt
 
+if ($UseSpec) {
+  if (-not $UI) { throw "-UseSpec requires -UI (desktop UI spec)." }
+  Write-Host "Building via aquaduct-ui.spec (onefile windowless; see spec file)"
+  $specPath = Join-Path $root "aquaduct-ui.spec"
+  if (!(Test-Path $specPath)) { throw "Missing spec: $specPath" }
+  pyinstaller $specPath --clean --noconfirm
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $specExe = Join-Path $root "dist\aquaduct-ui.exe"
+  if (Test-Path $specExe) {
+    Write-Host "Running import smoke (AQUADUCT_IMPORT_SMOKE)"
+    python (Join-Path $root "scripts\frozen_smoke.py") --exe $specExe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  }
+  Write-Host ""
+  Write-Host "Build complete (spec)."
+  Write-Host "Output: dist\\aquaduct-ui.exe"
+  exit 0
+}
+
 Write-Host "Building exe with PyInstaller"
 $mode = "--onedir"
 if ($OneFile) { $mode = "--onefile" }
@@ -66,15 +87,15 @@ $extra = @(
   "--add-data", "requirements.txt;.",
   "--hidden-import", "soundfile",
   "--collect-all", "soundfile",
-  # TTS + cloud APIs (src.voice, src.elevenlabs_tts — explicit for one-file analysis)
+  # TTS + cloud APIs (explicit for --onefile static analysis)
   "--hidden-import", "pyttsx3",
   "--hidden-import", "requests",
   "--hidden-import", "charset_normalizer",
   "--hidden-import", "urllib3",
   "--hidden-import", "certifi",
   "--collect-all", "certifi",
-  "--hidden-import", "src.elevenlabs_tts",
-  "--hidden-import", "src.characters_store"
+  "--hidden-import", "src.speech.elevenlabs_tts",
+  "--hidden-import", "src.content.characters_store"
 )
 if ($UI) {
   $extra += @(
@@ -87,10 +108,23 @@ if ($UI) {
     "--hidden-import", "UI.theme",
     "--hidden-import", "UI.workers",
     "--hidden-import", "UI.paths",
+    "--hidden-import", "UI.no_wheel_controls",
+    "--hidden-import", "UI.model_execution_toggle",
+    "--hidden-import", "UI.api_model_widgets",
     "--hidden-import", "UI.tabs",
     "--hidden-import", "UI.tabs.characters_tab",
     "--hidden-import", "UI.tabs.api_tab",
     "--hidden-import", "UI.tabs.run_tab",
+    "--hidden-import", "UI.tabs.settings_tab",
+    "--hidden-import", "UI.tabs.video_tab",
+    "--hidden-import", "UI.tabs.effects_tab",
+    "--hidden-import", "UI.tabs.topics_tab",
+    "--hidden-import", "UI.tabs.tasks_tab",
+    "--hidden-import", "UI.tabs.branding_tab",
+    "--hidden-import", "UI.tabs.captions_tab",
+    "--hidden-import", "UI.tabs.my_pc_tab",
+    "--hidden-import", "src.runtime.pipeline_api",
+    "--hidden-import", "src.runtime.generation_facade",
     # moviepy / imageio (often missed by static analysis)
     "--hidden-import", "imageio_ffmpeg",
     "--hidden-import", "imageio.plugins.ffmpeg",
@@ -143,6 +177,23 @@ pyinstaller $mode `
   --hidden-import "PIL" `
   @extra `
   $entry
+
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+if ($UI) {
+  $uiExe = if ($OneFile) {
+    Join-Path $root "dist\aquaduct-ui.exe"
+  } else {
+    Join-Path $root "dist\aquaduct-ui\aquaduct-ui.exe"
+  }
+  if (Test-Path $uiExe) {
+    Write-Host "Running import smoke (AQUADUCT_IMPORT_SMOKE)"
+    python (Join-Path $root "scripts\frozen_smoke.py") --exe $uiExe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  } else {
+    Write-Warning "Import smoke skipped: exe not found at $uiExe"
+  }
+}
 
 Write-Host ""
 Write-Host "Build complete."

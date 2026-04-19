@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Windows EXE build, tests, and operator docs
+- **PyInstaller spec** ([`aquaduct-ui.spec`](aquaduct-ui.spec)): portable `SPECPATH` + `docs/*.md` glob (no machine-absolute paths); `pathex` set to repo root; explicit `hiddenimports` aligned with current packages (`src.speech.elevenlabs_tts`, `src.content.characters_store`, `UI.no_wheel_controls`, `UI.model_execution_toggle`, `UI.api_model_widgets`, tab modules, `src.runtime.pipeline_api`, `src.runtime.generation_facade`).
+- **Build script** ([`build/build.ps1`](build/build.ps1)): same hidden-import belt-and-suspenders as the spec; **`-UseSpec`** to build via the spec; post-build **`scripts/frozen_smoke.py`** for UI and spec builds; **`$LASTEXITCODE`** check after PyInstaller.
+- **Frozen import smoke** ([`UI/ui_app.py`](UI/ui_app.py), [`scripts/frozen_smoke.py`](scripts/frozen_smoke.py)): env **`AQUADUCT_IMPORT_SMOKE=1`** runs headless imports and exits before Qt when validating a built EXE.
+- **Build docs** ([`build/README.md`](build/README.md)): verification checklist, `-debug` / `--debug`, `-UseSpec`, smoke commands, corrected module names in packaging notes.
+- **Tests** ([`pytest.ini`](pytest.ini), [`tests/test_import_smoke_api.py`](tests/test_import_smoke_api.py)): documented **`qt`** / **`slow`** markers; import smoke for API pipeline modules and `UI.api_model_widgets`.
+- **Docs**: new [`docs/building_windows_exe.md`](docs/building_windows_exe.md) (build/verify/troubleshoot) and [`docs/performance.md`](docs/performance.md) (import-time `cProfile` notes); cross-links in [`README.md`](README.md), [`docs/main.md`](docs/main.md), [`docs/ui.md`](docs/ui.md), [`docs/config.md`](docs/config.md), [`docs/api_generation.md`](docs/api_generation.md); test tier table in [`DEPENDENCIES.md`](DEPENDENCIES.md).
+
 ### Desktop UI
 - **Wheel guard** ([`UI/no_wheel_controls.py`](UI/no_wheel_controls.py)): all main-window combo boxes and numeric spins use subclasses that **ignore the mouse wheel**, so scrolling a tab or scroll area does not accidentally change a setting. Values still change via click, keyboard, or the spin up/down buttons.
 
@@ -169,7 +177,7 @@ All notable changes to this project will be documented in this file.
 - **Tests**: [`tests/test_characters_store.py`](tests/test_characters_store.py), [`tests/test_elevenlabs_tts.py`](tests/test_elevenlabs_tts.py) (mocked HTTP); settings/preflight tests extended for new fields.
 
 ### Packaging (Windows one-file EXE)
-- [`build/build.ps1`](build/build.ps1) and [`aquaduct-ui.spec`](aquaduct-ui.spec): extra `--hidden-import` / `collect_all` for HTTPS (`requests`, `urllib3`, `certifi`, `charset_normalizer`), `pyttsx3`, `src.elevenlabs_tts`, `src.characters_store`, and UI tab modules; bundle `docs/*.md` for UI builds. Still bundles `imageio`/related metadata and submodules for `src` / `UI`; UI EXE supports **`-debug` / `--debug`** for a console. See [build/README.md](build/README.md).
+- [`build/build.ps1`](build/build.ps1) and [`aquaduct-ui.spec`](aquaduct-ui.spec): extra `--hidden-import` / `collect_all` for HTTPS (`requests`, `urllib3`, `certifi`, `charset_normalizer`), `pyttsx3`, `src.speech.elevenlabs_tts`, `src.content.characters_store`, `UI.no_wheel_controls`, `UI.model_execution_toggle`, `UI.api_model_widgets`, runtime `src.runtime.pipeline_api` / `generation_facade`, and UI tab modules; bundle `docs/*.md` for UI builds (spec uses portable `SPECPATH` globs). Still bundles `imageio`/related metadata and submodules for `src` / `UI`; UI EXE supports **`-debug` / `--debug`** for a console. See [build/README.md](build/README.md) and [docs/building_windows_exe.md](docs/building_windows_exe.md).
 
 ### Fixes
 - [`main.py`](main.py): removed a redundant inner `import ensure_ffmpeg` inside `run_once` that shadowed the top-level import and caused `UnboundLocalError` when FFmpeg was missing at startup.

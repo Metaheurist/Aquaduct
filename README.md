@@ -46,7 +46,13 @@ pytest -q -m "not qt"
 
 (`torch` / CUDA wheels: use `python scripts/install_pytorch.py --with-rest` before or as documented in `requirements.txt`.)
 
-`tests/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`).
+`tests/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`). API / packaging import smoke: `tests/test_import_smoke_api.py`.
+
+Run **Qt-only** UI tests:
+
+```powershell
+pytest -q -m qt
+```
 
 Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt):
 
@@ -54,7 +60,7 @@ Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt
 pytest -q
 ```
 
-If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set.
+If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set. For a short table of tiers, see **Test tiers** in [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ### 2) Run once (recommended for first test)
 
@@ -138,8 +144,10 @@ Tabs:
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
 
 ## Build Windows EXE
-- Build docs: [`build/README.md`](build/README.md)
-- Build script: `build/build.ps1`
+- Build script: [`build/build.ps1`](build/build.ps1) (canonical onedir/onefile flags + post-build smoke)
+- Portable spec: [`aquaduct-ui.spec`](aquaduct-ui.spec) (optional: `.\build\build.ps1 -Clean -UI -UseSpec`)
+- Operator guide: [`docs/building_windows_exe.md`](docs/building_windows_exe.md)
+- Build reference: [`build/README.md`](build/README.md)
 
 Example:
 
@@ -148,6 +156,9 @@ Example:
 ```
 
 ## Docs
+- [API execution mode](docs/api_generation.md)
+- [Build & verify Windows EXE](docs/building_windows_exe.md)
+- [Performance (import / cold start)](docs/performance.md)
 - [Crawler](docs/crawler.md)
 - [Brain (LLM scripting)](docs/brain.md)
 - [Voice (TTS + captions)](docs/voice.md)

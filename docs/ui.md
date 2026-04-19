@@ -9,6 +9,10 @@
 ## Purpose
 Provide a desktop control panel for **Aquaduct** with a **TikTok-style dark theme** and tabbed settings.
 
+## Frozen Windows EXE
+
+Build, smoke test, and `-debug` behavior: [building_windows_exe.md](building_windows_exe.md) and [`../build/README.md`](../build/README.md). Import-time notes: [performance.md](performance.md).
+
 ## How to run
 
 ```powershell
