@@ -29,6 +29,7 @@ from src.models.model_manager import (
     model_options,
 )
 from UI.model_execution_toggle import ModelExecutionModeToggle
+from UI.no_wheel_controls import NoWheelComboBox
 from UI.workers import ModelSizePingWorker
 
 
@@ -179,10 +180,10 @@ def attach_settings_tab(win) -> None:
     form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
     form.setVerticalSpacing(10)
     form.setHorizontalSpacing(14)
-    win.llm_combo = QComboBox()
-    win.img_combo = QComboBox()
-    win.vid_combo = QComboBox()
-    win.voice_combo = QComboBox()
+    win.llm_combo = NoWheelComboBox()
+    win.img_combo = NoWheelComboBox()
+    win.vid_combo = NoWheelComboBox()
+    win.voice_combo = NoWheelComboBox()
 
     def _prep_combo(combo: QComboBox) -> None:
         combo.setSizePolicy(QSizePolicy.Policy.Preferred, combo.sizePolicy().verticalPolicy())

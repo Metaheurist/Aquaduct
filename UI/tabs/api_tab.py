@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+
 
 def attach_api_tab(win) -> None:
     w = QWidget()
@@ -199,12 +201,12 @@ def attach_api_tab(win) -> None:
     win.api_tt_redirect_uri.setPlaceholderText("http://127.0.0.1:8765/callback/")
     form_tt.addRow("Redirect URI", win.api_tt_redirect_uri)
 
-    win.api_tt_oauth_port = QSpinBox()
+    win.api_tt_oauth_port = NoWheelSpinBox()
     win.api_tt_oauth_port.setRange(8000, 65535)
     win.api_tt_oauth_port.setValue(int(getattr(win.settings, "tiktok_oauth_port", 8765)))
     form_tt.addRow("OAuth port", win.api_tt_oauth_port)
 
-    win.api_tt_pub_mode = QComboBox()
+    win.api_tt_pub_mode = NoWheelComboBox()
     win.api_tt_pub_mode.addItem("Inbox (finish in TikTok app) — video.upload", "inbox")
     win.api_tt_pub_mode.addItem("Direct post (video.publish — needs app review)", "direct")
     pm = str(getattr(win.settings, "tiktok_publishing_mode", "inbox") or "inbox")
@@ -280,12 +282,12 @@ def attach_api_tab(win) -> None:
     win.api_yt_redirect_uri.setPlaceholderText("http://127.0.0.1:8888/callback/")
     form_yt.addRow("Redirect URI", win.api_yt_redirect_uri)
 
-    win.api_yt_oauth_port = QSpinBox()
+    win.api_yt_oauth_port = NoWheelSpinBox()
     win.api_yt_oauth_port.setRange(8000, 65535)
     win.api_yt_oauth_port.setValue(int(getattr(win.settings, "youtube_oauth_port", 8888)))
     form_yt.addRow("OAuth port", win.api_yt_oauth_port)
 
-    win.api_yt_privacy = QComboBox()
+    win.api_yt_privacy = NoWheelComboBox()
     win.api_yt_privacy.addItem("Private (recommended for testing)", "private")
     win.api_yt_privacy.addItem("Unlisted", "unlisted")
     win.api_yt_privacy.addItem("Public", "public")

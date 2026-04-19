@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.settings.api_model_catalog import default_models_for_provider, providers_for_role
+from UI.no_wheel_controls import NoWheelComboBox
 
 
 def _set_combo_data(combo: QComboBox, items: list[tuple[str, str]]) -> None:
@@ -80,13 +81,13 @@ def build_generation_api_panel(win) -> QWidget:
     def _role_block(title: str, role: str) -> tuple[QComboBox, QComboBox, QLineEdit | None, QLineEdit | None, QLineEdit | None]:
         box = QGroupBox(title)
         fl = QFormLayout(box)
-        prov = QComboBox()
+        prov = NoWheelComboBox()
         _set_combo_data(prov, _provider_items(role))
         rc = _rcfg(role)
         cur_p = str(getattr(rc, "provider", "") or "").strip().lower() if rc is not None else ""
         ip = prov.findData(cur_p)
         prov.setCurrentIndex(ip if ip >= 0 else 0)
-        mod = QComboBox()
+        mod = NoWheelComboBox()
         _refill_model_combo(mod, role=role, provider=cur_p, saved_model=str(getattr(rc, "model", "") or "") if rc is not None else "")
         base: QLineEdit | None = None
         org: QLineEdit | None = None

@@ -46,6 +46,7 @@ from src.settings.ui_settings import save_settings
 from src.speech.voice import list_pyttsx3_voices as list_sys_voices
 from UI.brain_expand import image_model_id_from_ui, resolve_llm_model_id
 from UI.frameless_dialog import aquaduct_question, aquaduct_warning
+from UI.no_wheel_controls import NoWheelComboBox
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
 
@@ -138,7 +139,7 @@ def attach_characters_tab(win) -> None:
     gen_lbl.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     gen_lbl.setMinimumWidth(44)
     gen_row.addWidget(gen_lbl)
-    win.character_preset_combo = QComboBox()
+    win.character_preset_combo = NoWheelComboBox()
     win.character_preset_combo.setMinimumWidth(160)
     win.character_preset_combo.setMaximumHeight(26)
     for ap in get_character_auto_presets():
@@ -279,7 +280,7 @@ def attach_characters_tab(win) -> None:
     v_lbl.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     v_lbl.setMinimumWidth(108)
     vrow.addWidget(v_lbl)
-    win.character_voice_combo = QComboBox()
+    win.character_voice_combo = NoWheelComboBox()
     win.character_voice_combo.setMinimumWidth(200)
     win.character_voice_combo.setMaximumHeight(26)
     vrow.addWidget(win.character_voice_combo, 1)
@@ -315,7 +316,7 @@ def attach_characters_tab(win) -> None:
     el_lbl.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     el_lbl.setMinimumWidth(108)
     el_row.addWidget(el_lbl)
-    win.character_el_voice_combo = QComboBox()
+    win.character_el_voice_combo = NoWheelComboBox()
     win.character_el_voice_combo.setMinimumWidth(200)
     win.character_el_voice_combo.setMaximumHeight(26)
     el_row.addWidget(win.character_el_voice_combo, 1)

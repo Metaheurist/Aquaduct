@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from UI.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
 from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
     distinct_resolutions,
@@ -148,7 +149,7 @@ def attach_video_tab(win) -> None:
     form_video.setHorizontalSpacing(18)
     form_video.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-    win.format_combo = QComboBox()
+    win.format_combo = NoWheelComboBox()
     win.format_combo.setMinimumContentsLength(24)
     for label, w0, h0 in distinct_resolutions():
         win.format_combo.addItem(label, (w0, h0))
@@ -162,7 +163,7 @@ def attach_video_tab(win) -> None:
     _prep_combo(win.format_combo)
     form_video.addRow("Resolution", win.format_combo)
 
-    win.images_spin = QSpinBox()
+    win.images_spin = NoWheelSpinBox()
     win.images_spin.setRange(3, 10)
     win.images_spin.setValue(int(win.settings.video.images_per_video))
     form_video.addRow("Images per video", win.images_spin)
@@ -180,7 +181,7 @@ def attach_video_tab(win) -> None:
     )
     form_video.addRow("", win.pro_mode_chk)
 
-    win.pro_clip_seconds_spin = QDoubleSpinBox()
+    win.pro_clip_seconds_spin = NoWheelDoubleSpinBox()
     win.pro_clip_seconds_spin.setRange(0.5, 120.0)
     win.pro_clip_seconds_spin.setSingleStep(0.5)
     win.pro_clip_seconds_spin.setDecimals(1)
@@ -191,32 +192,32 @@ def attach_video_tab(win) -> None:
     )
     form_video.addRow("Pro scene length (seconds)", win.pro_clip_seconds_spin)
 
-    win.clips_spin = QSpinBox()
+    win.clips_spin = NoWheelSpinBox()
     win.clips_spin.setRange(1, 10)
     win.clips_spin.setValue(int(getattr(win.settings.video, "clips_per_video", 3)))
     form_video.addRow("Scenes per video (motion mode, slideshow off)", win.clips_spin)
 
-    win.clip_seconds_spin = QSpinBox()
+    win.clip_seconds_spin = NoWheelSpinBox()
     win.clip_seconds_spin.setRange(2, 12)
     win.clip_seconds_spin.setValue(int(round(float(getattr(win.settings.video, "clip_seconds", 4.0)))))
     form_video.addRow("Seconds per scene (motion mode, slideshow off)", win.clip_seconds_spin)
 
-    win.fps_spin = QSpinBox()
+    win.fps_spin = NoWheelSpinBox()
     win.fps_spin.setRange(15, 60)
     win.fps_spin.setValue(int(win.settings.video.fps))
     form_video.addRow("FPS", win.fps_spin)
 
-    win.min_clip_spin = QSpinBox()
+    win.min_clip_spin = NoWheelSpinBox()
     win.min_clip_spin.setRange(2, 12)
     win.min_clip_spin.setValue(int(round(win.settings.video.microclip_min_s)))
     form_video.addRow("Micro-scene min seconds", win.min_clip_spin)
 
-    win.max_clip_spin = QSpinBox()
+    win.max_clip_spin = NoWheelSpinBox()
     win.max_clip_spin.setRange(3, 15)
     win.max_clip_spin.setValue(int(round(win.settings.video.microclip_max_s)))
     form_video.addRow("Micro-scene max seconds", win.max_clip_spin)
 
-    win.bitrate_combo = QComboBox()
+    win.bitrate_combo = NoWheelComboBox()
     win.bitrate_combo.addItems(["low", "med", "high"])
     win.bitrate_combo.setCurrentText(win.settings.video.bitrate_preset)
     _prep_combo(win.bitrate_combo, min_w=200)

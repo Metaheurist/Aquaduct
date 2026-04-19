@@ -2,6 +2,7 @@
 
 ## Layout
 - Package: [`UI/`](../UI/) (theme, workers, main window, `tabs/` per screen)
+- **Mouse wheel**: dropdowns and numeric spins do **not** change value when the pointer is over them—scrolling moves the **page or scroll area** instead. See [`UI/no_wheel_controls.py`](../UI/no_wheel_controls.py) (`NoWheelComboBox`, `NoWheelSpinBox`, `NoWheelDoubleSpinBox`).
 - **Title bar** (frameless window): drag by the title row; **💾** saves settings; **📈** opens a live **resource usage** graph (this process CPU / RAM / GPU VRAM when CUDA is on, 1s updates); **✕** closes the app.
 - Launcher script: [`UI/ui_app.py`](../UI/ui_app.py) (same as `python -m UI`)
 

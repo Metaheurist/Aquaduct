@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Desktop UI
+- **Wheel guard** ([`UI/no_wheel_controls.py`](UI/no_wheel_controls.py)): all main-window combo boxes and numeric spins use subclasses that **ignore the mouse wheel**, so scrolling a tab or scroll area does not accidentally change a setting. Values still change via click, keyboard, or the spin up/down buttons.
+
 ### Local vs API model execution
 - **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `model_execution_mode` (`local` \| `api`), nested `api_models` per role, `api_openai_key`, `api_replicate_token`; env `OPENAI_API_KEY`, `REPLICATE_API_TOKEN` override saved keys.
 - **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py), [`src/runtime/model_backend.py`](src/runtime/model_backend.py)): API mode validates providers/keys and Pro + Replicate rules; skips requiring torch/diffusers for API-only runs.
