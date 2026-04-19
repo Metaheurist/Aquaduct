@@ -499,11 +499,20 @@ class MainWindow(QMainWindow):
         else:
             page_h = int(page.sizeHint().height())
 
+        idx_cur = self.tabs.currentIndex()
+        tab_txt = self.tabs.tabText(idx_cur).strip() if idx_cur >= 0 else ""
+        api_mode = hasattr(self, "model_execution_mode_combo") and str(self.model_execution_mode_combo.currentData() or "local") == "api"
+        if tab_txt == "Model" and api_mode:
+            # API page uses a scroll area; layout size hints can be too small before the panel lays out.
+            page_h = max(page_h, 560)
+
         # Layout margins (top+bottom) + small padding inside tab pane.
         h = int(title_h + banner_h + tabbar_h + page_h + 10 + 10 + 48)
 
         # Clamp so it doesn't get too tiny or exceed the screen.
         min_h = 360
+        if tab_txt == "Model" and api_mode:
+            min_h = max(min_h, 500)
         max_h = 980
         h = max(min_h, min(max_h, int(h)))
         self.setFixedSize(self.width(), h)
