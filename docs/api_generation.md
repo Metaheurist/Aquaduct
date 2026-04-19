@@ -10,11 +10,30 @@ When **Model execution** is set to **API** (Model tab or persisted in `ui_settin
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENAI_API_KEY` | OpenAI Chat, Images, TTS |
-| `OPENAI_BASE_URL` | Optional OpenAI-compatible API root (default `https://api.openai.com/v1`) |
+| `OPENAI_API_KEY` | OpenAI Chat, Images, TTS; also used as fallback bearer for compatible LLM hosts if their env key is unset |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible API root when **LLM** base URL in the UI is empty (default host otherwise follows the selected LLM provider; see below) |
 | `REPLICATE_API_TOKEN` or `REPLICATE_API_KEY` | Replicate predictions |
 
-Saved keys live in **Generation APIs** on the API tab (`api_openai_key`, `api_replicate_token` in `AppSettings`).
+Saved keys live in **Generation APIs** on the API tab (`api_openai_key`, `api_replicate_token` in `AppSettings`). The **OpenAI / LLM API key** field is the saved bearer for OpenAI and for OpenAI-compatible script providers unless a provider-specific env variable is set.
+
+### Script LLM providers (OpenAI Chat Completions–compatible)
+
+On the **Model** (API mode) and **API** tabs, the **LLM** row can use **OpenAI** or another host that speaks the same **`/v1/chat/completions`** JSON shape. Each provider picks a **default base URL** when the **Base URL** field is left empty; you can override with **Base URL** or `OPENAI_BASE_URL`.
+
+| Provider | Typical env key (checked before `OPENAI_API_KEY`) | Notes |
+|----------|-----------------------------------------------------|--------|
+| OpenAI | `OPENAI_API_KEY` | Images, TTS, and DALL·E still require OpenAI (or Replicate / ElevenLabs for image & voice as configured). |
+| Groq | `GROQ_API_KEY` | Fast inference; script JSON mode depends on model support. |
+| Together AI | `TOGETHER_API_KEY` | |
+| Mistral AI | `MISTRAL_API_KEY` | |
+| OpenRouter | `OPENROUTER_API_KEY` | Model id is often `vendor/model` (e.g. `openai/gpt-4o-mini`). |
+| DeepSeek | `DEEPSEEK_API_KEY` | |
+| xAI (Grok) | `XAI_API_KEY` | |
+| Fireworks AI | `FIREWORKS_API_KEY` | |
+| Cerebras | `CEREBRAS_API_KEY` | |
+| Nebius AI Studio | `NEBIUS_API_KEY` | |
+
+Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../src/settings/api_model_catalog.py).
 
 ## Capability matrix
 

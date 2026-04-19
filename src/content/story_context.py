@@ -1,5 +1,8 @@
 """
 Optional web digest + reference image download for the script pipeline (Firecrawl).
+
+For **cartoon** and **unhinged** video formats, search is biased toward memes / viral / templates and runs
+extra Firecrawl queries so scraped pages yield more meme-adjacent reference images for diffusion.
 """
 
 from __future__ import annotations
@@ -15,13 +18,17 @@ from src.content.firecrawl_news import (
     firecrawl_search_news,
     resolve_firecrawl_api_key,
 )
+from src.content.topics import normalize_video_format
 from debug import dprint
 
 MAX_DIGEST_CHARS = 12_000
 MAX_SCRAPE_CHARS_PER_PAGE = 6000
 MAX_SEARCH_LIMIT = 6
 MAX_PAGES_TO_SCRAPE = 2
+MAX_PAGES_TO_SCRAPE_MEME_MODES = 4
 MAX_REFERENCE_IMAGES = 3
+MAX_REFERENCE_IMAGES_MEME_MODES = 5
+MEME_SUPPLEMENT_LIMIT = 4
 MAX_IMAGE_BYTES = 2_000_000
 IMAGE_DOWNLOAD_TIMEOUT_S = 35
 
@@ -56,7 +63,7 @@ def extract_image_urls_from_markdown(md: str, cap: int = 20) -> list[tuple[str, 
     return out
 
 
-def _search_query(topic_tags: list[str], source_titles: list[str]) -> str:
+def _tag_and_title_parts(topic_tags: list[str], source_titles: list[str]) -> str:
     parts: list[str] = []
     for t in topic_tags[:6]:
         t = " ".join(str(t).split()).strip()
@@ -66,8 +73,76 @@ def _search_query(topic_tags: list[str], source_titles: list[str]) -> str:
         tt = " ".join(str(title).split()).strip()
         if tt:
             parts.append(tt[:120])
-    q = " ".join(parts).strip()
+    return " ".join(parts).strip()
+
+
+def _search_query(topic_tags: list[str], source_titles: list[str], video_format: str | None = None) -> str:
+    vf = normalize_video_format(video_format or "news")
+    base = _tag_and_title_parts(topic_tags, source_titles)
+    if vf == "cartoon":
+        meme_bias = (
+            "(meme OR viral OR trending OR reaction OR template OR funny OR pop culture OR "
+            "fandom humor OR animation meme OR comic meme OR still image meme)"
+        )
+        if base:
+            return _trim(f"{base} {meme_bias}", 240)
+        return _trim(
+            "trending memes OR new viral meme OR cartoon meme template OR funny animation meme OR reaction meme 2025",
+            240,
+        )
+    if vf == "unhinged":
+        meme_bias = (
+            "(meme OR viral OR shitpost OR trending OR reaction OR copypasta OR brainrot OR "
+            "\"internet culture\" OR TikTok meme OR Reddit meme OR ironic OR absurdist humor)"
+        )
+        if base:
+            return _trim(f"{base} {meme_bias}", 240)
+        return _trim(
+            "newest viral memes OR trending Twitter meme OR chaotic meme OR absurdist shitpost OR brainrot 2025",
+            240,
+        )
+    q = base
     return _trim(q, 240) or "breaking news today"
+
+
+def _meme_supplement_searches(
+    *,
+    video_format: str,
+    topic_tags: list[str],
+    source_titles: list[str],
+) -> list[str]:
+    """Extra Firecrawl queries for cartoon/unhinged to pull meme-heavy pages and reference art."""
+    vf = normalize_video_format(video_format)
+    if vf not in ("cartoon", "unhinged"):
+        return []
+    tags = [t.strip() for t in topic_tags if str(t).strip()][:4]
+    tag_expr = " OR ".join(f'"{t}"' for t in tags)
+    seed = _trim(_tag_and_title_parts(topic_tags, source_titles), 100)
+    lead = f"{seed} " if seed else ""
+    tag_prefix = f"({tag_expr}) " if tag_expr else ""
+    if vf == "cartoon":
+        return [
+            _trim(
+                f"{lead}{tag_prefix}"
+                "(knowyourmeme OR meme template OR reaction meme still OR funny cartoon meme OR pop culture meme image)",
+                240,
+            ),
+            _trim(
+                "(trending meme OR viral cartoon OR animation meme OR comic meme OR meme redraw reference)",
+                240,
+            ),
+        ]
+    return [
+        _trim(
+            f"{lead}{tag_prefix}"
+            "(reddit meme OR twitter viral OR shitpost OR ironic meme OR brainrot OR meme PNG reaction)",
+            240,
+        ),
+        _trim(
+            "(newest viral memes this week OR absurdist meme OR tiktok trend meme OR chaotic humor)",
+            240,
+        ),
+    ]
 
 
 def _download_one_image(url: str, dest: Path) -> bool:
@@ -111,9 +186,14 @@ def build_script_context(
     want_refs: bool,
     out_dir: Path,
     extra_markdown: str = "",
+    video_format: str = "news",
 ) -> tuple[str, list[Path], Path | None, str]:
     """
     Build optional web digest and download reference images.
+
+    For ``video_format`` **cartoon** or **unhinged**, search queries bias toward memes / viral content and
+    two supplement Firecrawl searches run to find more meme-adjacent pages; more pages are scraped and
+    more reference images may be saved when ``want_refs`` is true.
 
     Returns:
         digest_text (trimmed, for LLM),
@@ -130,22 +210,60 @@ def build_script_context(
     api_key = resolve_firecrawl_api_key(stored_firecrawl_key if firecrawl_enabled else None)
     can_fc = bool(api_key) and bool(firecrawl_enabled)
 
+    vf_norm = normalize_video_format(video_format or "news")
+    meme_mode = vf_norm in ("cartoon", "unhinged")
+    max_scrape = MAX_PAGES_TO_SCRAPE_MEME_MODES if meme_mode else MAX_PAGES_TO_SCRAPE
+    max_ref_save = MAX_REFERENCE_IMAGES_MEME_MODES if meme_mode else MAX_REFERENCE_IMAGES
+    img_cap = 16 if meme_mode else 12
+
     if want_web and can_fc:
-        q = _search_query(topic_tags, source_titles)
+        q = _search_query(topic_tags, source_titles, video_format)
+        hits: list[dict] = []
+        seen_u: set[str] = set()
+
+        def _merge_hits(raw: list | None) -> None:
+            for h in raw or []:
+                if not isinstance(h, dict):
+                    continue
+                u = str(h.get("url") or "").strip()
+                if not u or u in seen_u:
+                    continue
+                seen_u.add(u)
+                hits.append(h)
+
         try:
-            hits = firecrawl_search_news(q, limit=MAX_SEARCH_LIMIT, api_key=api_key)  # type: ignore[arg-type]
+            raw0 = firecrawl_search_news(q, limit=MAX_SEARCH_LIMIT, api_key=api_key)  # type: ignore[arg-type]
+            _merge_hits(raw0)
         except Exception as e:
             dprint("story_context", "search failed", str(e))
-            hits = []
+
+        supplement: list[str] = []
+        if meme_mode:
+            supplement = _meme_supplement_searches(
+                video_format=vf_norm, topic_tags=topic_tags, source_titles=source_titles
+            )
+            for mq in supplement:
+                try:
+                    raw_s = firecrawl_search_news(
+                        mq, limit=MEME_SUPPLEMENT_LIMIT, api_key=api_key  # type: ignore[arg-type]
+                    )
+                    _merge_hits(raw_s)
+                except Exception as e:
+                    dprint("story_context", "meme supplement search failed", mq[:60], str(e))
+
         digest_parts.append(f"## Search query\n{q}\n")
-        for h in hits[:MAX_SEARCH_LIMIT]:
+        if supplement:
+            digest_parts.append("\n## Meme / viral supplement queries\n")
+            for mq in supplement:
+                digest_parts.append(f"- {mq}\n")
+        digest_parts.append("\n## Result links\n")
+        for h in hits[:24]:
             if isinstance(h, dict):
-                digest_parts.append(
-                    f"- **{h.get('title', '')}** — {h.get('url', '')}\n"
-                )
+                digest_parts.append(f"- **{h.get('title', '')}** — {h.get('url', '')}\n")
+
         scraped = 0
         for h in hits:
-            if scraped >= MAX_PAGES_TO_SCRAPE:
+            if scraped >= max_scrape:
                 break
             u = str(h.get("url") or "").strip() if isinstance(h, dict) else ""
             if not u:
@@ -157,13 +275,13 @@ def build_script_context(
                 continue
             scraped += 1
             digest_parts.append(f"\n## Source\n{u}\n\n{_trim(md, MAX_SCRAPE_CHARS_PER_PAGE)}\n")
-            all_urls.extend(extract_image_urls_from_markdown(md, cap=12))
+            all_urls.extend(extract_image_urls_from_markdown(md, cap=img_cap))
     elif want_web and not can_fc:
         dprint("story_context", "web context requested but Firecrawl unavailable")
 
     extra = (extra_markdown or "").strip()
     if extra and want_refs and not all_urls:
-        all_urls.extend(extract_image_urls_from_markdown(extra, cap=12))
+        all_urls.extend(extract_image_urls_from_markdown(extra, cap=img_cap))
 
     digest = _trim("\n".join(digest_parts), MAX_DIGEST_CHARS)
     if digest.strip():
@@ -181,7 +299,7 @@ def build_script_context(
         # Prefer images discovered during scrape; URLs only (skip data:)
         n = 0
         for alt, url in all_urls:
-            if n >= MAX_REFERENCE_IMAGES:
+            if n >= max_ref_save:
                 break
             if not url.startswith("http"):
                 continue

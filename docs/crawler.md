@@ -7,14 +7,13 @@ Fetch trending AI-tool news with a **free default path** (no paid news APIs), op
 
 ## Inputs
 - **Optional Firecrawl** (`firecrawl_enabled` + API key, or `FIRECRAWL_API_KEY` in the environment): v2 search for headlines; v1 scrape for article text when `fetch_article_text` is on. On failure or when disabled, Aquaduct falls back automatically.
-- Google News RSS query (default in `get_latest_items` / `fetch_latest_items`)
-- MarkTechPost homepage (fallback)
+- Google News RSS query — used only when **`discover_uses_headline_sources()`** is true (**news** and **explainer** modes).
+- MarkTechPost homepage — same headline-style fallback, **news/explainer only**.
 
 ### Mode-aware search strings
-Headline search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode`):
-- **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/content/topics.py`](../src/content/topics.py)); Explainer does **not** use a separate “tutorial / science education” query track.
-- **cartoon** — newest animation / streaming / premiere / trailer / buzz (entertainment industry headlines), not framed as how-to tutorials.
-- **unhinged** — internet culture / viral / meme / trend–oriented headline seeds for satire.
+Search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode`):
+- **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/content/topics.py`](../src/content/topics.py)); Google News RSS + MarkTechPost may supplement Firecrawl.
+- **cartoon** and **unhinged** — **creative / story-shaped** queries (writing prompts, Reddit/listicle-style seeds, meme/internet-culture material). **No** Google News RSS or MarkTechPost; Firecrawl search only (plus extra alternate Firecrawl queries when the first pass is thin). Enable Firecrawl for reliable results.
 
 `fetch_latest_items(..., topic_mode=...)` and pipeline fetches pass the current mode so **Discover** and runs match the selected format.
 
@@ -30,7 +29,7 @@ Persisted under `data/news_cache/`:
 - **Per video format**: `seen_<mode>.json` (URLs already used) and `seen_titles_<mode>.json` (title novelty / scoring history), where `<mode>` is `news`, `cartoon`, or `explainer`. The active bucket matches `AppSettings.video_format` (`cache_mode` / `news_cache_mode_for_run()` in `src/content/topics.py`).
 - **Legacy migration**: if `seen_news.json` is missing but flat `seen.json` exists, **news** loads the legacy file once; new writes go to `seen_news.json`. Other formats do not read the legacy flat file.
 
-`fetch_latest_items()` does **not** consult the seen files (used for topic discovery “newest headlines” flows).
+`fetch_latest_items()` does **not** consult the seen files (used for topic discovery). For **news/explainer** that still means “newest headline-like” results; for **cartoon/unhinged** it means creative seeds without forcing Google News.
 
 ## Key functions
 - `get_latest_items(..., cache_mode=...)` — fresh headlines with URL dedupe + persist

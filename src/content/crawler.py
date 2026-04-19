@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
-from .topics import normalize_video_format, video_format_uses_news_style_sourcing
+from .topics import discover_uses_headline_sources, normalize_video_format, video_format_uses_news_style_sourcing
 
 # Per `video_format`: separate seen URL + seen-title history so e.g. cartoon runs
 # do not consume the same "fresh URL" budget as news (legacy flat files map to `news`).
@@ -126,18 +126,18 @@ def _default_headline_query(mode: str | None) -> str:
     if video_format_uses_news_style_sourcing(m):
         return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
     if m == "cartoon":
-        # Newest animation / cartoon industry stories — entertainment buzz, not how-to tutorials.
+        # Creative seeds: stories, prompts, communities — not press headlines (Discover / crawl).
         return (
-            "(animation OR cartoon OR anime OR \"animated series\" OR \"streaming\") "
-            "(premiere OR trailer OR \"new season\" OR episode OR release OR Netflix OR Disney OR "
-            "renewal OR cancelled OR review OR news OR buzz)"
+            "(writing prompt OR \"short story\" OR reddit OR listicle OR \"funny story\" OR trivia OR "
+            "wholesome OR parody OR sketch OR \"cool story\") "
+            "(animation OR cartoon OR comic OR character OR illustration OR meme OR art OR fandom)"
         )
     if m == "unhinged":
-        # Internet culture / trends as headline seeds (then the script satirizes in cartoon voice).
+        # Chaotic internet culture and story-shaped material — not news RSS headlines.
         return (
-            "(viral OR meme OR trending OR TikTok OR \"internet culture\" OR Twitter OR Reddit OR "
-            "challenge OR discourse OR drama OR \"pop culture\" OR influencer) "
-            "(comedy OR satire OR parody OR absurd OR short OR clip OR animation OR cartoon)"
+            "(reddit OR tumblr OR meme OR \"internet lore\" OR chaotic OR absurd OR cursed OR copypasta OR "
+            "\"shower thought\" OR discourse OR viral OR \"wtf\") "
+            "(comedy OR satire OR parody OR animation OR cartoon OR sketch OR shitpost)"
         )
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
@@ -167,16 +167,39 @@ def _effective_query(
             )
         if mode == "cartoon":
             return (
-                f"({tag_expr}) (animation OR cartoon OR anime OR series OR streaming) "
-                f"(premiere OR trailer OR episode OR season OR release OR review OR news OR buzz)"
+                f"({tag_expr}) (writing prompt OR \"short story\" OR reddit OR listicle OR funny OR weird OR "
+                f"wholesome OR parody OR sketch) (animation OR cartoon OR comic OR meme OR illustration)"
             )
         if mode == "unhinged":
             return (
-                f"({tag_expr}) (viral OR meme OR trending OR \"internet culture\" OR TikTok OR comedy OR "
-                f"satire OR parody OR animation OR short OR discourse OR drama)"
+                f"({tag_expr}) (reddit OR meme OR tumblr OR chaotic OR absurd OR viral OR comedy OR "
+                f"satire OR parody OR animation OR sketch OR \"internet culture\")"
             )
         return f"({tag_expr}) {_default_headline_query(mode)}"
     return _default_headline_query(mode)
+
+
+def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[str] | None) -> list[str]:
+    """Alternate search strings when the primary creative query under-fills (cartoon / unhinged only)."""
+    m = _cache_mode_key(topic_mode)
+    if m not in ("cartoon", "unhinged"):
+        return []
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_prefix = ""
+    if tags:
+        tag_expr = " OR ".join(f'"{t}"' for t in tags[:8])
+        tag_prefix = f"({tag_expr}) "
+    if m == "cartoon":
+        rest = [
+            "(reddit OR boredpanda OR tumblr OR \"writing prompt\") (cartoon OR animation OR comic OR funny OR art)",
+            "(wholesome OR absurd OR parody OR trivia OR listicle) (character OR illustration OR meme OR animated)",
+        ]
+    else:
+        rest = [
+            "(reddit OR tumblr OR meme OR copypasta OR chaotic) (comedy OR satire OR cartoon OR sketch)",
+            "(viral OR discourse OR absurd OR \"internet culture\") (animation OR parody OR comedy short)",
+        ]
+    return [f"{tag_prefix}{q}".strip() for q in rest]
 
 
 def _fetch_headlines(
@@ -189,7 +212,10 @@ def _fetch_headlines(
     firecrawl_api_key: str | None = None,
     timeout_s: int = 30,
 ) -> list[NewsItem]:
-    """Try Firecrawl search when enabled + key; then Google News RSS; then MarkTechPost."""
+    """Try Firecrawl search when enabled + key; then (news/explainer only) Google News RSS + MarkTechPost.
+
+    Cartoon and unhinged modes skip headline RSS / tech-blog fallbacks and use extra Firecrawl queries instead.
+    """
     q = _effective_query(query=query, topic_tags=topic_tags, topic_mode=topic_mode)
     fetched: list[NewsItem] = []
     key: str | None = None
@@ -200,36 +226,68 @@ def _fetch_headlines(
             key = resolve_firecrawl_api_key(firecrawl_api_key)
         except Exception:
             key = None
+
+    def _merge_firecrawl_raw(raw: list) -> None:
+        have = {x.url for x in fetched}
+        for d in raw:
+            if not isinstance(d, dict):
+                continue
+            title = str(d.get("title") or "").strip()
+            url = str(d.get("url") or "").strip()
+            if not title or not url:
+                continue
+            if url in have:
+                continue
+            pub = d.get("published_at")
+            pa = str(pub).strip() if pub else None
+            fetched.append(
+                NewsItem(
+                    title=title,
+                    url=url,
+                    source=str(d.get("source") or "Firecrawl"),
+                    published_at=pa,
+                )
+            )
+            have.add(url)
+
     if firecrawl_enabled and key:
         try:
+            from .firecrawl_news import firecrawl_search_news
+
             raw = firecrawl_search_news(
                 q,
                 limit=limit,
                 api_key=key,
                 timeout_s=min(120, max(int(timeout_s), 25)),
             )
-            for d in raw:
-                if not isinstance(d, dict):
-                    continue
-                title = str(d.get("title") or "").strip()
-                url = str(d.get("url") or "").strip()
-                if not title or not url:
-                    continue
-                pub = d.get("published_at")
-                pa = str(pub).strip() if pub else None
-                fetched.append(
-                    NewsItem(
-                        title=title,
-                        url=url,
-                        source=str(d.get("source") or "Firecrawl"),
-                        published_at=pa,
-                    )
-                )
+            _merge_firecrawl_raw(raw)
         except Exception:
             pass
 
     need = max(1, int(limit))
-    if len(fetched) < need:
+    use_headlines = discover_uses_headline_sources(topic_mode)
+
+    if not use_headlines and firecrawl_enabled and key:
+        try:
+            from .firecrawl_news import firecrawl_search_news
+
+            for q2 in _extra_creative_firecrawl_queries(topic_mode, topic_tags):
+                if len(fetched) >= need:
+                    break
+                try:
+                    raw2 = firecrawl_search_news(
+                        q2,
+                        limit=max(1, need - len(fetched)),
+                        api_key=key,
+                        timeout_s=min(120, max(int(timeout_s), 25)),
+                    )
+                    _merge_firecrawl_raw(raw2)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if use_headlines and len(fetched) < need:
         try:
             more = _google_news_rss(query=q, limit=need, timeout_s=timeout_s)
         except Exception:
@@ -242,7 +300,7 @@ def _fetch_headlines(
             have.add(it.url)
             if len(fetched) >= need:
                 break
-    if len(fetched) < need:
+    if use_headlines and len(fetched) < need:
         try:
             more = _marktechpost_latest(limit=need - len(fetched), timeout_s=timeout_s)
         except Exception:

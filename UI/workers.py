@@ -1193,6 +1193,7 @@ class StoryboardWorker(QThread):
                         want_refs=bool(getattr(app.video, "story_reference_images", False)),
                         out_dir=ctx_dir,
                         extra_markdown=raw_inst[:8000],
+                        video_format=vf,
                     )
 
                 expanded = _expand_brief_unified(
@@ -1361,6 +1362,7 @@ class StoryboardWorker(QThread):
                         want_refs=bool(getattr(app.video, "story_reference_images", False)),
                         out_dir=ctx_dir,
                         extra_markdown=(article_excerpt or "")[:12000],
+                        video_format=vf,
                     )
 
                 pkg = _generate_script_unified(

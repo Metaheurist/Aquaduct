@@ -185,7 +185,8 @@ def test_effective_query_mode_tailors_search_bias() -> None:
     assert "AI tool" in _default_headline_query("news") or "AI" in _default_headline_query("news")
     assert _default_headline_query("explainer") == _default_headline_query("news")
     cdef = _default_headline_query("cartoon").lower()
-    assert "premiere" in cdef or "trailer" in cdef or "animation" in cdef
+    assert "writing prompt" in cdef or "short story" in cdef or "reddit" in cdef
+    assert "premiere" not in cdef and "trailer" not in cdef
     assert "tutorial" not in cdef
     uh_def = _default_headline_query("unhinged").lower()
     assert "viral" in uh_def or "meme" in uh_def or "internet culture" in uh_def

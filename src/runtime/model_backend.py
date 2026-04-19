@@ -4,6 +4,7 @@ import os
 from typing import Literal
 
 from src.core.config import ApiRoleConfig, AppSettings, ModelExecutionMode
+from src.settings.api_model_catalog import uses_openai_chat_protocol_for_llm
 
 Role = Literal["llm", "image", "video", "voice"]
 
@@ -19,6 +20,20 @@ def effective_openai_api_key(settings: AppSettings | None) -> str:
     if settings is None:
         return ""
     return str(getattr(settings, "api_openai_key", "") or "").strip()
+
+
+def effective_llm_api_key(settings: AppSettings | None, provider: str) -> str:
+    """Bearer for OpenAI or OpenAI-compatible LLM hosts (provider-specific env vars first, then saved OpenAI key field)."""
+    from src.settings.api_model_catalog import provider_by_id
+
+    p = str(provider or "").strip().lower() or "openai"
+    spec = provider_by_id(p)
+    if spec and spec.env_key_names:
+        for name in spec.env_key_names:
+            v = (os.environ.get(name) or "").strip()
+            if v:
+                return v
+    return effective_openai_api_key(settings)
 
 
 def effective_replicate_api_token(settings: AppSettings | None) -> str:
@@ -42,8 +57,8 @@ def provider_has_key(settings: AppSettings, provider: str) -> bool:
     p = str(provider or "").strip().lower()
     if not p:
         return False
-    if p == "openai":
-        return bool(effective_openai_api_key(settings))
+    if uses_openai_chat_protocol_for_llm(p):
+        return bool(effective_llm_api_key(settings, p))
     if p == "replicate":
         return bool(effective_replicate_api_token(settings))
     if p == "elevenlabs":

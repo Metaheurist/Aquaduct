@@ -14,6 +14,11 @@ def video_format_uses_news_style_sourcing(value: str | None) -> bool:
     return v in ("news", "explainer")
 
 
+def discover_uses_headline_sources(value: str | None) -> bool:
+    """Topic Discover + crawl fallbacks: Google News / MarkTechPost only for news + explainer (headline-ish)."""
+    return video_format_uses_news_style_sourcing(value)
+
+
 def effective_topic_tags(app: AppSettings) -> list[str]:
     """Tags for the current pipeline mode (`video_format`)."""
     m = getattr(app, "topic_tags_by_mode", None) or {}

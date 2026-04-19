@@ -151,16 +151,27 @@ class OpenAIClient:
 
 
 def build_openai_client_from_settings(settings: AppSettings) -> OpenAIClient:
-    from src.runtime.model_backend import effective_openai_api_key
+    from src.runtime.model_backend import effective_llm_api_key
+    from src.settings.api_model_catalog import default_openai_compatible_base_url_for_llm
 
-    key = effective_openai_api_key(settings)
     llm = getattr(getattr(settings, "api_models", None), "llm", None)
+    prov = str(getattr(llm, "provider", "") or "").strip().lower() if llm else "openai"
+    key = effective_llm_api_key(settings, prov or "openai")
     base = str(getattr(llm, "base_url", "") or "").strip() if llm else ""
     org = str(getattr(llm, "org_id", "") or "").strip() if llm else ""
     if not base:
-        base = str(os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").strip()
+        base = str(os.environ.get("OPENAI_BASE_URL") or "").strip()
+    if not base:
+        cand = default_openai_compatible_base_url_for_llm(prov)
+        if cand:
+            base = cand.strip()
+    if not base:
+        base = "https://api.openai.com/v1"
     if not key:
-        raise OpenAIRequestError("No OpenAI API key — set OPENAI_API_KEY or save a key under Generation APIs.")
+        raise OpenAIRequestError(
+            "No API key — set the provider’s env variable (e.g. OPENAI_API_KEY, GROQ_API_KEY) "
+            "or save a key under Generation APIs (OpenAI / compatible LLM key field)."
+        )
     b = base.rstrip("/")
     if not b.endswith("/v1"):
         b = f"{b}/v1"
