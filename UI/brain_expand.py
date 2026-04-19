@@ -164,6 +164,7 @@ class BrainAugmentedEditor(QWidget):
             hf_token=str(getattr(st, "hf_token", "") or "") if st is not None else "",
             hf_api_enabled=bool(getattr(st, "hf_api_enabled", True)) if st is not None else True,
             try_llm_4bit=bool(getattr(st, "try_llm_4bit", True)) if st is not None else True,
+            app_settings=st,
         )
 
         def _ok(out: str) -> None:

@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+ModelExecutionMode = Literal["local", "api"]
+
 from .app_dirs import application_data_dir, installation_dir
 
 # Pipeline + per-mode topic lists use the same IDs.
@@ -147,6 +149,34 @@ class VideoSettings:
 
 
 @dataclass(frozen=True)
+class ApiRoleConfig:
+    """Per-role API routing (OpenAI, Replicate, ElevenLabs voice, etc.)."""
+
+    provider: str = ""
+    model: str = ""
+    base_url: str = ""
+    org_id: str = ""
+    voice_id: str = ""
+
+
+@dataclass(frozen=True)
+class ApiModelRuntimeSettings:
+    llm: ApiRoleConfig = field(default_factory=ApiRoleConfig)
+    image: ApiRoleConfig = field(default_factory=ApiRoleConfig)
+    video: ApiRoleConfig = field(default_factory=ApiRoleConfig)
+    voice: ApiRoleConfig = field(default_factory=ApiRoleConfig)
+
+
+def default_api_models() -> ApiModelRuntimeSettings:
+    return ApiModelRuntimeSettings(
+        llm=ApiRoleConfig(),
+        image=ApiRoleConfig(),
+        video=ApiRoleConfig(),
+        voice=ApiRoleConfig(),
+    )
+
+
+@dataclass(frozen=True)
 class BrandingSettings:
     # Theme (optional overrides)
     theme_enabled: bool = False
@@ -202,6 +232,12 @@ class AppSettings:
     art_style_preset_id: str = "balanced"
     run_content_mode: RunContentMode = "preset"  # preset = news cache + topics; custom = user instructions
     custom_video_instructions: str = ""  # used when run_content_mode == "custom"
+    #: ``local`` = Hugging Face / local inference; ``api`` = HTTP providers (see ``api_models``).
+    model_execution_mode: ModelExecutionMode = "local"
+    api_models: ApiModelRuntimeSettings = field(default_factory=default_api_models)
+    #: Keys for cloud generation (also mirrored on API tab). Prefer env: OPENAI_API_KEY, REPLICATE_API_TOKEN when set.
+    api_openai_key: str = ""
+    api_replicate_token: str = ""
     llm_model_id: str = ""
     image_model_id: str = ""
     video_model_id: str = ""  # optional: separate clip model (e.g., img→vid) when paired with keyframe image model

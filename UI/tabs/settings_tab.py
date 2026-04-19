@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QStackedWidget,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -50,9 +51,18 @@ def attach_settings_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
+    title_row = QHBoxLayout()
     header = QLabel("Model (dependencies + model downloads)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
+    title_row.addWidget(header)
+    title_row.addStretch(1)
+    win.model_execution_mode_combo = QComboBox()
+    win.model_execution_mode_combo.addItem("Local models", "local")
+    win.model_execution_mode_combo.addItem("API providers", "api")
+    _mem = str(getattr(win.settings, "model_execution_mode", "local") or "local").strip().lower()
+    win.model_execution_mode_combo.setCurrentIndex(1 if _mem == "api" else 0)
+    title_row.addWidget(win.model_execution_mode_combo)
+    lay.addLayout(title_row)
 
     actions_row = QHBoxLayout()
     actions_row.setSpacing(10)
@@ -129,9 +139,16 @@ def attach_settings_tab(win) -> None:
     actions_row.addStretch(1)
     lay.addLayout(actions_row)
 
+    win._model_mode_stack = QStackedWidget()
+    lay.addWidget(win._model_mode_stack, 1)
+
+    local_page = QWidget()
+    ll = QVBoxLayout(local_page)
+    win._local_model_shell = local_page
+
     mheader = QLabel("Models (select + download)")
     mheader.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 10px;")
-    lay.addWidget(mheader)
+    ll.addWidget(mheader)
 
     win._settings_hf_banner = QLabel(
         "Hugging Face token use is off: remote size checks and gated model downloads may fail or be rate-limited. "
@@ -144,12 +161,12 @@ def attach_settings_tab(win) -> None:
     )
     hf_on = bool(getattr(win.settings, "hf_api_enabled", True))
     win._settings_hf_banner.setVisible(not hf_on)
-    lay.addWidget(win._settings_hf_banner)
+    ll.addWidget(win._settings_hf_banner)
 
     win._hub_status_lbl = QLabel("Checking Hugging Face for each model (sizes + availability)…")
     win._hub_status_lbl.setStyleSheet("color:#9BB0C4;font-size:12px;padding:0 0 8px 0;")
     win._hub_status_lbl.setWordWrap(True)
-    lay.addWidget(win._hub_status_lbl)
+    ll.addWidget(win._hub_status_lbl)
 
     win._model_opts = model_options()
     win._model_opt_by_repo = {o.repo_id: o for o in win._model_opts}
@@ -529,7 +546,7 @@ def attach_settings_tab(win) -> None:
     form.addRow("Image model (diffusion stills)", img_row)
     form.addRow("Video model (motion / Pro / scenes)", vid_row)
     form.addRow("Voice model (TTS)", voice_row)
-    lay.addLayout(form)
+    ll.addLayout(form)
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
@@ -540,7 +557,7 @@ def attach_settings_tab(win) -> None:
     )
     auto_fit_row.addWidget(win.auto_fit_models_btn)
     auto_fit_row.addStretch(1)
-    lay.addLayout(auto_fit_row)
+    ll.addLayout(auto_fit_row)
 
     def _auto_fit_models() -> None:
         try:
@@ -636,5 +653,45 @@ def attach_settings_tab(win) -> None:
         _update_fit_badges()
 
     win._refresh_settings_model_combos = _refresh_settings_model_combos
+
+    api_page = QWidget()
+    al = QVBoxLayout(api_page)
+    api_hint = QLabel(
+        "API mode runs script, stills, and (optionally) voice via cloud APIs — no local diffusion weights. "
+        "Configure providers and keys in the panel below (same controls appear on the API tab). "
+        "FFmpeg still runs locally for assembly."
+    )
+    api_hint.setWordWrap(True)
+    api_hint.setStyleSheet("color:#B7B7C2;font-size:12px;")
+    al.addWidget(api_hint)
+    win._model_api_gen_holder = QWidget()
+    win._model_api_gen_layout = QVBoxLayout(win._model_api_gen_holder)
+    al.addWidget(win._model_api_gen_holder, 1)
+    al.addStretch(1)
+
+    win._model_mode_stack.addWidget(local_page)
+    win._model_mode_stack.addWidget(api_page)
+
+    def _apply_model_execution_ui() -> None:
+        api = str(win.model_execution_mode_combo.currentData() or "local") == "api"
+        win._model_mode_stack.setCurrentIndex(1 if api else 0)
+        win.dl_menu_btn.setVisible(not api)
+        win.auto_fit_models_btn.setVisible(not api)
+        win._hub_status_lbl.setVisible(not api)
+        win._settings_hf_banner.setVisible(not api and not hf_on)
+        if hasattr(win, "_sync_generation_api_panel_parent"):
+            try:
+                win._sync_generation_api_panel_parent()
+            except Exception:
+                pass
+        if hasattr(win, "_sync_api_gen_row_states"):
+            try:
+                win._sync_api_gen_row_states()
+            except Exception:
+                pass
+
+    win._apply_model_execution_ui = _apply_model_execution_ui
+    win.model_execution_mode_combo.currentIndexChanged.connect(lambda _i: _apply_model_execution_ui())
+    _apply_model_execution_ui()
 
     win.tabs.addTab(w, "Model")

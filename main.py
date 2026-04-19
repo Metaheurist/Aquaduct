@@ -76,6 +76,7 @@ from src.speech.audio_fx import (
     render_sfx_track,
     schedule_sfx_events,
 )
+from src.runtime.model_backend import is_api_mode
 from src.runtime.preflight import preflight_check
 from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
 from src.content.personality_auto import AutoPickResult, auto_pick_personality
@@ -269,6 +270,18 @@ def run_once(
     paths = get_paths()
     models = get_models()
     app = settings or AppSettings()
+    if is_api_mode(app):
+        from src.runtime.pipeline_api import run_once_api
+
+        return run_once_api(
+            settings=app,
+            prebuilt_pkg=prebuilt_pkg,
+            prebuilt_sources=prebuilt_sources,
+            prebuilt_prompts=prebuilt_prompts,
+            prebuilt_seeds=prebuilt_seeds,
+            run_control=run_control,
+            on_progress=on_progress,
+        )
     video_settings = app.video
     dprint(
         "pipeline",

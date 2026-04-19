@@ -1,6 +1,6 @@
 # Aquaduct (MVP)
 
-This project builds **Aquaduct**, a **fully local** tool that:
+This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for OpenAI / Replicate script, images, and cloud video — see [docs/api_generation.md](docs/api_generation.md)) that:
 - scrapes AI tool news (no paid APIs)
 - writes a short vertical video script locally (LLM in 4-bit when possible)
 - generates images locally (SDXL Turbo, FP16)

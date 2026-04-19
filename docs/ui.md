@@ -34,6 +34,7 @@ python UI/ui_app.py
   - Add/remove tags for the **selected mode** only; the tag line includes an optional **🧠** control to expand/improve text with the local **Script (LLM)** model ([`UI/brain_expand.py`](../UI/brain_expand.py))
   - **Discover**: fetches headline-based topic suggestions using the **current “Edit tags for”** mode’s tag list; approved items are added to that mode’s list
 - **Tasks**
+  - **Run controls** (refresh list, pause between steps, stop) sit **above** the task table, directly under the short intro text; **Selected task** actions (**Open folder**, **Play video**, uploads, etc.) stay **below** the table.
   - Lists successful renders (`data/upload_tasks.json`): open folder, play `final.mp4`, copy caption from `meta.json` / `hashtags.txt`, mark posted manually, **Upload to TikTok** (inbox) and/or **Upload to YouTube** when the **API** tab is configured (separate toggles); optional auto-uploads per platform after each render
   - While a **pipeline run**, **batch run**, **Preview**, or **Storyboard preview** is active (top row), **Pause** / **Resume** waits between major steps ([`src/runtime/pipeline_control.py`](../src/runtime/pipeline_control.py)); **Stop** cancels at the next checkpoint (does not interrupt mid–GPU generation). For an active **pipeline** (or batch), **Stop** also **clears** any extra runs you queued with **Run** while the previous job was still going.
 - **Video**
@@ -64,11 +65,13 @@ python UI/ui_app.py
   - Multi-line fields can use the **🧠** control to expand/improve text with the **Script (LLM)** model — same repo id as the **Model** tab combo ([`resolve_llm_model_id`](../UI/brain_expand.py), [Models](models.md)).
   - Optional **ElevenLabs voice** picker when **API → ElevenLabs** is enabled and a key is set ([ElevenLabs](elevenlabs.md), [Characters](characters.md)).
 - **API**
+  - **Generation APIs** (first block): **OpenAI** / **Replicate** / **ElevenLabs** routing for **API execution mode** — script, image, video (Pro), and voice providers + models; shared with the **Model** tab when that tab is in **API** mode (one panel is reparented). See [API generation](api_generation.md).
   - Hugging Face token (optional; helps Hub size checks and gated downloads) + optional **Firecrawl**
   - **ElevenLabs** (optional): enable + API key for cloud TTS when a character selects an ElevenLabs voice — see [ElevenLabs](elevenlabs.md)
   - **TikTok**: client key/secret, redirect URI + OAuth port, publishing mode (inbox vs direct; inbox is supported for upload), optional **auto-upload after each render** — see [TikTok upload](tiktok.md)
   - **YouTube**: separate enable; OAuth client ID/secret, redirect + port (default **8888**), default visibility, optional **#Shorts** tagging, optional **auto-upload after render** — see [YouTube upload](youtube.md)
 - **Model** (tab label; model downloads + dependencies)
+  - **Local models** vs **API providers** (top-right combo): **Local** keeps Hugging Face–backed combos, downloads, verify, and **Auto-fit**. **API** hides those local controls and shows the same **Generation APIs** panel as the **API** tab (keys + per-role provider/model). Persisted as `model_execution_mode` + `api_models` in `ui_settings.json` ([API generation](api_generation.md)).
   - **Script (LLM)** combo drives pipeline scripts, **🧠** field expansion, and **Characters → Generate with LLM** — the **current** selection is used even if you have not clicked **Save** yet ([`resolve_llm_model_id`](../UI/brain_expand.py), [Models](models.md)).
   - **Image** = text-to-image (slideshow stills, SVD keyframes). **Video** = motion models (ZeroScope, Stable Video Diffusion). **Pro** mode uses the **Video** slot for **text-to-video** (multi-scene from script when slideshow is off); SVD / img2vid-only repos are blocked for Pro in preflight. A legacy **slideshow + Pro** path can still use a T2I id from the Video slot for per-frame stills if both toggles are on in saved settings.
   - **Auto-fit for this PC**: re-detects GPU/RAM and sets script, image, video, and voice dropdowns using the same VRAM heuristics as the fit badges ([`src/models/hardware.py`](../src/models/hardware.py) → `rank_models_for_auto_fit`). Skips grayed-out Hub entries; logs the chosen combo and **saves settings** (same as **💾 Save**).

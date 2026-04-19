@@ -11,11 +11,15 @@ from src.core.app_dirs import application_data_dir, mark_path_hidden
 from src.render.ffmpeg_slideshow import sanitize_xfade_transition
 from src.core.config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
+    ApiModelRuntimeSettings,
+    ApiRoleConfig,
     AppSettings,
     BrandingSettings,
+    ModelExecutionMode,
     VideoSettings,
     VIDEO_FORMATS,
     VideoFormat,
+    default_api_models,
     default_topic_tags_by_mode,
 )
 
@@ -53,6 +57,35 @@ def _sanitize_custom_instructions(s: Any) -> str:
     if not isinstance(s, str):
         return ""
     return s[:MAX_CUSTOM_VIDEO_INSTRUCTIONS]
+
+
+def _norm_model_execution_mode(s: Any) -> ModelExecutionMode:
+    t = str(s or "local").strip().lower()
+    return t if t in ("local", "api") else "local"
+
+
+def _parse_api_role(raw: Any) -> ApiRoleConfig:
+    if not isinstance(raw, dict):
+        return ApiRoleConfig()
+    return ApiRoleConfig(
+        provider=str(raw.get("provider", "") or ""),
+        model=str(raw.get("model", "") or ""),
+        base_url=str(raw.get("base_url", "") or ""),
+        org_id=str(raw.get("org_id", "") or ""),
+        voice_id=str(raw.get("voice_id", "") or ""),
+    )
+
+
+def _parse_api_models(raw: Any) -> ApiModelRuntimeSettings:
+    base = default_api_models()
+    if not isinstance(raw, dict):
+        return base
+    return ApiModelRuntimeSettings(
+        llm=_parse_api_role(raw.get("llm")),
+        image=_parse_api_role(raw.get("image")),
+        video=_parse_api_role(raw.get("video")),
+        voice=_parse_api_role(raw.get("voice")),
+    )
 
 
 def _sanitize_topic_tags_map(raw: Any) -> dict[str, list[str]]:
@@ -171,10 +204,16 @@ def load_settings() -> AppSettings:
         topic_map = {**topic_map, "news": legacy_flat}
 
     video_format = _norm_video_format(data.get("video_format")) if isinstance(data, dict) else "news"
+    api_models = _parse_api_models(data.get("api_models")) if isinstance(data, dict) else default_api_models()
+    model_execution_mode = _norm_model_execution_mode(data.get("model_execution_mode")) if isinstance(data, dict) else "local"
 
     return AppSettings(
         topic_tags_by_mode=topic_map,
         video_format=video_format,
+        model_execution_mode=model_execution_mode,
+        api_models=api_models,
+        api_openai_key=str(data.get("api_openai_key", "")) if isinstance(data, dict) else "",
+        api_replicate_token=str(data.get("api_replicate_token", "")) if isinstance(data, dict) else "",
         prefer_gpu=bool(data.get("prefer_gpu", True)) if isinstance(data, dict) else True,
         try_llm_4bit=bool(data.get("try_llm_4bit", True)) if isinstance(data, dict) else True,
         try_sdxl_turbo=bool(data.get("try_sdxl_turbo", True)) if isinstance(data, dict) else True,

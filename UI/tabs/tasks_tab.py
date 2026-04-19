@@ -33,18 +33,6 @@ def attach_tasks_tab(win) -> None:
     sub.setStyleSheet("color: #8A96A3; font-size: 11px;")
     lay.addWidget(sub)
 
-    win.tasks_table = QTableWidget(0, 5)
-    win.tasks_table.setHorizontalHeaderLabels(["Title", "Status", "YouTube", "Created", "Video folder"])
-    win.tasks_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-    win.tasks_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-    win.tasks_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-    win.tasks_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-    win.tasks_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-    win.tasks_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-    win.tasks_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-    win.tasks_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-    lay.addWidget(win.tasks_table, 1)
-
     _sty = w.style()
 
     run_group = QGroupBox("Run controls")
@@ -96,6 +84,18 @@ def attach_tasks_tab(win) -> None:
 
     if hasattr(win, "_sync_tasks_pause_button_appearance"):
         win._sync_tasks_pause_button_appearance()
+
+    win.tasks_table = QTableWidget(0, 5)
+    win.tasks_table.setHorizontalHeaderLabels(["Title", "Status", "YouTube", "Created", "Video folder"])
+    win.tasks_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+    win.tasks_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+    win.tasks_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+    win.tasks_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+    win.tasks_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+    win.tasks_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    win.tasks_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+    win.tasks_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    lay.addWidget(win.tasks_table, 1)
 
     actions_group = QGroupBox("Selected task")
     actions_group.setStyleSheet(

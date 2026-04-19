@@ -51,6 +51,11 @@ Central place for:
 - **TikTok** (optional): `tiktok_enabled`, client key/secret, redirect URI, OAuth port, tokens, `tiktok_publishing_mode`, `tiktok_auto_upload_after_render` — see [TikTok](tiktok.md)
 - **YouTube** (optional, independent of TikTok): `youtube_enabled`, OAuth client ID/secret, redirect URI, OAuth port (default loopback port **8888**), tokens, `youtube_privacy_status`, `youtube_add_shorts_hashtag`, `youtube_auto_upload_after_render` — see [YouTube](youtube.md)
 - **Image safety**: `allow_nsfw` — when `True`, diffusion image generation runs without the built-in **safety checker** (see [Artist](artist.md))
+- **Model execution (API vs local)** ([`src/core/config.py`](../src/core/config.py), persisted in [`src/settings/ui_settings.py`](../src/settings/ui_settings.py)):
+  - `model_execution_mode`: `"local"` (default) or `"api"`.
+  - `api_models`: nested per-role `ApiRoleConfig` — `llm`, `image`, `video`, `voice` each with `provider`, `model`, optional `base_url` / `org_id` (LLM), `voice_id` (voice).
+  - `api_openai_key`, `api_replicate_token`: optional saved keys; **`OPENAI_API_KEY`**, **`REPLICATE_API_TOKEN`** / **`REPLICATE_API_KEY`** override when set in the environment.
+  - See [API generation](api_generation.md) and [Models](models.md) for behavior when `api` mode is on.
 
 Task queue for finished renders (Tasks tab) is stored in `data/upload_tasks.json` (paths + per-row TikTok/YouTube upload metadata); keep it local / gitignored.
 

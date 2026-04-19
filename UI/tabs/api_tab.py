@@ -46,6 +46,12 @@ def attach_api_tab(win) -> None:
     sub.setStyleSheet("color: #B7B7C2; font-size: 12px;")
     il.addWidget(sub)
 
+    from UI.api_model_widgets import build_generation_api_panel
+
+    win.generation_api_panel = build_generation_api_panel(win)
+    il.insertWidget(2, win.generation_api_panel)
+    win._api_gen_panel_parent_layout = il
+
     # ---- Hugging Face ----
     hf_box = QGroupBox("Hugging Face")
     hf_lay = QVBoxLayout(hf_box)
