@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -51,6 +52,8 @@ def _refill_model_combo(model_combo: QComboBox, *, role: str, provider: str, sav
 def build_generation_api_panel(win) -> QWidget:
     root = QGroupBox("Generation APIs (API execution mode)")
     root.setToolTip("Used when Model tab is set to API. Keys: OPENAI_API_KEY and REPLICATE_API_TOKEN override saved values.")
+    root.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    root.setMinimumWidth(420)
     outer = QVBoxLayout(root)
 
     keys_row = QFormLayout()

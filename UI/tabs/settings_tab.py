@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QStyle,
     QVBoxLayout,
@@ -662,11 +663,28 @@ def attach_settings_tab(win) -> None:
     )
     api_hint.setWordWrap(True)
     api_hint.setStyleSheet("color:#B7B7C2;font-size:12px;")
-    al.addWidget(api_hint)
-    win._model_api_gen_holder = QWidget()
-    win._model_api_gen_layout = QVBoxLayout(win._model_api_gen_holder)
-    al.addWidget(win._model_api_gen_holder, 1)
-    al.addStretch(1)
+    al.addWidget(api_hint, 0)
+
+    scroll = QScrollArea()
+    scroll.setObjectName("modelApiGenScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    scroll.setMinimumHeight(260)
+    scroll.setStyleSheet(
+        "QScrollArea#modelApiGenScroll { background: transparent; border: none; }"
+        "QScrollArea#modelApiGenScroll > QWidget > QWidget { background: transparent; }"
+    )
+    inner = QWidget()
+    inner.setObjectName("modelApiGenScrollInner")
+    win._model_api_gen_layout = QVBoxLayout(inner)
+    win._model_api_gen_layout.setContentsMargins(0, 0, 8, 0)
+    win._model_api_gen_layout.setSpacing(0)
+    scroll.setWidget(inner)
+    al.addWidget(scroll, 1)
+    win._model_api_gen_scroll = scroll
 
     win._model_mode_stack.addWidget(local_page)
     win._model_mode_stack.addWidget(api_page)
@@ -688,6 +706,8 @@ def attach_settings_tab(win) -> None:
                 win._sync_api_gen_row_states()
             except Exception:
                 pass
+        if hasattr(win, "_resize_to_current_tab"):
+            QTimer.singleShot(0, win._resize_to_current_tab)
 
     win._apply_model_execution_ui = _apply_model_execution_ui
     win.model_execution_mode_combo.currentIndexChanged.connect(lambda _i: _apply_model_execution_ui())
