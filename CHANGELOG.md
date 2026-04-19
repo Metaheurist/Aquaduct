@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### CPU parallelism (OpenMP, BLAS, PyTorch, Hub probes)
+- **Runtime** ([`src/util/cpu_parallelism.py`](src/util/cpu_parallelism.py)): early **`configure_cpu_parallelism()`** sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, **`VECLIB_MAXIMUM_THREADS`** when unset (default target **`min(32, os.cpu_count())`**; override with **`AQUADUCT_CPU_THREADS`**). Called from [`main.py`](main.py), [`UI/ui_app.py`](UI/ui_app.py), and [`UI/app.py`](UI/app.py) before heavy imports.
+- **PyTorch** ([`src/models/torch_dtypes.py`](src/models/torch_dtypes.py), [`src/content/brain.py`](src/content/brain.py)): after **`import torch`**, applies **`torch.set_num_interop_threads`** and **`torch.set_num_threads`** via **`apply_torch_cpu_settings`** (diffusion dtypes path + LLM / CUDA probe paths).
+- **UI** ([`UI/workers.py`](UI/workers.py)): **`ModelSizePingWorker`** probes Hugging Face repos with a **thread pool** (I/O-bound); **`ModelIntegrityVerifyWorker`** verifies multiple repos **in parallel** (capped for disk I/O).
+- **Packaging** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden import **`src.util.cpu_parallelism`**.
+- **Docs / tests**: [`docs/performance.md`](docs/performance.md), [`docs/config.md`](docs/config.md), [`README.md`](README.md), [`tests/test_cpu_parallelism.py`](tests/test_cpu_parallelism.py).
+
 ### Library tab: browse past outputs
 - **UI** ([`UI/tabs/library_tab.py`](UI/tabs/library_tab.py), [`UI/library_fs.py`](UI/library_fs.py), [`UI/main_window.py`](UI/main_window.py)): new **Library** tab lists **`videos/`** projects that contain **`final.mp4`** (title from `meta.json`, modified time, file size) and all **`runs/`** workspace folders (intermediate pipeline artifacts). Toolbar opens the **`videos/`** or **`runs/`** root; per-row actions open the project folder, **`assets/`**, or play **`final.mp4`**; double-click opens the folder. **Refresh** rescans disk; switching to the tab refreshes; pipeline **`_on_done`** refreshes after each run completes.
 - **Packaging** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden imports for **`UI.tabs.library_tab`**, **`UI.library_fs`**, **`UI.tab_sections`**.

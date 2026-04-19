@@ -16,6 +16,13 @@ def torch_float16():
     """
     import torch
 
+    try:
+        from src.util.cpu_parallelism import apply_torch_cpu_settings
+
+        apply_torch_cpu_settings(torch)
+    except Exception:
+        pass
+
     if _torch_broken(torch):
         raise RuntimeError(
             "PyTorch is not installed correctly: `import torch` does not expose real dtypes "

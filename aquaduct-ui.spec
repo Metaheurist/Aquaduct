@@ -53,6 +53,7 @@ hiddenimports = [
     "UI.tabs.captions_tab",
     "UI.tabs.my_pc_tab",
     "UI.tabs.library_tab",
+    "src.util.cpu_parallelism",
     "src.runtime.pipeline_api",
     "src.runtime.generation_facade",
     "imageio_ffmpeg",
