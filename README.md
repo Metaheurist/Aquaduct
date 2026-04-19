@@ -134,10 +134,11 @@ python -m UI
 Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** (same look as the main window); native **file/folder** pickers stay OS-standard.
 
 Tabs:
-- **Run**: one-shot or **batch** quantity; **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
+- **Run**: set **Videos to generate** to queue **that many independent full runs** (each produces one video); **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl results (**Cartoon** / **Unhinged**: memes/jokes/story pages + saved pack under `data/topic_research/`; **News** / **Explainer**: headline-style). Approved picks are added to that format’s list ([UI](docs/ui.md), [Crawler](docs/crawler.md))
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
+- **Library**: browse **`videos/`** folders with **`final.mp4`** (open folder, **`assets/`**, play) and **`runs/`** workspaces (intermediate files); refresh or open the **`videos/`** / **`runs/`** roots
 - **Video**: **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark

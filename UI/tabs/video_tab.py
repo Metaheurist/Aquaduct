@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
+from UI.tab_sections import add_section_spacing, section_title
 from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
     distinct_resolutions,
@@ -51,9 +52,7 @@ def attach_video_tab(win) -> None:
     lay.addWidget(header)
     lay.addSpacing(4)
 
-    preset_header = QLabel("Platform template")
-    preset_header.setStyleSheet("font-size: 13px; font-weight: 600;")
-    lay.addWidget(preset_header)
+    lay.addWidget(section_title("Platform template"))
 
     # Game-style preset tiles (exclusive selection, like graphics quality menus)
     _TILE_QSS = """
@@ -138,9 +137,8 @@ def attach_video_tab(win) -> None:
     preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lay.addWidget(preset_hint)
 
-    sub = QLabel("Output & timing")
-    sub.setStyleSheet("font-size: 13px; font-weight: 600; margin-top: 8px;")
-    lay.addWidget(sub)
+    add_section_spacing(lay, px=14)
+    lay.addWidget(section_title("Output & timing", emphasis=True))
 
     # --- Form 1: core video output
     form_video = QFormLayout()
@@ -243,15 +241,8 @@ def attach_video_tab(win) -> None:
 
     lay.addLayout(form_video)
 
-    # --- Quality / performance
-    divider = QFrame()
-    divider.setFrameShape(QFrame.Shape.HLine)
-    divider.setStyleSheet("color: #2A2A34; margin-top: 10px; margin-bottom: 6px;")
-    lay.addWidget(divider)
-
-    qh = QLabel("Quality / performance")
-    qh.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 4px;")
-    lay.addWidget(qh)
+    add_section_spacing(lay)
+    lay.addWidget(section_title("Quality / performance", emphasis=True))
     lay.addSpacing(2)
 
     win.prefer_gpu_chk = QCheckBox("Prefer GPU (when available)")
@@ -270,9 +261,8 @@ def attach_video_tab(win) -> None:
     win.prompt_cond_chk.setChecked(bool(getattr(win.settings.video, "prompt_conditioning", True)))
     lay.addWidget(win.prompt_cond_chk)
 
-    sph = QLabel("Story pipeline (LLM)")
-    sph.setStyleSheet("font-size: 13px; font-weight: 600; margin-top: 10px;")
-    lay.addWidget(sph)
+    add_section_spacing(lay, px=12)
+    lay.addWidget(section_title("Story pipeline (LLM)"))
 
     win.story_multistage_chk = QCheckBox("Multi-stage script review (format-specific LLM passes)")
     win.story_multistage_chk.setChecked(bool(getattr(win.settings.video, "story_multistage_enabled", False)))
@@ -304,14 +294,8 @@ def attach_video_tab(win) -> None:
     info.setStyleSheet("color: #B7B7C2; margin-top: 6px;")
     lay.addWidget(info)
 
-    divider2 = QFrame()
-    divider2.setFrameShape(QFrame.Shape.HLine)
-    divider2.setStyleSheet("color: #2A2A34; margin-top: 10px; margin-bottom: 6px;")
-    lay.addWidget(divider2)
-
-    ah = QLabel("Advanced")
-    ah.setStyleSheet("font-size: 14px; font-weight: 700;")
-    lay.addWidget(ah)
+    add_section_spacing(lay)
+    lay.addWidget(section_title("Advanced", emphasis=True))
 
     row = QHBoxLayout()
     row.setSpacing(10)

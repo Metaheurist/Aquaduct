@@ -84,9 +84,8 @@ def test_on_run_queues_when_pipeline_worker_running(qtbot, monkeypatch, patch_pa
 
     w._on_run()
 
-    assert len(w._pipeline_run_queue) == 1
-    assert w._pipeline_run_queue[0]["kind"] == "pipeline"
-    assert w._pipeline_run_queue[0]["qty"] == 3
+    assert len(w._pipeline_run_queue) == 3
+    assert all(x["kind"] == "pipeline" and x["qty"] == 1 for x in w._pipeline_run_queue)
     assert w._pipeline_run_queue[0]["settings"] is not w.settings
 
 
@@ -108,9 +107,8 @@ def test_on_run_queues_when_preview_worker_running(qtbot, monkeypatch, patch_pat
 
     w._on_run()
 
-    assert len(w._pipeline_run_queue) == 1
-    assert w._pipeline_run_queue[0]["kind"] == "pipeline"
-    assert w._pipeline_run_queue[0]["qty"] == 2
+    assert len(w._pipeline_run_queue) == 2
+    assert all(x["kind"] == "pipeline" and x["qty"] == 1 for x in w._pipeline_run_queue)
 
 
 @pytest.mark.qt

@@ -123,6 +123,9 @@ if ($UI) {
     "--hidden-import", "UI.tabs.branding_tab",
     "--hidden-import", "UI.tabs.captions_tab",
     "--hidden-import", "UI.tabs.my_pc_tab",
+    "--hidden-import", "UI.tabs.library_tab",
+    "--hidden-import", "UI.library_fs",
+    "--hidden-import", "UI.tab_sections",
     "--hidden-import", "src.runtime.pipeline_api",
     "--hidden-import", "src.runtime.generation_facade",
     # moviepy / imageio (often missed by static analysis)

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Library tab: browse past outputs
+- **UI** ([`UI/tabs/library_tab.py`](UI/tabs/library_tab.py), [`UI/library_fs.py`](UI/library_fs.py), [`UI/main_window.py`](UI/main_window.py)): new **Library** tab lists **`videos/`** projects that contain **`final.mp4`** (title from `meta.json`, modified time, file size) and all **`runs/`** workspace folders (intermediate pipeline artifacts). Toolbar opens the **`videos/`** or **`runs/`** root; per-row actions open the project folder, **`assets/`**, or play **`final.mp4`**; double-click opens the folder. **Refresh** rescans disk; switching to the tab refreshes; pipeline **`_on_done`** refreshes after each run completes.
+- **Packaging** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden imports for **`UI.tabs.library_tab`**, **`UI.library_fs`**, **`UI.tab_sections`**.
+- **Tests**: [`tests/test_library_fs.py`](tests/test_library_fs.py).
+
+### Run / Video / Model tabs: section groups and spacing
+- **UI** ([`UI/tab_sections.py`](UI/tab_sections.py)): shared **`section_title()`** and **`add_section_spacing()`** for consistent subsection labels and vertical gaps on the dark theme.
+- **Run** ([`UI/tabs/run_tab.py`](UI/tabs/run_tab.py)): **Output**, **Script & content**, **Actions**.
+- **Video** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)): clearer breaks between platform template, **Output & timing**, **Quality / performance**, **Story pipeline (LLM)**, and **Advanced** (spacing replaces horizontal rules between major blocks).
+- **Model** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): spacing after the download/install toolbar before the stack; spacing before **Model files location**; shared titles for model list and storage.
+
+### Run tab: N videos = N independent pipeline tasks
+- **UI** ([`UI/main_window.py`](UI/main_window.py)): **Videos to generate** no longer uses a single **Batch pipeline (N videos)** worker. Setting **N > 1** appends **N−1** jobs to the FIFO queue and starts the first **`PipelineWorker`** immediately — each completion adds its own Tasks row and the next queued run starts ([`UI/workers.py`](UI/workers.py): removed **`PipelineBatchWorker`**).
+- **Queue while busy**: one click with **N = 3** appends **three** separate queue entries (not one entry with quantity 3).
+- **Tasks table**: each **FIFO-queued** pipeline job has its own row (**Queued pipeline run**, **Waiting in queue…**) under the active run so **`Tasks (n)`** matches visible pipeline work ([`UI/main_window.py`](UI/main_window.py) `_tasks_refresh`).
+- **Docs / tests**: [`docs/ui.md`](docs/ui.md), [`tests/test_ui_main_window.py`](tests/test_ui_main_window.py), [`tests/test_pipeline_run_queue_contract.py`](tests/test_pipeline_run_queue_contract.py), [`UI/tabs/run_tab.py`](UI/tabs/run_tab.py) tooltip.
+
 ### Diffusion: automatic CPU offload (VRAM vs system RAM)
 - **Placement** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): shared **`place_diffusion_pipeline()`** for local **image** ([`src/render/artist.py`](src/render/artist.py)) and **video** ([`src/render/clips.py`](src/render/clips.py)) diffusers loads — **`enable_model_cpu_offload()`** / **`enable_sequential_cpu_offload()`** vs full **`cuda`** based on **detected GPU VRAM** and **available system RAM** (`psutil`), not OS disk swap.
 - **Auto policy** (override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`**: `auto` \| `off` \| `model` \| `sequential`; legacy **`AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD=1`** still forces sequential when unset/`auto`): favors full GPU when VRAM is ample and host RAM is free; uses **model** offload for mid VRAM (~8–12 GB); **sequential** when VRAM is tight or unknown; if **free RAM &lt; ~3 GB** but **VRAM ≥ ~8 GB**, prefers **full GPU** to avoid extra CPU staging.

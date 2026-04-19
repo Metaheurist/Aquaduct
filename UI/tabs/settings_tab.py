@@ -42,6 +42,7 @@ from UI.frameless_dialog import aquaduct_information
 from UI.model_execution_toggle import ModelExecutionModeToggle
 from UI.models_storage_toggle import ModelsStorageModeToggle
 from UI.no_wheel_controls import NoWheelComboBox
+from UI.tab_sections import add_section_spacing, section_title
 from UI.workers import ModelSizePingWorker
 
 
@@ -155,6 +156,7 @@ def attach_settings_tab(win) -> None:
     actions_row.addStretch(1)
     lay.addLayout(actions_row)
 
+    add_section_spacing(lay)
     win._model_mode_stack = QStackedWidget()
     lay.addWidget(win._model_mode_stack, 1)
 
@@ -162,9 +164,7 @@ def attach_settings_tab(win) -> None:
     ll = QVBoxLayout(local_page)
     win._local_model_shell = local_page
 
-    mheader = QLabel("Models (select + download)")
-    mheader.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 10px;")
-    ll.addWidget(mheader)
+    ll.addWidget(section_title("Models (select + download)", emphasis=True))
 
     win._settings_hf_banner = QLabel(
         "Hugging Face token use is off: remote size checks and gated model downloads may fail or be rate-limited. "
@@ -623,10 +623,9 @@ def attach_settings_tab(win) -> None:
     win.auto_fit_models_btn.clicked.connect(_auto_fit_models)
     win._auto_fit_models = _auto_fit_models
 
+    add_section_spacing(ll)
     storage_title = QHBoxLayout()
-    storage_header = QLabel("Model files location")
-    storage_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 14px;")
-    storage_title.addWidget(storage_header)
+    storage_title.addWidget(section_title("Model files location", emphasis=True))
     storage_title.addStretch(1)
     win.models_storage_mode_combo = ModelsStorageModeToggle()
     _msm = str(getattr(win.settings, "models_storage_mode", "default") or "default").strip().lower()
