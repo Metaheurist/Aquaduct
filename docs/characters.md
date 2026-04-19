@@ -10,6 +10,11 @@ User-defined **characters** store a host identity, optional diffusion visual sty
 - **Negatives** — extra comma-separated phrases merged into the default negative prompt for diffusion. Same optional **🧠** expansion.
 
 The tab uses a **compact** layout (short character list, horizontal add/duplicate/delete, capped text heights) so more fits on screen at once.
+
+### Auto presets (LLM)
+
+At the top, **Preset** lists built-in archetypes (e.g. **Unhinged comedy**, **Gen Z / chronically online**, deadpan anchor, cozy host, tech-bro satire, anime mascot energy, noir narrator, …). Definitions live in [`src/character_presets.py`](../src/character_presets.py). **Generate with LLM** uses the **Script (LLM)** model selected on the **Model** tab (same resolution as 🧠 expand — see [`resolve_llm_model_id`](../UI/brain_expand.py) in [Models](models.md)). It calls [`generate_character_from_preset_llm` in `src/brain.py`](../src/brain.py) and expects a JSON object with `name`, `identity`, `visual_style`, `negatives`, and `use_default_voice`. **Gated** Hub models require **API → Hugging Face** token + license acceptance on the model page. The form is filled in place; click **Save character** to persist. Optional **extra notes** steer the generation without replacing the preset. Pyttsx3 / Kokoro / ElevenLabs voice IDs are **not** auto-picked — choose those after the text profile is generated.
+
 - **Use project default voice** — when checked, global **Voice model** from Settings/API is used. When unchecked, you can use **System TTS** (`pyttsx3`), optional **Kokoro speaker** (when that path is enabled), or **ElevenLabs** if enabled under the API tab with a valid key (see [elevenlabs.md](elevenlabs.md)).
 - **ElevenLabs voice** — when the API tab has ElevenLabs enabled and a key present, the Characters tab lists cloud voices; stored as `elevenlabs_voice_id`. Used for narration only when default voice is off and ElevenLabs is configured.
 

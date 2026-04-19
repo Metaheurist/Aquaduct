@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Characters tab: LLM auto presets
+- **Preset** dropdown + **Generate with LLM** fills **name**, **identity**, **visual style**, **negatives**, and **use project default voice** from the script model using built-in archetypes ([`src/character_presets.py`](src/character_presets.py), [`generate_character_from_preset_llm`](src/brain.py), [`CharacterGenerateWorker`](UI/workers.py), [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)). Optional one-line **extra notes** biases the run. Docs: [`docs/characters.md`](docs/characters.md).
+
+### Brain / Model tab: same script LLM as the combo
+- **`resolve_llm_model_id()`** ([`UI/brain_expand.py`](UI/brain_expand.py)) prefers the **Model** tab **`Script (LLM)`** combo’s **`currentData()`**, then saved `llm_model_id`, then the default from [`get_models()`](src/config.py). Character generation and **🧠** field expansion no longer use a stale saved id when the combo was changed but **Save** was not clicked — avoiding surprise Hub downloads for a different repo.
+
+### Hugging Face: workers + gated-model errors
+- **[`src/hf_access.py`](src/hf_access.py)**: **`ensure_hf_token_in_env`** applies the saved API token to **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** inside **`TextExpandWorker`** and **`CharacterGenerateWorker`** when the process env was empty (same rules as the main window: Hugging Face API enabled + token). **`humanize_hf_hub_error`** maps 401 / gated-repo failures to a short dialog instead of a full traceback.
+- Workers receive **`hf_token`** / **`hf_api_enabled`** from settings ([`UI/workers.py`](UI/workers.py), [`UI/brain_expand.py`](UI/brain_expand.py), [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)).
+
+### Editor / MoviePy: Pillow 10+ and RGBA compositing
+- **[`src/pillow_compat.py`](src/pillow_compat.py)**: Pillow removed **`Image.ANTIALIAS`**; older MoviePy still references it in **`resize`** — compat shim runs before MoviePy import in [`src/editor.py`](src/editor.py).
+- **CompositeVideoClip** could raise **`operands could not be broadcast`** when mixing **RGB** base frames with **RGBA** caption overlays — **`_ensure_rgba_np`** pads an opaque alpha channel on base image/video clips and watermarks before compositing ([`src/editor.py`](src/editor.py)).
+- **`.gitignore`**: ignore MoviePy temp files (`*TEMP_MPY*.mp4`).
+
+### Tests
+- Removed **[`tests/test_torch_install.py`](tests/test_torch_install.py)** (fragile / slow environment-specific assertions).
+- Added [`tests/test_character_presets.py`](tests/test_character_presets.py), [`tests/test_hf_access.py`](tests/test_hf_access.py).
+
+### Video formats: topic sourcing + voice by mode
+- **News** and **Explainer** now share the **same** headline search bias (AI / product releases) and the same short-form script defaults; Explainer no longer uses a separate “tutorial / science education” RSS query (`src/crawler.py`, `video_format_uses_news_style_sourcing()` in [`src/topics.py`](src/topics.py)).
+- **Cartoon** headline queries bias toward **new animation / streaming / premiere / trailer / buzz**; brain prompts stress **not** a tutorial or how-to (`src/brain.py`).
+- **Unhinged** queries bias toward **viral / meme / internet-culture** seeds; unhinged prompt copy notes trend satire (`src/crawler.py`, `src/brain.py`). Docs: [`docs/crawler.md`](docs/crawler.md).
+
+### Key facts card: News & Explainer only
+- The on-screen **Key facts** card (from article text) is **not** rendered for **Cartoon** or **Cartoon (unhinged)** pipeline modes — only **News** and **Explainer** (`video_format`). [`video_format_supports_facts_card()`](src/config.py); [`assemble_microclips_then_concat` / `assemble_generated_clips_then_concat`](src/editor.py) take `video_format=` from [`main.py`](main.py). **Captions** tab includes a short note; scene re-render loads `article.txt` when present and passes format from settings ([`UI/main_window.py`](UI/main_window.py)).
+
 ### Video tab: platform presets (tiles) + social templates
 - **Platform template** at the top of **Video** uses **selectable tiles** (game-style preset cards): one tile per curated social profile (short-form vertical HD/720p, Instagram/Facebook square and 4:5, Pinterest 2:3, YouTube/LinkedIn 1080p, landscape 720p, etc.) plus **Custom** for full manual control. Definitions live in [`src/video_platform_presets.py`](src/video_platform_presets.py). Clicking a tile applies **resolution**, **FPS**, **micro-clip min/max**, **images per video**, **bitrate**, **clips per video**, and **seconds per clip**. The selection is stored as **`video.platform_preset_id`** in [`ui_settings.json`](src/ui_settings.py) and surfaced in [`UI/main_window.py`](UI/main_window.py) as **`_video_platform_preset_id`**. Editing any of those fields switches the UI to **Custom**.
 - **Resolution** dropdown (formerly labeled “Video format”) lists all template sizes from the same module.
@@ -13,7 +40,7 @@ All notable changes to this project will be documented in this file.
 - **Quality retries** for slideshow/keyframes used to call `generate_images(..., max_images=1)`, which always wrote `img_001.png`, then [`apply_regenerated_image`](src/artist.py) deleted that source after copying—wiping **earlier** slides when regenerating a **later** index. Retries now use a **temporary output directory** before copying to the real path ([`main.py`](main.py), scene re-render in [`UI/main_window.py`](UI/main_window.py)).
 
 ### Model tab: Install dependencies (progress dialog)
-- **Install dependencies** opens a frameless **Installing dependencies** dialog with **step labels** (PyTorch vs `requirements.txt`), a **progress bar** (**indeterminate** until pip prints tqdm-style `%` lines, then **0–100%** from parsed output), a **current action** line from `pip_line_hint` (Collecting / Downloading / Installing…), and a **scrolling log**. Close is disabled until the run finishes. Streaming uses [`src/torch_install.py`](src/torch_install.py): `run_subprocess_streaming` splits on `\r` and `\n` so same-line pip progress is visible; `pip install` invocations inject `--progress-bar on`; `pip_download_percent` maps lines to the bar. Implementation: [`UI/install_deps_dialog.py`](UI/install_deps_dialog.py). Tests: [`tests/test_torch_install.py`](tests/test_torch_install.py).
+- **Install dependencies** opens a frameless **Installing dependencies** dialog with **step labels** (PyTorch vs `requirements.txt`), a **progress bar** (**indeterminate** until pip prints tqdm-style `%` lines, then **0–100%** from parsed output), a **current action** line from `pip_line_hint` (Collecting / Downloading / Installing…), and a **scrolling log**. Close is disabled until the run finishes. Streaming uses [`src/torch_install.py`](src/torch_install.py): `run_subprocess_streaming` splits on `\r` and `\n` so same-line pip progress is visible; `pip install` invocations inject `--progress-bar on`; `pip_download_percent` maps lines to the bar. Implementation: [`UI/install_deps_dialog.py`](UI/install_deps_dialog.py).
 
 ### PyTorch dtype helper (LLM expand / transformers)
 - **`src/torch_dtypes.py`**: central `torch_float16()` for BitsAndBytes / `from_pretrained` dtypes. If `import torch` is a **broken or stub** install (no `torch.float16`), raises a clear `RuntimeError` pointing to `scripts/install_pytorch.py --with-rest` instead of `AttributeError: module 'torch' has no attribute 'float16'`. Used from [`src/brain.py`](src/brain.py), [`src/factcheck.py`](src/factcheck.py), [`src/artist.py`](src/artist.py), [`src/clips.py`](src/clips.py). Tests: [`tests/test_torch_dtypes.py`](tests/test_torch_dtypes.py).
@@ -45,7 +72,7 @@ All notable changes to this project will be documented in this file.
 ### PyTorch install (auto CUDA / CPU)
 - **`requirements.txt`**: single runtime list **without** `torch` (so CUDA wheels are not skipped). Consolidated former `requirements-base.txt` into this file.
 - **[`src/torch_install.py`](src/torch_install.py)** + **[`scripts/install_pytorch.py`](scripts/install_pytorch.py)**: detect NVIDIA via `nvidia-smi` / WMI (Windows), install **`torch` / `torchvision` / `torchaudio`** from **CUDA 12.4** wheels when appropriate, else **CPU** wheels; **macOS** uses default PyPI. **`--with-rest`** runs `pip install -r requirements.txt` afterward. Replaces a CPU-only `torch` when a GPU is present (`pip uninstall` + reinstall).
-- **Model tab** “Install dependencies” calls the same combined install ([`UI/main_window.py`](UI/main_window.py)). **[`build/build.ps1`](build/build.ps1)** and **[`scripts/setup_venv_one_by_one.ps1`](scripts/setup_venv_one_by_one.ps1)** use `install_pytorch.py --with-rest`. Docs: [`README.md`](README.md), [`DEPENDENCIES.md`](DEPENDENCIES.md). Tests: [`tests/test_torch_install.py`](tests/test_torch_install.py).
+- **Model tab** “Install dependencies” calls the same combined install ([`UI/main_window.py`](UI/main_window.py)). **[`build/build.ps1`](build/build.ps1)** and **[`scripts/setup_venv_one_by_one.ps1`](scripts/setup_venv_one_by_one.ps1)** use `install_pytorch.py --with-rest`. Docs: [`README.md`](README.md), [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ### Video format: Cartoon (unhinged)
 - **Pipeline mode** `video_format="unhinged"` (fourth option with News / Cartoon / Explainer): chaotic Gen‑Z–style cartoon comedy scripts, headline/query bias for comedy/absurdist animation topics (see [`src/crawler.py`](src/crawler.py)), and LLM steering via [`src/brain.py`](src/brain.py) (`_vf_hint`, dedicated unhinged prompt path).

@@ -13,6 +13,12 @@ VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer", "unhinged")
 
 RunContentMode = Literal["preset", "custom"]
 
+
+def video_format_supports_facts_card(video_format: str | None) -> bool:
+    """Whether the Key facts on-screen card may appear for this pipeline mode (news / explainer only)."""
+    v = str(video_format or "news").strip().lower()
+    return v in ("news", "explainer")
+
 # Max stored length for Run tab custom instructions (ui_settings + RAM)
 MAX_CUSTOM_VIDEO_INSTRUCTIONS: int = 8000
 

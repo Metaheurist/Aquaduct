@@ -19,12 +19,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.character_presets import (
+    GeneratedCharacterFields,
+    get_character_auto_preset_by_id,
+    get_character_auto_presets,
+)
 from src.characters_store import Character, delete_by_id, get_by_id, load_all, new_character, save_all, upsert
 from src.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.ui_settings import save_settings
 from src.voice import list_pyttsx3_voices as list_sys_voices
-from UI.brain_expand import wrap_editor_with_brain
+from UI.brain_expand import resolve_llm_model_id, wrap_editor_with_brain
 from UI.frameless_dialog import aquaduct_question, aquaduct_warning
+from UI.workers import CharacterGenerateWorker
 
 
 class _ElevenLabsVoicesThread(QThread):
@@ -95,6 +101,38 @@ def attach_characters_tab(win) -> None:
     hint.setWordWrap(True)
     hint.setStyleSheet("color: #B7B7C2; font-size: 10px;")
     inner_lay.addWidget(hint)
+
+    gen_hint = QLabel("Auto presets use the script (LLM) model from the Model tab to invent a profile — Save character when happy.")
+    gen_hint.setWordWrap(True)
+    gen_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
+    inner_lay.addWidget(gen_hint)
+
+    gen_row = QHBoxLayout()
+    gen_row.setSpacing(6)
+    gen_lbl = QLabel("Preset")
+    gen_lbl.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    gen_lbl.setMinimumWidth(44)
+    gen_row.addWidget(gen_lbl)
+    win.character_preset_combo = QComboBox()
+    win.character_preset_combo.setMinimumWidth(160)
+    win.character_preset_combo.setMaximumHeight(26)
+    for ap in get_character_auto_presets():
+        win.character_preset_combo.addItem(ap.label, ap.id)
+    gen_row.addWidget(win.character_preset_combo, 1)
+    win.character_generate_btn = QPushButton("Generate with LLM")
+    win.character_generate_btn.setProperty("buttonRole", "secondary")
+    win.character_generate_btn.setMaximumHeight(28)
+    win.character_generate_btn.setMinimumWidth(132)
+    win.character_generate_btn.setToolTip(
+        "Fill name, identity, visual style, and negatives using the Model-tab script LLM (loads weights like other brain tasks)."
+    )
+    gen_row.addWidget(win.character_generate_btn)
+    inner_lay.addLayout(gen_row)
+
+    win.character_preset_notes_edit = QLineEdit()
+    win.character_preset_notes_edit.setPlaceholderText("Optional extra notes for this generation (style, audience, running gag…)")
+    win.character_preset_notes_edit.setMaximumHeight(26)
+    inner_lay.addWidget(win.character_preset_notes_edit)
 
     win.characters_list = QListWidget()
     win.characters_list.setMinimumHeight(56)
@@ -243,6 +281,7 @@ def attach_characters_tab(win) -> None:
     _current_id: str | None = None
     _el_voices_cache: list[tuple[str, str]] = []
     _el_worker: _ElevenLabsVoicesThread | None = None
+    _char_gen_worker: CharacterGenerateWorker | None = None
 
     def _update_el_visibility() -> None:
         ok = elevenlabs_available_for_app(win.settings)
@@ -409,6 +448,66 @@ def attach_characters_tab(win) -> None:
         if hasattr(win, "_refresh_character_combo"):
             win._refresh_character_combo()
 
+    def _on_generate_character() -> None:
+        nonlocal _char_gen_worker
+        if _char_gen_worker is not None and _char_gen_worker.isRunning():
+            return
+        if not _current_id:
+            aquaduct_warning(w, "Characters", "Add or select a character first.")
+            return
+        mid = resolve_llm_model_id(win)
+        if not mid:
+            aquaduct_warning(w, "Characters", "Pick a script (LLM) model on the Model tab.")
+            return
+        pid = str(win.character_preset_combo.currentData() or "").strip()
+        preset = get_character_auto_preset_by_id(pid)
+        if preset is None:
+            aquaduct_warning(w, "Characters", "Select a preset.")
+            return
+
+        th = CharacterGenerateWorker(
+            model_id=mid,
+            preset=preset,
+            extra_notes=win.character_preset_notes_edit.text(),
+            try_llm_4bit=bool(getattr(win.settings, "try_llm_4bit", True)),
+            hf_token=str(getattr(win.settings, "hf_token", "") or ""),
+            hf_api_enabled=bool(getattr(win.settings, "hf_api_enabled", True)),
+        )
+        _char_gen_worker = th
+        win.character_generate_btn.setEnabled(False)
+        win.character_generate_btn.setText("Generating…")
+
+        def _ok(fields: object) -> None:
+            nonlocal _char_gen_worker
+
+            _char_gen_worker = None
+            win.character_generate_btn.setEnabled(True)
+            win.character_generate_btn.setText("Generate with LLM")
+            if not isinstance(fields, GeneratedCharacterFields):
+                return
+            win.character_name_edit.setText(fields.name)
+            win.character_identity_edit.setPlainText(fields.identity)
+            win.character_visual_edit.setPlainText(fields.visual_style)
+            win.character_negatives_edit.setPlainText(fields.negatives)
+            win.character_default_voice_chk.setChecked(fields.use_default_voice)
+            if hasattr(win, "_append_log"):
+                win._append_log(f"Generated character fields — preset “{preset.label}”. Click Save character to keep.")
+
+        def _fail(msg: str) -> None:
+            nonlocal _char_gen_worker
+            _char_gen_worker = None
+            win.character_generate_btn.setEnabled(True)
+            win.character_generate_btn.setText("Generate with LLM")
+            short = (msg or "").strip()
+            if len(short) > 1600:
+                short = short[:1600] + "…"
+            aquaduct_warning(w, "Character generation", short)
+
+        th.done.connect(_ok)
+        th.failed.connect(_fail)
+        th.finished.connect(th.deleteLater)
+        th.start()
+
     def _on_delete() -> None:
         nonlocal all_chars, _current_id
         it = win.characters_list.currentItem()
@@ -444,6 +543,7 @@ def attach_characters_tab(win) -> None:
         lambda: _fill_voice_combo(win.character_voice_combo, str(win.character_voice_combo.currentData() or ""))
     )
     win.character_el_refresh_btn.clicked.connect(_on_el_refresh_clicked)
+    win.character_generate_btn.clicked.connect(_on_generate_character)
 
     _fill_voice_combo(win.character_voice_combo, "")
     _update_el_visibility()

@@ -27,16 +27,6 @@ from src.video_platform_presets import (
 )
 
 
-def _html_escape(s: str) -> str:
-    return (
-        str(s)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:
     combo.setSizePolicy(QSizePolicy.Policy.Preferred, combo.sizePolicy().verticalPolicy())
     combo.setMinimumWidth(min_w)
@@ -68,11 +58,13 @@ def attach_video_tab(win) -> None:
         QPushButton#videoPresetTile {
             background-color: #1A1A22;
             border: 2px solid #2E2E38;
-            border-radius: 10px;
-            padding: 10px 12px;
-            min-height: 76px;
-            max-height: 120px;
+            border-radius: 8px;
+            padding: 6px 8px;
+            min-height: 44px;
+            max-height: 64px;
             text-align: left;
+            font-size: 10px;
+            color: #E8E8EE;
         }
         QPushButton#videoPresetTile:hover {
             border-color: #4A90D9;
@@ -89,14 +81,16 @@ def attach_video_tab(win) -> None:
 
     tile_wrap = QWidget()
     tile_grid = QGridLayout(tile_wrap)
-    tile_grid.setSpacing(10)
+    tile_grid.setHorizontalSpacing(8)
+    tile_grid.setVerticalSpacing(8)
     tile_grid.setContentsMargins(0, 0, 0, 0)
 
     win._platform_preset_tile_group = QButtonGroup(win)
     win._platform_preset_tile_group.setExclusive(True)
     win._platform_preset_tile_buttons: dict[str, QPushButton] = {}
 
-    cols = 3
+    # Four columns so tiles stay narrow inside the fixed ~1000px window (long platform names were clipping).
+    cols = 4
     r, c = 0, 0
     for p in PLATFORM_PRESETS:
         btn = QPushButton()
@@ -104,16 +98,11 @@ def attach_video_tab(win) -> None:
         btn.setCheckable(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(_TILE_QSS)
-        btn.setTextFormat(Qt.TextFormat.RichText)
-        safe_title = _html_escape(p.title)
-        safe_plat = _html_escape(p.platforms)
-        btn.setText(
-            f"<div style='font-weight:700;font-size:12px;color:#F0F0F5'>{safe_title}</div>"
-            f"<div style='color:#9898A8;font-size:10px;margin-top:6px;line-height:1.25'>{safe_plat}</div>"
-        )
-        btn.setToolTip(p.platforms)
+        # Compact lines: wide platform strings force huge min-width; full list stays in the tooltip.
+        btn.setText(f"{p.title}\n{p.width}×{p.height} · {p.fps}fps")
+        btn.setToolTip(f"{p.title}\n\n{p.platforms}")
         btn.setProperty("preset_id", p.id)
-        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
+        btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         win._platform_preset_tile_group.addButton(btn)
         win._platform_preset_tile_buttons[p.id] = btn
         tile_grid.addWidget(btn, r, c)
@@ -127,15 +116,10 @@ def attach_video_tab(win) -> None:
     custom_tile.setCheckable(True)
     custom_tile.setCursor(Qt.CursorShape.PointingHandCursor)
     custom_tile.setStyleSheet(_TILE_QSS)
-    custom_tile.setTextFormat(Qt.TextFormat.RichText)
-    custom_tile.setText(
-        "<div style='font-weight:700;font-size:12px;color:#F0F0F5'>Custom</div>"
-        "<div style='color:#9898A8;font-size:10px;margin-top:6px;line-height:1.25'>"
-        "Manual resolution, timing &amp; bitrate — full control</div>"
-    )
+    custom_tile.setText("Custom\nManual settings")
     custom_tile.setToolTip("Keep your own mix of settings. Pick a template first, then tweak fields below.")
     custom_tile.setProperty("preset_id", "")
-    custom_tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
+    custom_tile.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
     win._platform_preset_tile_group.addButton(custom_tile)
     win._platform_preset_custom_tile = custom_tile
     tile_grid.addWidget(custom_tile, r, c)

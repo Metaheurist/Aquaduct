@@ -4,6 +4,11 @@ import math
 from pathlib import Path
 
 import numpy as np
+
+from .pillow_compat import apply_pillow_moviepy_compat
+
+apply_pillow_moviepy_compat()
+
 from moviepy.editor import (
     AudioFileClip,
     CompositeVideoClip,
@@ -14,10 +19,31 @@ from moviepy.editor import (
 from PIL import Image
 
 from .captions import CaptionWord, caption_window_for_time, load_captions_json, render_caption_overlay_rgba
-from .config import BrandingSettings, VideoSettings
+from .config import BrandingSettings, VideoSettings, video_format_supports_facts_card
 from .facts_card import extract_candidate_facts, facts_visible_until, pick_top_facts, render_facts_card_rgba
 from .ffmpeg_slideshow import build_motion_slideshow
 from .utils_ffmpeg import configure_moviepy_ffmpeg, ensure_ffmpeg
+
+
+def _ensure_rgba_np(pic: np.ndarray) -> np.ndarray:
+    """
+    MoviePy composites require matching channel counts; caption/facts overlays are RGBA.
+    Still images and decoded video frames are often RGB — pad an opaque alpha channel.
+    """
+    if pic is None or not isinstance(pic, np.ndarray) or pic.ndim != 3:
+        return pic
+    c = int(pic.shape[2])
+    if c == 4:
+        return pic
+    h, w = pic.shape[:2]
+    if c == 3:
+        alpha = np.full((h, w, 1), 255, dtype=pic.dtype)
+        return np.concatenate([pic, alpha], axis=2)
+    if c == 1:
+        rgb = np.repeat(pic, 3, axis=2)
+        alpha = np.full((h, w, 1), 255, dtype=pic.dtype)
+        return np.concatenate([rgb, alpha], axis=2)
+    return pic
 
 
 def _build_overlay_make_frame(
@@ -124,7 +150,9 @@ def _make_watermark_clip(
     opacity = max(0.05, min(1.0, opacity))
     pos = str(getattr(branding, "watermark_position", "top_right") or "top_right")
 
-    wm = ImageClip(str(p)).set_duration(duration).set_opacity(opacity)
+    wm = ImageClip(str(p)).set_duration(duration)
+    wm = wm.fl_image(_ensure_rgba_np)
+    wm = wm.set_opacity(opacity)
     target_w = max(24, int(out_w * scale))
     wm = wm.resize(width=target_w)
     x, y = _watermark_position_xy(pos=pos, w=out_w, h=out_h, wm_w=int(wm.w), wm_h=int(wm.h))
@@ -145,6 +173,7 @@ def assemble_microclips_then_concat(
     branding: BrandingSettings | None = None,
     article_text: str | None = None,
     topic_tags: list[str] | None = None,
+    video_format: str | None = None,
 ) -> None:
     """
     Builds 9:16 final video as concatenation of few-second micro-clips (one per image/beat).
@@ -168,7 +197,11 @@ def assemble_microclips_then_concat(
 
     tags = list(topic_tags or [])
     facts_lines: list[str] | None = None
-    if (article_text or "").strip() and bool(getattr(settings, "facts_card_enabled", True)):
+    if (
+        video_format_supports_facts_card(video_format)
+        and (article_text or "").strip()
+        and bool(getattr(settings, "facts_card_enabled", True))
+    ):
         facts_lines = pick_top_facts(extract_candidate_facts(article_text or ""), n=2) or None
 
     overlay_fn = _build_overlay_make_frame(
@@ -227,6 +260,7 @@ def assemble_microclips_then_concat(
             )
 
             base = VideoFileClip(str(base_mp4)).set_duration(total_dur).resize((settings.width, settings.height))
+            base = base.fl_image(_ensure_rgba_np)
 
             def caption_make_frame(global_t: float):
                 return overlay_fn(float(global_t))
@@ -275,6 +309,7 @@ def assemble_microclips_then_concat(
         l, t, r, b = _fit_crop_9x16(iw, ih, settings.width, settings.height)
         base = base.crop(x1=l, y1=t, x2=r, y2=b).resize((settings.width, settings.height))
         base = base.fx(lambda c: c.resize(lambda tt: 1.00 + 0.03 * (tt / dur)))
+        base = base.fl_image(_ensure_rgba_np)
 
         # Audio segment
         a_seg = audio.subclip(t0, t0 + dur)
@@ -340,6 +375,7 @@ def assemble_generated_clips_then_concat(
     branding: BrandingSettings | None = None,
     article_text: str | None = None,
     topic_tags: list[str] | None = None,
+    video_format: str | None = None,
 ) -> None:
     """
     Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
@@ -363,7 +399,11 @@ def assemble_generated_clips_then_concat(
 
     tags = list(topic_tags or [])
     facts_lines: list[str] | None = None
-    if (article_text or "").strip() and bool(getattr(settings, "facts_card_enabled", True)):
+    if (
+        video_format_supports_facts_card(video_format)
+        and (article_text or "").strip()
+        and bool(getattr(settings, "facts_card_enabled", True))
+    ):
         facts_lines = pick_top_facts(extract_candidate_facts(article_text or ""), n=2) or None
 
     overlay_fn = _build_overlay_make_frame(
@@ -388,8 +428,9 @@ def assemble_generated_clips_then_concat(
         t1 = min(total_dur, idx * chunk)
         dur = max(0.25, t1 - t0)
 
-        base = VideoFileClip(str(clip_path)).subclip(0, min(dur, float(VideoFileClip(str(clip_path)).duration)))
-        base = base.resize((settings.width, settings.height))
+        vsrc = VideoFileClip(str(clip_path))
+        base = vsrc.subclip(0, min(dur, float(vsrc.duration)))
+        base = base.resize((settings.width, settings.height)).fl_image(_ensure_rgba_np)
 
         a_seg = audio.subclip(t0, t0 + dur)
 

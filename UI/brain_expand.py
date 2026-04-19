@@ -18,7 +18,22 @@ if TYPE_CHECKING:
 
 
 def resolve_llm_model_id(win) -> str:
+    """
+    Script (LLM) repo id for brain features — must match what the user sees on the Model tab.
+
+    Prefer ``llm_combo.currentData()`` so unsaved combo changes still load the same weights as the next Run;
+    then saved ``settings.llm_model_id``; then the default from ``get_models()``.
+    """
     models = get_models()
+    try:
+        if hasattr(win, "llm_combo"):
+            data = win.llm_combo.currentData()
+            if data is not None:
+                cur = str(data).strip()
+                if cur:
+                    return cur
+    except Exception:
+        pass
     mid = str(getattr(getattr(win, "settings", None), "llm_model_id", "") or "").strip()
     return mid or models.llm_id
 
@@ -118,10 +133,13 @@ class BrainAugmentedEditor(QWidget):
         mid = resolve_llm_model_id(self._win)
         self._btn.setEnabled(False)
         self._btn.setToolTip("Working… (loading model may take a while)")
+        st = getattr(self._win, "settings", None)
         self._worker = TextExpandWorker(
             model_id=mid,
             field_label=self._field_label,
             seed=self._seed_text(),
+            hf_token=str(getattr(st, "hf_token", "") or "") if st is not None else "",
+            hf_api_enabled=bool(getattr(st, "hf_api_enabled", True)) if st is not None else True,
         )
 
         def _ok(out: str) -> None:

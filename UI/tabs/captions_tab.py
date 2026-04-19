@@ -62,6 +62,14 @@ def attach_captions_tab(win) -> None:
         win.facts_card_dur_combo.setCurrentIndex(fdi)
     form.addRow("Facts card duration", win.facts_card_dur_combo)
 
+    win.facts_card_scope_hint = QLabel(
+        "The Key facts card is drawn only for **News** and **Explainer** video formats "
+        "(Cartoon / Unhinged runs skip it at render time). Change format on the Run tab."
+    )
+    win.facts_card_scope_hint.setWordWrap(True)
+    win.facts_card_scope_hint.setStyleSheet("color: #9898A8; font-size: 11px;")
+    form.addRow("", win.facts_card_scope_hint)
+
     lay.addLayout(form)
 
     tip = QLabel(

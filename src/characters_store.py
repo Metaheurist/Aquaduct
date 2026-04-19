@@ -20,6 +20,10 @@ def characters_path() -> Path:
 _MAX_FIELD = 8000
 _MAX_NAME = 120
 
+# Public aliases for callers that clip generated text (e.g. brain LLM helpers).
+CHARACTER_FIELD_MAX_LEN = _MAX_FIELD
+CHARACTER_NAME_MAX_LEN = _MAX_NAME
+
 
 def _clip(s: str, n: int) -> str:
     t = (s or "").strip()

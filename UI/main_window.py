@@ -2100,6 +2100,13 @@ class MainWindow(QMainWindow):
             final_mp4 = video_dir / "final.mp4"
             images = [Path(str(s.get("image_path", ""))) for s in scenes if isinstance(s, dict) and str(s.get("image_path", "")).strip()]
             images = [p for p in images if p.exists()]
+            article_r = ""
+            try:
+                ap = video_dir / "assets" / "article.txt"
+                if ap.exists():
+                    article_r = ap.read_text(encoding="utf-8")
+            except Exception:
+                pass
             assemble_microclips_then_concat(
                 ffmpeg_dir=paths.ffmpeg_dir,
                 settings=settings.video,
@@ -2110,6 +2117,8 @@ class MainWindow(QMainWindow):
                 out_assets_dir=video_dir / "assets",
                 background_music=Path(settings.background_music_path).resolve() if settings.background_music_path else None,
                 branding=getattr(settings, "branding", None),
+                article_text=article_r or None,
+                video_format=str(getattr(settings, "video_format", "news") or "news"),
             )
             self._append_log(f"Re-rendered: {final_mp4}")
         except Exception as e:

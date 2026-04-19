@@ -6,6 +6,7 @@ Assemble a final vertical (9:16) MP4 by:
 - pairing each micro-clip with one generated image
 - overlaying **word-by-word captions**
 - optionally applying a **logo watermark**
+- optionally applying the **Key facts** on-screen card (only when **Video format** is **News** or **Explainer**; Cartoon / Unhinged skip it even if enabled in Captions settings)
 - concatenating into `final.mp4`
 
 ## FFmpeg
@@ -19,6 +20,10 @@ MoviePy requires FFmpeg for encoding. The project auto-downloads a Windows build
   - center-crop image to 9:16
   - subtle zoom
   - render captions into RGBA frames and overlay
+
+## Pillow 10+ and channel matching
+- **`src/pillow_compat.py`**: MoviePy’s **`resize`** still references **`PIL.Image.ANTIALIAS`**, removed in Pillow 10+ — a small compat shim runs before importing MoviePy in [`src/editor.py`](../src/editor.py).
+- Base **ImageClip** / **VideoFileClip** frames are often **RGB**; caption and facts overlays are **RGBA**. **`CompositeVideoClip`** requires consistent channel counts — **`_ensure_rgba_np`** adds an opaque alpha channel to base and watermark layers before compositing.
 
 ## Optional watermark
 If enabled in the UI Branding tab, a logo is overlaid onto each clip during composition:
