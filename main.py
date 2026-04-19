@@ -11,6 +11,13 @@ import shutil
 import tempfile
 import time
 
+try:
+    from src.util.cpu_parallelism import configure_cpu_parallelism
+
+    configure_cpu_parallelism()
+except Exception:
+    pass
+
 from debug import apply_cli_debug, dprint
 from src.content.brain import (
     VideoPackage,

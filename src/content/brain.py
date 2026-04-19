@@ -1015,6 +1015,13 @@ def torch_cuda_kernels_work() -> bool:
     """
     import torch
 
+    try:
+        from src.util.cpu_parallelism import apply_torch_cpu_settings
+
+        apply_torch_cpu_settings(torch)
+    except Exception:
+        pass
+
     if not torch.cuda.is_available():
         return False
     try:
@@ -1140,6 +1147,13 @@ def _generate_with_transformers(
     try_llm_4bit: bool = True,
 ) -> str:
     import torch
+
+    try:
+        from src.util.cpu_parallelism import apply_torch_cpu_settings
+
+        apply_torch_cpu_settings(torch)
+    except Exception:
+        pass
 
     from src.models.hf_access import ensure_hf_token_in_env
     from src.models.hf_transformers_imports import causal_lm_stack, text_iterator_streamer_cls

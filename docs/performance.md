@@ -31,6 +31,18 @@ Replace `NAME` with `main`, `src.runtime.pipeline_api`, or `UI.app`.
 - **First torch / diffusers / transformers load** — Large GPU RAM and seconds of startup when a local model is first materialized; normal for HF stacks.
 - **FFmpeg download** — One-time network + disk cost under `.cache/ffmpeg/` (see [ffmpeg.md](ffmpeg.md)).
 
+## CPU threads (OpenMP, BLAS, PyTorch)
+
+On startup, [`src/util/cpu_parallelism.py`](../src/util/cpu_parallelism.py) sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, and **`VECLIB_MAXIMUM_THREADS`** (unless you already set them) so NumPy/BLAS-backed work uses multiple cores instead of defaulting to one thread per library. The target count defaults to **`min(32, os.cpu_count())`**.
+
+After **`import torch`**, the same helper applies **`torch.set_num_interop_threads`** (modest) and **`torch.set_num_threads`** so CPU-side PyTorch ops match that budget.
+
+| Variable | Role |
+|----------|------|
+| `AQUADUCT_CPU_THREADS` | Override the target (1–256). Also drives BLAS env vars and `torch.set_num_threads`. |
+
+**UI workers**: Hugging Face **model size probes** (startup) run **concurrent HTTP** tasks via a thread pool; **checksum verification** across multiple repos can verify **several folders in parallel** (capped so disk I/O does not thrash). GPU inference for diffusion stays **sequential per pipeline** — parallelizing two models on one GPU would usually hurt more than help.
+
 ## Diffusion: VRAM vs system RAM (CPU offload)
 
 Local **image** and **video** diffusion use a shared placement helper ([`src/util/diffusion_placement.py`](../src/util/diffusion_placement.py)) so weights can stay mostly in **system RAM** and move to the GPU per module/step (**Diffusers** `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`), instead of loading the full pipeline into VRAM at once. This is **not** Windows paging to disk; it trades **speed** for **lower peak VRAM**.

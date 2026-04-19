@@ -89,6 +89,13 @@ except OSError:
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+try:
+    from src.util.cpu_parallelism import configure_cpu_parallelism
+
+    configure_cpu_parallelism()
+except Exception:
+    pass
+
 _apply_debug_categories_from_argv()
 _maybe_attach_debug_console()
 _strip_debug_args()

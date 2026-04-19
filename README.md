@@ -163,7 +163,7 @@ Example:
 - [Headless CLI](docs/cli.md) (`run`, `preflight`, `config`, `models`, `tasks`, `version`)
 - [API execution mode](docs/api_generation.md)
 - [Build & verify Windows EXE](docs/building_windows_exe.md)
-- [Performance (import / cold start)](docs/performance.md)
+- [Performance (import / cold start, CPU threads)](docs/performance.md)
 - [Crawler](docs/crawler.md)
 - [Brain (LLM scripting)](docs/brain.md)
 - [Voice (TTS + captions)](docs/voice.md)

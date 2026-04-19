@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -34,6 +35,7 @@ from src.models.model_manager import (
     save_hf_size_cache,
     verify_project_model_integrity,
 )
+from src.util.cpu_parallelism import disk_bound_verify_workers, io_bound_pool_workers
 
 import main as pipeline_main
 from src.render.artist import generate_images
@@ -760,9 +762,20 @@ class ModelIntegrityVerifyWorker(QThread):
             ok_n = 0
             bad_n = 0
             status_by_repo: dict[str, str] = {}
-            for i, rid in enumerate(self.repo_ids):
+            md = Path(self.models_dir)
+            workers = min(disk_bound_verify_workers(), max(1, n))
+            if workers > 1 and n > 1:
+
+                def _verify_one(rid: str):
+                    return verify_project_model_integrity(rid, models_dir=md)
+
+                with ThreadPoolExecutor(max_workers=workers) as ex:
+                    rpts = list(ex.map(_verify_one, self.repo_ids))
+            else:
+                rpts = [verify_project_model_integrity(rid, models_dir=md) for rid in self.repo_ids]
+
+            for i, (rid, rpt) in enumerate(zip(self.repo_ids, rpts)):
                 self.progress.emit(rid, f"[{i + 1}/{n}] Verifying…")
-                rpt = verify_project_model_integrity(rid, models_dir=Path(self.models_dir))
                 lines.append(f"--- {rpt.repo_id} ---")
                 if rpt.error:
                     lines.append(f"  ERROR: {rpt.error}")
@@ -829,15 +842,32 @@ class ModelSizePingWorker(QThread):
                 merged = {}
 
             probe: dict[str, dict] = {}
-            for rid in self.repo_ids:
+
+            def _probe_one(rid: str) -> tuple[str, dict, int | None]:
                 ok, b, err = probe_hf_model(rid)
-                probe[str(rid)] = {
+                entry = {
                     "ok": bool(ok),
                     "bytes": (int(b) if ok and b is not None else None),
                     "error": (err or "") if not ok else "",
                 }
-                if ok and b is not None:
-                    merged[str(rid)] = int(b)
+                return str(rid), entry, (int(b) if ok and b is not None else None)
+
+            n_ids = len(self.repo_ids)
+            pool = min(io_bound_pool_workers(), max(1, n_ids))
+            if pool > 1 and n_ids > 1:
+                with ThreadPoolExecutor(max_workers=pool) as ex:
+                    futs = [ex.submit(_probe_one, rid) for rid in self.repo_ids]
+                    for fut in as_completed(futs):
+                        rid, entry, b_ok = fut.result()
+                        probe[rid] = entry
+                        if entry.get("ok") and b_ok is not None:
+                            merged[rid] = int(b_ok)
+            else:
+                for rid in self.repo_ids:
+                    _, entry, b_ok = _probe_one(rid)
+                    probe[str(rid)] = entry
+                    if entry.get("ok") and b_ok is not None:
+                        merged[str(rid)] = int(b_ok)
 
             try:
                 save_hf_size_cache(self.cache_path, merged)

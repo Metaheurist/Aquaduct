@@ -7,6 +7,10 @@ Central place for:
 - basic video settings (resolution, FPS, scene / segment durations)
 - UI/pipeline settings overrides (via `AppSettings`)
 
+## Environment variables (host CPU)
+Optional tuning for OpenMP/BLAS and PyTorch CPU thread pools (see [`performance.md`](performance.md)):
+- **`AQUADUCT_CPU_THREADS`** — target thread count (default `min(32, os.cpu_count())`). Does not override **`OMP_NUM_THREADS`** / **`MKL_NUM_THREADS`** / etc. if you already set them in the environment.
+
 ## Paths
 `get_paths()` defines:
 - `data/news_cache/` — per-format dedupe files `seen_<mode>.json` and `seen_titles_<mode>.json` (plus optional legacy `seen.json` / `seen_titles.json` for migration); local-only, not committed

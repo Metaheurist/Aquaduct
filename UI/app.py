@@ -39,6 +39,12 @@ def _ensure_project_root_on_path() -> None:
 
 
 def main() -> None:
+    try:
+        from src.util.cpu_parallelism import configure_cpu_parallelism
+
+        configure_cpu_parallelism()
+    except Exception:
+        pass
     _strip_debug_cli_args()
     _ensure_project_root_on_path()
     single_instance_guard()
