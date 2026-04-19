@@ -3,31 +3,87 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
+
+# Wall clock + cumulative CPU seconds (user+system) for this process and all children, for delta-%CPU.
+_cpu_tree_prev: tuple[float, float] | None = None
+
+
+def _tree_cpu_times_seconds(proc) -> float:
+    """Sum user+system CPU time for ``proc`` and all descendants (FFmpeg, etc.)."""
+    import psutil
+
+    t = proc.cpu_times()
+    s = float(t.user + t.system)
+    try:
+        for c in proc.children(recursive=True):
+            try:
+                ct = c.cpu_times()
+                s += float(ct.user + ct.system)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+    return s
+
+
+def _tree_rss_bytes(proc) -> int:
+    """RSS for main process plus children (encode/mux helpers often run as separate processes)."""
+    import psutil
+
+    r = int(proc.memory_info().rss)
+    try:
+        for c in proc.children(recursive=True):
+            try:
+                r += int(c.memory_info().rss)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+    return r
 
 
 @dataclass(frozen=True)
 class ResourceSample:
-    process_cpu_pct: float  # 0–100 (scaled by CPU count)
-    process_ram_pct: float  # RSS as % of machine RAM
+    process_cpu_pct: float  # 0–100: CPU time / wall time / logical cores (tree: main + children)
+    process_ram_pct: float  # RSS (main + children) as % of machine RAM
     gpu_mem_pct: float | None  # 0–100 of total VRAM, or None if unavailable
 
 
 def sample_aquaduct_resources() -> ResourceSample:
     """
-    Process CPU (avg since last call), process RAM vs system total, and GPU VRAM
-    used / total when ``torch.cuda`` is available.
+    CPU uses **process tree** (Python + FFmpeg subprocesses, etc.): ``psutil`` only reported the
+    main process before, which stays near 0% while FFmpeg does the encode.
+
+    RAM is **RSS sum** of main + children (still an underestimate vs peak; shared pages may be double-counted).
+
+    GPU VRAM: fraction of total used on the current CUDA device (drops after each GPU stage finishes).
     """
+    global _cpu_tree_prev
+    cpu_pct = 0.0
+    ram_pct = 0.0
     try:
         import psutil
 
         p = psutil.Process(os.getpid())
         n = max(1, psutil.cpu_count(logical=True) or 1)
-        raw_cpu = float(p.cpu_percent(interval=None))
-        cpu_pct = max(0.0, min(100.0, raw_cpu / float(n)))
+        now = time.perf_counter()
+        cum = _tree_cpu_times_seconds(p)
+        prev = _cpu_tree_prev
+        _cpu_tree_prev = (now, cum)
+        if prev is not None:
+            prev_wall, prev_cum = prev
+            dt = now - prev_wall
+            d_cpu = cum - prev_cum
+            if d_cpu < 0.0:
+                d_cpu = 0.0  # child process exited; cumulative tree time can step down
+            if dt > 1e-6:
+                # Fraction of all logical CPUs used: d_cpu/dt can be up to n → 100% at full machine load.
+                cpu_pct = max(0.0, min(100.0, 100.0 * (d_cpu / dt) / float(n)))
 
         vm = psutil.virtual_memory()
-        rss = float(p.memory_info().rss)
+        rss = float(_tree_rss_bytes(p))
         ram_pct = 100.0 * rss / float(vm.total) if vm.total else 0.0
         ram_pct = max(0.0, min(100.0, ram_pct))
     except Exception:

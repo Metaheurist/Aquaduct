@@ -56,6 +56,9 @@ Central place for:
   - `api_models`: nested per-role `ApiRoleConfig` — `llm`, `image`, `video`, `voice` each with `provider`, `model`, optional `base_url` / `org_id` (LLM), `voice_id` (voice).
   - `api_openai_key`, `api_replicate_token`: optional saved keys; **`OPENAI_API_KEY`**, **`REPLICATE_API_TOKEN`** / **`REPLICATE_API_KEY`** override when set in the environment.
   - See [API generation](api_generation.md) and [Models](models.md) for behavior when `api` mode is on.
+- **Model files location (local inference only)** ([`src/core/models_dir.py`](../src/core/models_dir.py)):
+  - `models_storage_mode`: `"default"` — use **`.Aquaduct_data/models`** (same as `get_paths().models_dir`).
+  - `models_external_path`: when `models_storage_mode == "external"`, non-empty path to a folder for Hugging Face snapshots (invalid paths fall back to default). Used for downloads, loading weights, and CLI `models` commands when saved in `ui_settings.json`.
 
 Task queue for finished renders (Tasks tab) is stored in `data/upload_tasks.json` (paths + per-row TikTok/YouTube upload metadata); keep it local / gitignored.
 

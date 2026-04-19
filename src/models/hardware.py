@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import platform
@@ -102,6 +102,18 @@ def get_hardware_info() -> HardwareInfo:
         vram_gb = tvram
 
     return HardwareInfo(os=os_name, cpu=cpu, ram_gb=ram_gb, gpu_name=gpu_name, vram_gb=vram_gb)
+
+
+def fit_marker_display(marker: str) -> str:
+    """
+    User-facing label for fit badges and tables.
+
+    Internal codes (e.g. ``NO_GPU``) are unchanged for logic, tests, and ranking.
+    """
+    m = (marker or "").strip().upper()
+    if m == "NO_GPU":
+        return "VRAM Limit"
+    return (marker or "").strip() or "UNKNOWN"
 
 
 def rate_model_fit(*, kind: str, speed: str, vram_gb: float | None, ram_gb: float | None) -> tuple[str, str]:

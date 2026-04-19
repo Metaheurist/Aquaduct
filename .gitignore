@@ -36,6 +36,11 @@ build/ai-news-factory*/
 # Local model downloads at repo root can be huge; never commit them (not src/models package)
 /models/
 
+# Offsite HF download bundles (generated; may contain embedded HF tokens — never commit)
+Model-Downloads/*
+!Model-Downloads/README.md
+!Model-Downloads/generate_offsite_bundle.py
+
 # Local app state (do not commit)
 .Aquaduct_data/
 # Legacy paths (before .Aquaduct_data); keep ignored if leftover from older builds

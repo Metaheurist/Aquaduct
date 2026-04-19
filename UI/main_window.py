@@ -48,6 +48,7 @@ from src.core.config import (
     default_api_models,
     get_paths,
 )
+from src.core.models_dir import models_dir_for_app
 from src.models.model_integrity_cache import (
     integrity_cache_path,
     load_integrity_cache,
@@ -367,6 +368,47 @@ class MainWindow(QMainWindow):
         if self.storyboard_worker is not None and self.storyboard_worker.isRunning():
             return True
         return False
+
+    def _running_tasks_badge_count(self) -> int:
+        """Pipeline/preview/storyboard workers, queued runs, and Tasks-tab uploads — for the Tasks tab label."""
+        n = len(getattr(self, "_pipeline_run_queue", None) or [])
+        if self.worker is not None and self.worker.isRunning():
+            n += 1
+        if self.preview_worker is not None and self.preview_worker.isRunning():
+            n += 1
+        if self.storyboard_worker is not None and self.storyboard_worker.isRunning():
+            n += 1
+        if self.tiktok_upload_worker is not None and self.tiktok_upload_worker.isRunning():
+            n += 1
+        if self.youtube_upload_worker is not None and self.youtube_upload_worker.isRunning():
+            n += 1
+        return n
+
+    def _update_tasks_tab_badge(self) -> None:
+        """Show ``Tasks`` or ``Tasks (n)`` on the Tasks tab when work is active or queued."""
+        if not hasattr(self, "tabs") or not hasattr(self, "_tasks_tab_widget"):
+            return
+        try:
+            idx = self.tabs.indexOf(self._tasks_tab_widget)
+            if idx < 0:
+                return
+        except Exception:
+            return
+        n = self._running_tasks_badge_count()
+        self.tabs.setTabText(idx, "Tasks" if n <= 0 else f"Tasks ({n})")
+        try:
+            if n > 0:
+                self.tabs.setTabToolTip(
+                    idx,
+                    f"{n} job(s) running or queued (pipeline, preview, storyboard, or upload).",
+                )
+            else:
+                self.tabs.setTabToolTip(
+                    idx,
+                    "Finished videos; in-progress work appears at the top of the list.",
+                )
+        except Exception:
+            pass
 
     def _clear_all_data(self) -> None:
         """
@@ -1079,6 +1121,18 @@ class MainWindow(QMainWindow):
         )
         if mex not in ("local", "api"):
             mex = "local"
+        msm = (
+            str(self.models_storage_mode_combo.currentData() or "default")
+            if hasattr(self, "models_storage_mode_combo")
+            else str(getattr(self.settings, "models_storage_mode", "default") or "default")
+        )
+        if msm not in ("default", "external"):
+            msm = "default"
+        mext = (
+            str(self.models_external_path_edit.text()).strip()
+            if hasattr(self, "models_external_path_edit")
+            else str(getattr(self.settings, "models_external_path", "") or "")
+        )
         api_openai_key = (
             str(self.api_gen_openai_key.text()).strip()
             if hasattr(self, "api_gen_openai_key")
@@ -1119,6 +1173,8 @@ class MainWindow(QMainWindow):
             topic_tags_by_mode=topic_map,
             video_format=vfmt,
             model_execution_mode=mex,  # type: ignore[arg-type]
+            models_storage_mode=msm,  # type: ignore[arg-type]
+            models_external_path=mext,
             api_models=api_models,
             api_openai_key=api_openai_key,
             api_replicate_token=api_replicate_token,
@@ -1179,6 +1235,10 @@ class MainWindow(QMainWindow):
             video=video,
             branding=branding,
         )
+
+    def effective_models_dir(self) -> Path:
+        """Folder for Hugging Face snapshots: default ``.Aquaduct_data/models`` or configured external path."""
+        return models_dir_for_app(self._collect_settings_from_ui())
 
     def _show_resource_graph(self) -> None:
         from UI.resource_graph_dialog import ResourceGraphDialog
@@ -1298,7 +1358,7 @@ class MainWindow(QMainWindow):
         need: list[str] = []
         have: list[str] = []
         seen: set[str] = set()
-        models_dir = self.paths.models_dir
+        models_dir = self.effective_models_dir()
         for r in repo_ids:
             r = str(r).strip()
             if not r or r in seen:
@@ -1492,7 +1552,7 @@ class MainWindow(QMainWindow):
 
         # Check disk space
         import shutil
-        models_dir = self.paths.models_dir
+        models_dir = self.effective_models_dir()
         models_dir.mkdir(parents=True, exist_ok=True)
         total, used, free = shutil.disk_usage(models_dir)
         free_gb = free / (1024**3)
@@ -1585,7 +1645,7 @@ class MainWindow(QMainWindow):
                 continue
             seen.add(r)
             out.append(r)
-        models_dir = self.paths.models_dir
+        models_dir = self.effective_models_dir()
         return [r for r in out if model_has_local_snapshot(r, models_dir=models_dir)]
 
     def _verify_models_checksums_selected(self) -> None:
@@ -1593,7 +1653,7 @@ class MainWindow(QMainWindow):
         self._start_integrity_verify(repo_ids, scope_label="selected models")
 
     def _verify_models_checksums_all(self) -> None:
-        repo_ids = list_installed_repo_ids_from_disk(self.paths.models_dir)
+        repo_ids = list_installed_repo_ids_from_disk(self.effective_models_dir())
         self._start_integrity_verify(repo_ids, scope_label="all folders in models/")
 
     def _start_integrity_verify(self, repo_ids: list[str], *, scope_label: str) -> None:
@@ -1612,7 +1672,7 @@ class MainWindow(QMainWindow):
         )
         self._integrity_worker = ModelIntegrityVerifyWorker(
             repo_ids=repo_ids,
-            models_dir=self.paths.models_dir,
+            models_dir=self.effective_models_dir(),
             scope_label=scope_label,
         )
 
@@ -1731,7 +1791,7 @@ class MainWindow(QMainWindow):
         remote_sizes = dict(getattr(self, "_hf_remote_sizes", None) or {})
         self.download_worker = ModelDownloadWorker(
             repo_ids=repo_ids,
-            models_dir=self.paths.models_dir,
+            models_dir=self.effective_models_dir(),
             title=title,
             remote_bytes_by_repo=remote_sizes,
         )
@@ -1867,6 +1927,14 @@ class MainWindow(QMainWindow):
         self._append_log("FFmpeg download failed:")
         self._append_log(err[:4000])
 
+    def _set_run_btn_allow_queue_while_pipeline_runs(self) -> None:
+        """Keep **Run** enabled after a pipeline starts so another click can enqueue (FIFO)."""
+        if hasattr(self, "run_btn"):
+            try:
+                self.run_btn.setEnabled(True)
+            except Exception:
+                pass
+
     def _attach_and_start_pipeline_worker(
         self,
         settings: AppSettings,
@@ -1878,7 +1946,6 @@ class MainWindow(QMainWindow):
         prebuilt_seeds=None,
     ) -> None:
         """Preflight must have passed. Starts PipelineWorker or PipelineBatchWorker."""
-        self.run_btn.setEnabled(False)
         qty = max(1, int(quantity))
 
         def on_prog(tid: str, overall_pct: int, task_pct: int, status: str) -> None:
@@ -1904,6 +1971,7 @@ class MainWindow(QMainWindow):
             self.worker.failed.connect(self._on_failed)
             self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
+            self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
         if prebuilt_prompts is not None and prebuilt_seeds is not None:
@@ -1926,6 +1994,7 @@ class MainWindow(QMainWindow):
             self.worker.failed.connect(self._on_failed)
             self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
+            self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
         if qty <= 1:
@@ -1941,6 +2010,7 @@ class MainWindow(QMainWindow):
             self.worker.failed.connect(self._on_failed)
             self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
+            self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
         self._set_tasks_active_row(f"Batch pipeline ({qty} videos)", "Starting…", folder="Queued")
@@ -1951,6 +2021,7 @@ class MainWindow(QMainWindow):
         self.worker.failed.connect(self._on_failed)
         self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
         self.worker.start()
+        self._set_run_btn_allow_queue_while_pipeline_runs()
 
     def _drain_pipeline_worker(self) -> None:
         """Wait for the pipeline QThread to finish and drop the reference.
@@ -2046,6 +2117,7 @@ class MainWindow(QMainWindow):
             self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": qty})
             n = len(self._pipeline_run_queue)
             self._append_log(f"Run queued ({n} job(s) waiting after the current one).")
+            self._update_tasks_tab_badge()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -2186,6 +2258,7 @@ class MainWindow(QMainWindow):
             )
             n = len(self._pipeline_run_queue)
             self._append_log(f"Approved preview run queued ({n} job(s) waiting after the current one).")
+            self._update_tasks_tab_badge()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -2310,6 +2383,7 @@ class MainWindow(QMainWindow):
             )
             n = len(self._pipeline_run_queue)
             self._append_log(f"Approved storyboard run queued ({n} job(s) waiting after the current one).")
+            self._update_tasks_tab_badge()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -2578,6 +2652,7 @@ class MainWindow(QMainWindow):
             self.tasks_table.setItem(r, 3, QTableWidgetItem(t.created_at[:19] if t.created_at else ""))
             vd = Path(t.video_dir).name
             self.tasks_table.setItem(r, 4, QTableWidgetItem(vd))
+        self._update_tasks_tab_badge()
 
     def _tasks_selected_id(self) -> str | None:
         if not hasattr(self, "tasks_table"):
@@ -2691,6 +2766,7 @@ class MainWindow(QMainWindow):
         self.tiktok_upload_worker.finished_ok.connect(self._on_tiktok_upload_ok)
         self.tiktok_upload_worker.failed.connect(self._on_tiktok_upload_failed)
         self.tiktok_upload_worker.start()
+        self._update_tasks_tab_badge()
 
     def _start_youtube_upload_worker(self, task_id: str) -> None:
         self.settings = self._collect_settings_from_ui()
@@ -2698,6 +2774,7 @@ class MainWindow(QMainWindow):
         self.youtube_upload_worker.finished_ok.connect(self._on_youtube_upload_ok)
         self.youtube_upload_worker.failed.connect(self._on_youtube_upload_failed)
         self.youtube_upload_worker.start()
+        self._update_tasks_tab_badge()
 
     def _on_tiktok_upload_ok(self, message: str, access: str, refresh: str, exp: float) -> None:
         self._append_log(message)

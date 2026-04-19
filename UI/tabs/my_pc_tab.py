@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QLabel, QFormLayout, QFrame, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from src.models.hardware import get_hardware_info, rate_model_fit_for_repo
+from src.models.hardware import fit_marker_display, get_hardware_info, rate_model_fit_for_repo
 from src.models.model_manager import model_options
 
 
@@ -68,7 +68,7 @@ def attach_my_pc_tab(win) -> None:
     lay.addWidget(card)
 
     legend = QLabel(
-        "Fit legend: EXCELLENT (green) • OK (blue) • RISKY (amber) • NO_GPU (red) • UNKNOWN (gray)"
+        "Fit legend: EXCELLENT (green) • OK (blue) • RISKY (amber) • VRAM Limit (red) • UNKNOWN (gray)"
     )
     legend.setStyleSheet("color: #B7B7C2; margin-top: 8px;")
     lay.addWidget(legend)
@@ -95,7 +95,7 @@ def attach_my_pc_tab(win) -> None:
         table.setItem(r, 0, QTableWidgetItem(opt.kind))
         table.setItem(r, 1, QTableWidgetItem(opt.repo_id))
         table.setItem(r, 2, QTableWidgetItem(opt.speed))
-        fit_item = QTableWidgetItem(marker)
+        fit_item = QTableWidgetItem(fit_marker_display(marker))
         fit_item.setBackground(bg)
         fit_item.setForeground(fg)
         table.setItem(r, 3, fit_item)

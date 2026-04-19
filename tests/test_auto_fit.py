@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from src.models.hardware import AutoFitRanked, HardwareInfo, rank_models_for_auto_fit, voice_fit_marker
+from src.models.hardware import (
+    AutoFitRanked,
+    HardwareInfo,
+    fit_marker_display,
+    rank_models_for_auto_fit,
+    voice_fit_marker,
+)
 from src.models.model_manager import model_options
 
 
@@ -43,3 +49,8 @@ def test_voice_fit_marker_penalizes_bark_on_small_vram() -> None:
 def test_voice_fit_marker_ok_for_kokoro() -> None:
     m, _ = voice_fit_marker("hexgrad/Kokoro-82M", None)
     assert m == "EXCELLENT"
+
+
+def test_fit_marker_display_maps_no_gpu_to_vram_limit() -> None:
+    assert fit_marker_display("NO_GPU") == "VRAM Limit"
+    assert fit_marker_display("OK") == "OK"

@@ -103,9 +103,10 @@ python main.py --once
 Same folder, optional: `. .\scripts\setup_terminal_env.ps1` after `cd` to activate `.venv` (see [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1)).
 
 ## Project layout
-- `main.py`: one-shot run (`--once`) or infinite loop (default)
+- `main.py`: one-shot run (`--once`) or infinite loop (default); `python main.py <subcommand>` for [headless CLI](docs/cli.md)
 - `src/`: pipeline modules
 - `UI/`: PyQt6 desktop UI package (TikTok-style theme; tabs under `UI/tabs/`; launcher `UI/ui_app.py`)
+- `Model-Downloads/`: generator + README for **offsite** model download bundles (generated `offsite/` output is gitignored — see [Model-Downloads/README.md](Model-Downloads/README.md))
 - `data/upload_tasks.json`: local queue for finished renders (Tasks tab); gitignored
 - `data/characters.json`: Character Builder profiles (Tasks/Run); gitignored
 - `data/news_cache/`: URL + title dedupe caches (`seen_<mode>.json`, `seen_titles_<mode>.json`; legacy `seen.json` may still appear until cleared or migrated)
@@ -140,7 +141,7 @@ Tabs:
 - **Video**: **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
-- **Model**: Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already under `models/`
+- **Model**: **Local \| API** toggle; **Model files location** (**Default** \| **External** folder for Hub snapshots); Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already present on disk under the active models folder
 - **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
 
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
@@ -158,6 +159,7 @@ Example:
 ```
 
 ## Docs
+- [Headless CLI](docs/cli.md) (`run`, `preflight`, `config`, `models`, `tasks`, `version`)
 - [API execution mode](docs/api_generation.md)
 - [Build & verify Windows EXE](docs/building_windows_exe.md)
 - [Performance (import / cold start)](docs/performance.md)

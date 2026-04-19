@@ -15,6 +15,7 @@ from .character_presets import (
     extract_first_json_object,
 )
 from src.core.config import ARTICLE_EXCERPT_MAX_CHARS, BrandingSettings, get_paths
+from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.render.branding_video import palette_prompt_suffix, video_style_strength
 from debug import dprint
@@ -1158,7 +1159,7 @@ def _generate_with_transformers(
         _emit_llm(on_llm_task, "llm_load", 55, detail)
 
     # Load from project `models/<repo>/` when present; plain repo id uses HF cache (extra downloads).
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_paths().models_dir)
+    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
 
     _emit_llm(on_llm_task, "llm_load", 0, "Loading tokenizer…")
     tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)

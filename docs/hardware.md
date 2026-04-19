@@ -18,6 +18,9 @@ The app attempts to detect:
 
 If a field can’t be detected, the UI shows “(not detected)”.
 
+## Resource usage graph (title bar 📈)
+The sample shows **CPU for the whole process tree** (Python plus subprocesses such as FFmpeg), **RSS for the tree**, and **current CUDA VRAM**. VRAM often **drops** after a GPU stage finishes (e.g. after Pro text-to-video clips, while the pipeline muxes audio/captions with FFmpeg). The pipeline **runs stages sequentially** and may **unload** models between steps to limit peak memory — it is not designed to keep every model resident at maximum utilization at once.
+
 ## Minimum requirements (guidance)
 Recommended for best results:
 - **GPU VRAM**: ≥ 8GB

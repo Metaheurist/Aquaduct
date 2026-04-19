@@ -467,7 +467,11 @@ def run_once_api(
     if bool(getattr(video_settings, "pro_mode", False)):
         from main import _split_into_pro_scenes_from_script
 
-        pro_scenes = _split_into_pro_scenes_from_script(pkg=pkg, prompts=prompts)
+        pro_scenes = _split_into_pro_scenes_from_script(
+            pkg=pkg,
+            prompts=prompts,
+            video_format=str(getattr(app, "video_format", "news") or "news"),
+        )
         (assets_dir / "pro_prompt.txt").write_text("\n\n".join(pro_scenes), encoding="utf-8")
         _pipe_progress(on_progress, 68, -1, "Text-to-video (API / Replicate)…")
         clip_dir = assets_dir / "pro_clips"

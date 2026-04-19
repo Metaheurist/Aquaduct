@@ -13,7 +13,7 @@ Fetch trending AI-tool news with a **free default path** (no paid news APIs), op
 ### Mode-aware search strings
 Search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode`):
 - **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/content/topics.py`](../src/content/topics.py)); Google News RSS + MarkTechPost may supplement Firecrawl.
-- **cartoon** and **unhinged** — **creative / story-shaped** Firecrawl queries (plus alternates when the first pass is thin). In the **Topics → Discover** UI only, Google News RSS and MarkTechPost are skipped (`topic_discover_only=True`). For **runs, storyboard, and `get_scored_items`**, if Firecrawl still returns nothing, RSS + MarkTechPost are used as a last resort so the pipeline is not empty.
+- **cartoon** and **unhinged** — Firecrawl queries bias toward **animation / cartoon / meme / absurdist** language (not generic “sketch comedy” SEO or listicles). Extra alternate queries favor webcomics, animated shorts, and chaotic cartoon memes. In the **Topics → Discover** UI only, Google News RSS and MarkTechPost are skipped (`topic_discover_only=True`). For **runs, storyboard, and `get_scored_items`**, if Firecrawl still returns nothing, RSS + MarkTechPost are used as a last resort so the pipeline is not empty. Topic phrase extraction ([`src/content/topic_discovery.py`](../src/content/topic_discovery.py)) drops listicle titles and bare platform names for these modes.
 
 `fetch_latest_items(..., topic_mode=...)` and pipeline fetches pass the current mode so **Discover** and runs match the selected format.
 

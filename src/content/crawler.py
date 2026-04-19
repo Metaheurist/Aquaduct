@@ -132,19 +132,20 @@ def _default_headline_query(mode: str | None) -> str:
     if video_format_uses_news_style_sourcing(m):
         return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
     if m == "cartoon":
-        # Creative seeds: jokes, memes, stories, art — not press headlines (Discover uses Firecrawl).
+        # Topics → Discover: bias toward **animation / cartoon** comedy, not generic standup sketch or listicles.
         return (
-            "(writing prompt OR \"short story\" OR reddit OR listicle OR joke OR jokes OR meme OR memes OR "
-            "\"funny story\" OR humor OR viral OR trivia OR wholesome OR parody OR sketch OR \"cool story\") "
-            "(animation OR cartoon OR comic OR character OR illustration OR meme OR art OR fandom OR "
-            "webcomic OR \"funny images\")"
+            "(\"adult animation\" OR \"animated comedy\" OR cartoon OR \"animated short\" OR webcomic OR animatic OR "
+            "\"2D animation\" OR \"cartoon parody\" OR \"animation meme\" OR \"funny cartoon\" OR \"visual comedy\") "
+            "(meme OR absurdist OR surreal OR parody OR satire OR fandom OR \"character animation\" OR "
+            "\"wholesome animation\" OR \"short animation\")"
         )
     if m == "unhinged":
-        # Chaotic internet culture — jokes, memes, stories (Discover uses Firecrawl).
+        # Chaotic cartoon / meme culture — not generic “sketch comedy” SEO pages.
         return (
-            "(reddit OR tumblr OR meme OR memes OR joke OR jokes OR \"internet lore\" OR chaotic OR absurd OR "
-            "cursed OR copypasta OR \"shower thought\" OR discourse OR viral OR \"wtf\") "
-            "(comedy OR satire OR parody OR animation OR cartoon OR sketch OR shitpost OR meme)"
+            "(unhinged OR absurd OR surreal OR brainrot OR \"cursed animation\" OR \"chaotic cartoon\" OR "
+            "shitpost OR meme OR copypasta OR \"absurdist animation\" OR \"surreal meme\" OR liminal OR cursed OR "
+            "\"internet humor\") "
+            "(cartoon OR animation OR animated OR \"animated short\" OR parody OR satire OR meme OR comedy)"
         )
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
@@ -173,14 +174,17 @@ def _effective_query(
                 f"(release OR launched OR introduces OR \"new tool\")"
             )
         if mode == "cartoon":
+            # Tags steer search; require animation/cartoon language so “sketch” alone doesn’t pull live standup SEO.
             return (
-                f"({tag_expr}) (writing prompt OR \"short story\" OR reddit OR listicle OR funny OR weird OR "
-                f"wholesome OR parody OR sketch) (animation OR cartoon OR comic OR meme OR illustration)"
+                f"({tag_expr}) "
+                f"(cartoon OR animated OR animation OR webcomic OR \"adult animation\" OR \"animated comedy\" OR animatic) "
+                f"(meme OR parody OR absurdist OR surreal OR satire OR \"short animation\" OR \"funny animation\")"
             )
         if mode == "unhinged":
             return (
-                f"({tag_expr}) (reddit OR meme OR tumblr OR chaotic OR absurd OR viral OR comedy OR "
-                f"satire OR parody OR animation OR sketch OR \"internet culture\")"
+                f"({tag_expr}) "
+                f"(unhinged OR absurd OR surreal OR brainrot OR chaotic OR meme OR shitpost OR cursed OR liminal) "
+                f"(cartoon OR animation OR animated OR parody OR satire OR \"animated short\" OR absurdist)"
             )
         return f"({tag_expr}) {_default_headline_query(mode)}"
     return _default_headline_query(mode)
@@ -198,17 +202,17 @@ def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[s
         tag_prefix = f"({tag_expr}) "
     if m == "cartoon":
         rest = [
-            "(reddit OR boredpanda OR tumblr OR \"writing prompt\") (cartoon OR animation OR comic OR funny OR art)",
-            "(wholesome OR absurd OR parody OR trivia OR listicle) (character OR illustration OR meme OR animated)",
-            "(meme OR memes OR jokes OR humor OR \"reaction gif\" OR imgur OR tiktok) (reddit OR comedy OR cartoon OR funny)",
-            "(short story OR webcomic OR humor OR satire) (illustration OR animation OR meme OR art OR fandom)",
+            "(webcomic OR tapas OR webtoon OR newgrounds OR artstation) (cartoon OR animation OR comedy OR funny OR meme)",
+            "(\"animated short\" OR animatic OR \"2D cartoon\" OR \"cartoon clip\") (comedy OR parody OR meme OR absurdist)",
+            "(\"cartoon meme\" OR \"animation meme\" OR \"funny cartoon\" OR \"cursed cartoon\") (viral OR absurdist OR surreal)",
+            "(\"character animation\" OR \"cartoon style\" OR illustration) (comedy OR humor OR satire) (animated OR cartoon)",
         ]
     else:
         rest = [
-            "(reddit OR tumblr OR meme OR copypasta OR chaotic) (comedy OR satire OR cartoon OR sketch)",
-            "(viral OR discourse OR absurd OR \"internet culture\") (animation OR parody OR comedy short)",
-            "(meme OR memes OR shitpost OR cursed OR copypasta) (reddit OR tumblr OR twitter OR funny)",
-            "(jokes OR chaotic OR viral OR \"wtf\") (meme OR sketch OR cartoon OR comedy)",
+            "(\"absurdist animation\" OR \"surreal cartoon\" OR \"cursed cartoon\" OR unhinged) (meme OR viral OR comedy OR parody)",
+            "(brainrot OR shitpost OR copypasta OR liminal) (cartoon OR animation OR meme OR absurd OR chaotic)",
+            "(reddit OR tumblr) (\"animated meme\" OR \"cartoon clip\" OR \"funny animation\" OR absurdist OR surreal)",
+            "(chaotic OR uncanny OR \"internet horror\" OR cursed) (animation OR cartoon OR meme OR comedy short)",
         ]
     return [f"{tag_prefix}{q}".strip() for q in rest]
 
