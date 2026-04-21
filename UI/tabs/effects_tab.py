@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 
 from src.settings.effects_presets import EFFECT_PRESETS, find_best_preset_for_effects, preset_by_id
 from src.render.ffmpeg_slideshow import XFADE_TRANSITIONS
-from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 
 
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:

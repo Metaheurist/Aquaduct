@@ -19,7 +19,7 @@ from src.settings.api_model_catalog import (
     providers_for_role,
     uses_openai_chat_protocol_for_llm,
 )
-from UI.no_wheel_controls import NoWheelComboBox
+from UI.widgets.no_wheel_controls import NoWheelComboBox
 
 
 def _set_combo_data(combo: QComboBox, items: list[tuple[str, str]]) -> None:

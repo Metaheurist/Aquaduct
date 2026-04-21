@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.title_bar_outline_button import styled_outline_button
+from UI.widgets.title_bar_outline_button import styled_outline_button
 
 
 class FramelessDialog(QDialog):

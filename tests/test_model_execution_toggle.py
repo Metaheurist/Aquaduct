@@ -11,7 +11,7 @@ def test_model_execution_mode_toggle_data_and_index():
     if QApplication.instance() is None:
         _ = QApplication([])
 
-    from UI.model_execution_toggle import ModelExecutionModeToggle
+    from UI.widgets.model_execution_toggle import ModelExecutionModeToggle
 
     t = ModelExecutionModeToggle()
     assert t.currentData() == "local"

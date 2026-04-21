@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
     QTextEdit,
 )
 
-from UI.frameless_dialog import FramelessDialog
-from UI.title_bar_outline_button import styled_outline_button
+from UI.dialogs.frameless_dialog import FramelessDialog
+from UI.widgets.title_bar_outline_button import styled_outline_button
 
 from src.models.torch_install import (
     PipSubprocessRef,

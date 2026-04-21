@@ -23,19 +23,19 @@ def test_import_brain_api() -> None:
 
 def test_import_ui_api_model_widgets() -> None:
     pytest.importorskip("PyQt6.QtWidgets")
-    importlib.import_module("UI.api_model_widgets")
+    importlib.import_module("UI.services.api_model_widgets")
 
 
 def test_import_ui_tutorial_links() -> None:
     pytest.importorskip("PyQt6.QtWidgets")
-    importlib.import_module("UI.tutorial_links")
+    importlib.import_module("UI.help.tutorial_links")
 
 
 def test_import_ui_title_bar_outline_button() -> None:
     pytest.importorskip("PyQt6.QtWidgets")
-    importlib.import_module("UI.title_bar_outline_button")
+    importlib.import_module("UI.widgets.title_bar_outline_button")
 
 
 def test_import_ui_frameless_dialog() -> None:
     pytest.importorskip("PyQt6.QtWidgets")
-    importlib.import_module("UI.frameless_dialog")
+    importlib.import_module("UI.dialogs.frameless_dialog")

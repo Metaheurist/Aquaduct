@@ -40,12 +40,12 @@ from src.models.model_manager import (
     model_has_local_snapshot,
     model_options,
 )
-from UI.frameless_dialog import aquaduct_information
-from UI.model_execution_toggle import ModelExecutionModeToggle
-from UI.models_storage_toggle import ModelsStorageModeToggle
-from UI.no_wheel_controls import NoWheelComboBox
-from UI.tab_sections import add_section_spacing, section_title
-from UI.tutorial_links import help_tooltip_rich
+from UI.dialogs.frameless_dialog import aquaduct_information
+from UI.widgets.model_execution_toggle import ModelExecutionModeToggle
+from UI.widgets.models_storage_toggle import ModelsStorageModeToggle
+from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.tab_sections import add_section_spacing, section_title
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.workers import ModelSizePingWorker
 
 

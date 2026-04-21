@@ -4,7 +4,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
-from UI.title_bar_outline_button import styled_outline_button
+from UI.widgets.title_bar_outline_button import styled_outline_button
 
 
 class DownloadPopup(QDialog):

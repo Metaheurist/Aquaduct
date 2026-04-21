@@ -44,11 +44,11 @@ from src.runtime.model_backend import api_role_ready, is_api_mode
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.settings.ui_settings import save_settings
 from src.speech.voice import list_pyttsx3_voices as list_sys_voices
-from UI.brain_expand import image_model_id_from_ui, resolve_llm_model_id
-from UI.frameless_dialog import aquaduct_question, aquaduct_warning
-from UI.no_wheel_controls import NoWheelComboBox
-from UI.tab_sections import add_section_spacing, section_card, section_title
-from UI.tutorial_links import help_tooltip_rich
+from UI.services.brain_expand import image_model_id_from_ui, resolve_llm_model_id
+from UI.dialogs.frameless_dialog import aquaduct_question, aquaduct_warning
+from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
 

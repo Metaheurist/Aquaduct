@@ -12,7 +12,7 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
     from src.content.brain import ScriptSegment, VideoPackage
     from src.core.config import AppSettings
 
-    import UI.workers as wmod
+    import UI.workers.impl as wmod
 
     monkeypatch.setattr(wmod, "get_scored_items", lambda *a, **k: (_ for _ in ()).throw(AssertionError("news cache should not load")))
     monkeypatch.setattr(wmod, "get_latest_items", lambda *a, **k: (_ for _ in ()).throw(AssertionError("news cache should not load")))

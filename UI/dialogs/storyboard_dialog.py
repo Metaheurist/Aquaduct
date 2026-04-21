@@ -18,8 +18,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.frameless_dialog import FramelessDialog, aquaduct_information, aquaduct_warning
-from UI.no_wheel_controls import NoWheelSpinBox
+from UI.dialogs.frameless_dialog import FramelessDialog, aquaduct_information, aquaduct_warning
+from UI.widgets.no_wheel_controls import NoWheelSpinBox
 
 
 class StoryboardPreviewDialog(FramelessDialog):

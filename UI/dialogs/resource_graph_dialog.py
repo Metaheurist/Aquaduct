@@ -8,8 +8,8 @@ from PyQt6.QtCore import QPointF, QTimer, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from UI.frameless_dialog import FramelessDialog
-from UI.no_wheel_controls import NoWheelComboBox
+from UI.dialogs.frameless_dialog import FramelessDialog
+from UI.widgets.no_wheel_controls import NoWheelComboBox
 
 from src.models.hardware import list_cuda_gpus
 from src.util.resource_sample import sample_aquaduct_resources, sample_gpu_mem_pct

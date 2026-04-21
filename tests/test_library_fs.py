@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from UI.library_fs import format_byte_size, scan_finished_videos, scan_run_workspaces
+from UI.services.library_fs import format_byte_size, scan_finished_videos, scan_run_workspaces
 
 
 def test_format_byte_size() -> None:

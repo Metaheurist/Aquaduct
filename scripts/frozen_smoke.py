@@ -30,7 +30,7 @@ _MODULES = (
     "src.runtime.pipeline_api",
     "src.runtime.generation_facade",
     "UI.workers",
-    "UI.api_model_widgets",
+    "UI.services.api_model_widgets",
     "UI.app",
 )
 

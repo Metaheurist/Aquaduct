@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.qt
 def test_styled_outline_button_fixed_and_min_sizes(qapplication):
-    from UI.title_bar_outline_button import TitleBarOutlineButton, styled_outline_button
+    from UI.widgets.title_bar_outline_button import TitleBarOutlineButton, styled_outline_button
 
     close = styled_outline_button("✕", "danger", fixed=(44, 32))
     assert isinstance(close, TitleBarOutlineButton)
@@ -21,7 +21,7 @@ def test_styled_outline_button_fixed_and_min_sizes(qapplication):
 
 @pytest.mark.qt
 def test_title_bar_outline_button_chrome_property(qapplication):
-    from UI.title_bar_outline_button import TitleBarOutlineButton
+    from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
 
     b = TitleBarOutlineButton("x", variant="muted_icon")
     assert b.property("chrome") == "title_outline"
@@ -29,8 +29,8 @@ def test_title_bar_outline_button_chrome_property(qapplication):
 
 @pytest.mark.qt
 def test_frameless_dialog_close_is_outline_button(qapplication):
-    from UI.frameless_dialog import FramelessDialog
-    from UI.title_bar_outline_button import TitleBarOutlineButton
+    from UI.dialogs.frameless_dialog import FramelessDialog
+    from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
 
     d = FramelessDialog(None, title="Test")
     close = getattr(d, "_frameless_close_button", None)
@@ -40,8 +40,8 @@ def test_frameless_dialog_close_is_outline_button(qapplication):
 
 @pytest.mark.qt
 def test_tutorial_dialog_nav_buttons_are_outline(qapplication):
-    from UI.title_bar_outline_button import TitleBarOutlineButton
-    from UI.tutorial_dialog import TutorialDialog
+    from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
+    from UI.dialogs.tutorial_dialog import TutorialDialog
 
     dlg = TutorialDialog(None)
     assert isinstance(dlg._prev_btn, TitleBarOutlineButton)

@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.frameless_dialog import FramelessDialog
+from UI.dialogs.frameless_dialog import FramelessDialog
 
 
 class PreviewDialog(FramelessDialog):

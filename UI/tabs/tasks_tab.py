@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.tutorial_links import help_tooltip_rich
+from UI.help.tutorial_links import help_tooltip_rich
 
 
 def attach_tasks_tab(win) -> None:

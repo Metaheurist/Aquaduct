@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.tutorial_dialog import TUTORIAL_TOPICS
+from UI.dialogs.tutorial_dialog import TUTORIAL_TOPICS
 
 TUTORIAL_TOPIC_IDS: tuple[str, ...] = tuple(t.topic_id for t in TUTORIAL_TOPICS)
 
