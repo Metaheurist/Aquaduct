@@ -19,7 +19,7 @@ from src.content.characters_store import load_all
 from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
 from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
-from UI.tab_sections import add_section_spacing, section_title
+from UI.tab_sections import add_section_spacing, section_card, section_title
 from UI.tutorial_links import help_tooltip_rich
 
 
@@ -31,7 +31,8 @@ def attach_run_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
-    lay.addWidget(section_title("Output"))
+    out_card, out_lay = section_card()
+    out_lay.addWidget(section_title("Output", emphasis=True))
     qty_row = QHBoxLayout()
     qty_lbl = QLabel("Videos to generate")
     qty_lbl.setStyleSheet("color: #B7B7C2;")
@@ -50,7 +51,7 @@ def attach_run_tab(win) -> None:
     )
     qty_row.addWidget(win.run_qty_spin)
     qty_row.addStretch(1)
-    lay.addLayout(qty_row)
+    out_lay.addLayout(qty_row)
 
     fmt_row = QHBoxLayout()
     win._video_format_label = QLabel("Video format")
@@ -69,7 +70,7 @@ def attach_run_tab(win) -> None:
     win.video_format_combo.setCurrentIndex(idx_vf if idx_vf >= 0 else 0)
     fmt_row.addWidget(win.video_format_combo, 1)
     fmt_row.addStretch(1)
-    lay.addLayout(fmt_row)
+    out_lay.addLayout(fmt_row)
 
     pic_row = QHBoxLayout()
     win._picture_format_label = QLabel("Picture format")
@@ -82,7 +83,7 @@ def attach_run_tab(win) -> None:
     win.picture_format_run_combo.setCurrentIndex(0)
     pic_row.addWidget(win.picture_format_run_combo, 1)
     pic_row.addStretch(1)
-    lay.addLayout(pic_row)
+    out_lay.addLayout(pic_row)
 
     # Initial mode visibility (title-bar toggle updates via main_window._apply_media_mode_ui).
     try:
@@ -113,10 +114,12 @@ def attach_run_tab(win) -> None:
     win.art_style_preset_combo.setCurrentIndex(ix_as if ix_as >= 0 else 0)
     style_row.addWidget(win.art_style_preset_combo, 1)
     style_row.addStretch(1)
-    lay.addLayout(style_row)
+    out_lay.addLayout(style_row)
+    lay.addWidget(out_card)
 
     add_section_spacing(lay)
-    lay.addWidget(section_title("Script & content"))
+    sc_card, sc_lay = section_card()
+    sc_lay.addWidget(section_title("Script & content", emphasis=True))
     mode_row = QHBoxLayout()
     mode_lbl = QLabel("Content source")
     mode_lbl.setStyleSheet("color: #B7B7C2;")
@@ -133,7 +136,7 @@ def attach_run_tab(win) -> None:
     mode_row.addWidget(win.run_content_preset_radio)
     mode_row.addWidget(win.run_content_custom_radio)
     mode_row.addStretch(1)
-    lay.addLayout(mode_row)
+    sc_lay.addLayout(mode_row)
 
     win.custom_instructions_edit = QTextEdit()
     win.custom_instructions_edit.setAcceptRichText(False)
@@ -144,7 +147,7 @@ def attach_run_tab(win) -> None:
     win.custom_instructions_edit.setPlainText(str(getattr(win.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS])
     win.custom_instructions_edit.setMinimumHeight(72)
     win.custom_instructions_edit.setMaximumHeight(160)
-    lay.addWidget(win.custom_instructions_edit)
+    sc_lay.addWidget(win.custom_instructions_edit)
 
     vf_hint = QLabel("")
     vf_hint.setWordWrap(True)
@@ -220,8 +223,19 @@ def attach_run_tab(win) -> None:
     win.video_format_combo.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
     win._sync_run_content_hints = _sync_content_mode_ui
     _sync_content_mode_ui()
+    # Keep this as a short, low-density hint; put details in the tooltip.
+    vf_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    vf_hint.setText("Tip: hover the Content source controls for details.")
+    vf_hint.setToolTip(
+        help_tooltip_rich(
+            "Preset uses Topics for the selected format. Custom expands your notes into a brief, then writes the script (two passes). "
+            "In Photo mode, Preset still steers prompts and headline picks; Custom drives the still/layout brief.",
+            "run",
+            slide=1,
+        )
+    )
     win.vf_hint_label = vf_hint
-    lay.addWidget(vf_hint)
+    sc_lay.addWidget(vf_hint)
 
     # Personality selection
     p_row = QHBoxLayout()
@@ -241,12 +255,12 @@ def attach_run_tab(win) -> None:
         win.personality_combo.setCurrentIndex(idx)
     p_row.addWidget(win.personality_combo, 1)
     p_row.addStretch(1)
-    lay.addLayout(p_row)
+    sc_lay.addLayout(p_row)
 
     win.personality_hint = QLabel("")
     win.personality_hint.setStyleSheet("color: #B7B7C2;")
     win.personality_hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-    lay.addWidget(win.personality_hint)
+    sc_lay.addWidget(win.personality_hint)
 
     c_row = QHBoxLayout()
     c_lbl = QLabel("Character")
@@ -266,18 +280,23 @@ def attach_run_tab(win) -> None:
             win.character_combo.setCurrentIndex(idx_c)
     c_row.addWidget(win.character_combo, 1)
     c_row.addStretch(1)
-    lay.addLayout(c_row)
+    sc_lay.addLayout(c_row)
+    lay.addWidget(sc_card)
 
     add_section_spacing(lay)
-    lay.addWidget(section_title("Actions"))
-    run_hint = QLabel("While a job runs, live status appears as the top row on the **Tasks** tab.")
-    run_hint.setWordWrap(True)
-    run_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
-    lay.addWidget(run_hint)
+    act_card, act_lay = section_card()
+    act_lay.addWidget(section_title("Actions", emphasis=True))
 
     row = QHBoxLayout()
     win.run_btn = QPushButton("Run")
     win.run_btn.setObjectName("primary")
+    win.run_btn.setToolTip(
+        help_tooltip_rich(
+            "While a job runs, live stage + percent appear as the top row on the Tasks tab.",
+            "run",
+            slide=0,
+        )
+    )
     win.run_btn.clicked.connect(win._on_run)
     row.addWidget(win.run_btn)
 
@@ -298,7 +317,8 @@ def attach_run_tab(win) -> None:
     row.addWidget(win.save_btn)
 
     row.addStretch(1)
-    lay.addLayout(row)
+    act_lay.addLayout(row)
+    lay.addWidget(act_card)
 
     win.tabs.addTab(w, "Run")
 
@@ -346,3 +366,13 @@ def refresh_run_tab_for_media_mode(win) -> None:
         win.open_videos_btn.setText("Open outputs folder" if is_photo else "Open videos folder")
     if hasattr(win, "_sync_run_content_hints"):
         win._sync_run_content_hints()
+    if hasattr(win, "run_btn"):
+        win.run_btn.setToolTip(
+            "Each Run starts one pipeline; status appears on the Tasks tab."
+            if is_photo
+            else help_tooltip_rich(
+                "While a job runs, live stage + percent appear as the top row on the Tasks tab.",
+                "run",
+                slide=0,
+            )
+        )

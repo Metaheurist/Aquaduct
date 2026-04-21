@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
 from src.core.config import VIDEO_FORMATS
 from UI.no_wheel_controls import NoWheelComboBox
+from UI.tab_sections import section_card, section_title
 from UI.tutorial_links import help_tooltip_rich
 
 
@@ -155,9 +156,17 @@ def attach_topics_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
-    header = QLabel("Topic tags (per source mode)")
+    header = QLabel("Topics")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
+
+    intro = QLabel("Per-mode tag lists — same modes as Run. Details: hover Help or the mode control.")
+    intro.setStyleSheet("color: #B7B7C2; font-size: 12px;")
+    intro.setWordWrap(True)
+    lay.addWidget(intro)
+
+    tags_card, tags_lay = section_card()
+    tags_lay.addWidget(section_title("Tags for selected mode", emphasis=True))
 
     mode_row = QHBoxLayout()
     mode_lbl = QLabel("Edit tags for")
@@ -176,18 +185,16 @@ def attach_topics_tab(win) -> None:
     win.topics_mode_combo.setCurrentIndex(tmi if tmi >= 0 else 0)
     mode_row.addWidget(win.topics_mode_combo, 1)
     mode_row.addStretch(1)
-    lay.addLayout(mode_row)
-
-    mode_hint = QLabel(
-        "Lists are separate per source mode (same modes as the Run tab headline/topic control). "
-        "In **Photo** mode, these tags still steer preset prompts and headline picks. "
-        "News and Explainer Discover use headline-style ideas. "
-        "Cartoon, Unhinged, and Creepypasta use Firecrawl for creative web pages. "
-        "Approved picks are added here."
+    tags_lay.addLayout(mode_row)
+    win.topics_mode_combo.setToolTip(
+        help_tooltip_rich(
+            "Separate lists per source mode (same as Run). Photo mode: tags still steer prompts. "
+            "News/Explainer Discover: headline ideas. Cartoon / Unhinged / Creepypasta: Firecrawl web pages. "
+            "Approved lines are added to this list.",
+            "topics_chars",
+            slide=1,
+        )
     )
-    mode_hint.setWordWrap(True)
-    mode_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
-    lay.addWidget(mode_hint)
 
     row = QHBoxLayout()
     win.tag_input = QLineEdit()
@@ -198,10 +205,10 @@ def attach_topics_tab(win) -> None:
     add_btn.setObjectName("primary")
     add_btn.clicked.connect(win._add_tag)
     row.addWidget(add_btn)
-    lay.addLayout(row)
+    tags_lay.addLayout(row)
 
     win.tag_list = QListWidget()
-    lay.addWidget(win.tag_list, 1)
+    tags_lay.addWidget(win.tag_list, 1)
 
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
@@ -225,7 +232,9 @@ def attach_topics_tab(win) -> None:
     clear_btn.clicked.connect(win._clear_tags)
     btn_row.addWidget(clear_btn)
     btn_row.addStretch(1)
-    lay.addLayout(btn_row)
+    tags_lay.addLayout(btn_row)
+
+    lay.addWidget(tags_card, 1)
 
     win.topics_mode_combo.currentIndexChanged.connect(win._on_topics_mode_changed)
     win._sync_tags_to_ui()

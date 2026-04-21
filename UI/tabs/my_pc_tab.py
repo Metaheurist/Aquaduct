@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-import os
-from dataclasses import replace
-
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QComboBox,
     QFormLayout,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QTableWidget,
@@ -25,7 +19,9 @@ from src.models.hardware import (
 )
 from src.models.model_manager import model_options
 from src.util.cuda_device_policy import effective_vram_gb_for_kind
+from UI.gpu_policy_toggle import GpuPolicyToggle
 from UI.no_wheel_controls import NoWheelComboBox
+from UI.tab_sections import add_section_spacing, section_card, section_title
 
 
 def _fit_colors(marker: str) -> tuple[QColor, QColor]:
@@ -45,132 +41,58 @@ def attach_my_pc_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
-    header = QLabel("My PC (hardware + model fit)")
+    header = QLabel("My PC")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
-    info = get_hardware_info()
-    sub = QLabel("Summary + what models should fit on this machine (uses GPU policy below).")
+    sub = QLabel("Hardware summary and per-model fit (uses GPU policy below).")
     sub.setStyleSheet("color: #B7B7C2;")
+    sub.setToolTip("Effective VRAM per model kind follows Auto vs Select GPU and cuda_device_policy.")
     lay.addWidget(sub)
 
-    card = QFrame()
-    card.setFrameShape(QFrame.Shape.StyledPanel)
-    card.setStyleSheet("QFrame { background: #14141A; border: 1px solid #2A2A34; border-radius: 10px; }")
-    card_lay = QVBoxLayout(card)
+    info = get_hardware_info()
+    gpus = list_cuda_gpus()
+
+    sys_f, sys_lay = section_card()
+    sys_lay.addWidget(section_title("This machine", emphasis=True))
 
     form = QFormLayout()
     form.setLabelAlignment(form.labelAlignment() | 0x2)
     os_lbl = QLabel(info.os)
     cpu_lbl = QLabel(info.cpu)
     ram_lbl = QLabel(f"{info.ram_gb:.1f} GB" if info.ram_gb else "(not detected)")
-    gpu_summary = QLabel()
-    if info.gpu_names_all:
-        gpu_summary.setText(info.gpu_names_all)
+    gpu_block = QLabel()
+    gpu_block.setWordWrap(True)
+    if gpus:
+        gpu_block.setText("\n".join(f"{g.name} ({g.total_vram_gb:.1f} GB)" for g in gpus))
     else:
-        gpu_summary.setText(info.gpu_name or "(not detected)")
-    vram_lbl = QLabel(f"{info.vram_gb:.1f} GB (max across GPUs)" if info.vram_gb else "(not detected)")
-    for v in (os_lbl, cpu_lbl, ram_lbl, gpu_summary, vram_lbl):
+        gpu_block.setText(info.gpu_name or "(not detected)")
+    for v in (os_lbl, cpu_lbl, ram_lbl, gpu_block):
         v.setStyleSheet("font-weight: 600;")
 
     form.addRow("OS", os_lbl)
     form.addRow("CPU", cpu_lbl)
     form.addRow("RAM", ram_lbl)
-    form.addRow("GPU(s)", gpu_summary)
-    form.addRow("VRAM (summary)", vram_lbl)
-    card_lay.addLayout(form)
-
-    gpus = list_cuda_gpus()
-    gpu_table = QTableWidget()
-    gpu_table.setColumnCount(5)
-    gpu_table.setHorizontalHeaderLabels(["#", "Name", "VRAM (GB)", "SMs", "CC"])
-    gpu_table.verticalHeader().setVisible(False)
-    gpu_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-    gpu_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-    if gpus:
-        gpu_table.setRowCount(len(gpus))
-        for r, g in enumerate(gpus):
-            gpu_table.setItem(r, 0, QTableWidgetItem(str(g.index)))
-            gpu_table.setItem(r, 1, QTableWidgetItem(g.name))
-            gpu_table.setItem(r, 2, QTableWidgetItem(f"{g.total_vram_gb:.2f}"))
-            gpu_table.setItem(r, 3, QTableWidgetItem(str(g.multiprocessor_count)))
-            cc = f"{g.major}.{g.minor}" if g.major or g.minor else "—"
-            gpu_table.setItem(r, 4, QTableWidgetItem(cc))
-        gpu_table.resizeColumnsToContents()
-    else:
-        gpu_table.setRowCount(1)
-        gpu_table.setItem(0, 0, QTableWidgetItem("—"))
-        gpu_table.setItem(0, 1, QTableWidgetItem("No CUDA GPUs detected (or PyTorch CPU-only)."))
-    card_lay.addWidget(QLabel("Detected GPUs"))
-    card_lay.addWidget(gpu_table)
+    form.addRow("GPU(s)", gpu_block)
+    sys_lay.addLayout(form)
 
     policy_row = QHBoxLayout()
-    policy_row.addWidget(QLabel("GPU policy:"))
-    win.gpu_policy_combo = NoWheelComboBox()
-    win.gpu_policy_combo.addItem("Auto — LLM on compute-heuristic GPU, diffusion on max VRAM", "auto")
-    win.gpu_policy_combo.addItem("Single GPU — pin all local stages to one device", "single")
-    policy_row.addWidget(win.gpu_policy_combo, 1)
-    card_lay.addLayout(policy_row)
+    policy_row.addWidget(QLabel("GPU policy"))
+    win.gpu_policy_toggle = GpuPolicyToggle()
+    policy_row.addWidget(win.gpu_policy_toggle, 0)
+    policy_row.addStretch(1)
+    sys_lay.addLayout(policy_row)
 
-    dev_row = QHBoxLayout()
-    dev_row.addWidget(QLabel("Device:"))
+    dev_wrap = QWidget()
+    dev_row = QHBoxLayout(dev_wrap)
+    dev_row.setContentsMargins(0, 0, 0, 0)
+    dev_row.addWidget(QLabel("Device"))
     win.gpu_device_combo = NoWheelComboBox()
     dev_row.addWidget(win.gpu_device_combo, 1)
-    card_lay.addLayout(dev_row)
+    sys_lay.addWidget(dev_wrap)
+    win._my_pc_device_row = dev_wrap
 
-    policy_hint = QLabel(
-        "Auto does not merge VRAM — it picks where each stage runs. "
-        '"Faster" for LLM is a heuristic (SMs × clock), not a benchmark.'
-    )
-    policy_hint.setWordWrap(True)
-    policy_hint.setStyleSheet("color: #8A8A96; font-size: 12px;")
-    card_lay.addWidget(policy_hint)
-
-    hint = QLabel(
-        "Rule of thumb: ≥ 8GB VRAM is the sweet spot for SDXL Turbo on the diffusion GPU. "
-        "The pipeline unloads models between stages to reduce peak VRAM."
-    )
-    hint.setWordWrap(True)
-    hint.setStyleSheet("color: #B7B7C2; margin-top: 6px;")
-    card_lay.addWidget(hint)
-    lay.addWidget(card)
-
-    legend = QLabel(
-        "<b>Fit markers</b> (same codes as <code>rate_model_fit_for_repo</code> / Model tab): "
-        "<b>EXCELLENT</b>, <b>OK</b>, <b>RISKY</b>, <b>UNKNOWN</b>, and internal <code>NO_GPU</code> "
-        "shown as <b>VRAM Limit</b>. Colors: green / blue / amber / gray / red."
-    )
-    legend.setWordWrap(True)
-    legend.setTextFormat(Qt.TextFormat.RichText)
-    legend.setStyleSheet("color: #B7B7C2; margin-top: 8px;")
-    lay.addWidget(legend)
-
-    policy_legend = QLabel(
-        "Fit uses <b>effective VRAM</b> per model kind from <b>GPU policy</b> above — "
-        "Auto: script (LLM) vs image/video (diffusion) may use different GPUs; Single: one GPU for all. "
-        "See docs/hardware.md."
-    )
-    policy_legend.setWordWrap(True)
-    policy_legend.setTextFormat(Qt.TextFormat.RichText)
-    policy_legend.setStyleSheet("color: #9A9AA8; font-size: 12px;")
-    lay.addWidget(policy_legend)
-
-    env_legend = QLabel()
-    env_legend.setWordWrap(True)
-    env_legend.setTextFormat(Qt.TextFormat.RichText)
-    raw_env = (os.environ.get("AQUADUCT_CUDA_DEVICE") or "").strip()
-    if raw_env:
-        env_legend.setText(
-            f"<b>Environment:</b> <code>AQUADUCT_CUDA_DEVICE={raw_env}</code> — overrides saved GPU policy; "
-            "fit rows below follow this pinned device."
-        )
-        env_legend.setStyleSheet("color: #E8C080; font-size: 12px;")
-    else:
-        env_legend.setText(
-            "<span style='color:#6A6A78;font-size:12px;'>"
-            "Tip: set <code>AQUADUCT_CUDA_DEVICE</code> to force one CUDA index for all stages (overrides UI policy).</span>"
-        )
-    lay.addWidget(env_legend)
+    lay.addWidget(sys_f)
 
     table = QTableWidget()
     opts = model_options()
@@ -180,6 +102,10 @@ def attach_my_pc_tab(win) -> None:
     table.verticalHeader().setVisible(False)
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+    table.setToolTip(
+        "Fit markers match the Model tab (EXCELLENT / OK / RISKY / …). "
+        "Rows use effective VRAM from the policy above (Auto vs Select GPU)."
+    )
 
     def _fill_model_table() -> None:
         app = getattr(win, "settings", None)
@@ -212,9 +138,9 @@ def attach_my_pc_tab(win) -> None:
         if s is None:
             return
         mode = str(getattr(s, "gpu_selection_mode", "auto") or "auto").strip().lower()
-        win.gpu_policy_combo.blockSignals(True)
-        win.gpu_policy_combo.setCurrentIndex(1 if mode == "single" else 0)
-        win.gpu_policy_combo.blockSignals(False)
+        win.gpu_policy_toggle.blockSignals(True)
+        win.gpu_policy_toggle.setCurrentIndex(1 if mode == "single" else 0)
+        win.gpu_policy_toggle.blockSignals(False)
         win.gpu_device_combo.blockSignals(True)
         win.gpu_device_combo.clear()
         if gpus:
@@ -226,11 +152,15 @@ def attach_my_pc_tab(win) -> None:
                     win.gpu_device_combo.setCurrentIndex(i)
                     break
         win.gpu_device_combo.blockSignals(False)
-        win.gpu_device_combo.setEnabled(mode == "single" and bool(gpus))
+        _update_device_row_visibility()
+
+    def _update_device_row_visibility() -> None:
+        mode = str(win.gpu_policy_toggle.currentData() or "auto")
+        show_dev = bool(gpus) and mode == "single"
+        win._my_pc_device_row.setVisible(show_dev)
 
     def _on_gpu_policy_changed(_i: int = 0) -> None:
-        mode = str(win.gpu_policy_combo.currentData() or "auto")
-        win.gpu_device_combo.setEnabled(mode == "single" and bool(gpus))
+        _update_device_row_visibility()
         if hasattr(win, "_save_settings"):
             win._save_settings()
         win.settings = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
@@ -253,9 +183,13 @@ def attach_my_pc_tab(win) -> None:
     _sync_gpu_combos_from_settings()
     _fill_model_table()
 
-    win.gpu_policy_combo.currentIndexChanged.connect(_on_gpu_policy_changed)
+    win.gpu_policy_toggle.currentIndexChanged.connect(_on_gpu_policy_changed)
     win.gpu_device_combo.currentIndexChanged.connect(_on_gpu_device_changed)
 
-    lay.addWidget(table, 1)
+    add_section_spacing(lay)
+    fit_f, fit_lay = section_card()
+    fit_lay.addWidget(section_title("Model fit", emphasis=True))
+    fit_lay.addWidget(table, 1)
+    lay.addWidget(fit_f, 1)
 
     win.tabs.addTab(w, "My PC")

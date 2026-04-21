@@ -47,6 +47,7 @@ from src.speech.voice import list_pyttsx3_voices as list_sys_voices
 from UI.brain_expand import image_model_id_from_ui, resolve_llm_model_id
 from UI.frameless_dialog import aquaduct_question, aquaduct_warning
 from UI.no_wheel_controls import NoWheelComboBox
+from UI.tab_sections import add_section_spacing, section_card, section_title
 from UI.tutorial_links import help_tooltip_rich
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
@@ -120,19 +121,13 @@ def attach_characters_tab(win) -> None:
     inner_lay.setContentsMargins(0, 0, 4, 8)
     inner_lay.setSpacing(3)
 
-    header = QLabel("Characters")
-    header.setStyleSheet("font-size: 13px; font-weight: 700;")
-    inner_lay.addWidget(header)
+    list_card, list_lay = section_card(margins=10, spacing=8)
+    list_lay.addWidget(section_title("Characters", emphasis=True))
 
-    hint = QLabel("Host identity, visuals, optional TTS — pick one on the Run tab.")
+    hint = QLabel("Host identity and visuals — assign on the Run tab.")
     hint.setWordWrap(True)
-    hint.setStyleSheet("color: #B7B7C2; font-size: 10px;")
-    inner_lay.addWidget(hint)
-
-    gen_hint = QLabel("Auto presets use the script (LLM) model from the Model tab to invent a profile — Save character when happy.")
-    gen_hint.setWordWrap(True)
-    gen_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
-    inner_lay.addWidget(gen_hint)
+    hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    list_lay.addWidget(hint)
 
     gen_row = QHBoxLayout()
     gen_row.setSpacing(6)
@@ -152,23 +147,24 @@ def attach_characters_tab(win) -> None:
     win.character_generate_btn.setMinimumWidth(132)
     win.character_generate_btn.setToolTip(
         help_tooltip_rich(
-            "Fill name, identity, visual style, and negatives using the Model-tab script LLM (loads weights like other brain tasks).",
+            "Fill name, identity, visual style, and negatives using the Model-tab script LLM (loads weights like other brain tasks). "
+            "Preset picks use the same LLM to invent a profile — click Save character when happy.",
             "topics_chars",
             slide=2,
         )
     )
     gen_row.addWidget(win.character_generate_btn)
-    inner_lay.addLayout(gen_row)
+    list_lay.addLayout(gen_row)
 
     win.character_preset_notes_edit = QLineEdit()
     win.character_preset_notes_edit.setPlaceholderText("Optional extra notes for this generation (style, audience, running gag…)")
     win.character_preset_notes_edit.setMaximumHeight(26)
-    inner_lay.addWidget(win.character_preset_notes_edit)
+    list_lay.addWidget(win.character_preset_notes_edit)
 
     win.characters_list = QListWidget()
     win.characters_list.setMinimumHeight(56)
     win.characters_list.setMaximumHeight(100)
-    inner_lay.addWidget(win.characters_list)
+    list_lay.addWidget(win.characters_list)
 
     btn_row = QHBoxLayout()
     btn_row.setSpacing(6)
@@ -203,37 +199,43 @@ def attach_characters_tab(win) -> None:
     btn_row.addWidget(win.characters_dup_btn)
     btn_row.addWidget(win.characters_del_btn)
     btn_row.addStretch(1)
-    inner_lay.addLayout(btn_row)
+    list_lay.addLayout(btn_row)
+    inner_lay.addWidget(list_card)
+
+    add_section_spacing(inner_lay, px=14)
+
+    edit_card, edit_lay = section_card(margins=10, spacing=6)
+    edit_lay.addWidget(section_title("Profile", emphasis=True))
 
     win.character_name_edit = QLineEdit()
     win.character_name_edit.setPlaceholderText("Name")
     win.character_name_edit.setMaximumHeight(26)
     lbl_name = QLabel("Name")
     lbl_name.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    inner_lay.addWidget(lbl_name)
-    inner_lay.addWidget(win.character_name_edit)
+    edit_lay.addWidget(lbl_name)
+    edit_lay.addWidget(win.character_name_edit)
 
     lbl_id = QLabel("Identity / persona (script + on-screen)")
     lbl_id.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    inner_lay.addWidget(lbl_id)
+    edit_lay.addWidget(lbl_id)
     win.character_identity_edit = QTextEdit()
     win.character_identity_edit.setMinimumHeight(36)
     win.character_identity_edit.setMaximumHeight(72)
     win.character_identity_edit.setPlaceholderText("Who is this host? Tone, channel, audience…")
     win.character_identity_edit.setAcceptRichText(False)
     win.character_identity_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    inner_lay.addWidget(win.character_identity_edit)
+    edit_lay.addWidget(win.character_identity_edit)
 
     lbl_vis = QLabel("Visual style (prepended to image prompts)")
     lbl_vis.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    inner_lay.addWidget(lbl_vis)
+    edit_lay.addWidget(lbl_vis)
     win.character_visual_edit = QTextEdit()
     win.character_visual_edit.setMinimumHeight(32)
     win.character_visual_edit.setMaximumHeight(64)
     win.character_visual_edit.setPlaceholderText("e.g. neon cyberpunk studio, warm key light, mascot host…")
     win.character_visual_edit.setAcceptRichText(False)
     win.character_visual_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    inner_lay.addWidget(win.character_visual_edit)
+    edit_lay.addWidget(win.character_visual_edit)
 
     portrait_row = QHBoxLayout()
     portrait_row.setSpacing(8)
@@ -255,29 +257,30 @@ def attach_characters_tab(win) -> None:
     win.character_portrait_preview.setScaledContents(False)
     portrait_row.addWidget(win.character_portrait_preview)
     portrait_row.addStretch(1)
-    inner_lay.addLayout(portrait_row)
-    portrait_hint = QLabel(
-        "Uses the Model tab image weights. Fill Visual style above first — the portrait prompt is built from it. "
-        "Saved on this profile for the script LLM and for video storyboard consistency."
-    )
+    edit_lay.addLayout(portrait_row)
+    portrait_hint = QLabel("")
     portrait_hint.setWordWrap(True)
     portrait_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
-    inner_lay.addWidget(portrait_hint)
+    portrait_hint.setText("Portrait uses Model-tab image weights after Visual style is filled.")
+    portrait_hint.setToolTip(
+        "Fill Visual style first — the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards."
+    )
+    edit_lay.addWidget(portrait_hint)
 
     lbl_neg = QLabel("Extra negatives for diffusion (comma phrases)")
     lbl_neg.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    inner_lay.addWidget(lbl_neg)
+    edit_lay.addWidget(lbl_neg)
     win.character_negatives_edit = QTextEdit()
     win.character_negatives_edit.setMaximumHeight(40)
     win.character_negatives_edit.setPlaceholderText("e.g. extra fingers, watermark")
     win.character_negatives_edit.setAcceptRichText(False)
     win.character_negatives_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    inner_lay.addWidget(win.character_negatives_edit)
+    edit_lay.addWidget(win.character_negatives_edit)
 
     win.character_default_voice_chk = QCheckBox("Use project default voice (Settings → Voice model)")
     win.character_default_voice_chk.setChecked(True)
     win.character_default_voice_chk.setStyleSheet("font-size: 11px; font-weight: 600;")
-    inner_lay.addWidget(win.character_default_voice_chk)
+    edit_lay.addWidget(win.character_default_voice_chk)
 
     vrow = QHBoxLayout()
     vrow.setSpacing(6)
@@ -295,25 +298,24 @@ def attach_characters_tab(win) -> None:
     win.character_voice_refresh_btn.setMinimumWidth(88)
     win.character_voice_refresh_btn.setToolTip("Refresh pyttsx3 voice list")
     vrow.addWidget(win.character_voice_refresh_btn)
-    inner_lay.addLayout(vrow)
+    edit_lay.addLayout(vrow)
 
     lbl_ko = QLabel("Kokoro speaker (optional)")
     lbl_ko.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    inner_lay.addWidget(lbl_ko)
+    edit_lay.addWidget(lbl_ko)
     win.character_kokoro_edit = QLineEdit()
     win.character_kokoro_edit.setPlaceholderText("Optional Kokoro speaker id (when enabled in settings)")
     win.character_kokoro_edit.setMaximumHeight(26)
-    inner_lay.addWidget(win.character_kokoro_edit)
+    edit_lay.addWidget(win.character_kokoro_edit)
 
     win.character_el_container = QWidget()
     el_outer = QVBoxLayout(win.character_el_container)
     el_outer.setContentsMargins(0, 0, 0, 0)
     el_outer.setSpacing(2)
-    win.character_el_hint = QLabel(
-        "ElevenLabs: API tab + key (or ELEVENLABS_API_KEY). Used when default voice is off."
-    )
+    win.character_el_hint = QLabel("ElevenLabs when default voice is off — configure on API tab.")
     win.character_el_hint.setWordWrap(True)
     win.character_el_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    win.character_el_hint.setToolTip("Requires API tab + key or ELEVENLABS_API_KEY in the environment.")
     el_outer.addWidget(win.character_el_hint)
     el_row = QHBoxLayout()
     el_row.setSpacing(6)
@@ -332,7 +334,9 @@ def attach_characters_tab(win) -> None:
     win.character_el_refresh_btn.setToolTip("Refresh ElevenLabs voice list")
     el_row.addWidget(win.character_el_refresh_btn)
     el_outer.addLayout(el_row)
-    inner_lay.addWidget(win.character_el_container)
+    edit_lay.addWidget(win.character_el_container)
+
+    inner_lay.addWidget(edit_card)
 
     scroll.setWidget(inner)
 

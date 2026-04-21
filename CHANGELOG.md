@@ -4,11 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Desktop UI: section cards, My PC GPU refresh, tab polish
+- **Theme** ([`UI/theme.py`](UI/theme.py)): `QFrame#SettingsSectionCard` uses palette **`card`**; scoped QSS for inputs inside cards (slightly lifted background) so nested controls do not read as a flat double slab.
+- **Sections** ([`UI/tab_sections.py`](UI/tab_sections.py)): **`section_card()`** returns a framed layout helper aligned with **`section_title()`** (documented as using the **`card`** token).
+- **My PC** ([`UI/tabs/my_pc_tab.py`](UI/tabs/my_pc_tab.py), [`UI/gpu_policy_toggle.py`](UI/gpu_policy_toggle.py)): GPU spec as **plain lines** (`Name (X.X GB)` per adapter); **Auto** \| **Select GPU** segmented control (replaces combo-only policy); **Device** combo only when **Select GPU** and CUDA GPUs exist; removed redundant VRAM summary row, env override label block, and old fit/env clutter. **`GpuPolicyToggle`** tooltips describe stage routing (non-pooled VRAM) and **`AQUADUCT_CUDA_DEVICE`** override.
+- **Collect settings** ([`UI/main_window.py`](UI/main_window.py)): GPU mode from **`gpu_policy_toggle`** (settings fallback if absent); removed legacy **`gpu_policy_combo`** branch.
+- **Run** ([`UI/tabs/run_tab.py`](UI/tabs/run_tab.py)): **Actions** no longer shows a long Tasks hint line; status guidance on **Run** tooltip + **`refresh_run_tab_for_media_mode`** (Photo vs Video).
+- **Topics** ([`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py)): Tag editor inside a **section card**; shorter intro; long copy on mode combo tooltip.
+- **Library** ([`UI/tabs/library_tab.py`](UI/tabs/library_tab.py)): **videos/**/**pictures/** table and **runs/** table each in a **section card**; shorter intro; **`win._library_media_title`** for dynamic section title.
+- **API** ([`UI/tabs/api_tab.py`](UI/tabs/api_tab.py)): Hugging Face, Firecrawl, ElevenLabs, TikTok, YouTube blocks use **section cards** + spacing; shorter subtitle with env override tooltip.
+- **Characters** ([`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)): **Characters** list/preset and **Profile** editor in separate **section cards**; shorter copy; tips in tooltips.
+- **Branding** ([`UI/tabs/branding_tab.py`](UI/tabs/branding_tab.py)): Shorter subtitle + tooltip.
+- **Docs**: [`README.md`](README.md), [`docs/ui.md`](docs/ui.md) (composition, Run/Topics/Library/API/Characters/Theme, My PC), [`docs/hardware.md`](docs/hardware.md), [`docs/config.md`](docs/config.md) (GPU policy UI mapping), [`docs/models.md`](docs/models.md), [`docs/performance.md`](docs/performance.md).
+
 ### Multi-GPU: My PC, resource monitor, runtime policy
 - **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): `GpuDevice`, `list_cuda_gpus()`, VRAM-max and heuristic compute pickers; `HardwareInfo` can summarize multiple GPUs.
 - **Policy** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): Auto vs single, `effective_vram_gb_for_kind`, `resolve_llm_cuda_device_index` / `resolve_diffusion_cuda_device_index`; optional **`AQUADUCT_CUDA_DEVICE`** override; `DevicePlan` includes reserved **`use_model_parallel_llm`** (currently always `False` — no automatic Accelerate multi-GPU LLM sharding; 4-bit stays single-GPU).
 - **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `gpu_selection_mode`, `gpu_device_index`, `resource_graph_monitor_gpu_index` in `ui_settings.json`.
-- **UI**: **My PC** GPU table + policy + fit legend/env hint; **Resource graph** monitor combo + `sample_gpu_mem_pct()`; **Model** tab fit parity with effective VRAM + tab-switch refresh ([`UI/main_window.py`](UI/main_window.py)).
+- **UI** (see also **Desktop UI: section cards…** above): **My PC** model **Fit** table + GPU policy persistence; **Resource graph** monitor combo + `sample_gpu_mem_pct()`; **Model** tab fit parity with effective VRAM + tab-switch refresh ([`UI/main_window.py`](UI/main_window.py)).
 - **Runtime**: [`src/content/brain.py`](src/content/brain.py), [`src/util/diffusion_placement.py`](src/util/diffusion_placement.py), [`src/render/artist.py`](src/render/artist.py), [`src/render/clips.py`](src/render/clips.py), [`main.py`](main.py) / [`UI/workers.py`](UI/workers.py) pass resolved CUDA indices.
 - **Docs**: [`README.md`](README.md), [`docs/hardware.md`](docs/hardware.md), [`docs/config.md`](docs/config.md), [`docs/ui.md`](docs/ui.md), [`docs/models.md`](docs/models.md), [`docs/performance.md`](docs/performance.md), [`docs/vram.md`](docs/vram.md). **Tests**: [`tests/test_cuda_device_policy.py`](tests/test_cuda_device_policy.py), [`tests/test_resource_sample.py`](tests/test_resource_sample.py).
 
