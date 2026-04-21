@@ -16,7 +16,7 @@ python Model-Downloads/generate_offsite_bundle.py
 
 This creates **`Model-Downloads/offsite/`** (ignored by git) containing:
 
-- `download_all_models.py` — downloads every **curated** Aquaduct model repo into a local `models/` folder next to the script (same folder naming as the app).
+- `download_all_models.py` — downloads every **curated** Aquaduct model repo into a local `models/` folder next to the script (same folder naming as the app). Repo ids are taken from **`model_options()`** in [`src/models/model_manager.py`](../src/models/model_manager.py) at generate time (regenerate the bundle after adding models in code).
 - `requirements-offsite.txt` — minimal pip deps for that machine.
 
 ## On the “download” PC (no full repo required)

@@ -335,6 +335,12 @@ def vram_requirement_hint(
             return "~ 6-8 GB VRAM"
         if "stable-diffusion-v1-5" in rl or "v1-5" in rl:
             return "~ 4-6 GB VRAM"
+        if "flux" in rl and "schnell" in rl:
+            return "~ 12-16 GB VRAM"
+        if "flux" in rl and "dev" in rl:
+            return "~ 16-24 GB VRAM"
+        if "stable-diffusion-3" in rl:
+            return "~ 10-14 GB VRAM"
         return "~ 6-8 GB VRAM"
 
     if kind == "video":
@@ -351,6 +357,14 @@ def vram_requirement_hint(
             return "~ 6-8 GB VRAM"
         if "stable-video-diffusion" in rl:
             return "~ 8-10 GB VRAM"
+        if "cogvideox-5b" in rl:
+            return "~ 18-24 GB VRAM"
+        if "cogvideox" in rl:
+            return "~ 12-16 GB VRAM"
+        if "ltx-video" in rl or "lightricks/ltx" in rl:
+            return "~ 10-14 GB VRAM"
+        if "hunyuanvideo" in rl:
+            return "~ 24+ GB VRAM"
         return "~ 6-8 GB VRAM"
 
     return "--"
@@ -385,6 +399,18 @@ def rate_model_fit_for_repo(
             need_ok = 10.0
             need_ex = 14.0
             why = "SDXL Base is heavier than SDXL Turbo."
+        elif "flux" in rid and "schnell" in rid:
+            need_ok = 12.0
+            need_ex = 16.0
+            why = "FLUX.1 Schnell is a frontier-class transformer diffusion model."
+        elif "flux" in rid and "dev" in rid:
+            need_ok = 16.0
+            need_ex = 24.0
+            why = "FLUX.1-dev is VRAM-heavy."
+        elif "stable-diffusion-3" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "SD3 Medium uses multiple text encoders and is heavier than SDXL Turbo."
         else:
             need_ok = 8.0
             need_ex = 10.0
@@ -419,6 +445,22 @@ def rate_model_fit_for_repo(
             need_ok = 8.0
             need_ex = 12.0
             why = "ModelScope 1.7B text-to-video is moderate weight at 256²."
+        elif "cogvideox-5b" in rid:
+            need_ok = 18.0
+            need_ex = 24.0
+            why = "CogVideoX 5B is a heavy text-to-video checkpoint."
+        elif "cogvideox" in rid:
+            need_ok = 12.0
+            need_ex = 16.0
+            why = "CogVideoX 2B needs substantial VRAM for coherent clips."
+        elif "ltx-video" in rid or "lightricks/ltx" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "LTX-Video runs at higher resolution than ZeroScope."
+        elif "hunyuanvideo" in rid:
+            need_ok = 22.0
+            need_ex = 28.0
+            why = "HunyuanVideo is frontier-class and very VRAM-heavy."
         else:
             need_ok = 8.0
             need_ex = 12.0
@@ -489,13 +531,20 @@ _SCRIPT_SPEED_RANK = {"fastest": 0, "faster": 1, "slow": 2}
 _IMAGE_PREF_ORDER: tuple[str, ...] = (
     "stabilityai/sdxl-turbo",
     "runwayml/stable-diffusion-v1-5",
+    "black-forest-labs/flux.1-schnell",
     "stabilityai/stable-diffusion-xl-base-1.0",
+    "stabilityai/stable-diffusion-3-medium-diffusers",
+    "black-forest-labs/flux.1-dev",
 )
 
 _MOTION_VIDEO_PREF_ORDER: tuple[str, ...] = (
     "cerspense/zeroscope_v2_576w",
     "cerspense/zeroscope_v2_30x448x256",
     "damo-vilab/text-to-video-ms-1.7b",
+    "lightricks/ltx-video",
+    "thudm/cogvideox-2b",
+    "thudm/cogvideox-5b",
+    "tencent/hunyuanvideo",
     "stabilityai/stable-video-diffusion-img2vid",
     "stabilityai/stable-video-diffusion-img2vid-xt",
 )

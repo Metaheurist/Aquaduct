@@ -37,7 +37,28 @@ def model_options() -> list[ModelOption]:
         # Image (text-to-image stills — slideshow, keyframes, SVD conditioning)
         ModelOption("SDXL Turbo (1-step images)", "stabilityai/sdxl-turbo", "fastest", "image", size_hint="~6-8GB"),
         ModelOption("SD 1.5 (images, lightweight)", "runwayml/stable-diffusion-v1-5", "faster", "image", size_hint="~4-6GB"),
+        ModelOption(
+            "FLUX.1 Schnell (fast, frontier quality — BFL)",
+            "black-forest-labs/FLUX.1-schnell",
+            "faster",
+            "image",
+            size_hint="~12-16GB",
+        ),
         ModelOption("SDXL Base 1.0 (images, higher quality)", "stabilityai/stable-diffusion-xl-base-1.0", "slow", "image", size_hint="~8-10GB"),
+        ModelOption(
+            "Stable Diffusion 3 Medium (SD3, higher fidelity than SDXL)",
+            "stabilityai/stable-diffusion-3-medium-diffusers",
+            "slow",
+            "image",
+            size_hint="~10-14GB",
+        ),
+        ModelOption(
+            "FLUX.1-dev (frontier quality, very heavy)",
+            "black-forest-labs/FLUX.1-dev",
+            "slow",
+            "image",
+            size_hint="~16-24GB",
+        ),
         # Video (motion / text-to-video / img-to-vid — use with Image model for SVD keyframes)
         ModelOption(
             "Stable Video Diffusion XT (image-to-video clips)",
@@ -67,6 +88,35 @@ def model_options() -> list[ModelOption]:
             "slow",
             "video",
             size_hint="~8-10GB",
+        ),
+        # Frontier text-to-video (diffusers CogVideoX / LTX / Hunyuan pipelines — higher quality than ZeroScope, heavier VRAM)
+        ModelOption(
+            "CogVideoX 2B (longer coherent clips, THUDM)",
+            "THUDM/CogVideoX-2b",
+            "slow",
+            "video",
+            size_hint="~12-16GB",
+        ),
+        ModelOption(
+            "CogVideoX 5B (higher quality, very heavy)",
+            "THUDM/CogVideoX-5b",
+            "slow",
+            "video",
+            size_hint="~18-24GB",
+        ),
+        ModelOption(
+            "LTX-Video (Lightricks, fast high-res T2V)",
+            "Lightricks/LTX-Video",
+            "slow",
+            "video",
+            size_hint="~10-14GB",
+        ),
+        ModelOption(
+            "HunyuanVideo (Tencent, frontier-class T2V, extreme VRAM)",
+            "Tencent/HunyuanVideo",
+            "slow",
+            "video",
+            size_hint="~24GB+",
         ),
         # Voice (TTS) - Hugging Face snapshots for local weights (pipeline TTS path is still ElevenLabs -> Kokoro hook -> pyttsx3)
         ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice", size_hint="82M"),

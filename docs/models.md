@@ -1,9 +1,23 @@
 # Models + downloads
 
+## Curated Hugging Face repositories
+The canonical id list is defined in [`src/models/model_manager.py`](../src/models/model_manager.py) (`model_options()`). It includes, among others:
+
+| Kind | Examples |
+|------|-----------|
+| **Script (LLM)** | Qwen2.5 1.5B/3B/7B, Phi-3.5 Mini, Llama 3.2 3B / 3.1 8B, Mistral 7B |
+| **Image** | SDXL Turbo, SD 1.5, SDXL Base, **FLUX.1 Schnell**, **Stable Diffusion 3 Medium**, **FLUX.1-dev** |
+| **Video** | SVD XT / base, ZeroScope 576w / 448×256, ModelScope T2V, **CogVideoX 2B/5B**, **LTX-Video**, **HunyuanVideo** |
+| **Voice** | Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark |
+
+**CLI bulk download** (same ids, `./models` layout as the app): `python scripts/download_hf_models.py --all` from the repo root.
+
+**Offsite bundle** (regenerates a standalone downloader from `model_options()`): [`Model-Downloads/generate_offsite_bundle.py`](../Model-Downloads/generate_offsite_bundle.py) → see [Model-Downloads/README.md](../Model-Downloads/README.md).
+
 ## Where models are used
 - **Script model (LLM)**: [`src/content/brain.py`](../src/content/brain.py) (local inference; 4-bit target when supported)
-- **Image model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers text-to-image for stills and keyframes; SDXL Turbo default)
-- **Video model**: [`src/render/clips.py`](../src/render/clips.py) (motion: text-to-video / image-to-video). **Pro** with slideshow off uses this slot for **multi-scene text-to-video** (e.g. ZeroScope). **Motion mode** (slideshow off, Pro off) uses Image for keyframes + Video to animate **scene** segments. Legacy **slideshow + Pro** may still use this slot for ZeroScope→frame extract or a T2I id for per-frame stills.
+- **Image model**: [`src/render/artist.py`](../src/render/artist.py) (diffusers **text-to-image** for stills and keyframes; presets for SDXL-class, **FLUX**, and **SD3** — see [Artist](artist.md))
+- **Video model**: [`src/render/clips.py`](../src/render/clips.py) (motion: text-to-video / image-to-video; frontier T2V uses dedicated diffusers pipelines for CogVideoX / LTX / Hunyuan). **Pro** with slideshow off uses this slot for **multi-scene text-to-video** (e.g. ZeroScope or the options above). **Motion mode** (slideshow off, Pro off) uses Image for keyframes + Video to animate **scene** segments. Legacy **slideshow + Pro** may still use this slot for ZeroScope→frame extract or a T2I id for per-frame stills.
 - **Voice model (TTS)**: [`src/speech/voice.py`](../src/speech/voice.py) (Kokoro hook + system TTS fallback). The **Model** tab lists extra Hugging Face TTS weights you can snapshot locally (Kokoro, MMS-TTS, MeloTTS, SpeechT5, Parler-TTS, XTTS, Bark, etc.); wiring a specific engine to inference is separate from download.
 - **API execution mode** (`model_execution_mode: api`): script / image / optional video / voice are chosen from **Generation APIs** (OpenAI, Replicate, ElevenLabs) instead of the HF combos above; see [API generation](api_generation.md) and [`src/runtime/pipeline_api.py`](../src/runtime/pipeline_api.py).
 
@@ -59,10 +73,10 @@ With the repo on the machine and `HF_TOKEN` in the environment (or `.env`):
 
 ```powershell
 pip install huggingface_hub tqdm
-python scripts/download_models.py
+python scripts/download_hf_models.py --all
 ```
 
-This uses [`get_paths().models_dir`](../src/core/config.py) (default **`.Aquaduct_data/models`**). See also [`scripts/download_hf_models.py`](../scripts/download_hf_models.py) for extra flags.
+`--all` pulls every id in **`ALL_REPOS`** (aligned with `model_options()`). Without `--all`, a small **minimal** three-repo set is used. Override output with `--out`. See [`scripts/download_hf_models.py`](../scripts/download_hf_models.py).
 
 ### Offsite PC (standalone bundle, embedded token)
 To download on **another computer** without the full app and copy folders back (USB, etc.), use **[`Model-Downloads/generate_offsite_bundle.py`](../Model-Downloads/generate_offsite_bundle.py)** from the repo root — it writes **`Model-Downloads/offsite/`** (gitignored; may contain a **live Hub token**). See **[`Model-Downloads/README.md`](../Model-Downloads/README.md)** for `pip install -r requirements-offsite.txt` and running `download_all_models.py`. Treat the generated folder like a secret; revoke the token if it leaks.

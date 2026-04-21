@@ -51,8 +51,9 @@ The My PC tab assigns each model option a marker (internal codes; UI labels matc
 
 **Effective VRAM**: thresholds use the VRAM of the GPU resolved for that **kind** and the active **GPU policy** (Auto vs single), not “first GPU only” when multiple cards exist.
 
-These are simple heuristics based mainly on VRAM and the model kind:
-- **Image (SDXL Turbo class)**:
+These are simple heuristics based mainly on VRAM and the model kind. **`rate_model_fit_for_repo`** also applies **per-repo** thresholds for frontier checkpoints (e.g. **FLUX.1 Schnell/dev**, **SD3 Medium**, **CogVideoX**, **LTX-Video**, **HunyuanVideo**) — see [`src/models/hardware.py`](../src/models/hardware.py) (`vram_requirement_hint`, `rate_model_fit_for_repo`).
+
+- **Image (SDXL Turbo class default)**:
   - `EXCELLENT`: ≥ 10GB VRAM
   - `OK`: ≥ 8GB VRAM
   - `RISKY`: ≥ 6GB VRAM
