@@ -4,7 +4,7 @@ The **Branding** tab lets you customize the app’s look and optionally add a lo
 
 ## Theme (optional)
 - Enable **“Enable theme overrides”** to apply a custom palette.
-- Choose a **preset palette** (e.g. Default, Ocean, Sunset, Monochrome, Amber night, Dracula, Ember, Forest, Lavender, Nord night, Rose, Slate — see `PRESET_PALETTES` in [`UI/theme/palette.py`](../UI/theme/palette.py)) or **Custom**.
+- Choose a **preset palette** (e.g. Default, Ocean, Sunset, Monochrome, Amber night, Dracula, Ember, Forest, Lavender, Nord night, Rose, Slate — see `PRESET_PALETTES` in [`UI/theme/palette.py`](../../UI/theme/palette.py)) or **Custom**.
 - When you pick a **named preset** (not Custom), the **Theme color** rows below update to that preset’s canonical colors (hex + swatches). If you had **per-row overrides** checked, those rows keep their saved colors on load; changing the palette again applies the full preset to every row.
 - If you select **Custom**, each color override has its own checkbox:
   - Background

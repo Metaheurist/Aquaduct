@@ -137,7 +137,7 @@ def _is_frontier_t2i_repo(mid: str) -> bool:
     """FLUX / SD3 checkpoints ship without ``variant=fp16`` folders; prefer BF16 on CUDA."""
     if "flux" in mid or "/flux." in mid:
         return True
-    if "stable-diffusion-3" in mid:
+    if "stable-diffusion-3" in mid or "stable-diffusion-3.5" in mid:
         return True
     return False
 
@@ -218,12 +218,12 @@ def _apply_flux_negative_cfg(model_id: str, call_kw: dict) -> None:
 # Keep in sync when adding or renaming Hub entries used for ``generate_images``.
 CURATED_TEXT2IMAGE_REPO_IDS: frozenset[str] = frozenset(
     {
-        "stabilityai/sdxl-turbo",
-        "runwayml/stable-diffusion-v1-5",
-        "black-forest-labs/flux.1-schnell",
-        "stabilityai/stable-diffusion-xl-base-1.0",
-        "stabilityai/stable-diffusion-3-medium-diffusers",
+        "black-forest-labs/flux.1.1-pro-ultra",
         "black-forest-labs/flux.1-dev",
+        "black-forest-labs/flux.1-schnell",
+        "stabilityai/stable-diffusion-3.5-large",
+        "stabilityai/stable-diffusion-3.5-medium",
+        "stabilityai/stable-diffusion-3.5-large-turbo",
     }
 )
 
@@ -282,6 +282,17 @@ def _preset_flux_dev(steps: int) -> dict:
     }
 
 
+def _preset_flux_11_pro_ultra(steps: int) -> dict:
+    """BFL 1.1 [pro] ultra: faster sampling than full FLUX.1-dev-class stacks; still uses CFG for negatives."""
+    st = max(1, int(steps))
+    return {
+        "guidance_scale": 3.5,
+        "num_inference_steps": max(4, min(st, 24)),
+        "height": 1024,
+        "width": 1024,
+    }
+
+
 def _preset_sd3_medium(steps: int) -> dict:
     st = max(1, int(steps))
     return {
@@ -292,14 +303,25 @@ def _preset_sd3_medium(steps: int) -> dict:
     }
 
 
+def _preset_sd35_large_turbo(steps: int) -> dict:
+    """ADD-distilled 3.5 family; default to a small step count (model card: ~4)."""
+    st = max(1, int(steps))
+    return {
+        "guidance_scale": 1.0,
+        "num_inference_steps": max(1, min(st, 4)),
+        "height": 1024,
+        "width": 1024,
+    }
+
+
 # Exact repo id → preset. Unknown user-typed ids fall through to heuristics below.
 _IMAGE_T2I_PRESETS: dict[str, Callable[[int], dict]] = {
-    "stabilityai/sdxl-turbo": _preset_sdxl_turbo,
-    "runwayml/stable-diffusion-v1-5": _preset_sd15,
-    "black-forest-labs/flux.1-schnell": _preset_flux_schnell,
-    "stabilityai/stable-diffusion-xl-base-1.0": _preset_sdxl_base,
-    "stabilityai/stable-diffusion-3-medium-diffusers": _preset_sd3_medium,
+    "black-forest-labs/flux.1.1-pro-ultra": _preset_flux_11_pro_ultra,
     "black-forest-labs/flux.1-dev": _preset_flux_dev,
+    "black-forest-labs/flux.1-schnell": _preset_flux_schnell,
+    "stabilityai/stable-diffusion-3.5-large": _preset_sd3_medium,
+    "stabilityai/stable-diffusion-3.5-medium": _preset_sd3_medium,
+    "stabilityai/stable-diffusion-3.5-large-turbo": _preset_sd35_large_turbo,
 }
 
 
@@ -331,9 +353,14 @@ def _diffusion_kw_for_model(model_id: str, *, steps: int) -> dict:
         return _preset_sd15(st)
 
     if "flux" in mid:
+        if "1.1" in mid and "ultra" in mid:
+            return _preset_flux_11_pro_ultra(st)
         if "schnell" in mid:
             return _preset_flux_schnell(st)
         return _preset_flux_dev(st)
+
+    if "3.5" in mid and "large-turbo" in mid:
+        return _preset_sd35_large_turbo(st)
 
     if "stable-diffusion-3" in mid:
         return _preset_sd3_medium(st)

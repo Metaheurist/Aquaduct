@@ -1,9 +1,9 @@
 # Aquaduct (MVP)
 
-This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for OpenAI / Replicate script, images, and cloud video — see [docs/api_generation.md](docs/api_generation.md)) that:
+This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for OpenAI / Replicate script, images, and cloud video — see [docs/integrations/api_generation.md](docs/integrations/api_generation.md)) that:
 - scrapes AI tool news (no paid APIs)
 - writes a short vertical video script locally (LLM in 4-bit when possible)
-- generates images locally (SDXL / SD 1.5 by default; optional **FLUX.1** and **SD3 Medium** in the Model tab — see [Models + downloads](docs/models.md))
+- generates images locally (curated **FLUX.1** + **SD3.5** options on the Model tab; other Hub ids work — see [Models + downloads](docs/reference/models.md))
 - generates voice locally (Kokoro-82M target; with safe fallback if unavailable)
 - assembles a **9:16** MP4 as **few-second micro-scenes** (slideshow) or **scene**-based motion / Pro video, with word-by-word captions
 
@@ -13,8 +13,8 @@ This project builds **Aquaduct**, a **local-first** tool (with optional **API ex
 - [Outputs](#outputs)
 - [Desktop UI (PyQt6)](#desktop-ui-pyqt6)
 - [Build Windows EXE](#build-windows-exe)
-- [Build & verify (operator)](docs/building_windows_exe.md)
-- [Performance notes](docs/performance.md)
+- [Build & verify (operator)](docs/build/building_windows_exe.md)
+- [Performance notes](docs/pipeline/performance.md)
 - [Docs](#docs)
 - [Changelog](CHANGELOG.md)
 - [Dependencies](DEPENDENCIES.md)
@@ -103,7 +103,7 @@ python main.py --once
 Same folder, optional: `. .\scripts\setup_terminal_env.ps1` after `cd` to activate `.venv` (see [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1)).
 
 ## Project layout
-- `main.py`: one-shot run (`--once`) or infinite loop (default); `python main.py <subcommand>` for [headless CLI](docs/cli.md)
+- `main.py`: one-shot run (`--once`) or infinite loop (default); `python main.py <subcommand>` for [headless CLI](docs/reference/cli.md)
 - `src/`: pipeline modules
 - `UI/`: PyQt6 desktop UI package (TikTok-style theme; tabs under `UI/tabs/`; launcher `UI/ui_app.py`)
 - `Model-Downloads/`: generator + README for **offsite** model download bundles (generated `offsite/` output is gitignored — see [Model-Downloads/README.md](Model-Downloads/README.md))
@@ -123,7 +123,7 @@ Outputs land under **`.Aquaduct_data/`** (see [`get_paths()`](src/core/config.py
 - `videos/<safe_video_title>/meta.json`
 - `videos/<safe_video_title>/assets/` (voice, captions, images, intermediate scene MP4s when enabled, etc.)
 
-**Photo mode** (title bar **Photo** selected): still images and packs under **`pictures/<safe_project_title>/`** (see [Desktop UI](docs/ui.md)).
+**Photo mode** (title bar **Photo** selected): still images and packs under **`pictures/<safe_project_title>/`** (see [Desktop UI](docs/ui/ui.md)).
 
 Intermediate artifacts land in:
 - `runs/<run_id>/...`
@@ -141,23 +141,23 @@ Alerts, confirmations, and most modal dialogs are **borderless** with a custom *
 
 Tabs:
 - **Run**: in **Video** mode, set **Videos to generate** to queue **that many independent full runs** (each produces one video); **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
-- **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl results (**Cartoon** / **Unhinged**: memes/jokes/story pages + saved pack under `data/topic_research/`; **News** / **Explainer**: headline-style). Approved picks are added to that format’s list ([UI](docs/ui.md), [Crawler](docs/crawler.md))
+- **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl results (**Cartoon** / **Unhinged**: memes/jokes/story pages + saved pack under `data/topic_research/`; **News** / **Explainer**: headline-style). Approved picks are added to that format’s list ([UI](docs/ui/ui.md), [Crawler](docs/integrations/crawler.md))
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
 - **Library**: browse finished **video** or **photo** projects under **`.Aquaduct_data/videos`** or **`.Aquaduct_data/pictures`** (depending on **Photo \| Video**), plus **`runs/`** workspaces; refresh or open the library roots
 - **Video** (shown in **Video** mode): **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
-- **Picture** (shown in **Photo** mode): image templates, layout/export options, and branding for still-image runs ([`docs/ui.md`](docs/ui.md))
+- **Picture** (shown in **Photo** mode): image templates, layout/export options, and branding for still-image runs ([`docs/ui/ui.md`](docs/ui/ui.md))
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
 - **Model**: **Local \| API** toggle; **Model files location** (**Default** \| **External** folder for Hub snapshots); Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already present on disk under the active models folder
-- **My PC**: GPU lines in the spec (name + VRAM per adapter), **Auto** \| **Select GPU** policy control, model **Fit** table aligned with **Model** tab (`rate_model_fit_for_repo` + effective VRAM per role). See [Hardware + model fit](docs/hardware.md). Optional env **`AQUADUCT_CUDA_DEVICE`** overrides saved policy.
+- **My PC**: GPU lines in the spec (name + VRAM per adapter), **Auto** \| **Select GPU** policy control, model **Fit** table aligned with **Model** tab (`rate_model_fit_for_repo` + effective VRAM per role). See [Hardware + model fit](docs/reference/hardware.md). Optional env **`AQUADUCT_CUDA_DEVICE`** overrides saved policy.
 
-Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
+Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/reference/models.md)).
 
 ## Build Windows EXE
 - Build script: [`build/build.ps1`](build/build.ps1) (canonical onedir/onefile flags + post-build smoke)
 - Portable spec: [`aquaduct-ui.spec`](aquaduct-ui.spec) (optional: `.\build\build.ps1 -Clean -UI -UseSpec`)
-- Operator guide: [`docs/building_windows_exe.md`](docs/building_windows_exe.md)
+- Operator guide: [`docs/build/building_windows_exe.md`](docs/build/building_windows_exe.md)
 - Build reference: [`build/README.md`](build/README.md)
 
 Example:
@@ -167,30 +167,30 @@ Example:
 ```
 
 ## Docs
-- [Headless CLI](docs/cli.md) (`run`, `preflight`, `config`, `models`, `tasks`, `version`)
-- [API execution mode](docs/api_generation.md)
-- [Build & verify Windows EXE](docs/building_windows_exe.md)
-- [Performance (import / cold start, CPU threads)](docs/performance.md)
-- [Crawler](docs/crawler.md)
-- [Brain (LLM scripting)](docs/brain.md)
-- [Voice (TTS + captions)](docs/voice.md)
-- [Artist (images)](docs/artist.md)
-- [Editor (micro-scenes + captions)](docs/editor.md)
-- [Main loop / CLI](docs/main.md)
-- [Config](docs/config.md)
-- [Desktop UI](docs/ui.md) (includes **Video** platform preset tiles and NSFW toggle)
-- [Branding (theme + watermark)](docs/branding.md)
-- [Models + downloads](docs/models.md)
-- [Hardware + model fit rules](docs/hardware.md)
-- [FFmpeg auto-download](docs/ffmpeg.md)
-- [VRAM / cleanup utilities](docs/vram.md)
-- [TikTok upload (Tasks + API)](docs/tiktok.md)
-- [YouTube upload (Tasks + API)](docs/youtube.md)
-- [Characters (Character Builder)](docs/characters.md)
-- [ElevenLabs TTS (optional)](docs/elevenlabs.md)
+- [Headless CLI](docs/reference/cli.md) (`run`, `preflight`, `config`, `models`, `tasks`, `version`)
+- [API execution mode](docs/integrations/api_generation.md)
+- [Build & verify Windows EXE](docs/build/building_windows_exe.md)
+- [Performance (import / cold start, CPU threads)](docs/pipeline/performance.md)
+- [Crawler](docs/integrations/crawler.md)
+- [Brain (LLM scripting)](docs/pipeline/brain.md)
+- [Voice (TTS + captions)](docs/pipeline/voice.md)
+- [Artist (images)](docs/pipeline/artist.md)
+- [Editor (micro-scenes + captions)](docs/pipeline/editor.md)
+- [Main loop / CLI](docs/pipeline/main.md)
+- [Config](docs/reference/config.md)
+- [Desktop UI](docs/ui/ui.md) (includes **Video** platform preset tiles and NSFW toggle)
+- [Branding (theme + watermark)](docs/ui/branding.md)
+- [Models + downloads](docs/reference/models.md)
+- [Hardware + model fit rules](docs/reference/hardware.md)
+- [FFmpeg auto-download](docs/pipeline/ffmpeg.md)
+- [VRAM / cleanup utilities](docs/reference/vram.md)
+- [TikTok upload (Tasks + API)](docs/integrations/tiktok.md)
+- [YouTube upload (Tasks + API)](docs/integrations/youtube.md)
+- [Characters (Character Builder)](docs/ui/characters.md)
+- [ElevenLabs TTS (optional)](docs/integrations/elevenlabs.md)
 
 ## Notes
 - First run will download models from Hugging Face (can be large).
 - GPU memory is limited (8GB class GPUs are common): the pipeline loads/unloads models between stages.
-- **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. In **Auto**, **LLM** and **diffusion** use **different** CUDA ordinals when at least two GPUs exist (script vs image/video routing; if max-VRAM and compute heuristics would pick the same card, the LLM moves to the best other GPU). **Diffusion** **`auto`** offload defaults to **sequential** CPU offload when multiple CUDA devices are present, so peak VRAM on the diffusion GPU stays low. Override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`** (`auto`, `model`, `sequential`, or `off` for full-GPU). The title-bar **resource graph** charts VRAM per **Monitor** selection. Details: [docs/hardware.md](docs/hardware.md), [docs/performance.md](docs/performance.md#diffusion-vram-vs-system-ram-cpu-offload), [docs/config.md](docs/config.md#multi-gpu-cuda-policy-override).
+- **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. In **Auto**, **LLM** and **diffusion** use **different** CUDA ordinals when at least two GPUs exist (script vs image/video routing; if max-VRAM and compute heuristics would pick the same card, the LLM moves to the best other GPU). **Diffusion** **`auto`** offload defaults to **sequential** CPU offload when multiple CUDA devices are present, so peak VRAM on the diffusion GPU stays low. Override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`** (`auto`, `model`, `sequential`, or `off` for full-GPU). The title-bar **resource graph** charts VRAM per **Monitor** selection. Details: [docs/reference/hardware.md](docs/reference/hardware.md), [docs/pipeline/performance.md](docs/pipeline/performance.md#diffusion-vram-vs-system-ram-cpu-offload), [docs/reference/config.md](docs/reference/config.md#multi-gpu-cuda-policy-override).
 

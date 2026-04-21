@@ -289,9 +289,25 @@ def attach_characters_tab(win) -> None:
     lbl_ko.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     edit_lay.addWidget(lbl_ko)
     win.character_kokoro_edit = QLineEdit()
-    win.character_kokoro_edit.setPlaceholderText("Optional Kokoro speaker id (when enabled in settings)")
+    win.character_kokoro_edit.setPlaceholderText("Kokoro: af_bella, af_nicole, am_adam (or Bella / Nicole / Adam); empty = shuffle presets")
     win.character_kokoro_edit.setMaximumHeight(26)
     edit_lay.addWidget(win.character_kokoro_edit)
+
+    lbl_vi = QLabel("Voice instruction (MOSS-VoiceGenerator)")
+    lbl_vi.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    lbl_vi.setToolTip(
+        "When Settings → Voice model is OpenMOSS MOSS-VoiceGenerator: describe the voice "
+        "(e.g. a young woman with a raspy voice, speaking fast). Not used for Kokoro."
+    )
+    edit_lay.addWidget(lbl_vi)
+    win.character_voice_instruction_edit = QTextEdit()
+    win.character_voice_instruction_edit.setPlaceholderText(
+        "Optional. For MOSS-VoiceGenerator only: e.g. “A young woman with a raspy voice, speaking excitedly and fast.”"
+    )
+    win.character_voice_instruction_edit.setAcceptRichText(False)
+    win.character_voice_instruction_edit.setFixedHeight(56)
+    win.character_voice_instruction_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    edit_lay.addWidget(win.character_voice_instruction_edit)
 
     win.character_el_container = QWidget()
     el_outer = QVBoxLayout(win.character_el_container)
@@ -448,6 +464,7 @@ def attach_characters_tab(win) -> None:
         win.character_default_voice_chk.setChecked(c.use_default_voice)
         _fill_voice_combo(win.character_voice_combo, c.pyttsx3_voice_id)
         win.character_kokoro_edit.setText(c.kokoro_voice)
+        win.character_voice_instruction_edit.setPlainText(c.voice_instruction)
         if elevenlabs_available_for_app(win.settings):
             _fill_el_voice_combo(win.character_el_voice_combo, c.elevenlabs_voice_id, _el_voices_cache)
         else:
@@ -486,6 +503,7 @@ def attach_characters_tab(win) -> None:
             use_default_voice=bool(win.character_default_voice_chk.isChecked()),
             pyttsx3_voice_id=str(win.character_voice_combo.currentData() or "").strip(),
             kokoro_voice=win.character_kokoro_edit.text().strip(),
+            voice_instruction=win.character_voice_instruction_edit.toPlainText().strip(),
             elevenlabs_voice_id=str(win.character_el_voice_combo.currentData() or "").strip(),
         )
 
@@ -542,6 +560,7 @@ def attach_characters_tab(win) -> None:
             use_default_voice=ch.use_default_voice,
             pyttsx3_voice_id=ch.pyttsx3_voice_id,
             kokoro_voice=ch.kokoro_voice,
+            voice_instruction=ch.voice_instruction,
             elevenlabs_voice_id=ch.elevenlabs_voice_id,
         )
         all_chars = upsert(all_chars, dup)

@@ -44,6 +44,8 @@ class Character:
     use_default_voice: bool = True
     pyttsx3_voice_id: str = ""
     kokoro_voice: str = ""
+    #: Free-form TTS *instruction* (e.g. for MOSS-VoiceGenerator: describe timbre, age, energy).
+    voice_instruction: str = ""
     elevenlabs_voice_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -57,6 +59,7 @@ class Character:
             "use_default_voice": self.use_default_voice,
             "pyttsx3_voice_id": self.pyttsx3_voice_id,
             "kokoro_voice": self.kokoro_voice,
+            "voice_instruction": self.voice_instruction,
             "elevenlabs_voice_id": self.elevenlabs_voice_id,
         }
 
@@ -80,6 +83,7 @@ class Character:
             use_default_voice=bool(d.get("use_default_voice", True)),
             pyttsx3_voice_id=_clip(str(d.get("pyttsx3_voice_id", "")), 512),
             kokoro_voice=_clip(str(d.get("kokoro_voice", "")), 256),
+            voice_instruction=_clip(str(d.get("voice_instruction", "")), _MAX_FIELD),
             elevenlabs_voice_id=_clip(str(d.get("elevenlabs_voice_id", "")), 128),
         )
 
@@ -145,6 +149,7 @@ def new_character(*, name: str) -> Character:
         use_default_voice=True,
         pyttsx3_voice_id="",
         kokoro_voice="",
+        voice_instruction="",
         elevenlabs_voice_id="",
     )
 
@@ -276,6 +281,7 @@ def _ephemeral_character_for_show(
         use_default_voice=True,
         pyttsx3_voice_id="",
         kokoro_voice="",
+        voice_instruction="",
         elevenlabs_voice_id="",
     )
 
@@ -394,6 +400,7 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
             use_default_voice=True,
             pyttsx3_voice_id="",
             kokoro_voice="",
+            voice_instruction="",
             elevenlabs_voice_id="",
         )
 
@@ -440,6 +447,7 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
         use_default_voice=True,
         pyttsx3_voice_id="",
         kokoro_voice="",
+        voice_instruction="",
         elevenlabs_voice_id="",
     )
 

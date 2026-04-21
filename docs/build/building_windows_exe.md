@@ -1,6 +1,6 @@
 # Building and verifying the Windows desktop EXE
 
-Operator-focused guide for **PyInstaller** builds of the **Aquaduct** desktop UI (`aquaduct-ui`). For script flags and PyInstaller details, see **[`build/README.md`](../build/README.md)** (canonical).
+Operator-focused guide for **PyInstaller** builds of the **Aquaduct** desktop UI (`aquaduct-ui`). For script flags and PyInstaller details, see **[`build/README.md`](../../build/README.md)** (canonical).
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ Operator-focused guide for **PyInstaller** builds of the **Aquaduct** desktop UI
 The recommended flow avoids **duplicate PyTorch** installs and keeps **test wheels out** of the packaging environment:
 
 1. **Fresh venv** — `.\build\build.ps1 -Clean` recreates **`.venv-build`** (only what the script installs).
-2. **PyTorch for this machine** — [`scripts/install_pytorch.py`](../scripts/install_pytorch.py) **`--with-rest`** runs **`install_pytorch_for_hardware`** (CUDA index when an NVIDIA GPU is detected, else CPU wheels; macOS uses PyPI), then **`pip install -r requirements.txt`**. **`requirements.txt` does not list `torch`**, so pip does not reinstall torch a second time from that file.
+2. **PyTorch for this machine** — [`scripts/install_pytorch.py`](../../scripts/install_pytorch.py) **`--with-rest`** runs **`install_pytorch_for_hardware`** (CUDA index when an NVIDIA GPU is detected, else CPU wheels; macOS uses PyPI), then **`pip install -r requirements.txt`**. **`requirements.txt` does not list `torch`**, so pip does not reinstall torch a second time from that file.
 3. **PyInstaller only** — **`pip install -r requirements-build.txt`** (not full **`requirements-dev.txt`**), so **pytest**, **pytest-qt**, etc. are not installed into **`.venv-build`**. Run the test suite from a separate dev venv (e.g. **`.venv`**) with **`requirements-dev.txt`**.
 4. Optional — **`.\build\build.ps1 -IncludeDevDeps`** installs **`requirements-dev.txt`** into the build venv instead (legacy / debugging only).
 
@@ -52,17 +52,17 @@ Uses **`aquaduct-ui.spec`** only (paths relative to the spec via `SPECPATH`). De
 1. **Automated**: Build log should show successful **`frozen_smoke`** (exit **0**). Manual:  
    `python scripts\frozen_smoke.py --exe dist\aquaduct-ui\aquaduct-ui.exe`
 2. **Launch**: Run the EXE from Explorer; confirm the main window opens.
-3. **Console / tracebacks**: `dist\aquaduct-ui\aquaduct-ui.exe -debug` or `--debug` (see [`UI/ui_app.py`](../UI/ui_app.py)).
-4. **API mode smoke** (optional): Configure keys on the **API** tab, set **Model execution** to **API** on the **Model** tab ([api_generation.md](api_generation.md), [config.md](config.md)); run a short **Preview** or scripted run if you use API execution.
+3. **Console / tracebacks**: `dist\aquaduct-ui\aquaduct-ui.exe -debug` or `--debug` (see [`UI/ui_app.py`](../../UI/ui_app.py)).
+4. **API mode smoke** (optional): Configure keys on the **API** tab, set **Model execution** to **API** on the **Model** tab ([api_generation.md](../integrations/api_generation.md), [config.md](../reference/config.md)); run a short **Preview** or scripted run if you use API execution.
 
 ## First-run downloads (what the EXE still fetches)
 
 The frozen app **does not** embed multi-gigabyte HF weights. On first use it may download:
 
-- **Models** into `models/` (per [`models.md`](models.md) and Hugging Face cache behavior).
-- **FFmpeg** into `.cache/ffmpeg/` ([`ffmpeg.md`](ffmpeg.md)).
+- **Models** into `models/` (per [`models.md`](../reference/models.md) and Hugging Face cache behavior).
+- **FFmpeg** into `.cache/ffmpeg/` ([`ffmpeg.md`](../pipeline/ffmpeg.md)).
 
-User data and settings typically live under the app’s working directory or paths described in [config.md](config.md) (`get_paths()`).
+User data and settings typically live under the app’s working directory or paths described in [config.md](../reference/config.md) (`get_paths()`).
 
 ## Troubleshooting
 
@@ -74,7 +74,7 @@ User data and settings typically live under the app’s working directory or pat
 
 ## Related documentation
 
-- [Desktop UI](ui.md) — tabs, wheel guard, run queue.
-- [API execution mode](api_generation.md) — OpenAI / Replicate paths when `model_execution_mode` is **api**.
-- [Main / CLI](main.md) — headless vs UI launcher.
-- [Dependencies](../DEPENDENCIES.md) — PyTorch install, test tiers.
+- [Desktop UI](../ui/ui.md) — tabs, wheel guard, run queue.
+- [API execution mode](../integrations/api_generation.md) — OpenAI / Replicate paths when `model_execution_mode` is **api**.
+- [Main / CLI](../pipeline/main.md) — headless vs UI launcher.
+- [Dependencies](../../DEPENDENCIES.md) — PyTorch install, test tiers.

@@ -18,6 +18,7 @@ class ModelOption:
     order: int = 0  # UI enumeration within kind
     pair_image_repo_id: str = ""  # for img->vid options, which image model to use for keyframes
     size_hint: str = ""  # e.g. "82M", "3B", or "~6-8GB"
+    ui_sequence: int = 0  # if set (e.g. image stack), order within kind before label tie-break
 
 
 def model_options() -> list[ModelOption]:
@@ -26,111 +27,146 @@ def model_options() -> list[ModelOption]:
     Speed is relative: fastest < faster < slow (quality tends to increase with slower models).
     """
     opts = [
-        # Script (LLM)
-        ModelOption("Qwen2.5 1.5B Instruct (very small)", "Qwen/Qwen2.5-1.5B-Instruct", "fastest", "script", size_hint="1.5B"),
-        ModelOption("Qwen2.5 3B Instruct", "Qwen/Qwen2.5-3B-Instruct", "faster", "script", size_hint="3B"),
-        ModelOption("Phi-3.5 Mini Instruct (small but strong)", "microsoft/Phi-3.5-mini-instruct", "faster", "script", size_hint="mini"),
-        ModelOption("Llama 3.2 3B Instruct (4-bit target)", "meta-llama/Llama-3.2-3B-Instruct", "faster", "script", size_hint="3B"),
-        ModelOption("Mistral 7B Instruct v0.3 (heavier)", "mistralai/Mistral-7B-Instruct-v0.3", "slow", "script", size_hint="7B"),
-        ModelOption("Qwen2.5 7B Instruct (heavier)", "Qwen/Qwen2.5-7B-Instruct", "slow", "script", size_hint="7B"),
-        ModelOption("Llama 3.1 8B Instruct (heavier)", "meta-llama/Meta-Llama-3.1-8B-Instruct", "slow", "script", size_hint="8B"),
-        # Image (text-to-image stills — slideshow, keyframes, SVD conditioning)
-        ModelOption("SDXL Turbo (1-step images)", "stabilityai/sdxl-turbo", "fastest", "image", size_hint="~6-8GB"),
-        ModelOption("SD 1.5 (images, lightweight)", "runwayml/stable-diffusion-v1-5", "faster", "image", size_hint="~4-6GB"),
+        # Script (LLM) — curated storytelling stack (users can still type any Hub id)
+        # Default: Qwen3 14B Instruct — strong creative/roleplay; use non-thinking (chat) path for fast prose when supported.
         ModelOption(
-            "FLUX.1 Schnell (fast, frontier quality — BFL)",
-            "black-forest-labs/FLUX.1-schnell",
+            "Qwen3 14B Instruct (curated default)",
+            "Qwen/Qwen3-14B-Instruct",
+            "fastest",
+            "script",
+            size_hint="14B",
+        ),
+        ModelOption(
+            "Fimbulvetr 11B v2 (prose / roleplay, Solar)",
+            "Sao10K/Fimbulvetr-11B-v2",
+            "faster",
+            "script",
+            size_hint="11B",
+        ),
+        ModelOption(
+            "Midnight Miqu 70B v1.5 (heavyweight storytelling)",
+            "sophosympatheia/Midnight-Miqu-70B-v1.5",
+            "slow",
+            "script",
+            size_hint="70B",
+        ),
+        ModelOption(
+            "DeepSeek-V3 (671B MoE — complex plot / reasoning)",
+            "deepseek-ai/DeepSeek-V3",
+            "slow",
+            "script",
+            size_hint="671B MoE",
+        ),
+        # Image (text-to-image stills — slideshow, keyframes, SVD conditioning)
+        ModelOption(
+            "FLUX.1.1 [pro] ultra (BFL — anatomy, faster than dev)",
+            "black-forest-labs/FLUX.1.1-pro-ultra",
             "faster",
             "image",
-            size_hint="~12-16GB",
-        ),
-        ModelOption("SDXL Base 1.0 (images, higher quality)", "stabilityai/stable-diffusion-xl-base-1.0", "slow", "image", size_hint="~8-10GB"),
-        ModelOption(
-            "Stable Diffusion 3 Medium (SD3, higher fidelity than SDXL)",
-            "stabilityai/stable-diffusion-3-medium-diffusers",
-            "slow",
-            "image",
-            size_hint="~10-14GB",
+            size_hint="~12-20GB",
+            ui_sequence=1,
         ),
         ModelOption(
-            "FLUX.1-dev (frontier quality, very heavy)",
+            "FLUX.1 [dev]",
             "black-forest-labs/FLUX.1-dev",
             "slow",
             "image",
             size_hint="~16-24GB",
+            ui_sequence=2,
         ),
-        # Video (motion / text-to-video / img-to-vid — use with Image model for SVD keyframes)
         ModelOption(
-            "Stable Video Diffusion XT (image-to-video clips)",
-            "stabilityai/stable-video-diffusion-img2vid-xt",
+            "FLUX.1 [schnell]",
+            "black-forest-labs/FLUX.1-schnell",
+            "faster",
+            "image",
+            size_hint="~12-16GB",
+            ui_sequence=3,
+        ),
+        ModelOption(
+            "Stable Diffusion 3.5 Large",
+            "stabilityai/stable-diffusion-3.5-large",
             "slow",
-            "video",
-            size_hint="~8-12GB",
+            "image",
+            size_hint="~14-20GB",
+            ui_sequence=4,
         ),
         ModelOption(
-            "Stable Video Diffusion (img2vid, base checkpoint)",
-            "stabilityai/stable-video-diffusion-img2vid",
-            "slow",
-            "video",
-            size_hint="~8-12GB",
+            "Stable Diffusion 3.5 Medium",
+            "stabilityai/stable-diffusion-3.5-medium",
+            "faster",
+            "image",
+            size_hint="~10-14GB",
+            ui_sequence=5,
         ),
-        ModelOption("ZeroScope v2 576w (text-to-video clips)", "cerspense/zeroscope_v2_576w", "slow", "video", size_hint="~6-8GB"),
         ModelOption(
-            "ZeroScope v2 448×256 (lighter text-to-video)",
-            "cerspense/zeroscope_v2_30x448x256",
+            "Stable Diffusion 3 Turbo",
+            "stabilityai/stable-diffusion-3.5-large-turbo",
+            "fastest",
+            "image",
+            size_hint="~8-12GB",
+            ui_sequence=6,
+        ),
+        # Video (text-to-video — see docs/reference/models.md “Quick comparison”)
+        ModelOption(
+            "Wan 2.2 (T2V A14B MoE — Wan-AI)",
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
             "faster",
             "video",
-            size_hint="~4-6GB",
-        ),
-        ModelOption(
-            "ModelScope Text-to-Video 1.7B (research, English prompts)",
-            "damo-vilab/text-to-video-ms-1.7b",
-            "slow",
-            "video",
-            size_hint="~8-10GB",
-        ),
-        # Frontier text-to-video (diffusers CogVideoX / LTX / Hunyuan pipelines — higher quality than ZeroScope, heavier VRAM)
-        ModelOption(
-            "CogVideoX 2B (longer coherent clips, THUDM)",
-            "THUDM/CogVideoX-2b",
-            "slow",
-            "video",
             size_hint="~12-16GB",
+            ui_sequence=1,
         ),
         ModelOption(
-            "CogVideoX 5B (higher quality, very heavy)",
-            "THUDM/CogVideoX-5b",
-            "slow",
-            "video",
-            size_hint="~18-24GB",
-        ),
-        ModelOption(
-            "LTX-Video (Lightricks, fast high-res T2V)",
-            "Lightricks/LTX-Video",
-            "slow",
+            "Mochi 1.5 (T2V — Genmo, ~10s default clips, Apache 2.0)",
+            "genmo/mochi-1.5-final",
+            "faster",
             "video",
             size_hint="~10-14GB",
+            ui_sequence=2,
         ),
         ModelOption(
-            "HunyuanVideo (Tencent, frontier-class T2V, extreme VRAM)",
+            "CogVideoX 5B (efficient & stylized — THUDM, Apache 2.0)",
+            "THUDM/CogVideoX-5b",
+            "fastest",
+            "video",
+            size_hint="~6-10GB",
+            ui_sequence=3,
+        ),
+        ModelOption(
+            "HunyuanVideo (frontier T2V — Tencent, high VRAM)",
             "Tencent/HunyuanVideo",
             "slow",
             "video",
-            size_hint="~24GB+",
+            size_hint="~16-24GB+",
+            ui_sequence=4,
         ),
-        # Voice (TTS) - Hugging Face snapshots for local weights (pipeline TTS path is still ElevenLabs -> Kokoro hook -> pyttsx3)
+        ModelOption(
+            "LTX-2 (Lightricks — native 4K 9:16 Shorts, audio+video)",
+            "Lightricks/LTX-2",
+            "slow",
+            "video",
+            size_hint="~24-40GB+",
+            ui_sequence=5,
+        ),
+        # Voice (TTS) - Hugging Face snapshots for local weights (ElevenLabs → MOSS or Kokoro → pyttsx3 in src/speech/voice.py)
         ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice", size_hint="82M"),
-        ModelOption("MMS-TTS English (Meta, lightweight)", "facebook/mms-tts-eng", "faster", "voice", size_hint="MMS-TTS"),
-        ModelOption("MeloTTS English", "myshell-ai/MeloTTS-English", "faster", "voice", size_hint="MeloTTS"),
-        ModelOption("SpeechT5 TTS (Microsoft)", "microsoft/speecht5_tts", "faster", "voice", size_hint="SpeechT5"),
-        ModelOption("Parler-TTS mini v1 (expressive)", "parler-tts/parler-tts-mini-v1", "slow", "voice", size_hint="Parler mini"),
-        ModelOption("coqui XTTS v2 (higher quality, heavier)", "coqui/XTTS-v2", "slow", "voice", size_hint="XTTS v2"),
-        ModelOption("Bark (high quality, very large)", "suno/bark", "slow", "voice", size_hint="Bark"),
+        ModelOption(
+            "MOSS VoiceGenerator (instruction TTS, 2.1B — heavy)",
+            "OpenMOSS-Team/MOSS-VoiceGenerator",
+            "slow",
+            "voice",
+            size_hint="~2.1B",
+        ),
     ]
 
     speed_rank = {"fastest": 0, "faster": 1, "slow": 2}
     kind_rank = {"script": 0, "image": 1, "video": 2, "voice": 3}
-    opts.sort(key=lambda o: (kind_rank.get(o.kind, 99), speed_rank.get(o.speed, 99), o.label.lower()))
+    opts.sort(
+        key=lambda o: (
+            kind_rank.get(o.kind, 99),
+            o.ui_sequence or speed_rank.get(o.speed, 99),
+            o.label.lower(),
+        )
+    )
 
     # Enumerate within each kind (easiest-to-run first)
     counters: dict[str, int] = {}
@@ -146,6 +182,7 @@ def model_options() -> list[ModelOption]:
                 counters[o.kind],
                 o.pair_image_repo_id,
                 o.size_hint,
+                o.ui_sequence,
             )
         )
     return out
@@ -167,7 +204,7 @@ def download_model(repo_id: str, *, cache_dir: Path) -> Path:
 
 
 def _safe_repo_dirname(repo_id: str) -> str:
-    # e.g. "meta-llama/Llama-3.2-3B-Instruct" -> "meta-llama__Llama-3.2-3B-Instruct"
+    # e.g. "Sao10K/Fimbulvetr-11B-v2" -> "Sao10K__Fimbulvetr-11B-v2"
     s = repo_id.strip().replace("/", "__")
     s = re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
     return s[:120] or "model"

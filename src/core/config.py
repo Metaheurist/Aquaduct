@@ -113,8 +113,8 @@ class Models:
 
 def get_models() -> Models:
     return Models(
-        llm_id="meta-llama/Llama-3.2-3B-Instruct",
-        sdxl_turbo_id="stabilityai/sdxl-turbo",
+        llm_id="Qwen/Qwen3-14B-Instruct",
+        sdxl_turbo_id="black-forest-labs/FLUX.1-schnell",
         kokoro_id="hexgrad/Kokoro-82M",
     )
 
@@ -263,7 +263,7 @@ class AppSettings:
     firecrawl_enabled: bool = False
     firecrawl_api_key: str = ""
     elevenlabs_enabled: bool = False
-    elevenlabs_api_key: str = ""  # optional cloud TTS; see docs/elevenlabs.md
+    elevenlabs_api_key: str = ""  # optional cloud TTS; see docs/integrations/elevenlabs.md
     personality_id: str = "auto"
     active_character_id: str = ""  # empty = no character; see data/characters.json
     #: Visual diffusion style (see ``src.settings.art_style_presets``); img2img continuity uses last frames.
@@ -287,7 +287,7 @@ class AppSettings:
     video: VideoSettings = VideoSettings()
     picture: PictureSettings = PictureSettings()
     branding: BrandingSettings = BrandingSettings()
-    # TikTok Content Posting API (OAuth + optional upload). See docs/tiktok.md
+    # TikTok Content Posting API (OAuth + optional upload). See docs/integrations/tiktok.md
     tiktok_enabled: bool = False
     tiktok_client_key: str = ""
     tiktok_client_secret: str = ""
@@ -300,7 +300,7 @@ class AppSettings:
     # inbox = send to TikTok app inbox (video.upload); direct = publish (requires video.publish + review)
     tiktok_publishing_mode: Literal["inbox", "direct"] = "inbox"
     tiktok_auto_upload_after_render: bool = False
-    # YouTube Data API v3 (OAuth + optional upload / Shorts). See docs/youtube.md
+    # YouTube Data API v3 (OAuth + optional upload / Shorts). See docs/integrations/youtube.md
     youtube_enabled: bool = False
     youtube_client_id: str = ""
     youtube_client_secret: str = ""

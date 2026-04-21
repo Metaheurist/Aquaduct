@@ -2,7 +2,7 @@
 YouTube Data API v3 — OAuth 2.0 (desktop) + resumable upload.
 
 Enable the YouTube Data API v3 on your Google Cloud project and create an
-OAuth 2.0 Client ID (Desktop). See docs/youtube.md.
+OAuth 2.0 Client ID (Desktop). See docs/integrations/youtube.md.
 """
 
 from __future__ import annotations

@@ -33,7 +33,7 @@ On the **Model** (API mode) and **API** tabs, the **LLM** row can use **OpenAI**
 | Cerebras | `CEREBRAS_API_KEY` | |
 | Nebius AI Studio | `NEBIUS_API_KEY` | |
 
-Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../src/settings/api_model_catalog.py).
+Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py).
 
 ## Capability matrix
 
@@ -52,16 +52,16 @@ Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../src/se
 
 ## Characters tab (API mode)
 
-- **Generate with LLM** uses the configured **LLM** API (OpenAI chat JSON) via [`generate_character_from_preset_openai`](../src/content/brain_api.py); no local transformers load.
-- **Generate portrait** uses the **Image** API path ([`generate_still_png_bytes`](../src/runtime/api_generation.py)) — OpenAI DALL·E or Replicate — matching slideshow stills. Save settings after configuring **Generation APIs**.
+- **Generate with LLM** uses the configured **LLM** API (OpenAI chat JSON) via [`generate_character_from_preset_openai`](../../src/content/brain_api.py); no local transformers load.
+- **Generate portrait** uses the **Image** API path ([`generate_still_png_bytes`](../../src/runtime/api_generation.py)) — OpenAI DALL·E or Replicate — matching slideshow stills. Save settings after configuring **Generation APIs**.
 
 ## Configuration
 
-`model_execution_mode` is stored with other app settings (see [config.md](config.md)). Build and verify the desktop EXE: [building_windows_exe.md](building_windows_exe.md).
+`model_execution_mode` is stored with other app settings (see [config.md](../reference/config.md)). Build and verify the desktop EXE: [building_windows_exe.md](../build/building_windows_exe.md).
 
 ## Script routing (`GenerationFacade`)
 
-[`get_generation_facade`](../src/runtime/generation_facade.py) returns a **local** implementation (Hugging Face script LLM via [`generate_script`](../src/content/brain.py)) or an **API** implementation (OpenAI chat JSON via [`generate_script_openai`](../src/content/brain_api.py)) based on `model_execution_mode`. [`main.run_once`](../main.py) and [`run_once_api`](../src/runtime/pipeline_api.py) both use this for the script package step so local and API paths stay aligned.
+[`get_generation_facade`](../../src/runtime/generation_facade.py) returns a **local** implementation (Hugging Face script LLM via [`generate_script`](../../src/content/brain.py)) or an **API** implementation (OpenAI chat JSON via [`generate_script_openai`](../../src/content/brain_api.py)) based on `model_execution_mode`. [`main.run_once`](../../main.py) and [`run_once_api`](../../src/runtime/pipeline_api.py) both use this for the script package step so local and API paths stay aligned.
 
 ## Reliability
 

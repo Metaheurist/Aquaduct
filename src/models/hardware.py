@@ -312,6 +312,8 @@ def vram_requirement_hint(
 
     if kind == "voice":
         rl = rid.lower()
+        if "moss" in rl and "voice" in rl:
+            return "~ 8-12 GB+ VRAM (2B instruction TTS); CPU possible but very slow"
         if "xtts" in rl or "coqui" in rl:
             return "~ 4-6 GB VRAM"
         if "bark" in rl or "/bark" in rl:
@@ -321,50 +323,73 @@ def vram_requirement_hint(
         return "CPU OK"
 
     if kind == "script":
+        rl = rid.lower()
+        if "midnight-miqu" in rl or "miqu-70" in rl:
+            return "~ 40+ GB VRAM (70B, 4-bit target)"
+        if "deepseek" in rl and "v3" in rl:
+            return "~ 40-64+ GB GPU or multi-GPU (671B MoE; ~37B active/token); ~685B on disk, large RAM if offloading"
+        if "fimbulvetr" in rl:
+            return "~ 10-16 GB VRAM (11B)"
+        if "qwen3" in rl and "14" in rl.replace(" ", ""):
+            return "~ 12-20 GB VRAM (14B, 4-bit target)"
+        if "abliterated" in rl and "8b" in rl.replace(" ", "").lower():
+            return "~ 6-10 GB VRAM (8B, 4-bit target)"
         if spd == "fastest":
-            return "~ 3 GB VRAM"
+            return "~ 3-8 GB VRAM"
         if spd == "faster":
-            return "~ 4 GB VRAM"
+            return "~ 4-10 GB VRAM"
         return "~ 6-8 GB VRAM"
 
     if kind == "image":
         rl = rid.lower()
+        if "stable-diffusion-3.5" in rl and "large-turbo" in rl:
+            return "~ 8-12 GB VRAM"
+        if "stable-diffusion-3.5" in rl and "large" in rl and "turbo" not in rl:
+            return "~ 14-20 GB VRAM"
+        if "stable-diffusion-3" in rl:
+            return "~ 10-14 GB VRAM"
+        if "flux" in rl and "1.1" in rl and "ultra" in rl:
+            return "~ 12-20 GB VRAM (1.1 [pro] ultra; Hub access may be required)"
+        if "flux" in rl and "schnell" in rl:
+            return "~ 12-16 GB VRAM"
+        if "flux" in rl and "dev" in rl:
+            return "~ 16-24 GB VRAM"
         if "stable-diffusion-xl-base" in rl and "turbo" not in rl:
             return "~ 8-10 GB VRAM"
         if "sdxl-turbo" in rl or rl.endswith("sdxl-turbo"):
             return "~ 6-8 GB VRAM"
         if "stable-diffusion-v1-5" in rl or "v1-5" in rl:
             return "~ 4-6 GB VRAM"
-        if "flux" in rl and "schnell" in rl:
-            return "~ 12-16 GB VRAM"
-        if "flux" in rl and "dev" in rl:
-            return "~ 16-24 GB VRAM"
-        if "stable-diffusion-3" in rl:
-            return "~ 10-14 GB VRAM"
         return "~ 6-8 GB VRAM"
 
     if kind == "video":
         if pair:
             return "~ 10-12 GB VRAM"
         rl = rid.lower()
+        if "wan-ai" in rl or "wan2.2" in rl or ("/wan" in rl and "t2v" in rl):
+            return "~ 12-16 GB VRAM"
+        if "mochi" in rl:
+            return "~ 10-14 GB VRAM"
+        if "cogvideox-5b" in rl:
+            return "~ 6-10 GB VRAM"
+        if "cogvideox" in rl:
+            return "~ 12-16 GB VRAM"
+        if "hunyuanvideo" in rl:
+            return "~ 16-24+ GB VRAM"
+        if "ltx-2" in rl:
+            return "~ 24-40+ GB VRAM at 4K-class settings (LTX-2; lower res/CPU offload may fit less)"
+        if "ltx-video" in rl or ("lightricks/ltx" in rl and "ltx-2" not in rl):
+            return "~ 10-14 GB VRAM"
+        if "stable-video-diffusion" in rl:
+            return "~ 8-12 GB VRAM"
+        if "zeroscope" in rl:
+            return "~ 6-8 GB VRAM"
         if "stable-diffusion-xl-base" in rl and "turbo" not in rl:
             return "~ 8-10 GB VRAM"
         if "sdxl-turbo" in rl or rl.endswith("sdxl-turbo"):
             return "~ 6-8 GB VRAM"
         if "stable-diffusion-v1-5" in rl or "v1-5" in rl:
             return "~ 4-6 GB VRAM"
-        if "zeroscope" in rl:
-            return "~ 6-8 GB VRAM"
-        if "stable-video-diffusion" in rl:
-            return "~ 8-10 GB VRAM"
-        if "cogvideox-5b" in rl:
-            return "~ 18-24 GB VRAM"
-        if "cogvideox" in rl:
-            return "~ 12-16 GB VRAM"
-        if "ltx-video" in rl or "lightricks/ltx" in rl:
-            return "~ 10-14 GB VRAM"
-        if "hunyuanvideo" in rl:
-            return "~ 24+ GB VRAM"
         return "~ 6-8 GB VRAM"
 
     return "--"
@@ -395,10 +420,26 @@ def rate_model_fit_for_repo(
             need_ok = 6.0
             need_ex = 8.0
             why = "SD 1.5 is relatively light."
+        elif "stable-diffusion-3.5" in rid and "large-turbo" in rid:
+            need_ok = 8.0
+            need_ex = 12.0
+            why = "SD3.5 Large Turbo (ADD) is a few-step 3.5-family checkpoint; still a frontier stack."
+        elif "stable-diffusion-3.5" in rid and "large" in rid and "turbo" not in rid:
+            need_ok = 14.0
+            need_ex = 20.0
+            why = "SD3.5 Large is a full 3.5 MMDiT stack."
+        elif "stable-diffusion-3" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "SD3/3.5-family models use multiple text encoders; heavier than SDXL Turbo class."
         elif "stable-diffusion-xl-base" in rid and "turbo" not in rid:
             need_ok = 10.0
             need_ex = 14.0
             why = "SDXL Base is heavier than SDXL Turbo."
+        elif "flux" in rid and "1.1" in rid and "ultra" in rid:
+            need_ok = 12.0
+            need_ex = 20.0
+            why = "FLUX.1.1 [pro] ultra (faster than dev-class for typical runs; BFL Pro stack)."
         elif "flux" in rid and "schnell" in rid:
             need_ok = 12.0
             need_ex = 16.0
@@ -407,14 +448,10 @@ def rate_model_fit_for_repo(
             need_ok = 16.0
             need_ex = 24.0
             why = "FLUX.1-dev is VRAM-heavy."
-        elif "stable-diffusion-3" in rid:
-            need_ok = 10.0
-            need_ex = 14.0
-            why = "SD3 Medium uses multiple text encoders and is heavier than SDXL Turbo."
         else:
             need_ok = 8.0
             need_ex = 10.0
-            why = "SDXL Turbo class expectation."
+            why = "Image diffusion (mid-range) expectation."
         if vram_gb >= need_ex:
             return "EXCELLENT", f"{why} VRAM looks comfortable."
         if vram_gb >= need_ok:
@@ -429,6 +466,34 @@ def rate_model_fit_for_repo(
             need_ok = 12.0
             need_ex = 16.0
             why = "Paired pipeline (keyframes + img->vid) is heavier; unloading between stages helps."
+        elif "wan-ai" in rid or "wan2.2" in rid or ("t2v" in rid and "wan" in rid and "a14b" in rid):
+            need_ok = 12.0
+            need_ex = 18.0
+            why = "Wan 2.2 14B-class T2V is large; 480P-style settings reduce peak VRAM."
+        elif "mochi" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "Mochi 1.5 T2V (Genmo); long clips; quantization offloads are common in community setups."
+        elif "cogvideox-5b" in rid:
+            need_ok = 6.0
+            need_ex = 10.0
+            why = "CogVideoX 5B is the lightest of the curated frontier T2V stack at modest resolutions."
+        elif "cogvideox" in rid:
+            need_ok = 12.0
+            need_ex = 16.0
+            why = "CogVideoX 2B-class stacks still need headroom for coherent clips."
+        elif "hunyuanvideo" in rid:
+            need_ok = 16.0
+            need_ex = 24.0
+            why = "HunyuanVideo is frontier-class; full settings want high VRAM."
+        elif "ltx-2" in rid:
+            need_ok = 24.0
+            need_ex = 40.0
+            why = "LTX-2 (19B-class audio-video T2V); native 4K presets are very VRAM-heavy."
+        elif "ltx-video" in rid or ("lightricks/ltx" in rid and "ltx-2" not in rid):
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "LTX-Video runs at higher resolution than lighter T2V stacks."
         elif "stable-video-diffusion" in rid or "img2vid" in rid:
             need_ok = 10.0
             need_ex = 14.0
@@ -445,22 +510,6 @@ def rate_model_fit_for_repo(
             need_ok = 8.0
             need_ex = 12.0
             why = "ModelScope 1.7B text-to-video is moderate weight at 256²."
-        elif "cogvideox-5b" in rid:
-            need_ok = 18.0
-            need_ex = 24.0
-            why = "CogVideoX 5B is a heavy text-to-video checkpoint."
-        elif "cogvideox" in rid:
-            need_ok = 12.0
-            need_ex = 16.0
-            why = "CogVideoX 2B needs substantial VRAM for coherent clips."
-        elif "ltx-video" in rid or "lightricks/ltx" in rid:
-            need_ok = 10.0
-            need_ex = 14.0
-            why = "LTX-Video runs at higher resolution than ZeroScope."
-        elif "hunyuanvideo" in rid:
-            need_ok = 22.0
-            need_ex = 28.0
-            why = "HunyuanVideo is frontier-class and very VRAM-heavy."
         else:
             need_ok = 8.0
             need_ex = 12.0
@@ -474,7 +523,39 @@ def rate_model_fit_for_repo(
             return "RISKY", f"{why} Tight headroom; may OOM depending on drivers/settings."
         return "NO_GPU", f"{why} Likely too little VRAM; will use placeholders or fail to load."
 
-    # For script/voice, keep the existing heuristic (speed-based).
+    if k == "script":
+        if "midnight-miqu" in rid or "miqu-70" in rid:
+            need_ok = 32.0
+            need_ex = 48.0
+            why = "70B-class merged story models need very large VRAM (typically 4-bit on one GPU)."
+        elif "deepseek" in rid and "v3" in rid:
+            need_ok = 40.0
+            need_ex = 64.0
+            why = "DeepSeek-V3 671B MoE (~37B active per token); expect very large GPU or multi-GPU, TB-scale disk, heavy RAM for offload."
+        elif "fimbulvetr" in rid:
+            need_ok = 10.0
+            need_ex = 16.0
+            why = "Fimbulvetr 11B is heavier than 8B-class models."
+        elif "qwen" in rid and "14" in rid.replace(" ", ""):
+            need_ok = 12.0
+            need_ex = 20.0
+            why = "Qwen3 14B Instruct; 4-bit local target; heavier than 8B-class."
+        elif "8b" in rid.replace(" ", "") or "abliterated" in rid:
+            need_ok = 6.0
+            need_ex = 10.0
+            why = "8B-class instruct (e.g. legacy abliterated); 4-bit target."
+        else:
+            return rate_model_fit(kind=kind, speed=speed, vram_gb=vram_gb, ram_gb=ram_gb)
+
+        if vram_gb >= need_ex:
+            return "EXCELLENT", f"{why} VRAM looks comfortable."
+        if vram_gb >= need_ok:
+            return "OK", f"{why} Should run if the model is unloaded between pipeline stages."
+        if vram_gb >= max(4.0, need_ok - 2.0):
+            return "RISKY", f"{why} Tight headroom; may OOM or need CPU offload."
+        return "NO_GPU", f"{why} Likely too little VRAM; generation may fail."
+
+    # For voice, keep the existing heuristic (speed-based).
     return rate_model_fit(kind=kind, speed=speed, vram_gb=vram_gb, ram_gb=ram_gb)
 
 
@@ -518,10 +599,16 @@ def voice_fit_marker(repo_id: str, vram_gb: float | None) -> tuple[str, str]:
         if vram_gb >= 4:
             return "RISKY", "Parler may be tight."
         return "NO_GPU", "Likely too little VRAM for Parler."
+    if "moss" in rid and "voice" in rid:
+        if vram_gb >= 10:
+            return "OK", "MOSS-VoiceGenerator is large; this VRAM should be workable on GPU."
+        if vram_gb >= 8:
+            return "RISKY", "MOSS-VoiceGenerator may be tight; expect long runs or CPU fallback."
+        return "RISKY", "MOSS is heavy; prefer a smaller TTS (e.g. Kokoro) on low VRAM."
     if "speecht5" in rid:
         if vram_gb >= 4:
             return "OK", "SpeechT5 should run."
-        return "RISKY", "Little VRAM; prefer Kokoro or MMS-TTS."
+        return "RISKY", "Little VRAM; prefer a lighter TTS (e.g. Kokoro) or CPU."
     return "EXCELLENT", "Lightweight TTS checkpoint."
 
 
@@ -529,34 +616,25 @@ _SCRIPT_SPEED_RANK = {"fastest": 0, "faster": 1, "slow": 2}
 
 # Lower index = preferred when GPU fit is equal (SDXL Turbo default balance).
 _IMAGE_PREF_ORDER: tuple[str, ...] = (
-    "stabilityai/sdxl-turbo",
-    "runwayml/stable-diffusion-v1-5",
+    "stabilityai/stable-diffusion-3.5-large-turbo",
     "black-forest-labs/flux.1-schnell",
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    "stabilityai/stable-diffusion-3-medium-diffusers",
+    "black-forest-labs/flux.1.1-pro-ultra",
+    "stabilityai/stable-diffusion-3.5-medium",
+    "stabilityai/stable-diffusion-3.5-large",
     "black-forest-labs/flux.1-dev",
 )
 
 _MOTION_VIDEO_PREF_ORDER: tuple[str, ...] = (
-    "cerspense/zeroscope_v2_576w",
-    "cerspense/zeroscope_v2_30x448x256",
-    "damo-vilab/text-to-video-ms-1.7b",
-    "lightricks/ltx-video",
-    "thudm/cogvideox-2b",
     "thudm/cogvideox-5b",
+    "genmo/mochi-1.5-final",
+    "wan-ai/wan2.2-t2v-a14b-diffusers",
     "tencent/hunyuanvideo",
-    "stabilityai/stable-video-diffusion-img2vid",
-    "stabilityai/stable-video-diffusion-img2vid-xt",
+    "lightricks/ltx-2",
 )
 
 _VOICE_PREF_ORDER: tuple[str, ...] = (
     "hexgrad/Kokoro-82M",
-    "facebook/mms-tts-eng",
-    "myshell-ai/MeloTTS-English",
-    "microsoft/speecht5_tts",
-    "parler-tts/parler-tts-mini-v1",
-    "coqui/XTTS-v2",
-    "suno/bark",
+    "OpenMOSS-Team/MOSS-VoiceGenerator",
 )
 
 
@@ -675,22 +753,6 @@ def rank_models_for_auto_fit(
 
     script_sorted = sorted(script_opts, key=script_key)
     image_sorted = sorted(image_opts, key=image_key)
-    # Prefer SDXL Turbo over SD 1.5 at ~8GB when both are OK (project default balance).
-    if vram_image is not None and vram_image >= 8.0:
-        turbo_o = next((o for o in image_opts if o.repo_id == "stabilityai/sdxl-turbo"), None)
-        if turbo_o is not None:
-            m_t, _ = rate_model_fit_for_repo(
-                kind="image",
-                speed=turbo_o.speed,
-                repo_id=turbo_o.repo_id,
-                vram_gb=vram_image,
-                ram_gb=ram,
-            )
-            if marker_rank(m_t) >= marker_rank("OK") and image_sorted:
-                first = image_sorted[0]
-                if first.repo_id == "runwayml/stable-diffusion-v1-5":
-                    rest = [o for o in image_sorted if o.repo_id != "stabilityai/sdxl-turbo"]
-                    image_sorted = [turbo_o] + rest
     video_sorted = sorted(video_opts, key=video_key)
     voice_sorted = sorted(voice_opts, key=voice_key)
 

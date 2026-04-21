@@ -137,7 +137,7 @@ def attach_api_tab(win) -> None:
         "API keys: "
         '<a href="https://elevenlabs.io/docs/api-reference/">elevenlabs.io/docs</a>. '
         "You can set <b>ELEVENLABS_API_KEY</b> in the environment instead of saving here (env wins). "
-        "Requires internet; on failure narration falls back to local TTS. See docs/elevenlabs.md."
+        "Requires internet; on failure narration falls back to local TTS. See docs/integrations/elevenlabs.md."
     )
     el_doc.setTextFormat(Qt.TextFormat.RichText)
     el_doc.setOpenExternalLinks(True)
@@ -171,7 +171,7 @@ def attach_api_tab(win) -> None:
     tt_doc = QLabel(
         "Register an app at "
         '<a href="https://developers.tiktok.com/">developers.tiktok.com</a>, add this redirect URI to Login Kit, '
-        "then connect. Uses OAuth + inbox upload (open TikTok app to finish posting). See docs/tiktok.md."
+        "then connect. Uses OAuth + inbox upload (open TikTok app to finish posting). See docs/integrations/tiktok.md."
     )
     tt_doc.setTextFormat(Qt.TextFormat.RichText)
     tt_doc.setOpenExternalLinks(True)
@@ -253,7 +253,7 @@ def attach_api_tab(win) -> None:
         "Create OAuth credentials (Desktop) in Google Cloud, enable YouTube Data API v3, "
         "and add the redirect URI to the client. "
         'Guide: <a href="https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps">Google OAuth</a> — '
-        "see docs/youtube.md in this repo."
+        "see docs/integrations/youtube.md in this repo."
     )
     yt_doc.setTextFormat(Qt.TextFormat.RichText)
     yt_doc.setOpenExternalLinks(True)

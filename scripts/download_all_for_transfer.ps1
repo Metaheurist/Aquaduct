@@ -109,31 +109,29 @@ from pathlib import Path
 HF_TOKEN = ""
 
 MINIMAL_REPOS = [
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "stabilityai/sdxl-turbo",
+    "Qwen/Qwen3-14B-Instruct",
+    "black-forest-labs/FLUX.1-schnell",
     "hexgrad/Kokoro-82M",
 ]
 
 ALL_REPOS = [
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-3B-Instruct",
-    "microsoft/Phi-3.5-mini-instruct",
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "mistralai/Mistral-7B-Instruct-v0.3",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "stabilityai/sdxl-turbo",
-    "runwayml/stable-diffusion-v1-5",
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    "stabilityai/stable-video-diffusion-img2vid-xt",
-    "cerspense/zeroscope_v2_576w",
+    "Qwen/Qwen3-14B-Instruct",
+    "Sao10K/Fimbulvetr-11B-v2",
+    "sophosympatheia/Midnight-Miqu-70B-v1.5",
+    "deepseek-ai/DeepSeek-V3",
+    "black-forest-labs/FLUX.1.1-pro-ultra",
+    "black-forest-labs/FLUX.1-dev",
+    "black-forest-labs/FLUX.1-schnell",
+    "stabilityai/stable-diffusion-3.5-large",
+    "stabilityai/stable-diffusion-3.5-medium",
+    "stabilityai/stable-diffusion-3.5-large-turbo",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    "genmo/mochi-1.5-final",
+    "Lightricks/LTX-2",
+    "THUDM/CogVideoX-5b",
+    "Tencent/HunyuanVideo",
     "hexgrad/Kokoro-82M",
-    "facebook/mms-tts-eng",
-    "myshell-ai/MeloTTS-English",
-    "microsoft/speecht5_tts",
-    "parler-tts/parler-tts-mini-v1",
-    "coqui/XTTS-v2",
-    "suno/bark",
+    "OpenMOSS-Team/MOSS-VoiceGenerator",
 ]
 
 

@@ -1,6 +1,6 @@
 # Headless CLI
 
-Aquaduct can run **without the desktop UI** using subcommands. Settings are the same object as the app: **`ui_settings.json`** under **`.Aquaduct_data/`** next to your install (see [`app_dirs`](../src/core/app_dirs.py)).
+Aquaduct can run **without the desktop UI** using subcommands. Settings are the same object as the app: **`ui_settings.json`** under **`.Aquaduct_data/`** next to your install (see [`app_dirs`](../../src/core/app_dirs.py)).
 
 ## Entry
 
@@ -39,7 +39,7 @@ Dumps effective settings as one JSON object (stdout). Options:
 
 ### `config validate`
 
-Loads and parses `ui_settings.json`. With `--preflight`, also runs [`preflight_check`](../src/runtime/preflight.py) (exit code **1** on failure).
+Loads and parses `ui_settings.json`. With `--preflight`, also runs [`preflight_check`](../../src/runtime/preflight.py) (exit code **1** on failure).
 
 ### `preflight`
 
@@ -57,7 +57,7 @@ Progress messages go to **stderr**; the final path for `--once` goes to **stdout
 
 ### `models list`
 
-Lists curated Hugging Face repos (script / image / video / voice) and whether a local snapshot exists under the **resolved models directory** (same rule as the app: **default** `.Aquaduct_data/models`, or **external** path from `ui_settings.json` when configured — see [Config](config.md) / `models_dir_for_app` in [`src/core/models_dir.py`](../src/core/models_dir.py)).
+Lists curated Hugging Face repos (script / image / video / voice) and whether a local snapshot exists under the **resolved models directory** (same rule as the app: **default** `.Aquaduct_data/models`, or **external** path from `ui_settings.json` when configured — see [Config](config.md) / `models_dir_for_app` in [`src/core/models_dir.py`](../../src/core/models_dir.py)).
 
 ### `models download`
 
@@ -79,7 +79,7 @@ Prefer env for secrets so containers do not store keys in JSON:
 | Variable | Role |
 |----------|------|
 | `HF_TOKEN` / `HUGGINGFACEHUB_API_TOKEN` | Hugging Face downloads / gated models |
-| `OPENAI_API_KEY` | API mode / OpenAI routing (see [`model_backend`](../src/runtime/model_backend.py)) |
+| `OPENAI_API_KEY` | API mode / OpenAI routing (see [`model_backend`](../../src/runtime/model_backend.py)) |
 | `REPLICATE_API_TOKEN` | API mode / Replicate |
 | `AQUADUCT_DEBUG` | Debug categories (comma-separated); same as UI |
 
@@ -102,5 +102,5 @@ Adjust image name and working directory to match your Dockerfile.
 
 ## See also
 
-- [`main.md`](main.md) — orchestrator and legacy `--cli` flags.
+- [`main.md`](../pipeline/main.md) — orchestrator and legacy `--cli` flags.
 - [`hardware.md`](hardware.md) — VRAM / fit hints for local models.

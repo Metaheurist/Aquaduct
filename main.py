@@ -100,8 +100,14 @@ from src.speech.elevenlabs_tts import (
     effective_elevenlabs_api_key,
     elevenlabs_available_for_app,
 )
-from src.speech.tts_text import shape_tts_text
-from src.speech.voice import synthesize, synthesize_unhinged_rotating_pyttsx3
+from src.speech.tts_text import merge_moss_character_and_run_personality, shape_tts_text
+from src.speech.tts_kokoro_moss import is_kokoro_repo, is_moss_vg_repo
+from src.speech.voice import (
+    synthesize,
+    synthesize_unhinged_moss,
+    synthesize_unhinged_rotating_kokoro,
+    synthesize_unhinged_rotating_pyttsx3,
+)
 from src.util.single_instance import single_instance_guard
 from src.util.utils_vram import prepare_for_next_model
 
@@ -908,6 +914,10 @@ def run_once(
         use_el = bool(el_vid and el_key and ffmpeg_exe)
         char_forces_voice = active_character is not None and not getattr(active_character, "use_default_voice", True)
         rotate_unhinged = vf_voice == "unhinged" and not use_el and not char_forces_voice
+        char_moss: str | None = (
+            (active_character.voice_instruction or "").strip() if active_character is not None else None
+        )
+        voice_inst = merge_moss_character_and_run_personality(char_moss, pid_voice)
     
         if rotate_unhinged:
             parts: list[str] = []
@@ -925,12 +935,29 @@ def run_once(
             if not texts_uh:
                 st_full = shape_tts_text(narration, personality_id=pid_voice)
                 texts_uh = [st_full if st_full else narration]
-            synthesize_unhinged_rotating_pyttsx3(
-                kokoro_model_id=voice_id,
-                segment_texts=texts_uh,
-                out_wav_path=voice_wav,
-                out_captions_json=captions_json,
-            )
+            if is_moss_vg_repo(voice_id):
+                synthesize_unhinged_moss(
+                    kokoro_model_id=voice_id,
+                    voice_instruction=voice_inst,
+                    segment_texts=texts_uh,
+                    out_wav_path=voice_wav,
+                    out_captions_json=captions_json,
+                )
+            elif is_kokoro_repo(voice_id):
+                synthesize_unhinged_rotating_kokoro(
+                    kokoro_model_id=voice_id,
+                    segment_texts=texts_uh,
+                    out_wav_path=voice_wav,
+                    out_captions_json=captions_json,
+                    kokoro_speaker=kokoro_sp,
+                )
+            else:
+                synthesize_unhinged_rotating_pyttsx3(
+                    kokoro_model_id=voice_id,
+                    segment_texts=texts_uh,
+                    out_wav_path=voice_wav,
+                    out_captions_json=captions_json,
+                )
         else:
             shaped = shape_tts_text(narration, personality_id=pid_voice)
             if shaped:
@@ -946,6 +973,7 @@ def run_once(
                 out_captions_json=captions_json,
                 pyttsx3_voice_id=py_tts_voice,
                 kokoro_speaker=kokoro_sp,
+                voice_instruction=voice_inst,
                 elevenlabs_voice_id=el_vid,
                 elevenlabs_api_key=el_key,
                 ffmpeg_executable=ffmpeg_exe,

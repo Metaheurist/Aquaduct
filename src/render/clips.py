@@ -30,8 +30,11 @@ def _truncate_clip_text_encoder_77(text: str, *, low_id: str) -> str:
     """
     Many T2V / composite pipelines use OpenAI-style CLIP with **max 77 tokens** for the text branch.
     CogVideoX (T5) and LTX (long context) are skipped — see model-specific branches in callers.
+    Mochi / Wan (T5- or UMT5-class) skip CLIP-77; Hunyuan uses a long path below.
     """
     if "cogvideox" in low_id or "ltx-video" in low_id or "lightricks/ltx" in low_id:
+        return text
+    if "mochi" in low_id or "wan-ai" in low_id or "wan2" in low_id:
         return text
     t = (text or "").strip()
     if not t:
@@ -81,6 +84,8 @@ def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
         cap = 200
     elif "ltx-video" in low_id or "lightricks/ltx" in low_id:
         cap = 120
+    elif "mochi" in low_id or "wan-ai" in low_id or "wan2" in low_id:
+        cap = 200
     else:
         cap = 42
     parts = [p for p in s.split() if p]
@@ -98,15 +103,11 @@ def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
 # Keep in sync when adding Hub entries used by ``generate_clips``.
 CURATED_VIDEO_CLIP_REPO_IDS: frozenset[str] = frozenset(
     {
-        "stabilityai/stable-video-diffusion-img2vid-xt",
-        "stabilityai/stable-video-diffusion-img2vid",
-        "cerspense/zeroscope_v2_576w",
-        "cerspense/zeroscope_v2_30x448x256",
-        "damo-vilab/text-to-video-ms-1.7b",
-        "thudm/cogvideox-2b",
+        "wan-ai/wan2.2-t2v-a14b-diffusers",
+        "genmo/mochi-1.5-final",
         "thudm/cogvideox-5b",
-        "lightricks/ltx-video",
         "tencent/hunyuanvideo",
+        "lightricks/ltx-2",
     }
 )
 
@@ -152,8 +153,44 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
     mid = _norm_repo_id(model_id)
     nf = max(8, int(num_frames))
 
-    # Frontier T2V (dedicated diffusers pipelines — see ``_load_text_to_video_pipeline``)
-    if mid in ("thudm/cogvideox-2b", "thudm/cogvideox-5b"):
+    if mid == "wan-ai/wan2.2-t2v-a14b-diffusers":
+        # 480P-style defaults; 720P needs more VRAM (see Wan model card / diffusers example).
+        nf_w = min(max(17, nf), 97)
+        return {
+            "num_frames": nf_w,
+            "num_inference_steps": 30,
+            "height": 480,
+            "width": 832,
+            "guidance_scale": 5.0,
+        }
+    if mid == "genmo/mochi-1.5-final":
+        # 1.5: longer default clips (~10s); cap ~12.5s @ 24fps (300) to stay in-model.
+        nf_m = min(max(8, nf), 300)
+        return {
+            "num_frames": nf_m,
+            "num_inference_steps": 28,
+            "guidance_scale": 3.5,
+        }
+    if mid == "lightricks/ltx-2":
+        # 9:16 "4K" vertical for Shorts: both dims divisible by 32 (LTX-2 constraint). Heavy VRAM.
+        nf_l = min(max(9, nf), 241)
+        while (nf_l - 1) % 8 != 0:
+            nf_l = min(nf_l + 1, 241)
+        return {
+            "num_frames": nf_l,
+            "num_inference_steps": 40,
+            "height": 3840,
+            "width": 2176,
+            "frame_rate": 24.0,
+            "guidance_scale": 4.0,
+            "negative_prompt": (
+                "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, "
+                "motion smear, motion artifacts, fused fingers, bad anatomy, weird hand, ugly, "
+                "transition, static"
+            ),
+        }
+    # CogVideoX 5B (dedicated diffusers — see ``_load_text_to_video_pipeline``)
+    if mid == "thudm/cogvideox-5b":
         nf_use = min(max(9, nf), 49)
         return {
             "num_frames": nf_use,
@@ -254,7 +291,24 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "num_inference_steps": 50,
             "guidance_scale": 6.0,
         }
-    if "ltx-video" in mid or "lightricks/ltx" in mid:
+    if "ltx-2" in mid:
+        nf_l = min(max(9, nf), 241)
+        while (nf_l - 1) % 8 != 0:
+            nf_l = min(nf_l + 1, 241)
+        return {
+            "num_frames": nf_l,
+            "num_inference_steps": 40,
+            "height": 3840,
+            "width": 2176,
+            "frame_rate": 24.0,
+            "guidance_scale": 4.0,
+            "negative_prompt": (
+                "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, "
+                "motion smear, motion artifacts, fused fingers, bad anatomy, weird hand, ugly, "
+                "transition, static"
+            ),
+        }
+    if "ltx-video" in mid or ("lightricks/ltx" in mid and "ltx-2" not in mid):
         nf_adj = max(9, min(nf, 97))
         if nf_adj % 2 == 0:
             nf_adj += 1
@@ -283,12 +337,39 @@ def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
     """
     Load the appropriate diffusers pipeline for ``model_id``.
 
-    CogVideoX / LTX / HunyuanVideo need their concrete pipeline classes; generic
+    Wan / Mochi / CogVideoX / LTX / HunyuanVideo use concrete pipeline classes; generic
     ``DiffusionPipeline`` works for ZeroScope, ModelScope, and many community repos.
     """
     import torch
 
     mid = _norm_repo_id(model_id)
+    if "wan-ai" in mid and "wan2" in mid:
+        from diffusers import AutoencoderKLWan, WanPipeline
+
+        vae = AutoencoderKLWan.from_pretrained(load_path, subfolder="vae", torch_dtype=torch.float32)
+        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        try:
+            pipe = WanPipeline.from_pretrained(
+                load_path, vae=vae, torch_dtype=dt, low_cpu_mem_usage=True
+            )
+        except TypeError:
+            pipe = WanPipeline.from_pretrained(load_path, vae=vae, torch_dtype=dt)
+        try:
+            from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+
+            pipe.scheduler = UniPCMultistepScheduler.from_config(
+                pipe.scheduler.config, flow_shift=3.0
+            )
+        except Exception:
+            pass
+        return pipe
+    if "mochi" in mid:
+        from diffusers import MochiPipeline
+
+        try:
+            return MochiPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+        except TypeError:
+            return MochiPipeline.from_pretrained(load_path, torch_dtype=_fp16)
     if "cogvideox" in mid and "i2v" not in mid:
         from diffusers import CogVideoXPipeline
 
@@ -296,6 +377,14 @@ def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
             return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
         except TypeError:
             return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+    if "ltx-2" in mid:
+        from diffusers import LTX2Pipeline
+
+        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        try:
+            return LTX2Pipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
+        except TypeError:
+            return LTX2Pipeline.from_pretrained(load_path, torch_dtype=dt)
     if "ltx-video" in mid or mid.startswith("lightricks/ltx"):
         from diffusers import LTXPipeline
 
@@ -383,10 +472,44 @@ def _try_text_to_video(
     pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16)
     place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
     _maybe_enable_slice_inference(pipe)
+    mid_run = _norm_repo_id(model_id)
+    if mid_run == "lightricks/ltx-2" and getattr(pipe, "vae", None) is not None:
+        try:
+            pipe.vae.enable_tiling()
+        except Exception:
+            pass
 
     results: list[GeneratedClip] = []
     for i, p in enumerate(prompts, start=1):
         out = pipe(prompt=p, **vkw)
+        out_path = out_dir / f"clip_{i:03d}.mp4"
+
+        if mid_run == "lightricks/ltx-2" and hasattr(out, "frames") and getattr(out, "audio", None) is not None:
+            try:
+                from diffusers.pipelines.ltx2.export_utils import encode_video
+                from diffusers.utils import is_av_available
+
+                if is_av_available():
+                    vframes = (
+                        out.frames[0]
+                        if isinstance(out.frames, list)
+                        and out.frames
+                        and isinstance(out.frames[0], list)
+                        else out.frames
+                    )
+                    aud = out.audio[0] if isinstance(out.audio, (list, tuple)) and out.audio else out.audio
+                    voc = getattr(pipe, "vocoder", None)
+                    sr = int(
+                        getattr(getattr(voc, "config", None), "output_sampling_rate", 24000)
+                        or 24000
+                    )
+                    fr_ltx = int(vkw.get("frame_rate", fps) or fps)
+                    encode_video(vframes, fr_ltx, aud, sr, str(out_path))
+                    results.append(GeneratedClip(path=out_path, prompt=p))
+                    continue
+            except Exception:
+                pass
+
         # Common outputs: .frames (list[list[PIL]]), .images (PIL), or dict with "frames"
         pil_frames = None
         if hasattr(out, "frames"):
@@ -400,8 +523,7 @@ def _try_text_to_video(
             raise RuntimeError("Video pipeline returned no frames.")
 
         frames = [np.array(fr.convert("RGB")) for fr in pil_frames]
-        out_path = out_dir / f"clip_{i:03d}.mp4"
-        _write_mp4_from_frames(frames, out_path, fps=fps)
+        _write_mp4_from_frames(frames, out_path, fps=int(vkw.get("frame_rate", fps) or fps) if mid_run == "lightricks/ltx-2" else fps)
         results.append(GeneratedClip(path=out_path, prompt=p))
 
     del pipe

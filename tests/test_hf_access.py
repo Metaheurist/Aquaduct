@@ -15,7 +15,7 @@ def test_humanize_gated_repo_error():
         pass
 
     msg = humanize_hf_hub_error(
-        E("401 Client Error: you are trying to access a gated repo for meta-llama/Meta-Llama-3.1-8B-Instruct")
+        E("401 Client Error: you are trying to access a gated repo for sophosympatheia/Midnight-Miqu-70B-v1.5")
     )
     assert msg is not None
     assert "gated" in msg.lower() or "401" in msg

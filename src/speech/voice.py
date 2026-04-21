@@ -9,6 +9,15 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from src.speech.tts_kokoro_moss import (
+    DEFAULT_MOSS_INSTRUCTION,
+    is_kokoro_repo,
+    is_moss_vg_repo,
+    kokoro_speaker_for_unhinged_segment,
+    pick_kokoro_speaker,
+    try_kokoro_tts,
+    try_moss_voicegenerator_tts,
+)
 from src.util.utils_vram import vram_guard
 
 
@@ -81,24 +90,6 @@ def list_pyttsx3_voices() -> list[tuple[str, str]]:
         return []
 
 
-def _try_kokoro_tts(_model_id: str, _text: str, _out_wav: Path, _speaker: str | None = None) -> bool:
-    """
-    Kokoro-82M integration target.
-
-    Kokoro model packaging can vary; to keep MVP runnable, this function attempts a
-    best-effort import path and returns False if unavailable.
-    """
-    try:
-        # If an official/third-party kokoro package is installed, prefer it.
-        # We intentionally keep this optional to avoid breaking the MVP.
-        import kokoro  # type: ignore  # noqa: F401
-
-        # Unknown API surface across Kokoro variants; defer to fallback for now.
-        return False
-    except Exception:
-        return False
-
-
 UNHINGED_ROTATION_MAX_VOICES = 12
 
 
@@ -109,6 +100,7 @@ def _synthesize_tts_to_wav(
     out_wav_path: Path,
     pyttsx3_voice_id: str | None = None,
     kokoro_speaker: str | None = None,
+    voice_instruction: str | None = None,
     elevenlabs_voice_id: str | None = None,
     elevenlabs_api_key: str | None = None,
     ffmpeg_executable: Path | None = None,
@@ -143,8 +135,20 @@ def _synthesize_tts_to_wav(
                 except Exception:
                     el_ok = False
             if not el_ok:
-                ok = _try_kokoro_tts(kokoro_model_id, text, out_wav_path, _speaker=kokoro_speaker)
-                if not ok:
+                vid = (kokoro_model_id or "").strip()
+                if is_moss_vg_repo(vid):
+                    inst = (voice_instruction or "").strip() or DEFAULT_MOSS_INSTRUCTION
+                    if not try_moss_voicegenerator_tts(
+                        model_id=vid, text=text, instruction=inst, out_wav=out_wav_path
+                    ):
+                        _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
+                elif is_kokoro_repo(vid):
+                    sp = pick_kokoro_speaker(kokoro_speaker)
+                    if not try_kokoro_tts(
+                        model_id=vid, text=text, out_wav=out_wav_path, speaker=sp
+                    ):
+                        _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
+                else:
                     _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
 
     if not out_wav_path.exists() or out_wav_path.stat().st_size < 1024:
@@ -194,6 +198,7 @@ def synthesize(
     out_captions_json: Path,
     pyttsx3_voice_id: str | None = None,
     kokoro_speaker: str | None = None,
+    voice_instruction: str | None = None,
     elevenlabs_voice_id: str | None = None,
     elevenlabs_api_key: str | None = None,
     ffmpeg_executable: Path | None = None,
@@ -212,6 +217,7 @@ def synthesize(
         out_wav_path=out_wav_path,
         pyttsx3_voice_id=pyttsx3_voice_id,
         kokoro_speaker=kokoro_speaker,
+        voice_instruction=voice_instruction,
         elevenlabs_voice_id=elevenlabs_voice_id,
         elevenlabs_api_key=elevenlabs_api_key,
         ffmpeg_executable=ffmpeg_executable,
@@ -309,6 +315,7 @@ def synthesize_unhinged_rotating_pyttsx3(
                 out_wav_path=tmp,
                 pyttsx3_voice_id=py_vid,
                 kokoro_speaker=None,
+                voice_instruction=None,
                 elevenlabs_voice_id=None,
                 elevenlabs_api_key=None,
                 ffmpeg_executable=None,
@@ -327,6 +334,7 @@ def synthesize_unhinged_rotating_pyttsx3(
                 out_wav_path=out_wav_path,
                 pyttsx3_voice_id=voice_ids[0],
                 kokoro_speaker=None,
+                voice_instruction=None,
                 elevenlabs_voice_id=None,
                 elevenlabs_api_key=None,
                 ffmpeg_executable=None,
@@ -339,6 +347,136 @@ def synthesize_unhinged_rotating_pyttsx3(
         payload = [{"word": w.word, "start": w.start, "end": w.end} for w in combined]
         out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         dprint("voice", "synthesize_unhinged done", f"word_timestamps={len(combined)}")
+        return combined
+    finally:
+        for p in temp_paths:
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+
+
+def synthesize_unhinged_rotating_kokoro(
+    *,
+    kokoro_model_id: str,
+    segment_texts: list[str],
+    out_wav_path: Path,
+    out_captions_json: Path,
+    kokoro_speaker: str | None = None,
+) -> list[WordTimestamp]:
+    """
+    Unhinged format: one segment per non-empty part, rotating **af_bella → af_nicole → am_adam**
+    when the per-character speaker is unset; otherwise reuse the same custom speaker for every segment.
+    """
+    from debug import dprint
+
+    dprint("voice", "synthesize_unhinged_kokoro", f"segments={len(segment_texts)}")
+    out_captions_json.parent.mkdir(parents=True, exist_ok=True)
+    offset_s = 0.0
+    combined: list[WordTimestamp] = []
+    temp_paths: list[Path] = []
+    seg_i = 0
+    tts_i = 0
+    try:
+        for text in segment_texts:
+            t = (text or "").strip()
+            if not t:
+                continue
+            sp = kokoro_speaker_for_unhinged_segment(kokoro_speaker, tts_i)
+            tts_i += 1
+            tmp = out_wav_path.parent / f"_unhinged_kok_{seg_i:03d}.wav"
+            seg_i += 1
+            with vram_guard():
+                ok = try_kokoro_tts(
+                    model_id=kokoro_model_id,
+                    text=t,
+                    out_wav=tmp,
+                    speaker=sp,
+                )
+                if not ok:
+                    _pyttsx3_tts(t, tmp, None)
+            dur = _duration_seconds(tmp)
+            for w in _simple_word_timestamps(text=t, total_s=dur):
+                combined.append(WordTimestamp(word=w.word, start=w.start + offset_s, end=w.end + offset_s))
+            offset_s += dur
+            temp_paths.append(tmp)
+
+        if not temp_paths:
+            sp0 = pick_kokoro_speaker(kokoro_speaker)
+            with vram_guard():
+                ok0 = try_kokoro_tts(
+                    model_id=kokoro_model_id, text=" ", out_wav=out_wav_path, speaker=sp0
+                )
+                if not ok0:
+                    _pyttsx3_tts(" ", out_wav_path, None)
+            combined = _simple_word_timestamps(text=" ", total_s=_duration_seconds(out_wav_path))
+        else:
+            concat_pcm16_wavs(temp_paths, out_wav_path)
+
+        payload = [{"word": w.word, "start": w.start, "end": w.end} for w in combined]
+        out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        dprint("voice", "synthesize_unhinged_kokoro done", f"word_timestamps={len(combined)}")
+        return combined
+    finally:
+        for p in temp_paths:
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+
+
+def synthesize_unhinged_moss(
+    *,
+    kokoro_model_id: str,
+    voice_instruction: str | None,
+    segment_texts: list[str],
+    out_wav_path: Path,
+    out_captions_json: Path,
+) -> list[WordTimestamp]:
+    """Unhinged: synthesize each segment with the same MOSS *instruction* + segment text, then concat."""
+    from debug import dprint
+
+    inst = (voice_instruction or "").strip() or DEFAULT_MOSS_INSTRUCTION
+    dprint("voice", "synthesize_unhinged_moss", f"segments={len(segment_texts)}")
+    out_captions_json.parent.mkdir(parents=True, exist_ok=True)
+    offset_s = 0.0
+    combined: list[WordTimestamp] = []
+    temp_paths: list[Path] = []
+    seg_i = 0
+    try:
+        for text in segment_texts:
+            t = (text or "").strip()
+            if not t:
+                continue
+            tmp = out_wav_path.parent / f"_unhinged_moss_{seg_i:03d}.wav"
+            seg_i += 1
+            with vram_guard():
+                ok = try_moss_voicegenerator_tts(
+                    model_id=kokoro_model_id, text=t, instruction=inst, out_wav=tmp
+                )
+                if not ok:
+                    _pyttsx3_tts(t, tmp, None)
+            dur = _duration_seconds(tmp)
+            for w in _simple_word_timestamps(text=t, total_s=dur):
+                combined.append(WordTimestamp(word=w.word, start=w.start + offset_s, end=w.end + offset_s))
+            offset_s += dur
+            temp_paths.append(tmp)
+
+        if not temp_paths:
+            with vram_guard():
+                if not try_moss_voicegenerator_tts(
+                    model_id=kokoro_model_id, text=" ", instruction=inst, out_wav=out_wav_path
+                ):
+                    _pyttsx3_tts(" ", out_wav_path, None)
+            combined = _simple_word_timestamps(text=" ", total_s=_duration_seconds(out_wav_path))
+        else:
+            concat_pcm16_wavs(temp_paths, out_wav_path)
+
+        payload = [{"word": w.word, "start": w.start, "end": w.end} for w in combined]
+        out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        dprint("voice", "synthesize_unhinged_moss done", f"word_timestamps={len(combined)}")
         return combined
     finally:
         for p in temp_paths:

@@ -23,7 +23,7 @@ class GpuPolicyToggle(QWidget):
         self.setToolTip(
             "Auto: multi-GPU stage routing (script vs diffusion may use different devices; VRAM is not pooled). "
             "Select GPU: pin all local stages to the device below. "
-            "If AQUADUCT_CUDA_DEVICE is set in the environment, it overrides the saved policy (see docs/hardware.md)."
+            "If AQUADUCT_CUDA_DEVICE is set in the environment, it overrides the saved policy (see docs/reference/hardware.md)."
         )
 
         root = QHBoxLayout(self)

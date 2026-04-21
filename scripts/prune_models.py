@@ -13,7 +13,7 @@ Examples:
   python scripts/prune_models.py --preset qwen-svd-kokoro -y
 
   # Explicit repo ids (repeat --keep)
-  python scripts/prune_models.py -y --keep Qwen/Qwen2.5-1.5B-Instruct --keep hexgrad/Kokoro-82M
+  python scripts/prune_models.py -y --keep Qwen/Qwen3-14B-Instruct --keep hexgrad/Kokoro-82M
 """
 
 from __future__ import annotations
@@ -35,9 +35,9 @@ from src.settings.ui_settings import load_settings
 # Screenshot defaults: Qwen2.5 1.5B, SVD+SDXL pair, Kokoro 82M
 PRESETS: dict[str, list[str]] = {
     "qwen-svd-kokoro": [
-        "Qwen/Qwen2.5-1.5B-Instruct",
+        "Qwen/Qwen3-14B-Instruct",
         "stabilityai/stable-video-diffusion-img2vid-xt",
-        "stabilityai/sdxl-turbo",
+        "black-forest-labs/FLUX.1-schnell",
         "hexgrad/Kokoro-82M",
     ],
 }
