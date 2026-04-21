@@ -31,7 +31,7 @@ def model_options() -> list[ModelOption]:
         # Default: Qwen3 14B Instruct — strong creative/roleplay; use non-thinking (chat) path for fast prose when supported.
         ModelOption(
             "Qwen3 14B Instruct (curated default)",
-            "Qwen/Qwen3-14B-Instruct",
+            "Qwen/Qwen3-14B",
             "fastest",
             "script",
             size_hint="14B",

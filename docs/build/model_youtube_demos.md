@@ -10,7 +10,7 @@ Third-party tutorials and demos for models exposed in **Settings → Models**. T
 
 | UI label (short) | Hugging Face repo | Example YouTube demos |
 |------------------|-------------------|------------------------|
-| Qwen3 14B Instruct (curated default) | `Qwen/Qwen3-14B-Instruct` | [Model card (Hugging Face)](https://huggingface.co/Qwen/Qwen3-14B-Instruct) |
+| Qwen3 14B (curated default) | `Qwen/Qwen3-14B` | [Model card (Hugging Face)](https://huggingface.co/Qwen/Qwen3-14B) |
 | Fimbulvetr 11B v2 (prose / Solar) | `Sao10K/Fimbulvetr-11B-v2` | [Model card (Hugging Face)](https://huggingface.co/Sao10K/Fimbulvetr-11B-v2) |
 | Midnight Miqu 70B v1.5 (heavyweight) | `sophosympatheia/Midnight-Miqu-70B-v1.5` | [Model card (Hugging Face)](https://huggingface.co/sophosympatheia/Midnight-Miqu-70B-v1.5) |
 | DeepSeek-V3 (671B MoE) | `deepseek-ai/DeepSeek-V3` | [Model card (Hugging Face)](https://huggingface.co/deepseek-ai/DeepSeek-V3) |

@@ -41,7 +41,7 @@ HF_TOKEN = ""
 
 # Same defaults as src/config.py get_models()
 MINIMAL_REPOS = [
-    "Qwen/Qwen3-14B-Instruct",
+    "Qwen/Qwen3-14B",
     "black-forest-labs/FLUX.1-schnell",
     "hexgrad/Kokoro-82M",
 ]
@@ -49,7 +49,7 @@ MINIMAL_REPOS = [
 # Same repo ids as src/models/model_manager.py model_options() (dedupe order-preserving)
 ALL_REPOS = [
     # Script (LLM)
-    "Qwen/Qwen3-14B-Instruct",
+    "Qwen/Qwen3-14B",
     "Sao10K/Fimbulvetr-11B-v2",
     "sophosympatheia/Midnight-Miqu-70B-v1.5",
     "deepseek-ai/DeepSeek-V3",
