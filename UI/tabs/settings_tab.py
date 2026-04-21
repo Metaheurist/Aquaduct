@@ -641,6 +641,13 @@ def attach_settings_tab(win) -> None:
         _update_fit_badges()
         if hasattr(win, "_append_log"):
             win._append_log(ranked.log_summary)
+            try:
+                from src.models.inference_profiles import format_inference_profile_report
+
+                for line in format_inference_profile_report(app_af).splitlines():
+                    win._append_log(f"[Aquaduct][inference_profile] {line}")
+            except Exception:
+                pass
             if not (ok_s and ok_i and ok_v and ok_c):
                 win._append_log(
                     "Auto-fit: one or more preferred models are disabled (Hub check). "

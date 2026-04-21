@@ -9,7 +9,7 @@
 5. Edit micro-scenes (slideshow) or concatenate motion / Pro **scene** segments + final MP4
 6. Write per-video outputs under `videos/<safe_video_title>/`
 
-It also exposes a `run_once(settings: AppSettings)` function that the desktop UI calls.
+It also exposes a `run_once(settings: AppSettings)` function that the desktop UI calls. For **local** runs, after preflight it calls **`log_inference_profiles_for_run(app)`** so the console shows **`[Aquaduct][inference_profile]`** lines (per-model profile summary). See [Inference profiles](../reference/inference_profiles.md).
 
 For **Cartoon** and **Cartoon (unhinged)** preset runs, when **Gather web context** and/or **Download reference images** is enabled on the Video tab, `run_once` prepends the latest **Topics → Discover** research digest from **`data/topic_research/<mode>/`** into the Firecrawl `build_script_context` `extra_markdown` bundle (same helper as storyboard preview in [`UI/workers.py`](../../UI/workers.py)); see [Crawler](../integrations/crawler.md).
 

@@ -33,6 +33,7 @@ def test_local_facade_calls_generate_script():
     assert out.title == "T"
     gs.assert_called_once()
     assert gs.call_args.kwargs["model_id"] == "org/llm"
+    assert gs.call_args.kwargs.get("inference_settings") is app
 
 
 def test_local_facade_requires_model_id():

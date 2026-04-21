@@ -17,6 +17,14 @@ Override the models folder:
   python scripts/download_hf_models.py --out D:\\models
 
 Gated models (e.g. meta-llama/*) require a token with access approved on huggingface.co.
+
+Auth troubleshooting:
+- If the script prints "HF token: set" (or similar) but Hub returns 401, "Invalid username or
+  password", or "Repository Not Found" together, the token value is often wrong or expired. Create a
+  new read token at https://huggingface.co/settings/tokens and set HF_TOKEN (or
+  HUGGINGFACEHUB_API_TOKEN) in the environment or repo-root .env. Run `huggingface-cli whoami` to
+  verify. For a copy of this script on another drive, ensure the shell loads the same .env (the
+  repo's download_all_for_transfer.ps1 uses Import-DotEnv from the Aquaduct clone root).
 """
 
 from __future__ import annotations

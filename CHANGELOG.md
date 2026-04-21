@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Local pipeline: **VRAM inference profiles** (Auto / Single GPU policy)
+- **Module** [`src/models/inference_profiles.py`](src/models/inference_profiles.py): maps **effective VRAM per role** (same as [`cuda_device_policy.effective_vram_gb_for_kind`](src/util/cuda_device_policy.py) + fit badges) to **bands** (`lt_8` … `ge_40`, `unknown`). Per **Hub id**, selects **ScriptProfile** (input / output token caps; repo-specific caps for Qwen3, Miqu, Fimbulvetr, DeepSeek, etc.), **ImageProfile** (resolution, steps, guidance for FLUX / SD3.5 families), **VideoProfile** (frames, steps, resolution where applicable, `extra` for guidance / LTX-2 negative / frame_rate), and **VoiceProfile** (placeholder for Kokoro / MOSS).
+- **Merge helpers**: `merge_t2i_from_settings` / `merge_t2v_from_settings` applied after model baselines in [`src/render/artist.py`](src/render/artist.py) and [`src/render/clips.py`](src/render/clips.py). **LTX-2**: `(num_frames - 1) % 8 == 0` enforced after merge. **CogVideoX 5B** / **Mochi**: band adjusts frames / steps without forcing resolution where the pipeline uses defaults.
+- **Brain** ([`src/content/brain.py`](src/content/brain.py)): `inference_settings` on `generate_script` / `expand_custom_video_instructions`; [`_llm_max_input_tokens_cap`](src/content/brain.py) and `max_new_tokens` respect profiles when env **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** is unset.
+- **Story pipeline** ([`src/content/story_pipeline.py`](src/content/story_pipeline.py)): `run_multistage_refinement(..., app_settings=...)` passes settings into `_generate_with_transformers`.
+- **Orchestration** ([`main.py`](main.py)): `log_inference_profiles_for_run` after preflight; all `generate_images` / `generate_clips` / expand paths pass `AppSettings`. **UI** ([`UI/workers/impl.py`](UI/workers/impl.py), [`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): same merge for workers; **Auto-fit for this PC** appends `[Aquaduct][inference_profile]` lines to the log.
+- **Facade** ([`src/runtime/generation_facade.py`](src/runtime/generation_facade.py)): `inference_settings` passed to `generate_script` for local mode.
+- **Tests**: [`tests/test_inference_profiles.py`](tests/test_inference_profiles.py). **Docs**: [`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md), cross-links in [README](README.md), [config](docs/reference/config.md), [models](docs/reference/models.md), [brain](docs/pipeline/brain.md), [artist](docs/pipeline/artist.md), [ui](docs/ui/ui.md), [main](docs/pipeline/main.md).
+
 ### Download list mirror (Windows)
 - The optional **standalone** bulk downloader on the transfer drive **`H:\AI Models\download_all_for_transfer.ps1`** now has the same `ALL_REPOS` block as [`scripts/download_hf_models.py`](scripts/download_hf_models.py) (curated models in the app + CLI). Documented in [`docs/reference/models.md`](docs/reference/models.md).
 

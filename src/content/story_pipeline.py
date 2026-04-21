@@ -18,7 +18,7 @@ from src.content.brain import (
     _generate_with_transformers,
     video_package_from_llm_output,
 )
-from src.core.config import VIDEO_FORMATS
+from src.core.config import AppSettings, VIDEO_FORMATS
 
 SCRIPT_MIN_TOTAL_WORDS = 200
 SCRIPT_MIN_SEGMENTS = 8
@@ -288,6 +288,7 @@ def _maybe_elaboration(
     on_llm_task: Callable[[str, int, str], None] | None,
     stage_idx: int,
     stage_total: int,
+    app_settings: AppSettings | None = None,
 ) -> VideoPackage:
     words = narration_word_count(pkg)
     nseg = len(pkg.segments)
@@ -312,6 +313,7 @@ def _maybe_elaboration(
             on_llm_task=_emit,
             max_new_tokens=2048,
             try_llm_4bit=try_llm_4bit,
+            inference_settings=app_settings,
         )
         return video_package_from_llm_output(raw)
     except Exception as e:
@@ -328,6 +330,7 @@ def run_multistage_refinement(
     reference_notes: str = "",
     try_llm_4bit: bool = True,
     on_llm_task: Callable[[str, int, str], None] | None = None,
+    app_settings: AppSettings | None = None,
 ) -> VideoPackage:
     """
     Run format-specific refinement stages. Each LLM stage reloads the causal LM (matches existing brain pattern).
@@ -348,6 +351,7 @@ def run_multistage_refinement(
                 on_llm_task=on_llm_task,
                 stage_idx=i,
                 stage_total=total,
+                app_settings=app_settings,
             )
             continue
         assert spec.prompt_fn is not None
@@ -369,6 +373,7 @@ def run_multistage_refinement(
                 on_llm_task=_emit,
                 max_new_tokens=2048,
                 try_llm_4bit=try_llm_4bit,
+                inference_settings=app_settings,
             )
             cur = video_package_from_llm_output(raw)
         except Exception as e:

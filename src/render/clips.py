@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.core.config import AppSettings
 from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
@@ -457,6 +458,7 @@ def _try_text_to_video(
     fps: int,
     seconds: float,
     cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> list[GeneratedClip]:
     """
     Best-effort text-to-video using diffusers. ZeroScope / ModelScope use generic ``DiffusionPipeline``;
@@ -468,6 +470,10 @@ def _try_text_to_video(
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)
+    if inference_settings is not None:
+        from src.models.inference_profiles import merge_t2v_from_settings
+
+        vkw = merge_t2v_from_settings(model_id, vkw, inference_settings)
 
     pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16)
     place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
@@ -540,6 +546,7 @@ def _try_image_to_video(
     fps: int,
     seconds: float,
     cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> list[GeneratedClip]:
     """
     Best-effort img→vid. We try passing `image=` to a diffusers pipeline; if the repo doesn't support it,
@@ -554,6 +561,10 @@ def _try_image_to_video(
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)
+    if inference_settings is not None:
+        from src.models.inference_profiles import merge_t2v_from_settings
+
+        vkw = merge_t2v_from_settings(model_id, vkw, inference_settings)
 
     try:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
@@ -653,6 +664,7 @@ def generate_clips(
     fps: int,
     seconds_per_clip: float,
     cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> list[GeneratedClip]:
     """
     Generates a small set of MP4 clips with the configured video model.
@@ -685,6 +697,7 @@ def generate_clips(
                 fps=fps,
                 seconds=seconds_per_clip,
                 cuda_device_index=cuda_device_index,
+                inference_settings=inference_settings,
             )
         else:
             r = _try_text_to_video(
@@ -694,6 +707,7 @@ def generate_clips(
                 fps=fps,
                 seconds=seconds_per_clip,
                 cuda_device_index=cuda_device_index,
+                inference_settings=inference_settings,
             )
         if not r:
             raise RuntimeError(

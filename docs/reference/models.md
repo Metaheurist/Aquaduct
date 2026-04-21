@@ -45,7 +45,9 @@ In the UI **Model** tab (when **Local models** is selected) you can pick and dow
 - Video (motion / Pro / scene pipeline)
 - Voice (TTS)
 
-**Auto-fit for this PC** sets all four from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../../src/models/hardware.py) (same heuristics as **My PC** fit badges), using **effective VRAM per model kind** from the **GPU policy** on the **My PC** tab (Auto vs Single — not “first GPU only” when multiple cards exist). It saves settings after applying.
+**Auto-fit for this PC** sets all four from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../../src/models/hardware.py) (same heuristics as **My PC** fit badges), using **effective VRAM per model kind** from the **GPU policy** on the **My PC** tab (Auto vs Single — not “first GPU only” when multiple cards exist). It saves settings after applying. The same run also appends an **[Aquaduct][inference_profile]** log block (per-role **effective VRAM**, band, profile id, and key numbers) from [`format_inference_profile_report`](../../src/models/inference_profiles.py) — the full pipeline prints a similar report at local **`run_once`** start.
+
+After models are chosen, **local** runs apply **inference profiles** (resolution, steps, T2V frames, LLM token caps) from [`src/models/inference_profiles.py`](../../src/models/inference_profiles.py) on top of each model’s baseline — see [VRAM inference profiles](inference_profiles.md).
 
 For multi-GPU routing at runtime (which CUDA device loads the LLM vs diffusion) and **My PC** / **Model** fit markers, see [Hardware + model fit](hardware.md) and [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py).
 
@@ -74,6 +76,7 @@ So weights might exist in the **global HF cache** while the Model tab still show
 
 Notes:
 - **Gated models** (e.g. Meta Llama): accept the license on the model’s Hugging Face page, then paste a **read** token under **API** and **Save**. [`ensure_hf_token_in_env`](../../src/models/hf_access.py) copies the saved token into `HF_TOKEN` whenever the process env had none — including when **Hugging Face API** is toggled off (downloads still need auth). [`_generate_with_transformers`](../../src/content/brain.py) also refreshes the token from `ui_settings.json` before loading the tokenizer. Hub errors 401 / gated-repo are shortened for dialogs via [`humanize_hf_hub_error`](../../src/models/hf_access.py).
+- **Bulk download scripts** (`python scripts/download_hf_models.py`, `download_all_for_transfer.ps1`, or a copy on a transfer drive) resolve auth from **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** (and optional embedded `HF_TOKEN` in generated scripts). If the log prints **HF token: set** but the Hub returns **401** / *Invalid username or password* / *Repository Not Found*, the string is often **invalid or expired** — create a new token at [Hugging Face access tokens](https://huggingface.co/settings/tokens) and use **`huggingface-cli whoami`** to verify. A later **unauthenticated** warning on a public repo can still appear when a bad token is ignored for anonymous access; fix the token for gated models and rate limits.
 - **Download ▾ → Download all voice models** queues every curated TTS snapshot (**Kokoro**, **MOSS-VoiceGenerator**), skipping repos already present under `models/`. Same mechanism as **Download ALL models**, but voice-only (smaller total than full curated set).
 - Downloads are **resumable** (`resume_download=True`) so re-running a download continues partial files.
 - In the UI, downloads can be **cancelled** (closing the popup stops the worker). You can resume later.
