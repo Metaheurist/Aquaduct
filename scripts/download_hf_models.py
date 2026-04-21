@@ -38,8 +38,9 @@ MINIMAL_REPOS = [
     "hexgrad/Kokoro-82M",
 ]
 
-# Same repo ids as src/model_manager.py model_options() (dedupe order-preserving)
+# Same repo ids as src/models/model_manager.py model_options() (dedupe order-preserving)
 ALL_REPOS = [
+    # Script (LLM)
     "Qwen/Qwen2.5-1.5B-Instruct",
     "Qwen/Qwen2.5-3B-Instruct",
     "microsoft/Phi-3.5-mini-instruct",
@@ -47,11 +48,24 @@ ALL_REPOS = [
     "mistralai/Mistral-7B-Instruct-v0.3",
     "Qwen/Qwen2.5-7B-Instruct",
     "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    # Image (T2I)
     "stabilityai/sdxl-turbo",
     "runwayml/stable-diffusion-v1-5",
+    "black-forest-labs/FLUX.1-schnell",
     "stabilityai/stable-diffusion-xl-base-1.0",
+    "stabilityai/stable-diffusion-3-medium-diffusers",
+    "black-forest-labs/FLUX.1-dev",
+    # Video / motion
     "stabilityai/stable-video-diffusion-img2vid-xt",
+    "stabilityai/stable-video-diffusion-img2vid",
     "cerspense/zeroscope_v2_576w",
+    "cerspense/zeroscope_v2_30x448x256",
+    "damo-vilab/text-to-video-ms-1.7b",
+    "THUDM/CogVideoX-2b",
+    "THUDM/CogVideoX-5b",
+    "Lightricks/LTX-Video",
+    "Tencent/HunyuanVideo",
+    # Voice (TTS)
     "hexgrad/Kokoro-82M",
     "facebook/mms-tts-eng",
     "myshell-ai/MeloTTS-English",

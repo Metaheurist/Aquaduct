@@ -5,8 +5,9 @@ Generate 5–10 visuals per video based on script beat prompts.
 
 ## Primary mode
 - Model: `stabilityai/sdxl-turbo` (or another repo chosen on the **Model** tab)
-- Library: `diffusers`
-- Settings: **FP16**, **1 inference step**, `1024×1024`
+- Library: `diffusers` (`AutoPipelineForText2Image` / `AutoPipelineForImage2Image`)
+- **SDXL / SD 1.5-class**: **FP16** + `variant="fp16"` when available; Turbo uses **1 step**, `1024×1024` (or SD 1.5 at `512×512`).
+- **FLUX.1 / SD3** (frontier options in `model_options()`): loaded with **bfloat16 on CUDA** when available; no `fp16` variant folder — see `_load_auto_t2i_pipeline` in [`src/render/artist.py`](../src/render/artist.py). FLUX negative prompts use **`true_cfg_scale`** via **`_apply_flux_negative_cfg`** when `guidance_scale` is 0 (Schnell). Style-continuity **img2img** chains apply only to checkpoints that expose a compatible **image-to-image** pipeline on the Hub (many FLUX/SD3 repos are **text-to-image only**; the app falls back to plain txt2img).
 - **Safety**: unless **`AppSettings.allow_nsfw`** is enabled, pipelines that load a **safety checker** (e.g. Stable Diffusion 1.5) keep it active; with **`allow_nsfw`**, the checker is cleared after load so frames are not blanked for classifier hits. SDXL Turbo typically has no NSFW classifier in the same form.
 
 ## Quality retries

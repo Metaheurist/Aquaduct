@@ -3,7 +3,7 @@ Delete everything under repo `models/` and recreate an empty folder.
 
 If you see WinError 32, something still has files open:
   - Quit Aquaduct
-  - Stop any `python scripts/download_models.py` (Ctrl+C)
+  - Stop any `python scripts/download_hf_models.py` (Ctrl+C)
   - Close Explorer windows inside `models/`
 Then run this again.
 

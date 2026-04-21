@@ -3,7 +3,7 @@
 This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for OpenAI / Replicate script, images, and cloud video — see [docs/api_generation.md](docs/api_generation.md)) that:
 - scrapes AI tool news (no paid APIs)
 - writes a short vertical video script locally (LLM in 4-bit when possible)
-- generates images locally (SDXL Turbo, FP16)
+- generates images locally (SDXL / SD 1.5 by default; optional **FLUX.1** and **SD3 Medium** in the Model tab — see [Models + downloads](docs/models.md))
 - generates voice locally (Kokoro-82M target; with safe fallback if unavailable)
 - assembles a **9:16** MP4 as **few-second micro-scenes** (slideshow) or **scene**-based motion / Pro video, with word-by-word captions
 

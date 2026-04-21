@@ -133,13 +133,97 @@ def _norm_repo_id(model_id: str) -> str:
     return (model_id or "").strip().lower()
 
 
+def _is_frontier_t2i_repo(mid: str) -> bool:
+    """FLUX / SD3 checkpoints ship without ``variant=fp16`` folders; prefer BF16 on CUDA."""
+    if "flux" in mid or "/flux." in mid:
+        return True
+    if "stable-diffusion-3" in mid:
+        return True
+    return False
+
+
+def _load_auto_t2i_pipeline(model_id: str, load_path: str, _fp16):
+    import torch
+    from diffusers import AutoPipelineForText2Image
+
+    mid = _norm_repo_id(model_id)
+    if _is_frontier_t2i_repo(mid):
+        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        try:
+            return AutoPipelineForText2Image.from_pretrained(
+                load_path, torch_dtype=dt, low_cpu_mem_usage=True
+            )
+        except TypeError:
+            return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=dt)
+    try:
+        return AutoPipelineForText2Image.from_pretrained(
+            load_path,
+            torch_dtype=_fp16,
+            variant="fp16",
+            low_cpu_mem_usage=True,
+        )
+    except OSError:
+        try:
+            return AutoPipelineForText2Image.from_pretrained(
+                load_path, torch_dtype=_fp16, low_cpu_mem_usage=True
+            )
+        except TypeError:
+            return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=_fp16)
+    except TypeError:
+        return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=_fp16)
+
+
+def _load_auto_i2i_pipeline(model_id: str, load_path: str, _fp16):
+    import torch
+    from diffusers import AutoPipelineForImage2Image
+
+    mid = _norm_repo_id(model_id)
+    if _is_frontier_t2i_repo(mid):
+        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        try:
+            return AutoPipelineForImage2Image.from_pretrained(
+                load_path, torch_dtype=dt, low_cpu_mem_usage=True
+            )
+        except TypeError:
+            return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=dt)
+    try:
+        return AutoPipelineForImage2Image.from_pretrained(
+            load_path,
+            torch_dtype=_fp16,
+            variant="fp16",
+            low_cpu_mem_usage=True,
+        )
+    except OSError:
+        try:
+            return AutoPipelineForImage2Image.from_pretrained(
+                load_path, torch_dtype=_fp16, low_cpu_mem_usage=True
+            )
+        except TypeError:
+            return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=_fp16)
+    except TypeError:
+        return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=_fp16)
+
+
+def _apply_flux_negative_cfg(model_id: str, call_kw: dict) -> None:
+    """FLUX uses ``true_cfg_scale`` when a negative prompt is present (guidance may be 0 for Schnell)."""
+    mid = _norm_repo_id(model_id)
+    if "flux" not in mid or not call_kw.get("negative_prompt"):
+        return
+    if call_kw.get("true_cfg_scale") is not None:
+        return
+    call_kw["true_cfg_scale"] = 4.0 if "schnell" in mid else 3.5
+
+
 # Curated text-to-image repo ids from ``model_manager.model_options`` (video → image models).
 # Keep in sync when adding or renaming Hub entries used for ``generate_images``.
 CURATED_TEXT2IMAGE_REPO_IDS: frozenset[str] = frozenset(
     {
         "stabilityai/sdxl-turbo",
         "runwayml/stable-diffusion-v1-5",
+        "black-forest-labs/flux.1-schnell",
         "stabilityai/stable-diffusion-xl-base-1.0",
+        "stabilityai/stable-diffusion-3-medium-diffusers",
+        "black-forest-labs/flux.1-dev",
     }
 )
 
@@ -178,11 +262,44 @@ def _preset_sdxl_base(steps: int) -> dict:
     }
 
 
+def _preset_flux_schnell(steps: int) -> dict:
+    st = max(1, int(steps))
+    return {
+        "guidance_scale": 0.0,
+        "num_inference_steps": max(1, min(st, 4)),
+        "height": 1024,
+        "width": 1024,
+    }
+
+
+def _preset_flux_dev(steps: int) -> dict:
+    st = max(1, int(steps))
+    return {
+        "guidance_scale": 3.5,
+        "num_inference_steps": max(20, min(st, 50)),
+        "height": 1024,
+        "width": 1024,
+    }
+
+
+def _preset_sd3_medium(steps: int) -> dict:
+    st = max(1, int(steps))
+    return {
+        "guidance_scale": 7.0,
+        "num_inference_steps": max(20, min(st, 50)),
+        "height": 1024,
+        "width": 1024,
+    }
+
+
 # Exact repo id → preset. Unknown user-typed ids fall through to heuristics below.
 _IMAGE_T2I_PRESETS: dict[str, Callable[[int], dict]] = {
     "stabilityai/sdxl-turbo": _preset_sdxl_turbo,
     "runwayml/stable-diffusion-v1-5": _preset_sd15,
+    "black-forest-labs/flux.1-schnell": _preset_flux_schnell,
     "stabilityai/stable-diffusion-xl-base-1.0": _preset_sdxl_base,
+    "stabilityai/stable-diffusion-3-medium-diffusers": _preset_sd3_medium,
+    "black-forest-labs/flux.1-dev": _preset_flux_dev,
 }
 
 
@@ -213,6 +330,14 @@ def _diffusion_kw_for_model(model_id: str, *, steps: int) -> dict:
     if "stable-diffusion-v1-5" in mid or "stable-diffusion-v1-4" in mid or "/v1-4" in mid or "/v1-5" in mid:
         return _preset_sd15(st)
 
+    if "flux" in mid:
+        if "schnell" in mid:
+            return _preset_flux_schnell(st)
+        return _preset_flux_dev(st)
+
+    if "stable-diffusion-3" in mid:
+        return _preset_sd3_medium(st)
+
     if "xl" in mid or "sdxl" in mid:
         return _preset_sdxl_base(st)
 
@@ -234,25 +359,10 @@ def _try_sdxl_turbo(
     on_image_progress: Callable[[int, str], None] | None = None,
     cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
-    import torch
-    from diffusers import AutoPipelineForText2Image
-
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-            low_cpu_mem_usage=True,
-        )
-    except TypeError:
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-        )
+    pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
@@ -266,6 +376,7 @@ def _try_sdxl_turbo(
         call_kw: dict = {"prompt": pos, **kw}
         if neg:
             call_kw["negative_prompt"] = neg
+        _apply_flux_negative_cfg(model_id, call_kw)
         img = pipe(**call_kw).images[0]
         out_path = out_dir / f"img_{i:03d}.png"
         img.save(out_path)
@@ -290,24 +401,11 @@ def _try_sdxl_turbo_seeded(
     cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
     import torch
-    from diffusers import AutoPipelineForText2Image
 
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-            low_cpu_mem_usage=True,
-        )
-    except TypeError:
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-        )
+    pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
@@ -323,6 +421,7 @@ def _try_sdxl_turbo_seeded(
         call_kw: dict = {"prompt": pos, "generator": gen, **kw}
         if neg:
             call_kw["negative_prompt"] = neg
+        _apply_flux_negative_cfg(model_id, call_kw)
         img = pipe(**call_kw).images[0]
         out_path = out_dir / f"img_{i:03d}.png"
         img.save(out_path)
@@ -355,24 +454,11 @@ def _try_sdxl_reference_chain(
     """
     import numpy as np
     import torch
-    from diffusers import AutoPipelineForImage2Image
 
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        pipe = AutoPipelineForImage2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-            low_cpu_mem_usage=True,
-        )
-    except TypeError:
-        pipe = AutoPipelineForImage2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-        )
+    pipe = _load_auto_i2i_pipeline(model_id, load_path, _fp16)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
@@ -408,6 +494,7 @@ def _try_sdxl_reference_chain(
         call_kw: dict = {**kw_i2i, "image": init, "strength": strength, "prompt": pos, "generator": gen}
         if neg:
             call_kw["negative_prompt"] = neg
+        _apply_flux_negative_cfg(model_id, call_kw)
         img = pipe(**call_kw).images[0]
         out_path = out_dir / f"img_{i:03d}.png"
         img.save(out_path)
@@ -435,7 +522,6 @@ def _try_external_ref_then_txt2img(
 ) -> list[GeneratedImage]:
     """First frame: img2img from external reference; remaining frames: text-to-image."""
     import torch
-    from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image
 
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
@@ -443,19 +529,7 @@ def _try_external_ref_then_txt2img(
     stg = float(external_strength)
     stg = max(0.15, min(0.95, stg))
 
-    try:
-        pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-            low_cpu_mem_usage=True,
-        )
-    except TypeError:
-        pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-        )
+    pipe_i2i = _load_auto_i2i_pipeline(model_id, load_path, _fp16)
     _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index)
     kw_base = _diffusion_kw_for_model(model_id, steps=steps)
@@ -485,6 +559,7 @@ def _try_external_ref_then_txt2img(
     call_kw: dict = {**kw_i2i, "image": init, "strength": stg, "prompt": pos, "generator": gen}
     if neg:
         call_kw["negative_prompt"] = neg
+    _apply_flux_negative_cfg(model_id, call_kw)
     img0 = pipe_i2i(**call_kw).images[0]
     out0 = out_dir / "img_001.png"
     img0.save(out0)
@@ -497,19 +572,7 @@ def _try_external_ref_then_txt2img(
             on_image_progress(100, "Image 1/1 saved")
         return results
 
-    try:
-        pipe_txt = AutoPipelineForText2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-            low_cpu_mem_usage=True,
-        )
-    except TypeError:
-        pipe_txt = AutoPipelineForText2Image.from_pretrained(
-            load_path,
-            torch_dtype=_fp16,
-            variant="fp16",
-        )
+    pipe_txt = _load_auto_t2i_pipeline(model_id, load_path, _fp16)
     _maybe_disable_safety_checker(pipe_txt, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe_txt, cuda_device_index=cuda_device_index)
     dev = "cuda" if str(pipe_txt.device).startswith("cuda") else "cpu"
@@ -524,6 +587,7 @@ def _try_external_ref_then_txt2img(
         call_kw2: dict = {"prompt": pos, "generator": gen, **kw}
         if neg:
             call_kw2["negative_prompt"] = neg
+        _apply_flux_negative_cfg(model_id, call_kw2)
         img = pipe_txt(**call_kw2).images[0]
         outp = out_dir / f"img_{i:03d}.png"
         img.save(outp)

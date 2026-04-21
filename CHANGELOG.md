@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Curated frontier models (image + video), download list, and docs
+- **Model registry** ([`src/models/model_manager.py`](src/models/model_manager.py)): **Image** — *FLUX.1 Schnell*, *Stable Diffusion 3 Medium*, *FLUX.1-dev* alongside SDXL / SD 1.5 / SDXL Base. **Video** — *CogVideoX 2B/5B*, *LTX-Video*, *HunyuanVideo* alongside SVD, ZeroScope, ModelScope T2V.
+- **Rendering** ([`src/render/artist.py`](src/render/artist.py)): T2I loading via **`_load_auto_t2i_pipeline`** / **`_load_auto_i2i_pipeline`** (BF16 for FLUX/SD3; FP16+`variant` for SDXL-class); **`_apply_flux_negative_cfg`** for Flux + negative prompt; presets in **`_IMAGE_T2I_PRESETS`** / **`_diffusion_kw_for_model`**. **Tests**: [`tests/test_diffusion_presets_coverage.py`](tests/test_diffusion_presets_coverage.py).
+- **Clips** ([`src/render/clips.py`](src/render/clips.py)): **`CogVideoXPipeline`**, **`LTXPipeline`**, **`HunyuanVideoPipeline`** where applicable; **`CURATED_VIDEO_CLIP_REPO_IDS`**, **`_video_pipe_kwargs`**, **`_load_text_to_video_pipeline`**. **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): VRAM hints + **`rate_model_fit_for_repo`** / **`_MOTION_VIDEO_PREF_ORDER`** for new video ids.
+- **Docs**: [`README.md`](README.md), [`docs/models.md`](docs/models.md) (curated table + download commands), [`docs/artist.md`](docs/artist.md), [`docs/hardware.md`](docs/hardware.md).
+- **Scripts** ([`scripts/download_hf_models.py`](scripts/download_hf_models.py)): **`ALL_REPOS`** aligned with `model_options()` for `python scripts/download_hf_models.py --all`.
+
 ### UI: vector icons, tab alignment, theme palettes, LLM VRAM caps, multi-GPU Auto split
 - **Title bar** ([`UI/widgets/title_bar_outline_button.py`](UI/widgets/title_bar_outline_button.py), [`UI/widgets/title_bar_svg_icons.py`](UI/widgets/title_bar_svg_icons.py), [`UI/main_window.py`](UI/main_window.py)): Save / resource graph / Help / Close use **QSvgRenderer**-drawn strokes (theme-colored) instead of emoji/text; LRU-cached pixmaps.
 - **Characters toolbar** ([`UI/widgets/toolbar_svg_icons.py`](UI/widgets/toolbar_svg_icons.py), [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)): Add / duplicate / delete use SVG icons (muted palette); removed Fusion standard pixmaps + duplicate fallback glyph.

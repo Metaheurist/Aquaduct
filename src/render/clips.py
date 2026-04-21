@@ -42,6 +42,10 @@ def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
     low_id = _norm_repo_id(model_id)
     if "zeroscope" in low_id or "text-to-video-ms" in low_id or "modelscope" in low_id:
         cap = 55
+    elif "cogvideox" in low_id or "hunyuanvideo" in low_id:
+        cap = 200
+    elif "ltx-video" in low_id or "lightricks/ltx" in low_id:
+        cap = 120
     else:
         cap = 90
     parts = [p for p in s.split() if p]
@@ -59,6 +63,10 @@ CURATED_VIDEO_CLIP_REPO_IDS: frozenset[str] = frozenset(
         "cerspense/zeroscope_v2_576w",
         "cerspense/zeroscope_v2_30x448x256",
         "damo-vilab/text-to-video-ms-1.7b",
+        "thudm/cogvideox-2b",
+        "thudm/cogvideox-5b",
+        "lightricks/ltx-video",
+        "tencent/hunyuanvideo",
     }
 )
 
@@ -84,9 +92,41 @@ def _svd_cap_num_frames(requested: int) -> int:
 
 
 def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
-    """Inference kwargs for ``DiffusionPipeline.__call__`` when generating short MP4 clips."""
+    """Inference kwargs for text-to-video / img2vid ``__call__`` when generating short MP4 clips."""
     mid = _norm_repo_id(model_id)
     nf = max(8, int(num_frames))
+
+    # Frontier T2V (dedicated diffusers pipelines — see ``_load_text_to_video_pipeline``)
+    if mid in ("thudm/cogvideox-2b", "thudm/cogvideox-5b"):
+        nf_use = min(max(9, nf), 49)
+        return {
+            "num_frames": nf_use,
+            "num_inference_steps": 50,
+            "guidance_scale": 6.0,
+        }
+    if mid == "lightricks/ltx-video":
+        nf_adj = max(9, min(nf, 97))
+        if nf_adj % 2 == 0:
+            nf_adj += 1
+        return {
+            "num_frames": nf_adj,
+            "num_inference_steps": 40,
+            "height": 512,
+            "width": 704,
+            "guidance_scale": 3.0,
+            "decode_timestep": 0.03,
+            "decode_noise_scale": 0.025,
+            "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+        }
+    if mid == "tencent/hunyuanvideo":
+        nf_h = min(max(17, nf), 61)
+        return {
+            "num_frames": nf_h,
+            "num_inference_steps": 35,
+            "height": 544,
+            "width": 960,
+            "guidance_scale": 6.0,
+        }
 
     # Exact ids from model_options
     if mid == "stabilityai/stable-video-diffusion-img2vid-xt":
@@ -152,8 +192,76 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "height": 256,
             "width": 256,
         }
+    if "cogvideox" in mid and "i2v" not in mid:
+        return {
+            "num_frames": min(max(9, nf), 49),
+            "num_inference_steps": 50,
+            "guidance_scale": 6.0,
+        }
+    if "ltx-video" in mid or "lightricks/ltx" in mid:
+        nf_adj = max(9, min(nf, 97))
+        if nf_adj % 2 == 0:
+            nf_adj += 1
+        return {
+            "num_frames": nf_adj,
+            "num_inference_steps": 40,
+            "height": 512,
+            "width": 704,
+            "guidance_scale": 3.0,
+            "decode_timestep": 0.03,
+            "decode_noise_scale": 0.025,
+        }
+    if "hunyuanvideo" in mid:
+        return {
+            "num_frames": min(max(17, nf), 61),
+            "num_inference_steps": 35,
+            "height": 544,
+            "width": 960,
+            "guidance_scale": 6.0,
+        }
 
     return {"num_frames": nf, "num_inference_steps": 25}
+
+
+def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
+    """
+    Load the appropriate diffusers pipeline for ``model_id``.
+
+    CogVideoX / LTX / HunyuanVideo need their concrete pipeline classes; generic
+    ``DiffusionPipeline`` works for ZeroScope, ModelScope, and many community repos.
+    """
+    import torch
+
+    mid = _norm_repo_id(model_id)
+    if "cogvideox" in mid and "i2v" not in mid:
+        from diffusers import CogVideoXPipeline
+
+        try:
+            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+        except TypeError:
+            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+    if "ltx-video" in mid or mid.startswith("lightricks/ltx"):
+        from diffusers import LTXPipeline
+
+        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        try:
+            return LTXPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
+        except TypeError:
+            return LTXPipeline.from_pretrained(load_path, torch_dtype=dt)
+    if "hunyuanvideo" in mid:
+        from diffusers import HunyuanVideoPipeline
+
+        try:
+            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+        except TypeError:
+            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+
+    from diffusers import DiffusionPipeline
+
+    try:
+        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+    except TypeError:
+        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
 
 
 def _img2vid_accepts_text_prompt(model_id: str) -> bool:
@@ -206,11 +314,9 @@ def _try_text_to_video(
     cuda_device_index: int | None = None,
 ) -> list[GeneratedClip]:
     """
-    Best-effort text-to-video using diffusers. Different repos expose different pipelines; we use the generic
-    DiffusionPipeline and common kwargs. If this fails, caller should fall back.
+    Best-effort text-to-video using diffusers. ZeroScope / ModelScope use generic ``DiffusionPipeline``;
+    CogVideoX / LTX / HunyuanVideo use dedicated pipeline classes.
     """
-    from diffusers import DiffusionPipeline
-
     prepare_for_next_model()
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
@@ -218,10 +324,7 @@ def _try_text_to_video(
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)
 
-    try:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
-    except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+    pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16)
     place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
     _maybe_enable_slice_inference(pipe)
 
