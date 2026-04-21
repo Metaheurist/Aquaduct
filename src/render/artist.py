@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from src.core.config import AppSettings
 from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
@@ -376,6 +377,15 @@ def _diffusion_kw_for_model(model_id: str, *, steps: int) -> dict:
     }
 
 
+def _t2i_call_kw(model_id: str, *, steps: int, app_settings: AppSettings | None) -> dict:
+    base = _diffusion_kw_for_model(model_id, steps=steps)
+    if app_settings is None:
+        return base
+    from src.models.inference_profiles import merge_t2i_from_settings
+
+    return merge_t2i_from_settings(model_id, base, app_settings)
+
+
 def _try_sdxl_turbo(
     model_id: str,
     prompts: list[str],
@@ -385,6 +395,7 @@ def _try_sdxl_turbo(
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
     cuda_device_index: int | None = None,
+    app_settings: AppSettings | None = None,
 ) -> list[GeneratedImage]:
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
@@ -398,7 +409,7 @@ def _try_sdxl_turbo(
     for i, p in enumerate(prompts, start=1):
         if on_image_progress:
             on_image_progress(int(100 * (i - 1) / max(1, n)), f"Image {i}/{n} (inference)…")
-        kw = _diffusion_kw_for_model(model_id, steps=steps)
+        kw = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
         pos, neg = _split_prompt_negative(p)
         call_kw: dict = {"prompt": pos, **kw}
         if neg:
@@ -426,6 +437,7 @@ def _try_sdxl_turbo_seeded(
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
     cuda_device_index: int | None = None,
+    app_settings: AppSettings | None = None,
 ) -> list[GeneratedImage]:
     import torch
 
@@ -443,7 +455,7 @@ def _try_sdxl_turbo_seeded(
             on_image_progress(int(100 * (i - 1) / max(1, n)), f"Image {i}/{n} (inference)…")
         dev = "cuda" if str(pipe.device).startswith("cuda") else "cpu"
         gen = torch.Generator(device=dev).manual_seed(int(seed))
-        kw = _diffusion_kw_for_model(model_id, steps=steps)
+        kw = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
         pos, neg = _split_prompt_negative(p)
         call_kw: dict = {"prompt": pos, "generator": gen, **kw}
         if neg:
@@ -474,6 +486,7 @@ def _try_sdxl_reference_chain(
     external_reference: Path | None = None,
     external_reference_strength: float = 0.55,
     cuda_device_index: int | None = None,
+    app_settings: AppSettings | None = None,
 ) -> list[GeneratedImage]:
     """
     Img2img chain: frame 0 uses full denoise from random init (strength=1.0); later frames blend the
@@ -489,7 +502,7 @@ def _try_sdxl_reference_chain(
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
-    kw_base = _diffusion_kw_for_model(model_id, steps=steps)
+    kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
     h = int(kw_base.get("height", 1024))
     kw_i2i = {k: v for k, v in kw_base.items() if k not in ("width", "height")}
@@ -546,6 +559,7 @@ def _try_external_ref_then_txt2img(
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
     cuda_device_index: int | None = None,
+    app_settings: AppSettings | None = None,
 ) -> list[GeneratedImage]:
     """First frame: img2img from external reference; remaining frames: text-to-image."""
     import torch
@@ -559,7 +573,7 @@ def _try_external_ref_then_txt2img(
     pipe_i2i = _load_auto_i2i_pipeline(model_id, load_path, _fp16)
     _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index)
-    kw_base = _diffusion_kw_for_model(model_id, steps=steps)
+    kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
     h = int(kw_base.get("height", 1024))
     kw_i2i = {k: v for k, v in kw_base.items() if k not in ("width", "height")}
@@ -610,7 +624,7 @@ def _try_external_ref_then_txt2img(
         p, sd = prompts[i - 1], seeds[i - 1]
         pos, neg = _split_prompt_negative(p)
         gen = torch.Generator(device=dev).manual_seed(int(sd))
-        kw = _diffusion_kw_for_model(model_id, steps=steps)
+        kw = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
         call_kw2: dict = {"prompt": pos, "generator": gen, **kw}
         if neg:
             call_kw2["negative_prompt"] = neg
@@ -642,6 +656,7 @@ def generate_images(
     external_reference_image: Path | None = None,
     external_reference_strength: float = 0.55,
     cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> list[GeneratedImage]:
     """
     Generates images for the provided prompts.
@@ -700,6 +715,7 @@ def generate_images(
                         external_reference=ext_path,
                         external_reference_strength=ext_strength,
                         cuda_device_index=cuda_device_index,
+                        app_settings=inference_settings,
                     )
                     dprint("artist", "generate_images done (style chain)", f"count={len(r)}")
                     return r
@@ -719,6 +735,7 @@ def generate_images(
                         allow_nsfw=allow_nsfw,
                         on_image_progress=on_image_progress,
                         cuda_device_index=cuda_device_index,
+                        app_settings=inference_settings,
                     )
                     dprint("artist", "generate_images done (external ref + txt2img)", f"count={len(r)}")
                     return r
@@ -734,6 +751,7 @@ def generate_images(
                 allow_nsfw=allow_nsfw,
                 on_image_progress=on_image_progress,
                 cuda_device_index=cuda_device_index,
+                app_settings=inference_settings,
             )
             dprint("artist", "generate_images done", f"count={len(r)}")
             return r

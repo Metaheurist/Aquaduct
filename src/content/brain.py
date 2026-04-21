@@ -14,7 +14,7 @@ from .character_presets import (
     coerce_generated_character_fields,
     extract_first_json_object,
 )
-from src.core.config import ARTICLE_EXCERPT_MAX_CHARS, BrandingSettings, get_paths
+from src.core.config import AppSettings, ARTICLE_EXCERPT_MAX_CHARS, BrandingSettings, get_paths
 from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.render.branding_video import palette_prompt_suffix, video_style_strength
@@ -951,6 +951,7 @@ def expand_custom_video_instructions(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     try_llm_4bit: bool = True,
     llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> str:
     """
     First LLM pass for custom Run mode: expand the user's rough notes into a structured creative brief (plain text).
@@ -1072,6 +1073,7 @@ def expand_custom_video_instructions(
             max_new_tokens=1200,
             try_llm_4bit=try_llm_4bit,
             llm_cuda_device_index=llm_cuda_device_index,
+            inference_settings=inference_settings,
         )
     return raw.strip()
 
@@ -1276,7 +1278,12 @@ def _llm_max_input_tokens_cap_from_vram() -> int | None:
     return None
 
 
-def _llm_max_input_tokens_cap(tokenizer: Any) -> int:
+def _llm_max_input_tokens_cap(
+    tokenizer: Any,
+    *,
+    model_id: str | None = None,
+    inference_settings: AppSettings | None = None,
+) -> int:
     """
     Cap prompt length for local ``generate()`` so long article/context strings do not
     blow VRAM during attention prefill (common on ~8GB GPUs).
@@ -1284,6 +1291,8 @@ def _llm_max_input_tokens_cap(tokenizer: Any) -> int:
     Override with env ``AQUADUCT_LLM_MAX_INPUT_TOKENS`` (integer; clamped 256–100000).
     Default: min(4096, tokenizer.model_max_length) when the latter is sane, else 4096,
     then further reduced on low-VRAM CUDA devices (see ``_llm_max_input_tokens_cap_from_vram``).
+    When ``inference_settings`` is set, also min with the script inference profile
+    (same effective VRAM as GPU policy fit badges for the script role).
     """
     import os
 
@@ -1298,7 +1307,16 @@ def _llm_max_input_tokens_cap(tokenizer: Any) -> int:
         base = default_cap
     vram_cap = _llm_max_input_tokens_cap_from_vram()
     if vram_cap is not None:
-        return min(base, vram_cap)
+        base = min(base, vram_cap)
+    if (model_id or "").strip() and inference_settings is not None:
+        try:
+            from src.models.inference_profiles import pick_script_profile, resolve_effective_vram_gb
+
+            v = resolve_effective_vram_gb(kind="script", settings=inference_settings)
+            sp = pick_script_profile((model_id or "").strip(), v)
+            base = min(base, int(sp.max_input_tokens))
+        except Exception:
+            pass
     return base
 
 
@@ -1428,6 +1446,7 @@ def _generate_with_transformers(
     max_new_tokens: int = 650,
     try_llm_4bit: bool = True,
     llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> str:
     import torch
 
@@ -1473,7 +1492,17 @@ def _generate_with_transformers(
 
     # Simple chat-ish formatting without requiring tokenizer chat template support.
     full = f"### Instruction:\n{prompt}\n\n### Response:\n"
-    _cap = _llm_max_input_tokens_cap(tokenizer)
+    _cap = _llm_max_input_tokens_cap(tokenizer, model_id=model_id, inference_settings=inference_settings)
+    max_new_use = int(max_new_tokens)
+    if inference_settings is not None:
+        try:
+            from src.models.inference_profiles import pick_script_profile, resolve_effective_vram_gb
+
+            v = resolve_effective_vram_gb(kind="script", settings=inference_settings)
+            sp = pick_script_profile((model_id or "").strip(), v)
+            max_new_use = min(max_new_use, int(sp.max_new_tokens))
+        except Exception:
+            pass
     inputs = tokenizer(
         full,
         return_tensors="pt",
@@ -1498,7 +1527,7 @@ def _generate_with_transformers(
         generation_kwargs = {
             **inputs,
             "streamer": streamer,
-            "max_new_tokens": max_new_tokens,
+            "max_new_tokens": max_new_use,
             "do_sample": True,
             "temperature": 0.7,
             "top_p": 0.9,
@@ -1519,12 +1548,12 @@ def _generate_with_transformers(
         for text in streamer:
             chunks.append(text)
             n_tok += 1
-            pct = min(99, int(100 * n_tok / max(1, max_new_tokens)))
+            pct = min(99, int(100 * n_tok / max(1, max_new_use)))
             _emit_llm(
                 on_llm_task,
                 "llm_generate",
                 pct,
-                f"Generating tokens ({n_tok}/{max_new_tokens})",
+                f"Generating tokens ({n_tok}/{max_new_use})",
             )
         th.join(timeout=7200)
         raw_new = "".join(chunks)
@@ -1537,7 +1566,7 @@ def _generate_with_transformers(
                 torch.cuda.empty_cache()
             out = model.generate(
                 **inputs,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=max_new_use,
                 do_sample=True,
                 temperature=0.7,
                 top_p=0.9,
@@ -1576,6 +1605,7 @@ def generate_script(
     article_excerpt: str | None = None,
     supplement_context: str = "",
     llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links, or from a pre-expanded custom creative brief.
@@ -1618,6 +1648,7 @@ def generate_script(
                 max_new_tokens=2048,
                 try_llm_4bit=try_llm_4bit,
                 llm_cuda_device_index=llm_cuda_device_index,
+                inference_settings=inference_settings,
             )
             data = _extract_json(raw)
             pkg = _to_package(data)

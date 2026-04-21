@@ -23,8 +23,11 @@ If the local model fails to load (common on some Windows setups), it returns a d
 - `segments[]`: `{ narration, visual_prompt, on_screen_text? }`
 - `cta`
 
+## Inference profiles (local)
+When the desktop app or `run_once` passes **`inference_settings`** (`AppSettings`), [`_generate_with_transformers`](../../src/content/brain.py) tightens **`max_new_tokens`** and the tokenizer **input** cap using [`pick_script_profile`](../../src/models/inference_profiles.py) and the same **effective script VRAM** as the GPU policy fit badges. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still overrides the input cap when set. See [Inference profiles](../reference/inference_profiles.md).
+
 ## Main entrypoint
-- `generate_script(..., items: list[dict[str,str]], topic_tags: list[str] | None, creative_brief: str | None = None, video_format: str = "news", ...) -> VideoPackage`
+- `generate_script(..., items: list[dict[str,str]], topic_tags: list[str] | None, creative_brief: str | None = None, video_format: str = "news", inference_settings: AppSettings | None = None, ...) -> VideoPackage`
   - **Preset runs**: `items` are scraped headlines; prompt is built from `items` + tags + personality.
   - **Custom runs** (desktop **Run → Custom**): set `creative_brief` to the output of **`expand_custom_video_instructions`** (first LLM pass; plain-text structured brief). `items` may be a single synthetic row (`source: "custom"`) for metadata. `video_format` steers tone hints in the prompt.
 

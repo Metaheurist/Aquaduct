@@ -105,6 +105,7 @@ def _expand_brief_unified(
         on_llm_task=on_llm_task,
         try_llm_4bit=try_llm_4bit,
         llm_cuda_device_index=resolve_llm_cuda_device_index(app),
+        inference_settings=app,
     )
 
 
@@ -125,7 +126,7 @@ def _generate_script_unified(
         on_llm_task=on_llm_task,
         try_llm_4bit=try_llm_4bit,
         llm_cuda_device_index=resolve_llm_cuda_device_index(app),
-        **kw,
+        **{**kw, "inference_settings": app},
     )
 
 
@@ -729,6 +730,7 @@ class CharacterPortraitWorker(QThread):
                     art_style_preset_id=str(getattr(self, "art_style_preset_id", None) or "balanced"),
                     use_style_continuity=False,
                     cuda_device_index=resolve_diffusion_cuda_device_index(self.app_settings),
+                    inference_settings=self.app_settings,
                 )
                 if not gen:
                     self.failed.emit("Image generation returned no files.")
@@ -1227,6 +1229,7 @@ class StoryboardWorker(QThread):
                         reference_notes=script_ref_notes,
                         try_llm_4bit=try_llm_4bit,
                         on_llm_task=_ms_sb,
+                        app_settings=app,
                     )
                 if not character_selected_in_settings(app):
                     if is_api_mode(app):
@@ -1393,6 +1396,7 @@ class StoryboardWorker(QThread):
                         reference_notes=script_ref_notes,
                         try_llm_4bit=try_llm_4bit,
                         on_llm_task=_ms2,
+                        app_settings=app,
                     )
                 if not character_selected_in_settings(app):
                     if is_api_mode(app):
@@ -1518,6 +1522,7 @@ class StoryboardWorker(QThread):
                     on_image_progress=_img_pct,
                     art_style_preset_id=str(getattr(app, "art_style_preset_id", None) or "balanced"),
                     cuda_device_index=resolve_diffusion_cuda_device_index(app),
+                    inference_settings=app,
                     **_ref_kw,
                 )
                 scene_paths = [g.path for g in gen]

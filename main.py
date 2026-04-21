@@ -83,6 +83,7 @@ from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import is_api_mode
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.runtime.preflight import preflight_check
+from src.models.inference_profiles import log_inference_profiles_for_run
 from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index, resolve_llm_cuda_device_index
 from src.settings.ui_settings import load_settings
 from src.speech.audio_fx import (
@@ -451,7 +452,11 @@ def run_once(
     
         _rc(run_control)
         _pipe_progress(on_progress, 6, -1, "Preflight OK")
-    
+        try:
+            log_inference_profiles_for_run(app)
+        except Exception:
+            pass
+
         items = None
         sources: list[dict[str, str]] = []
         preview_blob: dict | None = None
@@ -632,6 +637,7 @@ def run_once(
                     reference_notes=script_ref_notes,
                     try_llm_4bit=try_llm_4bit,
                     on_llm_task=_ms_llm,
+                    app_settings=app,
                 )
     
             if str(getattr(app, "run_content_mode", "preset")) == "custom" and str(getattr(app, "custom_video_instructions", "") or "").strip():
@@ -663,6 +669,7 @@ def run_once(
                     on_llm_task=_expand_llm,
                     try_llm_4bit=try_llm_4bit,
                     llm_cuda_device_index=resolve_llm_cuda_device_index(app),
+                    inference_settings=app,
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
                 pkg = get_generation_facade(app).generate_script_package(
@@ -843,6 +850,7 @@ def run_once(
                 art_style_preset_id=str(getattr(app, "art_style_preset_id", "balanced") or "balanced"),
                 use_style_continuity=True,
                 cuda_device_index=_diffusion_cuda_idx,
+                inference_settings=app,
             )
             img_paths = [g.path for g in gen if getattr(g, "path", None) is not None]
             if not img_paths:
@@ -1123,6 +1131,7 @@ def run_once(
                     art_style_preset_id=_art_style_id,
                     use_style_continuity=True,
                     cuda_device_index=_diffusion_cuda_idx,
+                    inference_settings=app,
                     **_diffusion_ref_kw,
                 )
                 keyframes = [g.path for g in key_gen]
@@ -1139,6 +1148,7 @@ def run_once(
                     fps=int(video_settings.fps),
                     seconds_per_clip=T,
                     cuda_device_index=_diffusion_cuda_idx,
+                    inference_settings=app,
                 )
             else:
                 _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
@@ -1153,6 +1163,7 @@ def run_once(
                     fps=int(video_settings.fps),
                     seconds_per_clip=T,
                     cuda_device_index=_diffusion_cuda_idx,
+                    inference_settings=app,
                 )
             clip_paths = [c.path for c in gen_clips]
             if not clip_paths:
@@ -1318,6 +1329,7 @@ def run_once(
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
                         cuda_device_index=_diffusion_cuda_idx,
+                        inference_settings=app,
                         **_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
@@ -1337,6 +1349,7 @@ def run_once(
                         fps=int(video_settings.fps),
                         seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
                         cuda_device_index=_diffusion_cuda_idx,
+                        inference_settings=app,
                     )
                     if not zc:
                         raise RuntimeError("Pro mode produced no video segments (ZeroScope path).")
@@ -1364,6 +1377,7 @@ def run_once(
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
                         cuda_device_index=_diffusion_cuda_idx,
+                        inference_settings=app,
                         **_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
@@ -1378,6 +1392,7 @@ def run_once(
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
                         cuda_device_index=_diffusion_cuda_idx,
+                        inference_settings=app,
                         **_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
@@ -1392,6 +1407,7 @@ def run_once(
                     art_style_preset_id=_art_style_id,
                     use_style_continuity=True,
                     cuda_device_index=_diffusion_cuda_idx,
+                    inference_settings=app,
                     **_diffusion_ref_kw,
                 )
                 image_paths = [g.path for g in gen]
@@ -1421,6 +1437,7 @@ def run_once(
                                 art_style_preset_id=_art_style_id,
                                 use_style_continuity=False,
                                 cuda_device_index=_diffusion_cuda_idx,
+                                inference_settings=app,
                             )
                             if regen:
                                 apply_regenerated_image(regen, out_path)
@@ -1548,6 +1565,7 @@ def run_once(
                 allow_nsfw=_allow_nsfw,
                 art_style_preset_id=_art_style_id,
                 cuda_device_index=_diffusion_cuda_idx,
+                inference_settings=app,
                 **_diffusion_ref_kw,
             )
             keyframes = [g.path for g in key_gen]
@@ -1576,6 +1594,7 @@ def run_once(
                                 art_style_preset_id=_art_style_id,
                                 use_style_continuity=False,
                                 cuda_device_index=_diffusion_cuda_idx,
+                                inference_settings=app,
                             )
                             if regen:
                                 apply_regenerated_image(regen, out_path)
@@ -1611,6 +1630,7 @@ def run_once(
                 fps=int(video_settings.fps),
                 seconds_per_clip=float(video_settings.clip_seconds),
                 cuda_device_index=_diffusion_cuda_idx,
+                inference_settings=app,
             )
             clip_paths = [c.path for c in gen_clips]
             _pipe_progress(on_progress, 88, -1, "Scenes ready")

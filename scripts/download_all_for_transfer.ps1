@@ -2,7 +2,11 @@
 #   powershell -ExecutionPolicy Bypass -File .\scripts\download_all_for_transfer.ps1
 #
 # Creates/uses repo .venv, runs PyTorch + requirements, downloads full curated HF set.
-# HF_TOKEN: set in repo .env (or environment) for gated models.
+# HF_TOKEN: set in repo .env (or environment) for gated models. If Hub returns 401 or "Invalid
+# username" despite a non-empty token, regenerate the token at huggingface.co/settings/tokens; a
+# wrong token can also produce "Repository Not Found" on some clients. The embedded downloader uses
+# the same .env as this repo (Import-DotEnv from $RepoRoot), not the folder where a copy of this
+# script lives unless you set HF_TOKEN in the shell yourself.
 # If this file is not under <repo>\scripts\, edit $DefaultAquaductRepo below once.
 
 $ErrorActionPreference = "Stop"

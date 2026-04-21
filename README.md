@@ -181,6 +181,7 @@ Example:
 - [Desktop UI](docs/ui/ui.md) (includes **Video** platform preset tiles and NSFW toggle)
 - [Branding (theme + watermark)](docs/ui/branding.md)
 - [Models + downloads](docs/reference/models.md)
+- [VRAM inference profiles (local)](docs/reference/inference_profiles.md)
 - [Hardware + model fit rules](docs/reference/hardware.md)
 - [FFmpeg auto-download](docs/pipeline/ffmpeg.md)
 - [VRAM / cleanup utilities](docs/reference/vram.md)
@@ -192,5 +193,6 @@ Example:
 ## Notes
 - First run will download models from Hugging Face (can be large).
 - GPU memory is limited (8GB class GPUs are common): the pipeline loads/unloads models between stages.
+- **Local inference profiles:** for **local** model execution, the app applies **VRAM-band** defaults (resolution, steps, frame counts, LLM token caps) per model id using the same **effective GPU VRAM** as the **My PC** / **Model** fit badges; see [docs/reference/inference_profiles.md](docs/reference/inference_profiles.md). A summary prints at pipeline start with prefix `[Aquaduct][inference_profile]`.
 - **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. In **Auto**, **LLM** and **diffusion** use **different** CUDA ordinals when at least two GPUs exist (script vs image/video routing; if max-VRAM and compute heuristics would pick the same card, the LLM moves to the best other GPU). **Diffusion** **`auto`** offload defaults to **sequential** CPU offload when multiple CUDA devices are present, so peak VRAM on the diffusion GPU stays low. Override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`** (`auto`, `model`, `sequential`, or `off` for full-GPU). The title-bar **resource graph** charts VRAM per **Monitor** selection. Details: [docs/reference/hardware.md](docs/reference/hardware.md), [docs/pipeline/performance.md](docs/pipeline/performance.md#diffusion-vram-vs-system-ram-cpu-offload), [docs/reference/config.md](docs/reference/config.md#multi-gpu-cuda-policy-override).
 

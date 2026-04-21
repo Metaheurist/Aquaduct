@@ -69,6 +69,7 @@ class _LocalGenerationFacade:
             article_excerpt=article_excerpt,
             supplement_context=supplement_context,
             llm_cuda_device_index=resolve_llm_cuda_device_index(settings),
+            inference_settings=settings,
         )
 
 
