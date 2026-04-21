@@ -989,12 +989,22 @@ class MainWindow(QMainWindow):
         pid = str(self.personality_combo.currentData() or "auto")
         if pid == "auto":
             self.personality_hint.setVisible(True)
-            self.personality_hint.setText("Auto: will choose based on headlines + topic tags.")
-            self.personality_combo.setToolTip("")
+            self.personality_hint.setText(
+                "Auto: will choose based on headlines + topic tags. "
+                "The chosen tone also steers TTS (MOSS voice design + line breaks for other engines)."
+            )
+            self.personality_combo.setToolTip(
+                "After the script is generated, the effective personality is passed into voice: "
+                "MOSS-VoiceGenerator instruction text, and `shape_tts_text` phrasing (pacing, line breaks) for Kokoro / pyttsx3 / ElevenLabs."
+            )
         else:
             self.personality_hint.setVisible(False)
             p = get_personality_by_id(pid)
             tip = f"{p.description}\n\n" + "\n".join(p.style_rules[:5])
+            tip += (
+                "\n\nVoice: this preset steers the spoken delivery — MOSS uses it in the style instruction; "
+                "Kokoro / pyttsx3 / ElevenLabs use the shaped script (pacing, line breaks) from the same choice."
+            )
             self.personality_combo.setToolTip(tip)
         self._resize_to_current_tab()
 
@@ -1920,8 +1930,8 @@ class MainWindow(QMainWindow):
 
     def _download_all_voice_models(self) -> None:
         """
-        Download every curated voice (TTS) Hub snapshot: Kokoro, MMS-TTS, MeloTTS, SpeechT5,
-        Parler-TTS, XTTS, Bark, etc. Skips repos already under models/.
+        Download every curated voice (TTS) Hub snapshot: Kokoro, MOSS-VoiceGenerator.
+        Skips repos already under models/.
         """
         if not hasattr(self, "_model_opts") or not self._model_opts:
             self._append_log("No model options loaded yet.")

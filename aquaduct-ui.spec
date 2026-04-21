@@ -12,8 +12,10 @@ _ROOT = Path(SPECPATH).resolve()
 datas = [(str(_ROOT / "requirements.txt"), ".")]
 _docs = _ROOT / "docs"
 if _docs.is_dir():
-    for _md in sorted(_docs.glob("*.md")):
-        datas.append((str(_md), "docs"))
+    for _md in sorted(_docs.rglob("*.md")):
+        rel = _md.relative_to(_docs)
+        _dest = str(Path("docs") / rel.parent) if rel.parent != Path(".") else "docs"
+        datas.append((str(_md), _dest))
 
 binaries = []
 hiddenimports = [

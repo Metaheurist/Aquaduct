@@ -76,3 +76,40 @@ def shape_tts_text(text: str, *, personality_id: str = "neutral") -> str:
     shaped = "\n".join(out).strip()
     return shaped
 
+
+_MAX_MOSS_PERSONALITY_INSTRUCTION_CHARS = 1200
+
+
+def moss_style_instruction_for_personality(personality_id: str) -> str:
+    """
+    Build a short natural-language style line for **MOSS-VoiceGenerator** (instruction channel)
+    from the Run tab **Personality** preset. Used together with character voice instruction when set.
+    """
+    p = get_personality_by_id((personality_id or "neutral").strip().lower())
+    parts = [f"Narration delivery: {p.label}. {p.description}"]
+    if p.style_rules:
+        parts.append(" ".join(p.style_rules[:2]))
+    out = " ".join(parts).strip()
+    if len(out) > _MAX_MOSS_PERSONALITY_INSTRUCTION_CHARS:
+        return out[:_MAX_MOSS_PERSONALITY_INSTRUCTION_CHARS].rsplit(" ", 1)[0] + "…"
+    return out
+
+
+def merge_moss_character_and_run_personality(
+    character_voice_instruction: str | None,
+    run_personality_id: str,
+) -> str | None:
+    """
+    MOSS: combine optional **Character → Voice instruction** with Run tab **Personality** tone.
+    If only personality is set, return that style string (so MOSS is never instruction-free when personality is known).
+    """
+    c = (character_voice_instruction or "").strip()
+    ptxt = moss_style_instruction_for_personality(run_personality_id)
+    if c and ptxt:
+        return f"{c}\n\n[Run personality — voice tone]\n{ptxt}"
+    if c:
+        return c
+    if ptxt:
+        return ptxt
+    return None
+

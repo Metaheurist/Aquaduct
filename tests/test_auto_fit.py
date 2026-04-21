@@ -27,23 +27,24 @@ def test_rank_models_for_auto_fit_returns_ordered_lists() -> None:
     assert r.voice_repo_ids
     assert "Auto-fit" in r.log_summary
     assert "Script:" in r.log_summary
-    # 8GB VRAM: SDXL Turbo should rank first among image models.
-    assert r.image_repo_ids[0] == "stabilityai/sdxl-turbo" or "sdxl-turbo" in r.image_repo_ids[0]
-    # Motion: at 8GB VRAM, lighter ZeroScope (448×256) can outrank 576w on fit marker before preference tie-break.
-    assert r.video_repo_ids[0].startswith("cerspense/zeroscope_v2_")
+    # 8GB VRAM: lightest “OK”/best-fit 3.5-turbo is preferred first via fit + preference.
+    assert r.image_repo_ids[0] == "stabilityai/stable-diffusion-3.5-large-turbo"
+    # 8GB VRAM: CogVideoX 5B is the lightest curated T2V fit target.
+    assert r.video_repo_ids[0].lower() == "thudm/cogvideox-5b"
 
 
 def test_rank_prefers_lighter_video_on_low_vram() -> None:
     opts = model_options()
     hw = HardwareInfo(os="t", cpu="t", ram_gb=16.0, gpu_name="G", vram_gb=4.0)
     r = rank_models_for_auto_fit(opts, hw)
-    # SD 1.5 class should beat SDXL Turbo when VRAM is tight.
-    assert r.image_repo_ids[0] == "runwayml/stable-diffusion-v1-5"
+    # 4GB VRAM: all curated image stacks are tight; first follows tie-break preference (3.5 Large Turbo first).
+    assert r.image_repo_ids[0] == "stabilityai/stable-diffusion-3.5-large-turbo"
+    assert r.video_repo_ids[0].lower() == "thudm/cogvideox-5b"
 
 
-def test_voice_fit_marker_penalizes_bark_on_small_vram() -> None:
-    m, _ = voice_fit_marker("suno/bark", 4.0)
-    assert m in ("RISKY", "NO_GPU")
+def test_voice_fit_marker_moss_tight_on_small_vram() -> None:
+    m, _ = voice_fit_marker("OpenMOSS-Team/MOSS-VoiceGenerator", 4.0)
+    assert m == "RISKY"
 
 
 def test_voice_fit_marker_ok_for_kokoro() -> None:

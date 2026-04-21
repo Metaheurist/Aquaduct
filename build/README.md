@@ -3,7 +3,7 @@
 This folder contains the scripts to build a Windows executable for the project.
 
 Canonical driver: **`build/build.ps1`** (onedir / onefile flags, docs glob, metadata).  
-Portable mirror: **`aquaduct-ui.spec`** at repo root (same hidden imports + `docs/*.md` via `SPECPATH`; default **onefile** windowless). Build either way with `-UseSpec` (see below).
+Portable mirror: **`aquaduct-ui.spec`** at repo root (same hidden imports + `docs/**/*.md` via `SPECPATH`; default **onefile** windowless). Build either way with `-UseSpec` (see below).
 
 **Build venv (recommended):** use **`-Clean`** so **`.venv-build`** is only for packaging. The script runs **`scripts/install_pytorch.py --with-rest`** (installs **torch** / **torchvision** / **torchaudio** for this PC’s CUDA or CPU, then **`requirements.txt`** — torch is not listed there, so no second torch install), then **`requirements-build.txt`** (**PyInstaller** only). Run **pytest** from a separate dev venv with **`requirements-dev.txt`**. Optional **`build/build.ps1 -IncludeDevDeps`** restores the old behavior (install **full** `requirements-dev.txt` into the build venv).
 
@@ -69,7 +69,7 @@ The EXE will still download models and FFmpeg on first run into:
 
 - `.cache/` (relative to the working directory)
 
-The build script bundles `requirements.txt`, optional `docs/*.md` (UI builds), and uses `--collect-submodules` for `src` (and `UI` for desktop builds) so PyInstaller picks up the full package tree plus common ML/media metadata (`--copy-metadata` / `--collect-all` where needed). Extra hidden imports cover **HTTPS** (`requests`, `urllib3`, `certifi`, `charset_normalizer` for ElevenLabs / APIs), **local TTS** (`pyttsx3`), and modules such as **`src.speech.elevenlabs_tts`** / **`src.content.characters_store`** that static analysis can miss in `--onefile` mode, plus **`UI.no_wheel_controls`**, **`UI.model_execution_toggle`**, **`UI.api_model_widgets`**, runtime **`src.runtime.pipeline_api`** / **`src.runtime.generation_facade`**, and tab modules under `UI.tabs.*`.
+The build script bundles `requirements.txt`, optional `docs/**/*.md` (UI builds), and uses `--collect-submodules` for `src` (and `UI` for desktop builds) so PyInstaller picks up the full package tree plus common ML/media metadata (`--copy-metadata` / `--collect-all` where needed). Extra hidden imports cover **HTTPS** (`requests`, `urllib3`, `certifi`, `charset_normalizer` for ElevenLabs / APIs), **local TTS** (`pyttsx3`), and modules such as **`src.speech.elevenlabs_tts`** / **`src.content.characters_store`** that static analysis can miss in `--onefile` mode, plus **`UI.no_wheel_controls`**, **`UI.model_execution_toggle`**, **`UI.api_model_widgets`**, runtime **`src.runtime.pipeline_api`** / **`src.runtime.generation_facade`**, and tab modules under `UI.tabs.*`.
 
 ## Notes / common issues
 
@@ -81,4 +81,4 @@ The build script bundles `requirements.txt`, optional `docs/*.md` (UI builds), a
 - **PyInstaller + torch**: You may see a warning about `torch.utils.tensorboard` / missing `tensorboard`; it is optional for this app and can be ignored unless you use TensorBoard.
 - **ElevenLabs / HTTPS**: If the frozen app fails to reach the API with SSL errors, verify `certifi` is bundled (the script uses `--collect-all certifi`). Stay on a current **PyInstaller** from `requirements-build.txt` (installed by `build.ps1` before building).
 
-For a longer operator-focused guide (prereqs, troubleshooting, data locations), see [`docs/building_windows_exe.md`](../docs/building_windows_exe.md).
+For a longer operator-focused guide (prereqs, troubleshooting, data locations), see [`docs/build/building_windows_exe.md`](../docs/build/building_windows_exe.md).

@@ -101,8 +101,8 @@ def attach_settings_tab(win) -> None:
     dl_menu.addAction(_a)
     _a = QAction("Download all voice models", win)
     _a.setToolTip(
-        "Queue Hugging Face snapshots for every curated TTS repo (Kokoro, MMS-TTS, MeloTTS, "
-        "Microsoft SpeechT5, Parler-TTS, XTTS, Bark, …). Skips folders already under models/."
+        "Queue Hugging Face snapshots for every curated TTS repo (Kokoro, MOSS-VoiceGenerator). "
+        "Skips folders already under models/."
     )
     _a.triggered.connect(win._download_all_voice_models)
     dl_menu.addAction(_a)

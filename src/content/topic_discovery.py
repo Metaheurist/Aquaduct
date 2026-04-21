@@ -193,7 +193,7 @@ def _title_candidates(title: str) -> list[str]:
         if q and len(q) <= 40:
             cands.append(q)
 
-    # Capitalized phrases: "Foo Bar", "OpenAI", "Llama 3.2"
+    # Capitalized phrases: "Foo Bar", "OpenAI", "Llama 4"
     for m in re.finditer(r"\b([A-Z][A-Za-z0-9.+-]{1,}(?:\s+[A-Z0-9][A-Za-z0-9.+-]{1,}){0,3})\b", title):
         phrase = " ".join(m.group(1).split()).strip()
         if 3 <= len(phrase) <= 40:

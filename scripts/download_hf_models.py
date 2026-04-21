@@ -33,46 +33,34 @@ HF_TOKEN = ""
 
 # Same defaults as src/config.py get_models()
 MINIMAL_REPOS = [
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "stabilityai/sdxl-turbo",
+    "Qwen/Qwen3-14B-Instruct",
+    "black-forest-labs/FLUX.1-schnell",
     "hexgrad/Kokoro-82M",
 ]
 
 # Same repo ids as src/models/model_manager.py model_options() (dedupe order-preserving)
 ALL_REPOS = [
     # Script (LLM)
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-3B-Instruct",
-    "microsoft/Phi-3.5-mini-instruct",
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "mistralai/Mistral-7B-Instruct-v0.3",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "Qwen/Qwen3-14B-Instruct",
+    "Sao10K/Fimbulvetr-11B-v2",
+    "sophosympatheia/Midnight-Miqu-70B-v1.5",
+    "deepseek-ai/DeepSeek-V3",
     # Image (T2I)
-    "stabilityai/sdxl-turbo",
-    "runwayml/stable-diffusion-v1-5",
-    "black-forest-labs/FLUX.1-schnell",
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    "stabilityai/stable-diffusion-3-medium-diffusers",
+    "black-forest-labs/FLUX.1.1-pro-ultra",
     "black-forest-labs/FLUX.1-dev",
+    "black-forest-labs/FLUX.1-schnell",
+    "stabilityai/stable-diffusion-3.5-large",
+    "stabilityai/stable-diffusion-3.5-medium",
+    "stabilityai/stable-diffusion-3.5-large-turbo",
     # Video / motion
-    "stabilityai/stable-video-diffusion-img2vid-xt",
-    "stabilityai/stable-video-diffusion-img2vid",
-    "cerspense/zeroscope_v2_576w",
-    "cerspense/zeroscope_v2_30x448x256",
-    "damo-vilab/text-to-video-ms-1.7b",
-    "THUDM/CogVideoX-2b",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    "genmo/mochi-1.5-final",
+    "Lightricks/LTX-2",
     "THUDM/CogVideoX-5b",
-    "Lightricks/LTX-Video",
     "Tencent/HunyuanVideo",
     # Voice (TTS)
     "hexgrad/Kokoro-82M",
-    "facebook/mms-tts-eng",
-    "myshell-ai/MeloTTS-English",
-    "microsoft/speecht5_tts",
-    "parler-tts/parler-tts-mini-v1",
-    "coqui/XTTS-v2",
-    "suno/bark",
+    "OpenMOSS-Team/MOSS-VoiceGenerator",
 ]
 
 

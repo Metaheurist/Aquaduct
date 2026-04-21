@@ -151,8 +151,11 @@ if ($UI) {
   # Bundle markdown docs (e.g. characters.md, elevenlabs.md) next to frozen tree
   $docsPath = Join-Path $root "docs"
   if (Test-Path $docsPath) {
-    Get-ChildItem -Path $docsPath -Filter "*.md" -File -ErrorAction SilentlyContinue | ForEach-Object {
-      $extra += @("--add-data", "$($_.FullName);docs")
+    Get-ChildItem -Path $docsPath -Filter "*.md" -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+      $rest = $_.FullName.Substring($docsPath.Length).TrimStart([char[]]@('\', '/'))
+      $sub = Split-Path $rest -Parent
+      if ([string]::IsNullOrEmpty($sub)) { $dest = "docs" } else { $dest = Join-Path "docs" $sub }
+      $extra += @("--add-data", "$($_.FullName);$dest")
     }
   }
 }

@@ -2,7 +2,7 @@
 TikTok Content Posting API (OAuth + inbox video upload).
 
 Requires a TikTok developer app, registered redirect URI, and user OAuth.
-See docs/tiktok.md for setup.
+See docs/integrations/tiktok.md for setup.
 """
 
 from __future__ import annotations

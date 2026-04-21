@@ -35,7 +35,7 @@ Replace `NAME` with `main`, `src.runtime.pipeline_api`, or `UI.app`.
 
 This section is **host CPU** parallelism: OpenMP/BLAS and PyTorch **CPU** thread settings so numerical and library code can use **multiple logical cores**. It is **not** “multithreading the GPU” (CUDA kernels and streams are separate; we do not try to run two diffusion jobs on one GPU in parallel here).
 
-On startup, [`src/util/cpu_parallelism.py`](../src/util/cpu_parallelism.py) sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, and **`VECLIB_MAXIMUM_THREADS`** (unless you already set them) so NumPy/BLAS-backed work uses multiple cores instead of defaulting to one thread per library. The target count defaults to **`min(32, os.cpu_count())`**.
+On startup, [`src/util/cpu_parallelism.py`](../../src/util/cpu_parallelism.py) sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, and **`VECLIB_MAXIMUM_THREADS`** (unless you already set them) so NumPy/BLAS-backed work uses multiple cores instead of defaulting to one thread per library. The target count defaults to **`min(32, os.cpu_count())`**.
 
 After **`import torch`**, the same helper applies **`torch.set_num_threads`** to that budget (intra-op CPU parallelism) and **`torch.set_num_interop_threads`** to allow overlapping **CPU-side** operations where PyTorch can schedule them in parallel. On **CPU-only** machines (no CUDA/MPS), inter-op is **higher** so more cores can participate; when **CUDA or MPS** is available, inter-op stays **modest** to reduce CPU contention while the accelerator runs the heavy work.
 
@@ -48,24 +48,24 @@ After **`import torch`**, the same helper applies **`torch.set_num_threads`** to
 
 ## Diffusion: VRAM vs system RAM (CPU offload)
 
-Local **image** and **video** diffusion use a shared placement helper ([`src/util/diffusion_placement.py`](../src/util/diffusion_placement.py)) so weights can stay mostly in **system RAM** and move to the GPU per module/step (**Diffusers** `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`), instead of loading the full pipeline into VRAM at once. This is **not** Windows paging to disk; it trades **speed** for **lower peak VRAM**.
+Local **image** and **video** diffusion use a shared placement helper ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)) so weights can stay mostly in **system RAM** and move to the GPU per module/step (**Diffusers** `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`), instead of loading the full pipeline into VRAM at once. This is **not** Windows paging to disk; it trades **speed** for **lower peak VRAM**.
 
-**Automatic policy** uses detected **GPU VRAM** ([`get_hardware_info()`](../src/models/hardware.py)) and **available RAM** (`psutil.virtual_memory().available`). Override anytime with environment variables:
+**Automatic policy** uses detected **GPU VRAM** ([`get_hardware_info()`](../../src/models/hardware.py)) and **available RAM** (`psutil.virtual_memory().available`). Override anytime with environment variables:
 
 | Variable | Values |
 |----------|--------|
 | `AQUADUCT_DIFFUSION_CPU_OFFLOAD` | `auto` (default), `off` / `none` / `0` (full GPU when CUDA works), `model`, `sequential` |
 | `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true` — legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
 
-**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** chooses **sequential** offload so only one diffusers submodule at a time uses the **diffusion** GPU’s VRAM (pair with **Auto** device routing so **LLM** and **diffusion** use different CUDA ordinals; see [hardware.md](hardware.md)). **Single-GPU** **`auto`** still uses **`off`** (full pipeline on GPU) only when detected VRAM is **≥16 GiB** (with host-RAM exceptions); otherwise **`model`** or **`sequential`** heuristics apply.
+**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** chooses **sequential** offload so only one diffusers submodule at a time uses the **diffusion** GPU’s VRAM (pair with **Auto** device routing so **LLM** and **diffusion** use different CUDA ordinals; see [hardware.md](../reference/hardware.md)). **Single-GPU** **`auto`** still uses **`off`** (full pipeline on GPU) only when detected VRAM is **≥16 GiB** (with host-RAM exceptions); otherwise **`model`** or **`sequential`** heuristics apply.
 
 Sequential and model offload both pass the resolved **diffusion CUDA index** into Diffusers as **`gpu_id`** where supported so the active weights move on the intended GPU.
 
-The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; with multiple GPUs you can pick which device’s VRAM to chart. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
+The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; with multiple GPUs you can pick which device’s VRAM to chart. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
 
-**Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured on the **My PC** tab (**Auto** \| **Select GPU** and optional **Device** when pinning one index) and implemented in [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py); see [hardware.md](hardware.md). This is separate from **CPU thread** tuning above.
+**Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured on the **My PC** tab (**Auto** \| **Select GPU** and optional **Device** when pinning one index) and implemented in [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py); see [hardware.md](../reference/hardware.md). This is separate from **CPU thread** tuning above.
 
 ## Related
 
-- Desktop UX (wheel guard, tabs): [ui.md](ui.md)
-- Build + import smoke for frozen EXEs: [building_windows_exe.md](building_windows_exe.md), [`../build/README.md`](../build/README.md)
+- Desktop UX (wheel guard, tabs): [ui.md](../ui/ui.md)
+- Build + import smoke for frozen EXEs: [building_windows_exe.md](../build/building_windows_exe.md), [`../build/README.md`](../../build/README.md)

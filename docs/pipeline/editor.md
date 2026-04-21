@@ -3,8 +3,8 @@
 ## Purpose
 Assemble a final vertical (9:16) MP4 by:
 - **Slideshow (default)**: splitting the timeline into **few-second micro-scenes**, pairing each segment with one generated image, optional FFmpeg motion/transitions, then overlaying captions / watermark / facts card.
-- **Pro mode (slideshow + Pro, legacy)**: concatenating **one generated still per output frame** at **`VideoSettings.fps`** for a fixed **`pro_clip_seconds`** timeline, then the same caption / watermark / music composite ([`assemble_pro_frame_sequence_then_concat`](../src/render/editor.py) in [`src/render/editor.py`](../src/render/editor.py)).
-- **Motion mode** (`use_image_slideshow=False`): generated **scene** segments from keyframe images + the selected **Video** model ([`assemble_generated_clips_then_concat`](../src/render/editor.py)). **Pro** with slideshow off uses the same assembly after **text-to-video** segments are produced in [`main.py`](../main.py).
+- **Pro mode (slideshow + Pro, legacy)**: concatenating **one generated still per output frame** at **`VideoSettings.fps`** for a fixed **`pro_clip_seconds`** timeline, then the same caption / watermark / music composite ([`assemble_pro_frame_sequence_then_concat`](../../src/render/editor.py) in [`src/render/editor.py`](../../src/render/editor.py)).
+- **Motion mode** (`use_image_slideshow=False`): generated **scene** segments from keyframe images + the selected **Video** model ([`assemble_generated_clips_then_concat`](../../src/render/editor.py)). **Pro** with slideshow off uses the same assembly after **text-to-video** segments are produced in [`main.py`](../../main.py).
 
 Key facts card: only when **Video format** is **News** or **Explainer**; Cartoon / Unhinged skip it even if enabled in Captions settings.
 
@@ -25,7 +25,7 @@ MoviePy requires FFmpeg for encoding. The project auto-downloads a Windows build
 - Each image is shown for **`1/fps`** seconds; voice is aligned to **`pro_clip_seconds`** (trim + silence pad) before the final mux.
 
 ## Pillow 10+ and channel matching
-- **[`src/models/pillow_compat.py`](../src/models/pillow_compat.py)**: MoviePy’s **`resize`** may reference **`PIL.Image.ANTIALIAS`**, removed in Pillow 10+ — compat shim runs before importing MoviePy in [`src/render/editor.py`](../src/render/editor.py).
+- **[`src/models/pillow_compat.py`](../../src/models/pillow_compat.py)**: MoviePy’s **`resize`** may reference **`PIL.Image.ANTIALIAS`**, removed in Pillow 10+ — compat shim runs before importing MoviePy in [`src/render/editor.py`](../../src/render/editor.py).
 - Base **ImageClip** / **VideoFileClip** frames are often **RGB**; caption and facts overlays are **RGBA**. **`_ensure_rgba_np`** pads an opaque alpha on base/watermark for consistency. Composites use **`CompositeVideoClip(..., use_bgclip=True)`** so the **first** layer is the full-frame background.
 
 ## Optional watermark

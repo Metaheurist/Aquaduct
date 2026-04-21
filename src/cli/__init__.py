@@ -1,4 +1,4 @@
-"""Headless CLI subcommands (see docs/cli.md)."""
+"""Headless CLI subcommands (see docs/reference/cli.md)."""
 
 __all__ = ["main", "CLI_VERSION"]
 
