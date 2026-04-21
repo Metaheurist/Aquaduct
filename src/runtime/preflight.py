@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
-from src.core.config import AppSettings
+from src.core.config import AppSettings, get_models
+from src.core.models_dir import models_dir_for_app
+from src.models.model_manager import model_has_local_snapshot
 from src.runtime.model_backend import api_preflight_errors, is_api_mode
 from src.render.utils_ffmpeg import find_ffmpeg
 from debug import dprint
@@ -26,6 +29,48 @@ def _check_imports(mods: Iterable[str]) -> list[str]:
     return missing
 
 
+def local_hf_model_snapshot_errors(settings: AppSettings, *, models_dir: Path | None = None) -> list[str]:
+    """
+    When **Model execution** is **Local**, require on-disk Hugging Face snapshots for the roles
+    the pipeline will load (same defaults as ``run_once``).
+
+    Photo mode: Script (LLM) + Image only. Video mode: LLM + Image + Voice + Video (Pro pipeline).
+    """
+    if is_api_mode(settings):
+        return []
+
+    md = models_dir if models_dir is not None else models_dir_for_app(settings)
+    models = get_models()
+    out: list[str] = []
+
+    def check(label: str, repo: str) -> None:
+        rid = (repo or "").strip()
+        if not rid:
+            out.append(f"Local mode: pick a {label} model on the Model tab.")
+            return
+        if not model_has_local_snapshot(rid, models_dir=md):
+            out.append(
+                f"Local mode: {label} model is not downloaded — {rid}. Download it on the Model tab before running."
+            )
+
+    llm = (settings.llm_model_id or "").strip() or models.llm_id
+    img = (settings.image_model_id or "").strip() or models.sdxl_turbo_id
+    voice = (settings.voice_model_id or "").strip() or models.kokoro_id
+    vid = (getattr(settings, "video_model_id", "") or "").strip()
+
+    mm = str(getattr(settings, "media_mode", "video") or "video").strip().lower()
+    if mm == "photo":
+        check("Script (LLM)", llm)
+        check("Image", img)
+        return out
+
+    check("Script (LLM)", llm)
+    check("Image", img)
+    check("Voice", voice)
+    check("Video (motion)", vid)
+    return out
+
+
 def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightResult:
     """
     Validates environment + settings before starting a run.
@@ -39,6 +84,9 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
     v = settings.video
     if is_api_mode(settings):
         errors.extend(api_preflight_errors(settings))
+    else:
+        errors.extend(local_hf_model_snapshot_errors(settings))
+
     if v.width <= 0 or v.height <= 0:
         errors.append(f"Invalid resolution: {v.width}×{v.height}.")
     if not (1 <= int(v.fps) <= 120):

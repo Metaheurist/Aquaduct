@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Multi-GPU: My PC, resource monitor, runtime policy
+- **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): `GpuDevice`, `list_cuda_gpus()`, VRAM-max and heuristic compute pickers; `HardwareInfo` can summarize multiple GPUs.
+- **Policy** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): Auto vs single, `effective_vram_gb_for_kind`, `resolve_llm_cuda_device_index` / `resolve_diffusion_cuda_device_index`; optional **`AQUADUCT_CUDA_DEVICE`** override; `DevicePlan` includes reserved **`use_model_parallel_llm`** (currently always `False` — no automatic Accelerate multi-GPU LLM sharding; 4-bit stays single-GPU).
+- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `gpu_selection_mode`, `gpu_device_index`, `resource_graph_monitor_gpu_index` in `ui_settings.json`.
+- **UI**: **My PC** GPU table + policy + fit legend/env hint; **Resource graph** monitor combo + `sample_gpu_mem_pct()`; **Model** tab fit parity with effective VRAM + tab-switch refresh ([`UI/main_window.py`](UI/main_window.py)).
+- **Runtime**: [`src/content/brain.py`](src/content/brain.py), [`src/util/diffusion_placement.py`](src/util/diffusion_placement.py), [`src/render/artist.py`](src/render/artist.py), [`src/render/clips.py`](src/render/clips.py), [`main.py`](main.py) / [`UI/workers.py`](UI/workers.py) pass resolved CUDA indices.
+- **Docs**: [`README.md`](README.md), [`docs/hardware.md`](docs/hardware.md), [`docs/config.md`](docs/config.md), [`docs/ui.md`](docs/ui.md), [`docs/models.md`](docs/models.md), [`docs/performance.md`](docs/performance.md), [`docs/vram.md`](docs/vram.md). **Tests**: [`tests/test_cuda_device_policy.py`](tests/test_cuda_device_policy.py), [`tests/test_resource_sample.py`](tests/test_resource_sample.py).
+
+### Photo mode + API: still images only (no MP4 / clips)
+- **Pipeline** ([`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py)): **`run_once_api`** now branches on **`media_mode == "photo"`** after the script step: generates **API** stills via **`generate_still_png_bytes`**, optional layout / grid (`Picture` settings), writes **`final.png`**, and returns — **no** voice, **no** Replicate video clips, **no** slideshow MP4.
+- **API preflight** ([`src/runtime/model_backend.py`](src/runtime/model_backend.py)): when **`media_mode` is `photo`**, only **LLM** + **Image** providers/keys are required (voice and video/Replicate rules for motion do not apply).
+
+### Local LLM: prompt truncation (VRAM)
+- **Brain** ([`src/content/brain.py`](src/content/brain.py)): local transformers `generate()` tokenizes the instruction prompt with **`truncation=True`** and a cap (default **4096**, or **`min(4096, tokenizer.model_max_length)`** when finite). Override with **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** (256–100000). Calls **`torch.cuda.empty_cache()`** before **`generate()`** when CUDA is available to reduce fragmentation-related OOM on tight GPUs.
+- **Docs**: [`docs/config.md`](docs/config.md).
+
+### Run guard: local models + API preflight before pipeline
+- **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): **`local_hf_model_snapshot_errors()`** — in **Local** mode, requires on-disk Hub snapshots for the roles the pipeline loads (defaults match [`main.py`](main.py) `run_once`): **Photo** mode → Script (LLM) + Image; **Video** mode → Script + Image + Voice + Video (motion). Skipped in **API** mode (existing **`api_preflight_errors`** applies).
+- **UI** ([`UI/main_window.py`](UI/main_window.py)): on failed strict preflight, **Run** / queued jobs / approved preview / approved storyboard open the **Model** tab and show a borderless **Download models before running** or **Configure API before running** dialog (other preflight failures use a generic title). Queueing while a job runs also runs preflight before enqueueing.
+
+### Startup splash (desktop cold start)
+- **UI** ([`UI/startup_splash.py`](UI/startup_splash.py), [`UI/app.py`](UI/app.py)): after **`QApplication`** starts, a frameless **splash** shows **Aquaduct**, a **progress bar** (determinate steps + **indeterminate** during blocking imports / `MainWindow()` init), and **elapsed seconds**. Set **`AQUADUCT_NO_SPLASH=1`** to disable. **`MainWindow`** is imported inside **`main()`** so the window can paint before the heaviest import work.
+- **Packaging** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden import **`UI.startup_splash`**.
+- **Docs**: [`docs/ui.md`](docs/ui.md).
+
 ### Desktop UI: Photo / Video mode and smooth dialog chrome
 - **Media mode** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): persisted **`media_mode`**: **`video`** (default) or **`photo`** in `ui_settings.json`. The title bar **Photo \| Video** toggle switches the pipeline output root ([`media_output_root()`](src/core/config.py)): **`.Aquaduct_data/videos`** vs **`.Aquaduct_data/pictures`**, tab visibility (e.g. **Picture** vs **Video** tab, Captions/Effects in video mode), and Library refresh targets.
 - **Dialog chrome** ([`UI/title_bar_outline_button.py`](UI/title_bar_outline_button.py), [`UI/frameless_dialog.py`](UI/frameless_dialog.py), [`UI/tutorial_dialog.py`](UI/tutorial_dialog.py), [`UI/download_popup.py`](UI/download_popup.py), [`UI/install_deps_dialog.py`](UI/install_deps_dialog.py)): borderless dialogs, the Help tutorial (**Previous** / **Next** / **Close**), model download/import popups, and the install-dependencies footer use **`TitleBarOutlineButton`** with antialiased rounded strokes (same approach as the main window title bar), via **`styled_outline_button()`**. Legacy stylesheet **`QPushButton#closeBtn`** rules were removed from [`UI/theme.py`](UI/theme.py). **`FramelessDialog`** sets **`_frameless_close_button`** so the install-dependencies dialog can enable/disable the title **✕** while pip runs.

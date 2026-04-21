@@ -110,6 +110,20 @@ def api_preflight_errors(settings: AppSettings) -> list[str]:
     v = settings.video
     pro_on = bool(getattr(v, "pro_mode", False))
     slideshow = bool(getattr(v, "use_image_slideshow", True))
+    mm = str(getattr(settings, "media_mode", "video") or "video").strip().lower()
+
+    # Photo pipeline: script + still images only (no voice, no video clips).
+    if mm == "photo":
+        for role, label in (("llm", "LLM (script)"), ("image", "Image")):
+            rc = _role_cfg(settings, role)  # type: ignore[arg-type]
+            if not role_filled(rc):
+                out.append(f"API mode: configure {label} provider and model (Generation APIs on the API tab).")
+                continue
+            prov = str(rc.provider or "").strip().lower()
+            if not provider_has_key(settings, prov):
+                out.append(f"API mode: missing API key for {label} provider “{prov}”.")
+        return out
+
     for role, label in (("llm", "LLM (script)"), ("image", "Image"), ("voice", "Voice")):
         rc = _role_cfg(settings, role)  # type: ignore[arg-type]
         if not role_filled(rc):

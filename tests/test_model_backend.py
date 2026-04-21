@@ -81,6 +81,17 @@ def test_api_preflight_errors_missing_role_config():
     assert any("LLM" in e for e in errs)
 
 
+def test_api_preflight_photo_only_needs_llm_and_image():
+    am = ApiModelRuntimeSettings(
+        llm=ApiRoleConfig(provider="openai", model="gpt-4o-mini"),
+        image=ApiRoleConfig(provider="openai", model="dall-e-3"),
+        voice=ApiRoleConfig(provider="", model=""),
+        video=ApiRoleConfig(provider="", model=""),
+    )
+    s = AppSettings(model_execution_mode="api", media_mode="photo", api_openai_key="sk-x", api_models=am)
+    assert mb.api_preflight_errors(s) == []
+
+
 def test_api_preflight_errors_missing_key_with_roles_filled(monkeypatch):
     # Ensure env does not satisfy OpenAI (some dev machines export OPENAI_API_KEY globally).
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

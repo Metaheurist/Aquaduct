@@ -9,7 +9,6 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 
-from UI.main_window import MainWindow
 from UI.theme import TIKTOK_QSS, build_qss, resolve_palette
 from src.util.single_instance import single_instance_guard
 from src.settings.ui_settings import load_settings
@@ -38,6 +37,11 @@ def _ensure_project_root_on_path() -> None:
         sys.path.insert(0, str(root))
 
 
+def _splash_enabled() -> bool:
+    """Disable with ``AQUADUCT_NO_SPLASH=1`` for headless debugging."""
+    return os.environ.get("AQUADUCT_NO_SPLASH", "").strip().lower() not in ("1", "true", "yes")
+
+
 def main() -> None:
     try:
         from src.util.cpu_parallelism import configure_cpu_parallelism
@@ -58,6 +62,14 @@ def main() -> None:
     app = QApplication(sys.argv)
     # Windows native style often ignores QSS colors inside QSpinBox/QComboBox; Fusion paints consistently.
     app.setStyle("Fusion")
+
+    splash = None
+    if _splash_enabled():
+        from UI.startup_splash import StartupSplash
+
+        splash = StartupSplash(app)
+        splash.show()
+        splash.set_progress(8, "Loading settings…")
     # Apply saved branding theme if enabled (fallback to default).
     try:
         settings = load_settings()
@@ -65,6 +77,22 @@ def main() -> None:
         app.setStyleSheet(build_qss(pal))
     except Exception:
         app.setStyleSheet(TIKTOK_QSS)
+
+    if splash is not None:
+        splash.set_progress(22, "Loading main window code…")
+        # Import is heavy on cold start (frozen EXE); indeterminate bar while blocked.
+        splash.set_indeterminate("Loading modules — this can take a while on first launch…")
+    from UI.main_window import MainWindow
+
+    if splash is not None:
+        splash.set_progress(65, "Building interface…")
+        splash.set_indeterminate("Initializing main window…")
     win = MainWindow()
+
+    if splash is not None:
+        splash.set_progress(95, "Starting…")
     win.show()
+    if splash is not None:
+        splash.close()
+        splash.deleteLater()
     sys.exit(app.exec())

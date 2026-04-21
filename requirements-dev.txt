@@ -1,7 +1,8 @@
-# Tests + developer tooling
+# Tests + developer tooling (use a normal dev venv, e.g. .venv — not the PyInstaller build venv).
 pytest>=8.0.0
 pytest-qt>=4.4.0
 pytest-mock>=3.12.0
 
-# Windows EXE packaging (see build/build.ps1)
+# PyInstaller is listed here for devs who install everything in one environment.
+# Official EXE builds use requirements-build.txt after install_pytorch.py + requirements.txt (see build/build.ps1).
 pyinstaller>=6.6.0

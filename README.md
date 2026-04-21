@@ -150,7 +150,7 @@ Tabs:
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
 - **Model**: **Local \| API** toggle; **Model files location** (**Default** \| **External** folder for Hub snapshots); Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already present on disk under the active models folder
-- **My PC**: hardware summary + model fit markers (VRAM-based heuristics)
+- **My PC**: detected GPUs (table), **GPU policy** (Auto = LLM on compute-heuristic GPU, diffusion on max-VRAM GPU; or Single to pin one CUDA device), model **Fit** table aligned with **Model** tab (`rate_model_fit_for_repo` + effective VRAM per role). See [Hardware + model fit](docs/hardware.md). Optional env **`AQUADUCT_CUDA_DEVICE`** overrides saved policy.
 
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/models.md)).
 
@@ -191,5 +191,6 @@ Example:
 
 ## Notes
 - First run will download models from Hugging Face (can be large).
-- GPU memory is limited (8GB): the pipeline loads/unloads models between stages.
+- GPU memory is limited (8GB class GPUs are common): the pipeline loads/unloads models between stages.
+- **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. The title-bar **resource graph** can chart VRAM for a selected GPU. Details: [docs/hardware.md](docs/hardware.md), [docs/config.md](docs/config.md#multi-gpu-cuda-policy-override).
 

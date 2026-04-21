@@ -950,6 +950,7 @@ def expand_custom_video_instructions(
     character_context: str | None = None,
     on_llm_task: Callable[[str, int, str], None] | None = None,
     try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
 ) -> str:
     """
     First LLM pass for custom Run mode: expand the user's rough notes into a structured creative brief (plain text).
@@ -1070,6 +1071,7 @@ def expand_custom_video_instructions(
             on_llm_task=on_llm_task,
             max_new_tokens=1200,
             try_llm_4bit=try_llm_4bit,
+            llm_cuda_device_index=llm_cuda_device_index,
         )
     return raw.strip()
 
@@ -1241,11 +1243,32 @@ def torch_cuda_kernels_work() -> bool:
         return False
 
 
+def _llm_max_input_tokens_cap(tokenizer: Any) -> int:
+    """
+    Cap prompt length for local ``generate()`` so long article/context strings do not
+    blow VRAM during attention prefill (common on ~8GB GPUs).
+
+    Override with env ``AQUADUCT_LLM_MAX_INPUT_TOKENS`` (integer; clamped 256–100000).
+    Default: min(4096, tokenizer.model_max_length) when the latter is sane, else 4096.
+    """
+    import os
+
+    raw = (os.environ.get("AQUADUCT_LLM_MAX_INPUT_TOKENS") or "").strip()
+    if raw.isdigit():
+        return max(256, min(int(raw), 100_000))
+    default_cap = 4096
+    mm = getattr(tokenizer, "model_max_length", None)
+    if isinstance(mm, int) and 0 < mm < 100_000:
+        return min(default_cap, mm)
+    return default_cap
+
+
 def load_causal_lm_from_pretrained(
     load_path: str,
     *,
     try_4bit: bool = True,
     on_status: Callable[[str], None] | None = None,
+    cuda_device_index: int | None = None,
 ) -> Any:
     """
     Load ``AutoModelForCausalLM`` from disk or Hub id.
@@ -1269,8 +1292,17 @@ def load_causal_lm_from_pretrained(
         if on_status:
             on_status(msg)
 
+    def _device_map_for_load() -> Any:
+        if cuda_device_index is not None and cuda_ok:
+            try:
+                torch.cuda.set_device(int(cuda_device_index))
+            except Exception:
+                pass
+            return {"": int(cuda_device_index)}
+        return "auto"
+
     def _from_pretrained_with_optional_bnb(
-        *, quantization_config: Any | None, device_map: str
+        *, quantization_config: Any | None, device_map: Any
     ) -> Any:
         if quantization_config is not None:
             try:
@@ -1329,6 +1361,8 @@ def load_causal_lm_from_pretrained(
         _status("CUDA unusable for this GPU/driver build; loading LLM on CPU (slower)…")
         return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="cpu")
 
+    dm = _device_map_for_load()
+
     if try_4bit:
         bnb = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -1338,13 +1372,13 @@ def load_causal_lm_from_pretrained(
         )
         try:
             _status("Loading model (4-bit)…")
-            return _from_pretrained_with_optional_bnb(quantization_config=bnb, device_map="auto")
+            return _from_pretrained_with_optional_bnb(quantization_config=bnb, device_map=dm)
         except Exception as e:
             _status(f"4-bit load failed ({type(e).__name__}); loading in fp16 instead…")
-            return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="auto")
+            return _from_pretrained_with_optional_bnb(quantization_config=None, device_map=dm)
 
     _status("Loading model (fp16)…")
-    return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="auto")
+    return _from_pretrained_with_optional_bnb(quantization_config=None, device_map=dm)
 
 
 def _generate_with_transformers(
@@ -1354,6 +1388,7 @@ def _generate_with_transformers(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 650,
     try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
 ) -> str:
     import torch
 
@@ -1393,12 +1428,21 @@ def _generate_with_transformers(
         load_path,
         try_4bit=bool(try_llm_4bit),
         on_status=_load_status,
+        cuda_device_index=llm_cuda_device_index,
     )
     _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")
 
     # Simple chat-ish formatting without requiring tokenizer chat template support.
     full = f"### Instruction:\n{prompt}\n\n### Response:\n"
-    inputs = tokenizer(full, return_tensors="pt").to(model.device)
+    _cap = _llm_max_input_tokens_cap(tokenizer)
+    inputs = tokenizer(
+        full,
+        return_tensors="pt",
+        truncation=True,
+        max_length=_cap,
+    ).to(model.device)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     _emit_llm(on_llm_task, "llm_generate", 0, "Starting generation…")
     _stderr("LLM inference starting (streamed progress when supported).")
@@ -1488,6 +1532,7 @@ def generate_script(
     try_llm_4bit: bool = True,
     article_excerpt: str | None = None,
     supplement_context: str = "",
+    llm_cuda_device_index: int | None = None,
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links, or from a pre-expanded custom creative brief.
@@ -1529,6 +1574,7 @@ def generate_script(
                 on_llm_task=on_llm_task,
                 max_new_tokens=2048,
                 try_llm_4bit=try_llm_4bit,
+                llm_cuda_device_index=llm_cuda_device_index,
             )
             data = _extract_json(raw)
             pkg = _to_package(data)

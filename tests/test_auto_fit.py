@@ -29,8 +29,8 @@ def test_rank_models_for_auto_fit_returns_ordered_lists() -> None:
     assert "Script:" in r.log_summary
     # 8GB VRAM: SDXL Turbo should rank first among image models.
     assert r.image_repo_ids[0] == "stabilityai/sdxl-turbo" or "sdxl-turbo" in r.image_repo_ids[0]
-    # Motion: Zeroscope is lighter than SVD in preference order.
-    assert r.video_repo_ids[0] == "cerspense/zeroscope_v2_576w"
+    # Motion: at 8GB VRAM, lighter ZeroScope (448×256) can outrank 576w on fit marker before preference tie-break.
+    assert r.video_repo_ids[0].startswith("cerspense/zeroscope_v2_")
 
 
 def test_rank_prefers_lighter_video_on_low_vram() -> None:

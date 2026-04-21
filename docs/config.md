@@ -12,6 +12,14 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 - **`AQUADUCT_CPU_THREADS`** — target thread count (default `min(32, os.cpu_count())`). Does not override **`OMP_NUM_THREADS`** / **`MKL_NUM_THREADS`** / etc. if you already set them in the environment.
 - **`AQUADUCT_TORCH_INTEROP_THREADS`** — optional `torch.set_num_interop_threads` (1–32). If unset, the app picks a higher value on CPU-only machines and a modest value when CUDA/MPS is available.
 
+## Multi-GPU (CUDA policy override)
+When set, **`AQUADUCT_CUDA_DEVICE`** forces **all** local CUDA stages (LLM, diffusion, etc.) onto that **ordinal** (`0`, `1`, …) or **`cuda:N`**. It overrides the **My PC** GPU policy saved in `ui_settings.json`. Used by [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py). The **My PC** / **Model** tab fit tables still use the same resolver so labels stay consistent with runtime when this env var is unset; when set, fit heuristics follow the pinned index.
+
+## Local LLM inference (VRAM)
+When **`model_execution_mode`** is **`local`**, long article text plus instructions can tokenize to a very long prompt. Attention prefill scales with sequence length and can trigger **`CUDA out of memory`** on tight GPUs (for example ~8GB) even with 4-bit weights.
+
+- **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** — hard cap on **input** (prompt) tokens for the local transformers `generate()` path in [`src/content/brain.py`](../src/content/brain.py). If unset, the default is **4096**, or **`min(4096, tokenizer.model_max_length)`** when the tokenizer exposes a finite `model_max_length`. Values are clamped to **256–100000**. Set lower (for example **`2048`**) if you still hit OOM during script generation.
+
 ## Paths
 `get_paths()` defines:
 - `data/news_cache/` — per-format dedupe files `seen_<mode>.json` and `seen_titles_<mode>.json` (plus optional legacy `seen.json` / `seen_titles.json` for migration); local-only, not committed
@@ -44,6 +52,10 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
+- **GPU policy** (desktop; persisted in `ui_settings.json`; see [hardware.md](hardware.md)):
+  - `gpu_selection_mode`: **`auto`** (default) or **`single`** — Auto routes LLM vs diffusion per [`cuda_device_policy`](../src/util/cuda_device_policy.py); Single pins `gpu_device_index`.
+  - `gpu_device_index`: CUDA ordinal used when `gpu_selection_mode == "single"`.
+  - `resource_graph_monitor_gpu_index`: optional int — last **Resource graph** “Monitor GPU” selection (`None` = default to device **0** when opening the graph).
 - `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](ui.md))
 - `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)

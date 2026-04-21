@@ -18,3 +18,6 @@ The pipeline may load:
 
 Loading these simultaneously can cause OOM. Staging + cleanup reduces the chance of VRAM fragmentation and OOM errors.
 
+## Multi-GPU (related)
+Which **CUDA device** holds the local LLM vs diffusion for a run follows **GPU policy** in the desktop **My PC** tab (persisted in `ui_settings.json`) or the optional **`AQUADUCT_CUDA_DEVICE`** environment override — not covered by `cleanup_vram()` alone. See [Hardware + model fit](hardware.md) and [Config: multi-GPU](config.md#multi-gpu-cuda-policy-override).
+

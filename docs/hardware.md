@@ -12,14 +12,23 @@ Implemented in:
 The app attempts to detect:
 - OS + CPU (via `platform`)
 - RAM: total physical memory on Windows (`GlobalMemoryStatusEx`); on other OSes or if that fails, **`psutil.virtual_memory().total`**
-- GPU + VRAM:
-  - primary: `nvidia-smi --query-gpu=name,memory.total`
-  - fallback: `torch.cuda` device properties (if PyTorch is installed and CUDA is available)
+- **GPUs + VRAM (multi-GPU)**:
+  - Prefer **`torch.cuda`**: enumerate **`range(torch.cuda.device_count())`** and read names, total VRAM, multiprocessor count, and compute capability from **`torch.cuda.get_device_properties(i)`** (same ordinals local inference uses).
+  - **Fallback** when CUDA is not loaded: parse **all** lines from **`nvidia-smi --query-gpu=name,memory.total`** (CSV).
 
 If a field can’t be detected, the UI shows “(not detected)”.
 
+### GPU policy (Auto vs single)
+Configured on the **My PC** tab and persisted in **`ui_settings.json`** (see [config.md](config.md)):
+- **Auto**: **VRAM-heavy** local work (**image** / **video** diffusion) targets the GPU with the **largest total VRAM** (ties: lower CUDA index wins). **Script (LLM)** targets a **heuristic “compute”** GPU (multiprocessor count × clock rate — not a benchmark; newer/faster cards rank higher when VRAM alone does not decide).
+- **Single GPU**: pin **all** local CUDA stages to the chosen device index (LLM + diffusion + fit heuristics for that pin).
+
+**Environment override**: if **`AQUADUCT_CUDA_DEVICE`** is set to a non-negative integer or **`cuda:N`**, that index is used for **every** stage and overrides the saved UI policy. See [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py).
+
+**Fit heuristics** (`effective_vram_gb_for_kind` in the same module): **script** rows use the LLM device’s VRAM; **image** / **video** use the diffusion device’s VRAM; **voice** follows the same device as the LLM slot for labeling (voice often runs on CPU in practice).
+
 ## Resource usage graph (title bar 📈)
-The sample shows **CPU for the whole process tree** (Python plus subprocesses such as FFmpeg), **RSS for the tree**, and **current CUDA VRAM**. VRAM often **drops** after a GPU stage finishes (e.g. after Pro text-to-video clips, while the pipeline muxes audio/captions with FFmpeg). The pipeline **runs stages sequentially** and may **unload** models between steps to limit peak memory — it is not designed to keep every model resident at maximum utilization at once.
+The sample shows **CPU for the whole process tree** (Python plus subprocesses such as FFmpeg), **RSS for the tree**, and **CUDA free/total VRAM** for a **selected GPU** (combo when multiple GPUs are present; choice is persisted). VRAM often **drops** after a GPU stage finishes (e.g. after Pro text-to-video clips, while the pipeline muxes audio/captions with FFmpeg). The pipeline **runs stages sequentially** and may **unload** models between steps to limit peak memory — it is not designed to keep every model resident at maximum utilization at once.
 
 For **local diffusion** (image + video model slots), the app can also use **CPU offload** (weights staged in system RAM vs VRAM) with automatic rules from VRAM + free RAM — see [Performance: Diffusion VRAM vs system RAM](performance.md#diffusion-vram-vs-system-ram-cpu-offload) and [`src/util/diffusion_placement.py`](../src/util/diffusion_placement.py).
 
@@ -31,12 +40,14 @@ Recommended for best results:
 The pipeline can still run with fallbacks (template scripts, placeholder images) if a model can’t load.
 
 ## Fit markers
-The My PC tab assigns each model option a marker:
+The My PC tab assigns each model option a marker (internal codes; UI labels match **`fit_marker_display()`** in `src/models/hardware.py`):
 - `EXCELLENT`
 - `OK`
 - `RISKY`
-- `NO_GPU`
+- `NO_GPU` — shown in the UI as **VRAM Limit** (not enough VRAM for that model kind at the **effective** policy GPU)
 - `UNKNOWN`
+
+**Effective VRAM**: thresholds use the VRAM of the GPU resolved for that **kind** and the active **GPU policy** (Auto vs single), not “first GPU only” when multiple cards exist.
 
 These are simple heuristics based mainly on VRAM and the model kind:
 - **Image (SDXL Turbo class)**:
@@ -54,3 +65,5 @@ These are simple heuristics based mainly on VRAM and the model kind:
 
 These rules are meant to be conservative and easy to understand, not perfect benchmarks.
 
+### LLM on multiple GPUs (limits)
+Stage routing picks **one** CUDA index for the local script model (see GPU policy above). **Model-parallel** splitting of a single LLM across two cards via Accelerate `max_memory` / multi-device `device_map` is **not** turned on automatically. **4-bit (bitsandbytes)** loading typically requires a **single** GPU; if you need multi-GPU LLM sharding, prefer FP16 and expect manual tuning outside this app.

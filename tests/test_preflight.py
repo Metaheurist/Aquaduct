@@ -1,7 +1,18 @@
 from __future__ import annotations
 
+import pytest
+
 from src.core.config import AppSettings, VideoSettings
-from src.runtime.preflight import preflight_check
+from src.runtime.preflight import local_hf_model_snapshot_errors, preflight_check
+
+
+@pytest.fixture(autouse=True)
+def _local_hf_snapshots_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default local tests assume Hub snapshots exist (avoid disk-dependent failures)."""
+    monkeypatch.setattr(
+        "src.runtime.preflight.model_has_local_snapshot",
+        lambda rid, models_dir=None, min_bytes=None: True,
+    )
 
 
 def test_preflight_invalid_fps(monkeypatch):
@@ -130,4 +141,26 @@ def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):
     r = preflight_check(settings=s, strict=True)
     assert not r.ok
     assert any("Watermark logo file not found" in e for e in r.errors)
+
+
+def test_preflight_local_missing_hf_snapshot(monkeypatch):
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr("src.runtime.preflight.model_has_local_snapshot", lambda *a, **k: False)
+    r = preflight_check(settings=AppSettings(), strict=True)
+    assert not r.ok
+    assert any("not downloaded" in e.lower() for e in r.errors)
+
+
+def test_local_hf_snapshot_errors_skipped_in_api_mode():
+    s = AppSettings(model_execution_mode="api")
+    assert local_hf_model_snapshot_errors(s) == []
+
+
+def test_local_hf_snapshot_errors_photo_mode_ignores_video_voice(monkeypatch):
+    monkeypatch.setattr("src.runtime.preflight.model_has_local_snapshot", lambda *a, **k: True)
+    s = AppSettings(media_mode="photo", video_model_id="", voice_model_id="")
+    assert local_hf_model_snapshot_errors(s) == []
 

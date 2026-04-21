@@ -19,6 +19,9 @@ RunContentMode = Literal["preset", "custom"]
 # High-level UI/pipeline mode (separate from model execution Local/API).
 MediaMode = Literal["video", "photo"]
 
+# Local CUDA: Auto = LLM on compute-heuristic GPU, diffusion on max VRAM; Single = pin one GPU.
+GpuSelectionMode = Literal["auto", "single"]
+
 PictureOutputType = Literal["single_image", "image_set", "layouted"]
 PictureFormat = Literal["poster", "newspaper", "comic"]
 
@@ -311,6 +314,12 @@ class AppSettings:
     youtube_auto_upload_after_render: bool = False
     #: Set True after the user dismisses the first-run tutorial (stored in ``ui_settings.json``).
     tutorial_completed: bool = False
+    #: Multi-GPU: ``auto`` uses max-VRAM GPU for diffusion and heuristic-fast GPU for LLM; ``single`` pins ``gpu_device_index``.
+    gpu_selection_mode: GpuSelectionMode = "auto"
+    #: Used when ``gpu_selection_mode == "single"`` (CUDA ordinal, must exist).
+    gpu_device_index: int = 0
+    #: Resource graph: which GPU index to chart (None = default 0).
+    resource_graph_monitor_gpu_index: int | None = None
 
 
 def safe_title_to_dirname(title: str) -> str:

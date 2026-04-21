@@ -25,6 +25,7 @@ from src.content.crawler import (
     pick_one_item,
 )
 from src.content.personality_auto import auto_pick_personality
+from src.content.storyboard import build_storyboard, render_preview_grid
 from src.content.topics import effective_topic_tags, news_cache_mode_for_run, video_format_skips_seen_url_disk_cache
 from src.core.config import AppSettings, VideoSettings, get_models, get_paths, media_output_root, safe_title_to_dirname
 from src.render.branding_video import apply_palette_to_prompts
@@ -359,6 +360,84 @@ def run_once_api(
     video_dir = _projects_root / safe_dir
     assets_dir = video_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
+
+    # Photo mode: still images (+ optional layout) only — no voice, no MP4 / clips.
+    mm_api = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+    if mm_api == "photo":
+        pic = getattr(app, "picture", None)
+        pic_out = str(getattr(pic, "output_type", "single_image") or "single_image") if pic is not None else "single_image"
+        pic_fmt = str(getattr(pic, "picture_format", "poster") or "poster") if pic is not None else "poster"
+        n_img = int(getattr(pic, "image_count", 6) or 6) if pic is not None else 6
+        n_img = max(1, min(32, n_img))
+        pw = int(getattr(pic, "width", 1080) or 1080) if pic is not None else 1080
+        ph = int(getattr(pic, "height", 1920) or 1920) if pic is not None else 1920
+
+        _pipe_progress(on_progress, 50, -1, "Photo mode: generating images (API)…")
+        _rc(run_control)
+
+        sb = build_storyboard(
+            pkg,
+            seed_base=getattr(video_settings, "seed_base", None),
+            branding=getattr(app, "branding", None),
+            max_scenes=max(1, min(10, n_img)),
+            character=active_character,
+            video_format=str(getattr(app, "video_format", "news") or "news"),
+        )
+        base_prompts = [s.prompt for s in sb.scenes] or ["vertical 9:16, one clear focal subject, bold readable composition"]
+        prompts_img = [base_prompts[i % len(base_prompts)] for i in range(n_img)]
+        try:
+            br = getattr(app, "branding", None)
+            if br is not None and bool(getattr(br, "photo_style_enabled", False)):
+                prompts_img = [
+                    f"{p}, print-ready design, paper texture, clean negative space, high detail still"
+                    for p in prompts_img
+                ]
+        except Exception:
+            pass
+
+        img_dir = assets_dir / "images"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        img_paths: list[Path] = []
+        for i, pr in enumerate(prompts_img):
+            _pipe_progress(on_progress, 50 + int(35 * i / max(1, n_img)), -1, f"Photo still {i + 1}/{n_img}…")
+            png = generate_still_png_bytes(settings=app, prompt=str(pr or "").strip() or (pkg.title or "still"))
+            pth = img_dir / f"img_{i + 1:02d}.png"
+            pth.write_bytes(png)
+            img_paths.append(pth)
+
+        if not img_paths:
+            raise RuntimeError("Photo mode produced no images.")
+
+        out_final_png = video_dir / "final.png"
+        if pic_out == "layouted":
+            from src.render.layouts import render_layout
+
+            render_layout(
+                picture_format=pic_fmt,
+                images=img_paths,
+                title=str(getattr(pkg, "title", "") or ""),
+                out_path=out_final_png,
+                size=(pw, ph),
+                branding=getattr(app, "branding", None),
+            )
+        elif pic_out == "image_set":
+            grid = assets_dir / "preview_grid.png"
+            render_preview_grid(scene_paths=img_paths, out_grid=grid, cols=3, thumb=320)
+            try:
+                grid.replace(out_final_png)
+            except Exception:
+                out_final_png.write_bytes(grid.read_bytes())
+        else:
+            try:
+                out_final_png.write_bytes(img_paths[0].read_bytes())
+            except Exception:
+                import shutil
+
+                shutil.copy2(img_paths[0], out_final_png)
+
+        _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts_img, preview=preview_blob)
+        _pipe_progress(on_progress, 100, 100, "Done (API photo)")
+        return out_final_png
 
     voice_wav = assets_dir / "voice.wav"
     captions_json = assets_dir / "captions.json"

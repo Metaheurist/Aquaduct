@@ -15,6 +15,7 @@ from src.core.config import (
     ApiRoleConfig,
     AppSettings,
     BrandingSettings,
+    GpuSelectionMode,
     ModelExecutionMode,
     PictureSettings,
     VideoSettings,
@@ -68,6 +69,11 @@ def _norm_model_execution_mode(s: Any) -> ModelExecutionMode:
 def _norm_models_storage_mode(s: Any) -> str:
     t = str(s or "default").strip().lower()
     return t if t in ("default", "external") else "default"
+
+
+def _norm_gpu_selection_mode(s: Any) -> GpuSelectionMode:
+    t = str(s or "auto").strip().lower()
+    return t if t in ("auto", "single") else "auto"
 
 
 def _parse_api_role(raw: Any) -> ApiRoleConfig:
@@ -321,6 +327,15 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         if isinstance(data, dict)
         else False,
         tutorial_completed=bool(data.get("tutorial_completed", False)) if isinstance(data, dict) else False,
+        gpu_selection_mode=_norm_gpu_selection_mode(data.get("gpu_selection_mode")) if isinstance(data, dict) else "auto",
+        gpu_device_index=int(data.get("gpu_device_index", 0)) if isinstance(data, dict) else 0,
+        resource_graph_monitor_gpu_index=(
+            int(data["resource_graph_monitor_gpu_index"])
+            if isinstance(data, dict)
+            and data.get("resource_graph_monitor_gpu_index") is not None
+            and str(data.get("resource_graph_monitor_gpu_index", "")).strip().lstrip("-").isdigit()
+            else None
+        ),
     )
 
 

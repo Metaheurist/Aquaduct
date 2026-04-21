@@ -94,6 +94,8 @@ def _expand_brief_unified(
             personality_id=personality_id,
             on_llm_task=on_llm_task,
         )
+    from src.util.cuda_device_policy import resolve_llm_cuda_device_index
+
     return expand_custom_video_instructions(
         model_id=model_id,
         raw_instructions=raw_instructions,
@@ -102,6 +104,7 @@ def _expand_brief_unified(
         character_context=character_context,
         on_llm_task=on_llm_task,
         try_llm_4bit=try_llm_4bit,
+        llm_cuda_device_index=resolve_llm_cuda_device_index(app),
     )
 
 
@@ -115,7 +118,15 @@ def _generate_script_unified(
 ):
     if is_api_mode(app):
         return generate_script_openai(settings=app, on_llm_task=on_llm_task, **kw)
-    return generate_script(model_id=model_id, on_llm_task=on_llm_task, try_llm_4bit=try_llm_4bit, **kw)
+    from src.util.cuda_device_policy import resolve_llm_cuda_device_index
+
+    return generate_script(
+        model_id=model_id,
+        on_llm_task=on_llm_task,
+        try_llm_4bit=try_llm_4bit,
+        llm_cuda_device_index=resolve_llm_cuda_device_index(app),
+        **kw,
+    )
 
 
 def _firecrawl_kwargs(app: AppSettings) -> dict:
@@ -706,6 +717,8 @@ class CharacterPortraitWorker(QThread):
                 dest.write_bytes(png)
             else:
                 prepare_for_next_model()
+                from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
+
                 gen = generate_images(
                     sdxl_turbo_model_id=self.image_model_id,
                     prompts=[prompt],
@@ -715,6 +728,7 @@ class CharacterPortraitWorker(QThread):
                     allow_nsfw=self.allow_nsfw,
                     art_style_preset_id=str(getattr(self, "art_style_preset_id", None) or "balanced"),
                     use_style_continuity=False,
+                    cuda_device_index=resolve_diffusion_cuda_device_index(self.app_settings),
                 )
                 if not gen:
                     self.failed.emit("Image generation returned no files.")
@@ -1491,6 +1505,8 @@ class StoryboardWorker(QThread):
                     pth.write_bytes(data)
                     scene_paths.append(pth)
             else:
+                from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
+
                 gen = generate_images(
                     sdxl_turbo_model_id=img_id,
                     prompts=prompts,
@@ -1501,6 +1517,7 @@ class StoryboardWorker(QThread):
                     allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
                     on_image_progress=_img_pct,
                     art_style_preset_id=str(getattr(app, "art_style_preset_id", None) or "balanced"),
+                    cuda_device_index=resolve_diffusion_cuda_device_index(app),
                     **_ref_kw,
                 )
                 scene_paths = [g.path for g in gen]

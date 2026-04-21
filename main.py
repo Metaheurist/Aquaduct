@@ -83,6 +83,7 @@ from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import is_api_mode
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.runtime.preflight import preflight_check
+from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index, resolve_llm_cuda_device_index
 from src.settings.ui_settings import load_settings
 from src.speech.audio_fx import (
     AudioPolishConfig,
@@ -421,7 +422,8 @@ def run_once(
         img_id = app.image_model_id.strip() or models.sdxl_turbo_id
         clip_id = getattr(app, "video_model_id", "").strip()
         voice_id = app.voice_model_id.strip() or models.kokoro_id
-    
+        _diffusion_cuda_idx = resolve_diffusion_cuda_device_index(app)
+
         # Ensure base dirs exist
         paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
         paths.runs_dir.mkdir(parents=True, exist_ok=True)
@@ -653,6 +655,7 @@ def run_once(
                     character_context=char_ctx,
                     on_llm_task=_expand_llm,
                     try_llm_4bit=try_llm_4bit,
+                    llm_cuda_device_index=resolve_llm_cuda_device_index(app),
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
                 pkg = get_generation_facade(app).generate_script_package(
@@ -832,6 +835,7 @@ def run_once(
                 allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
                 art_style_preset_id=str(getattr(app, "art_style_preset_id", "balanced") or "balanced"),
                 use_style_continuity=True,
+                cuda_device_index=_diffusion_cuda_idx,
             )
             img_paths = [g.path for g in gen if getattr(g, "path", None) is not None]
             if not img_paths:
@@ -1089,6 +1093,7 @@ def run_once(
                     allow_nsfw=_allow_nsfw,
                     art_style_preset_id=_art_style_id,
                     use_style_continuity=True,
+                    cuda_device_index=_diffusion_cuda_idx,
                     **_diffusion_ref_kw,
                 )
                 keyframes = [g.path for g in key_gen]
@@ -1104,6 +1109,7 @@ def run_once(
                     max_clips=len(pro_scenes),
                     fps=int(video_settings.fps),
                     seconds_per_clip=T,
+                    cuda_device_index=_diffusion_cuda_idx,
                 )
             else:
                 _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
@@ -1117,6 +1123,7 @@ def run_once(
                     max_clips=len(pro_scenes),
                     fps=int(video_settings.fps),
                     seconds_per_clip=T,
+                    cuda_device_index=_diffusion_cuda_idx,
                 )
             clip_paths = [c.path for c in gen_clips]
             if not clip_paths:
@@ -1281,6 +1288,7 @@ def run_once(
                         allow_nsfw=_allow_nsfw,
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
+                        cuda_device_index=_diffusion_cuda_idx,
                         **_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
@@ -1299,6 +1307,7 @@ def run_once(
                         max_clips=1,
                         fps=int(video_settings.fps),
                         seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
+                        cuda_device_index=_diffusion_cuda_idx,
                     )
                     if not zc:
                         raise RuntimeError("Pro mode produced no video segments (ZeroScope path).")
@@ -1325,6 +1334,7 @@ def run_once(
                         allow_nsfw=_allow_nsfw,
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
+                        cuda_device_index=_diffusion_cuda_idx,
                         **_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
@@ -1338,6 +1348,7 @@ def run_once(
                         allow_nsfw=_allow_nsfw,
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
+                        cuda_device_index=_diffusion_cuda_idx,
                         **_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
@@ -1351,6 +1362,7 @@ def run_once(
                     allow_nsfw=_allow_nsfw,
                     art_style_preset_id=_art_style_id,
                     use_style_continuity=True,
+                    cuda_device_index=_diffusion_cuda_idx,
                     **_diffusion_ref_kw,
                 )
                 image_paths = [g.path for g in gen]
@@ -1379,6 +1391,7 @@ def run_once(
                                 allow_nsfw=_allow_nsfw,
                                 art_style_preset_id=_art_style_id,
                                 use_style_continuity=False,
+                                cuda_device_index=_diffusion_cuda_idx,
                             )
                             if regen:
                                 apply_regenerated_image(regen, out_path)
@@ -1505,6 +1518,7 @@ def run_once(
                 seeds=storyboard_seeds,
                 allow_nsfw=_allow_nsfw,
                 art_style_preset_id=_art_style_id,
+                cuda_device_index=_diffusion_cuda_idx,
                 **_diffusion_ref_kw,
             )
             keyframes = [g.path for g in key_gen]
@@ -1532,6 +1546,7 @@ def run_once(
                                 allow_nsfw=_allow_nsfw,
                                 art_style_preset_id=_art_style_id,
                                 use_style_continuity=False,
+                                cuda_device_index=_diffusion_cuda_idx,
                             )
                             if regen:
                                 apply_regenerated_image(regen, out_path)
@@ -1566,6 +1581,7 @@ def run_once(
                 max_clips=max(1, int(video_settings.clips_per_video)),
                 fps=int(video_settings.fps),
                 seconds_per_clip=float(video_settings.clip_seconds),
+                cuda_device_index=_diffusion_cuda_idx,
             )
             clip_paths = [c.path for c in gen_clips]
             _pipe_progress(on_progress, 88, -1, "Scenes ready")

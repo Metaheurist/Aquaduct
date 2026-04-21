@@ -6,11 +6,13 @@ from collections import deque
 
 from PyQt6.QtCore import QPointF, QTimer, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from UI.frameless_dialog import FramelessDialog
+from UI.no_wheel_controls import NoWheelComboBox
 
-from src.util.resource_sample import sample_aquaduct_resources
+from src.models.hardware import list_cuda_gpus
+from src.util.resource_sample import sample_aquaduct_resources, sample_gpu_mem_pct
 
 _HISTORY = 120  # 2 minutes at 1 Hz
 
@@ -28,6 +30,10 @@ class _SparklineChart(QWidget):
 
     def push(self, value: float) -> None:
         self._data.append(max(0.0, min(100.0, value)))
+        self.update()
+
+    def clear_data(self) -> None:
+        self._data.clear()
         self.update()
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
@@ -87,6 +93,7 @@ class ResourceGraphDialog(FramelessDialog):
         self.setModal(False)
         self.setMinimumWidth(520)
         self.setMinimumHeight(460)
+        self._monitor_gpu_index = 0
 
         self._cpu_lbl = QLabel("CPU — —%")
         self._cpu_lbl.setStyleSheet("color: #25F4EE; font-weight: 700; font-size: 12px;")
@@ -100,18 +107,76 @@ class ResourceGraphDialog(FramelessDialog):
         self._ram_chart = _SparklineChart(color="#FFB703", y_label="RAM % of system")
         self.body_layout.addWidget(self._ram_chart)
 
+        gpu_hdr = QHBoxLayout()
         self._gpu_lbl = QLabel("GPU VRAM —")
         self._gpu_lbl.setStyleSheet("color: #A78BFA; font-weight: 700; font-size: 12px;")
-        self.body_layout.addWidget(self._gpu_lbl)
+        gpu_hdr.addWidget(self._gpu_lbl)
+        gpu_hdr.addStretch(1)
+        self._gpu_monitor_combo = NoWheelComboBox()
+        self._gpu_monitor_combo.setMinimumWidth(220)
+        self._gpu_monitor_combo.setToolTip("Which GPU’s memory usage to plot (saved in settings).")
+        gpu_hdr.addWidget(QLabel("Monitor:"))
+        gpu_hdr.addWidget(self._gpu_monitor_combo)
+        self.body_layout.addLayout(gpu_hdr)
         self._gpu_chart = _SparklineChart(color="#A78BFA", y_label="VRAM % (CUDA)")
         self.body_layout.addWidget(self._gpu_chart)
+
+        self._gpu_monitor_combo.currentIndexChanged.connect(self._on_monitor_gpu_changed)
 
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._on_tick)
 
+    def _populate_monitor_combo(self) -> None:
+        self._gpu_monitor_combo.blockSignals(True)
+        self._gpu_monitor_combo.clear()
+        gpus = list_cuda_gpus()
+        if not gpus:
+            self._gpu_monitor_combo.addItem("GPU 0", 0)
+            self._monitor_gpu_index = 0
+        else:
+            for g in gpus:
+                self._gpu_monitor_combo.addItem(f"{g.index}: {g.name}", int(g.index))
+        # Restore from main window settings
+        parent = self.parent()
+        want = 0
+        try:
+            if parent is not None and hasattr(parent, "settings"):
+                s = getattr(parent.settings, "resource_graph_monitor_gpu_index", None)
+                if isinstance(s, int) and s >= 0:
+                    want = s
+        except Exception:
+            want = 0
+        for i in range(self._gpu_monitor_combo.count()):
+            if int(self._gpu_monitor_combo.itemData(i)) == want:
+                self._gpu_monitor_combo.setCurrentIndex(i)
+                self._monitor_gpu_index = want
+                break
+        else:
+            self._monitor_gpu_index = int(self._gpu_monitor_combo.currentData() or 0)
+        self._gpu_monitor_combo.blockSignals(False)
+
+    def _on_monitor_gpu_changed(self, _idx: int) -> None:
+        raw = self._gpu_monitor_combo.currentData()
+        self._monitor_gpu_index = int(raw) if raw is not None else 0
+        self._gpu_chart.clear_data()
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "settings") and hasattr(parent, "_save_settings"):
+            try:
+                from dataclasses import replace
+
+                from src.core.config import AppSettings
+
+                cur = parent.settings
+                if isinstance(cur, AppSettings):
+                    parent.settings = replace(cur, resource_graph_monitor_gpu_index=self._monitor_gpu_index)
+                    parent._save_settings()
+            except Exception:
+                pass
+
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        self._populate_monitor_combo()
         try:
             import os
 
@@ -138,9 +203,10 @@ class ResourceGraphDialog(FramelessDialog):
             self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}%")
             self._ram_lbl.setText(f"RAM {s.process_ram_pct:5.1f}% of system")
 
-            if s.gpu_mem_pct is not None:
-                self._gpu_chart.push(s.gpu_mem_pct)
-                self._gpu_lbl.setText(f"GPU VRAM {s.gpu_mem_pct:5.1f}%")
+            gpu_pct = sample_gpu_mem_pct(self._monitor_gpu_index)
+            if gpu_pct is not None:
+                self._gpu_chart.push(gpu_pct)
+                self._gpu_lbl.setText(f"GPU {self._monitor_gpu_index} VRAM {gpu_pct:5.1f}%")
             else:
                 self._gpu_lbl.setText("GPU VRAM —")
         except Exception:
