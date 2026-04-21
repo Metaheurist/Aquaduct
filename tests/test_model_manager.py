@@ -53,18 +53,9 @@ def test_resolve_pretrained_load_path_returns_nested_local_snapshot(tmp_path):
     assert resolve_pretrained_load_path("owner/repo", models_dir=tmp_path) == str(nested.resolve())
 
 
-def test_resolve_pretrained_load_path_uses_hub_cache_when_project_empty(tmp_path, monkeypatch):
-    """If project snapshot is missing/too small but HF cache has files, use cache path."""
-    hub_path = tmp_path / "hf_cache" / "snap"
-    hub_path.mkdir(parents=True)
-
-    def fake_snapshot_download(repo_id, local_files_only=False, **_kw):
-        assert repo_id == "z/m"
-        assert local_files_only is True
-        return str(hub_path)
-
-    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
-    assert resolve_pretrained_load_path("z/m", models_dir=tmp_path) == str(hub_path.resolve())
+def test_resolve_pretrained_load_path_returns_repo_id_when_project_empty(tmp_path):
+    """No local snapshot under models_dir: return hub id string for transformers/from_pretrained."""
+    assert resolve_pretrained_load_path("z/m", models_dir=tmp_path) == "z/m"
 
 
 def test_prompt_conditioning_assigns_varied_scene_types():

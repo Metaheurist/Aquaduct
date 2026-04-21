@@ -57,7 +57,9 @@ Local **image** and **video** diffusion use a shared placement helper ([`src/uti
 | `AQUADUCT_DIFFUSION_CPU_OFFLOAD` | `auto` (default), `off` / `none` / `0` (full GPU when CUDA works), `model`, `sequential` |
 | `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true` — legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
 
-The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
+The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; with multiple GPUs you can pick which device’s VRAM to chart. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
+
+**Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured in the **My PC** tab and implemented in [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py); see [hardware.md](hardware.md). This is separate from **CPU thread** tuning above.
 
 ## Related
 

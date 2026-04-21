@@ -5,8 +5,26 @@ import platform
 import re
 import subprocess
 from dataclasses import dataclass
+from typing import Any
 
 from src.models.model_manager import ModelOption
+
+
+@dataclass(frozen=True)
+class GpuDevice:
+    """One CUDA device as detected by PyTorch (preferred) or nvidia-smi (fallback)."""
+
+    index: int
+    name: str
+    total_vram_bytes: int
+    multiprocessor_count: int = 0
+    major: int = 0
+    minor: int = 0
+    clock_rate_khz: int = 0
+
+    @property
+    def total_vram_gb(self) -> float:
+        return float(self.total_vram_bytes) / (1024**3)
 
 
 @dataclass(frozen=True)
@@ -16,6 +34,8 @@ class HardwareInfo:
     ram_gb: float | None
     gpu_name: str | None
     vram_gb: float | None
+    #: When multiple GPUs exist, comma-separated names (same order as ``list_cuda_gpus``).
+    gpu_names_all: str | None = None
 
 
 def _get_ram_gb_windows() -> float | None:
@@ -46,33 +66,128 @@ def _get_ram_gb_windows() -> float | None:
 
 def _parse_nvidia_smi() -> tuple[str | None, float | None]:
     """
-    Returns (gpu_name, vram_gb) using nvidia-smi if available.
+    Returns (gpu_name, vram_gb) using nvidia-smi if available (first GPU only).
     """
+    gpus = _parse_nvidia_smi_all()
+    if not gpus:
+        return None, None
+    g0 = gpus[0]
+    return g0.name, g0.total_vram_gb
+
+
+def _parse_nvidia_smi_all() -> list[GpuDevice]:
+    """All NVIDIA GPUs from nvidia-smi (no PyTorch required)."""
     try:
         p = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
             timeout=5,
         )
         if p.returncode != 0:
-            return None, None
-        line = (p.stdout or "").strip().splitlines()[0].strip()
-        # Example: "NVIDIA GeForce RTX 4060 Ti, 8192"
-        parts = [x.strip() for x in line.split(",")]
-        if not parts:
-            return None, None
-        name = parts[0]
-        mem_mb = None
-        if len(parts) > 1:
+            return []
+        out: list[GpuDevice] = []
+        for raw in (p.stdout or "").strip().splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            parts = [x.strip() for x in line.split(",")]
+            if len(parts) < 2:
+                continue
             try:
-                mem_mb = float(parts[1])
+                idx = int(parts[0])
             except Exception:
-                mem_mb = None
-        vram_gb = (mem_mb / 1024.0) if mem_mb else None
-        return name, vram_gb
+                idx = len(out)
+            name = parts[1] if len(parts) > 1 else f"GPU {idx}"
+            mem_mb = None
+            if len(parts) > 2:
+                try:
+                    mem_mb = float(parts[2])
+                except Exception:
+                    mem_mb = None
+            vram_b = int((mem_mb * 1024 * 1024)) if mem_mb is not None else 0
+            out.append(
+                GpuDevice(
+                    index=idx,
+                    name=name,
+                    total_vram_bytes=max(vram_b, 0),
+                )
+            )
+        return sorted(out, key=lambda g: g.index)
     except Exception:
-        return None, None
+        return []
+
+
+def list_cuda_gpus() -> list[GpuDevice]:
+    """
+    Enumerate CUDA devices. Prefer PyTorch (names + VRAM + compute); fall back to nvidia-smi.
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            n = int(torch.cuda.device_count())
+            out: list[GpuDevice] = []
+            for i in range(max(0, n)):
+                try:
+                    name = str(torch.cuda.get_device_name(i))
+                    props = torch.cuda.get_device_properties(i)
+                    total_b = int(props.total_memory)
+                    sm = int(getattr(props, "multi_processor_count", 0) or 0)
+                    maj = int(getattr(props, "major", 0) or 0)
+                    mino = int(getattr(props, "minor", 0) or 0)
+                    clk = int(getattr(props, "clock_rate", 0) or 0)
+                    out.append(
+                        GpuDevice(
+                            index=i,
+                            name=name,
+                            total_vram_bytes=total_b,
+                            multiprocessor_count=sm,
+                            major=maj,
+                            minor=mino,
+                            clock_rate_khz=clk,
+                        )
+                    )
+                except Exception:
+                    continue
+            if out:
+                return out
+    except Exception:
+        pass
+    return _parse_nvidia_smi_all()
+
+
+def vram_hungry_device_index(gpus: list[GpuDevice]) -> int:
+    """Index of the GPU with the largest total VRAM (ties: lower index wins)."""
+    if not gpus:
+        return 0
+    best_i = 0
+    best_b = -1
+    for g in gpus:
+        if g.total_vram_bytes > best_b:
+            best_b = g.total_vram_bytes
+            best_i = g.index
+    return best_i
+
+
+def compute_preferred_device_index(gpus: list[GpuDevice]) -> int:
+    """
+    Heuristic "faster" GPU for LLM / compute: score = SM count × max(1, clock_kHz / 1e6).
+    Ties: lower index. Not a benchmark.
+    """
+    if not gpus:
+        return 0
+    best_i = gpus[0].index
+    best_s = -1.0
+    for g in gpus:
+        clk_mhz = max(1.0, float(g.clock_rate_khz) / 1000.0) if g.clock_rate_khz else 1000.0
+        score = float(max(1, g.multiprocessor_count)) * clk_mhz
+        if g.major > 0:
+            score *= 1.0 + 0.01 * float(g.major * 10 + g.minor)
+        if score > best_s:
+            best_s = score
+            best_i = g.index
+    return best_i
 
 
 def _torch_cuda_info() -> tuple[str | None, float | None]:
@@ -106,13 +221,30 @@ def get_hardware_info() -> HardwareInfo:
     if ram_gb is None:
         ram_gb = _get_ram_gb_psutil()
 
-    gpu_name, vram_gb = _parse_nvidia_smi()
-    if gpu_name is None:
-        tname, tvram = _torch_cuda_info()
-        gpu_name = tname
-        vram_gb = tvram
+    gpus = list_cuda_gpus()
+    gpu_name: str | None = None
+    vram_gb: float | None = None
+    gpu_names_all: str | None = None
+    if gpus:
+        gpu_names_all = ", ".join(f"{g.index}: {g.name}" for g in gpus)
+        max_b = max(g.total_vram_bytes for g in gpus)
+        vram_gb = float(max_b) / (1024**3)
+        gpu_name = gpus[0].name if len(gpus) == 1 else f"{len(gpus)} GPUs (max {vram_gb:.1f} GB)"
+    else:
+        gpu_name, vram_gb = _parse_nvidia_smi()
+        if gpu_name is None:
+            tname, tvram = _torch_cuda_info()
+            gpu_name = tname
+            vram_gb = tvram
 
-    return HardwareInfo(os=os_name, cpu=cpu, ram_gb=ram_gb, gpu_name=gpu_name, vram_gb=vram_gb)
+    return HardwareInfo(
+        os=os_name,
+        cpu=cpu,
+        ram_gb=ram_gb,
+        gpu_name=gpu_name,
+        vram_gb=vram_gb,
+        gpu_names_all=gpu_names_all,
+    )
 
 
 def fit_marker_display(marker: str) -> str:
@@ -411,13 +543,37 @@ class AutoFitRanked:
     log_summary: str
 
 
-def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo) -> AutoFitRanked:
+def rank_models_for_auto_fit(
+    model_options: list[ModelOption],
+    hw: HardwareInfo,
+    *,
+    app_settings: Any | None = None,
+) -> AutoFitRanked:
     """
     Order curated models by fit for this machine: script (LLM), image (T2I), video (motion), voice (TTS).
     First entries are the strongest matches; the UI applies the first **enabled** row per combo.
+
+    When ``app_settings`` is set and CUDA GPUs are detected, each kind uses **effective VRAM** for that
+    role (Auto: LLM vs diffusion device; Single: pinned GPU) — see ``cuda_device_policy.effective_vram_gb_for_kind``.
     """
-    vram = hw.vram_gb
     ram = hw.ram_gb
+
+    def _vram(kind: str) -> float | None:
+        if app_settings is not None:
+            try:
+                from src.util.cuda_device_policy import effective_vram_gb_for_kind
+
+                gpus = list_cuda_gpus()
+                if gpus:
+                    return effective_vram_gb_for_kind(kind, gpus, app_settings)
+            except Exception:
+                pass
+        return hw.vram_gb
+
+    vram_script = _vram("script")
+    vram_image = _vram("image")
+    vram_video = _vram("video")
+    vram_voice = _vram("voice")
 
     script_opts = [o for o in model_options if o.kind == "script"]
     image_opts = [o for o in model_options if o.kind == "image"]
@@ -429,7 +585,7 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
             kind="script",
             speed=o.speed,
             repo_id=o.repo_id,
-            vram_gb=vram,
+            vram_gb=vram_script,
             ram_gb=ram,
         )
         rk = float(marker_rank(m))
@@ -441,7 +597,7 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
             kind="image",
             speed=o.speed,
             repo_id=o.repo_id,
-            vram_gb=vram,
+            vram_gb=vram_image,
             ram_gb=ram,
         )
         rk = float(marker_rank(m))
@@ -455,7 +611,7 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
             speed=o.speed,
             repo_id=o.repo_id,
             pair_image_repo_id=pair,
-            vram_gb=vram,
+            vram_gb=vram_video,
             ram_gb=ram,
         )
         rk = float(marker_rank(m))
@@ -463,7 +619,7 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
         return (-rk, pref)
 
     def voice_key(o: ModelOption) -> tuple[float, float]:
-        m, _ = voice_fit_marker(o.repo_id, vram)
+        m, _ = voice_fit_marker(o.repo_id, vram_voice)
         rk = float(marker_rank(m))
         pref = float(_voice_pref_index(o.repo_id))
         return (-rk, pref)
@@ -471,14 +627,14 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
     script_sorted = sorted(script_opts, key=script_key)
     image_sorted = sorted(image_opts, key=image_key)
     # Prefer SDXL Turbo over SD 1.5 at ~8GB when both are OK (project default balance).
-    if vram is not None and vram >= 8.0:
+    if vram_image is not None and vram_image >= 8.0:
         turbo_o = next((o for o in image_opts if o.repo_id == "stabilityai/sdxl-turbo"), None)
         if turbo_o is not None:
             m_t, _ = rate_model_fit_for_repo(
                 kind="image",
                 speed=turbo_o.speed,
                 repo_id=turbo_o.repo_id,
-                vram_gb=vram,
+                vram_gb=vram_image,
                 ram_gb=ram,
             )
             if marker_rank(m_t) >= marker_rank("OK") and image_sorted:
@@ -495,7 +651,7 @@ def rank_models_for_auto_fit(model_options: list[ModelOption], hw: HardwareInfo)
     voice_ids = tuple(o.repo_id for o in voice_sorted)
 
     by_repo = {o.repo_id: o for o in model_options}
-    gpu_lbl = hw.gpu_name or "GPU unknown"
+    gpu_lbl = (hw.gpu_names_all or hw.gpu_name) or "GPU unknown"
     v_lbl = f"{hw.vram_gb:.1f} GB" if hw.vram_gb is not None else "VRAM n/a"
     r_lbl = f"{hw.ram_gb:.1f} GB RAM" if hw.ram_gb is not None else "RAM n/a"
 

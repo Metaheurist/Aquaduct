@@ -104,3 +104,23 @@ def sample_aquaduct_resources() -> ResourceSample:
         gpu_pct = None
 
     return ResourceSample(process_cpu_pct=cpu_pct, process_ram_pct=ram_pct, gpu_mem_pct=gpu_pct)
+
+
+def sample_gpu_mem_pct(device_index: int) -> float | None:
+    """VRAM used on ``device_index`` as 0–100% of that GPU's total (no ``set_device`` required)."""
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        n = int(torch.cuda.device_count())
+        if device_index < 0 or device_index >= n:
+            return None
+        free_b, total_b = torch.cuda.mem_get_info(device_index)
+        total_b = float(total_b)
+        if total_b <= 0:
+            return None
+        used_b = total_b - float(free_b)
+        return max(0.0, min(100.0, 100.0 * used_b / total_b))
+    except Exception:
+        return None

@@ -93,14 +93,18 @@ def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline_main, "get_paths", lambda: paths)
     monkeypatch.setattr(pipeline_main, "preflight_check", lambda **kwargs: type("X", (), {"ok": True, "errors": [], "warnings": []})())
 
-    # Ensure we would fail if generate_script is called
+    # Ensure we would fail if script generation runs (prebuilt package should skip LLM)
     called = {"n": 0}
 
-    def _boom(*_a, **_k):
-        called["n"] += 1
-        raise AssertionError("generate_script should not be called when prebuilt_pkg is provided")
+    def _fake_facade(_app):
+        class _F:
+            def generate_script_package(self, **_kwargs):
+                called["n"] += 1
+                raise AssertionError("generate_script_package should not run when prebuilt_pkg is provided")
 
-    monkeypatch.setattr(pipeline_main, "generate_script", _boom)
+        return _F()
+
+    monkeypatch.setattr(pipeline_main, "get_generation_facade", _fake_facade)
 
     # Stub heavy stages
     monkeypatch.setattr(pipeline_main, "synthesize", lambda **kwargs: None)

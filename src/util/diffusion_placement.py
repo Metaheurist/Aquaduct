@@ -97,10 +97,13 @@ def _resolve_auto_offload_mode() -> OffloadMode:
     return "sequential"
 
 
-def place_diffusion_pipeline(pipe) -> None:
+def place_diffusion_pipeline(pipe, cuda_device_index: int | None = None) -> None:
     """
     Move a diffusers ``pipe`` to CPU, or CUDA with none/model/sequential offload per
     ``resolve_diffusion_offload_mode()``.
+
+    When ``cuda_device_index`` is set, full-GPU mode uses ``cuda:{index}``; offload modes
+    pass ``gpu_id`` when the installed diffusers build supports it.
     """
     import torch
 
@@ -108,15 +111,26 @@ def place_diffusion_pipeline(pipe) -> None:
         pipe.to("cpu")
         return
 
+    dev = f"cuda:{int(cuda_device_index)}" if cuda_device_index is not None else "cuda"
+
     mode = resolve_diffusion_offload_mode()
     if mode == "none":
-        pipe.to("cuda")
+        pipe.to(dev)
         return
 
     if mode == "model":
         try:
-            pipe.enable_model_cpu_offload()
+            if cuda_device_index is not None:
+                pipe.enable_model_cpu_offload(gpu_id=int(cuda_device_index))
+            else:
+                pipe.enable_model_cpu_offload()
             return
+        except TypeError:
+            try:
+                pipe.enable_model_cpu_offload()
+                return
+            except Exception:
+                pass
         except Exception:
             pass
         try:
@@ -124,7 +138,7 @@ def place_diffusion_pipeline(pipe) -> None:
             return
         except Exception:
             pass
-        pipe.to("cuda")
+        pipe.to(dev)
         return
 
     # sequential
@@ -134,8 +148,11 @@ def place_diffusion_pipeline(pipe) -> None:
     except Exception:
         pass
     try:
-        pipe.enable_model_cpu_offload()
+        if cuda_device_index is not None:
+            pipe.enable_model_cpu_offload(gpu_id=int(cuda_device_index))
+        else:
+            pipe.enable_model_cpu_offload()
         return
     except Exception:
         pass
-    pipe.to("cuda")
+    pipe.to(dev)

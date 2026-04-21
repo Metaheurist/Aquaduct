@@ -49,6 +49,7 @@ class _LocalGenerationFacade:
         supplement_context: str = "",
     ) -> VideoPackage:
         from src.content.brain import generate_script
+        from src.util.cuda_device_policy import resolve_llm_cuda_device_index
 
         assert isinstance(settings, AppSettings)
         mid = str(model_id or "").strip()
@@ -67,6 +68,7 @@ class _LocalGenerationFacade:
             try_llm_4bit=try_llm_4bit,
             article_excerpt=article_excerpt,
             supplement_context=supplement_context,
+            llm_cuda_device_index=resolve_llm_cuda_device_index(settings),
         )
 
 

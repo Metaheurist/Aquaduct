@@ -5,6 +5,8 @@ This folder contains the scripts to build a Windows executable for the project.
 Canonical driver: **`build/build.ps1`** (onedir / onefile flags, docs glob, metadata).  
 Portable mirror: **`aquaduct-ui.spec`** at repo root (same hidden imports + `docs/*.md` via `SPECPATH`; default **onefile** windowless). Build either way with `-UseSpec` (see below).
 
+**Build venv (recommended):** use **`-Clean`** so **`.venv-build`** is only for packaging. The script runs **`scripts/install_pytorch.py --with-rest`** (installs **torch** / **torchvision** / **torchaudio** for this PC’s CUDA or CPU, then **`requirements.txt`** — torch is not listed there, so no second torch install), then **`requirements-build.txt`** (**PyInstaller** only). Run **pytest** from a separate dev venv with **`requirements-dev.txt`**. Optional **`build/build.ps1 -IncludeDevDeps`** restores the old behavior (install **full** `requirements-dev.txt` into the build venv).
+
 ## Build
 
 From the repo root:
@@ -77,6 +79,6 @@ The build script bundles `requirements.txt`, optional `docs/*.md` (UI builds), a
 - **bitsandbytes on Windows**: If 4-bit LLM fails on some setups, the app falls back to a template script so the pipeline still runs.
 - **PyInstaller + bitsandbytes**: You may see many `Library not found` warnings for CUDA DLLs (`cudart64_*.dll`, `cublas*.dll`, etc.). That is normal on a machine without the full CUDA toolkit in PATH; PyInstaller still bundles `bitsandbytes`, and at runtime CUDA comes from the NVIDIA driver/toolkit where installed.
 - **PyInstaller + torch**: You may see a warning about `torch.utils.tensorboard` / missing `tensorboard`; it is optional for this app and can be ignored unless you use TensorBoard.
-- **ElevenLabs / HTTPS**: If the frozen app fails to reach the API with SSL errors, verify `certifi` is bundled (the script uses `--collect-all certifi`). Stay on a current `pyinstaller` from `requirements-dev.txt` (installed before building).
+- **ElevenLabs / HTTPS**: If the frozen app fails to reach the API with SSL errors, verify `certifi` is bundled (the script uses `--collect-all certifi`). Stay on a current **PyInstaller** from `requirements-build.txt` (installed by `build.ps1` before building).
 
 For a longer operator-focused guide (prereqs, troubleshooting, data locations), see [`docs/building_windows_exe.md`](../docs/building_windows_exe.md).

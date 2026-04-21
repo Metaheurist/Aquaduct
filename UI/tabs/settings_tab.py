@@ -26,10 +26,12 @@ from src.core.models_dir import models_dir_for_app
 from src.models.hardware import (
     fit_marker_display,
     get_hardware_info,
+    list_cuda_gpus,
     rate_model_fit_for_repo,
     rank_models_for_auto_fit,
     vram_requirement_hint,
 )
+from src.util.cuda_device_policy import effective_vram_gb_for_kind
 from src.models.model_integrity_cache import worst_integrity_status
 from src.models.model_manager import (
     best_model_size_label,
@@ -184,6 +186,13 @@ def attach_settings_tab(win) -> None:
     win._hub_status_lbl.setStyleSheet("color:#9BB0C4;font-size:12px;padding:0 0 8px 0;")
     win._hub_status_lbl.setWordWrap(True)
     ll.addWidget(win._hub_status_lbl)
+
+    win._model_fit_policy_hint = QLabel(
+        "Fit badges use the same GPU policy and effective VRAM per role as the My PC tab (set Auto vs Single there)."
+    )
+    win._model_fit_policy_hint.setWordWrap(True)
+    win._model_fit_policy_hint.setStyleSheet("color:#7A8A9A;font-size:12px;padding:0 0 8px 0;")
+    ll.addWidget(win._model_fit_policy_hint)
 
     win._model_opts = model_options()
     win._model_opt_by_repo = {o.repo_id: o for o in win._model_opts}
@@ -385,6 +394,20 @@ def attach_settings_tab(win) -> None:
     win.voice_fit = QLabel("UNKNOWN")
 
     def _update_fit_badges() -> None:
+        try:
+            gpus_fb = list_cuda_gpus()
+            app_fb = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
+        except Exception:
+            gpus_fb = []
+            app_fb = win.settings
+
+        def _vram_for_kind(kind: str) -> float | None:
+            if gpus_fb:
+                v = effective_vram_gb_for_kind(kind, gpus_fb, app_fb)
+                if v is not None:
+                    return v
+            return win._hw_info.vram_gb
+
         def _dl_badge_base_style() -> str:
             return "font-size:12px;font-weight:700;min-width:8.5em;"
 
@@ -496,7 +519,7 @@ def attach_settings_tab(win) -> None:
                 speed=speed,
                 repo_id=repo_id,
                 pair_image_repo_id=pair_image_repo_id,
-                vram_gb=win._hw_info.vram_gb,
+                vram_gb=_vram_for_kind(kind),
                 ram_gb=win._hw_info.ram_gb,
             )
             lbl.setText(fit_marker_display(marker))
@@ -590,7 +613,11 @@ def attach_settings_tab(win) -> None:
             win._hw_info = get_hardware_info()
         except Exception:
             pass
-        ranked = rank_models_for_auto_fit(win._model_opts, win._hw_info)
+        try:
+            app_af = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
+        except Exception:
+            app_af = win.settings
+        ranked = rank_models_for_auto_fit(win._model_opts, win._hw_info, app_settings=app_af)
         role = Qt.ItemDataRole.UserRole
 
         def _combo_set_best(combo: QComboBox, candidates: tuple[str | tuple[str, str], ...]) -> bool:
@@ -762,6 +789,7 @@ def attach_settings_tab(win) -> None:
         _update_fit_badges()
 
     win._refresh_settings_model_combos = _refresh_settings_model_combos
+    win._update_model_fit_badges = _update_fit_badges
 
     api_page = QWidget()
     al = QVBoxLayout(api_page)

@@ -108,9 +108,9 @@ def _maybe_disable_safety_checker(pipe, *, allow_nsfw: bool) -> None:
         pass
 
 
-def _place_pipe_on_device(pipe) -> None:
+def _place_pipe_on_device(pipe, cuda_device_index: int | None = None) -> None:
     """Move pipeline to GPU/CPU using shared heuristics (VRAM, RAM, optional offload)."""
-    place_diffusion_pipeline(pipe)
+    place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
 
 
 def _fallback_image(prompt: str, out_path: Path, *, size: int = 1024) -> None:
@@ -232,6 +232,7 @@ def _try_sdxl_turbo(
     steps: int = 1,
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
     import torch
     from diffusers import AutoPipelineForText2Image
@@ -253,7 +254,7 @@ def _try_sdxl_turbo(
             variant="fp16",
         )
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe)
+    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
     n = len(prompts)
     results: list[GeneratedImage] = []
@@ -286,6 +287,7 @@ def _try_sdxl_turbo_seeded(
     steps: int = 1,
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
     import torch
     from diffusers import AutoPipelineForText2Image
@@ -307,7 +309,7 @@ def _try_sdxl_turbo_seeded(
             variant="fp16",
         )
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe)
+    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
     n = len(prompts)
     results: list[GeneratedImage] = []
@@ -345,6 +347,7 @@ def _try_sdxl_reference_chain(
     on_image_progress: Callable[[int, str], None] | None = None,
     external_reference: Path | None = None,
     external_reference_strength: float = 0.55,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
     """
     Img2img chain: frame 0 uses full denoise from random init (strength=1.0); later frames blend the
@@ -371,7 +374,7 @@ def _try_sdxl_reference_chain(
             variant="fp16",
         )
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe)
+    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
 
     kw_base = _diffusion_kw_for_model(model_id, steps=steps)
     w = int(kw_base.get("width", 1024))
@@ -428,6 +431,7 @@ def _try_external_ref_then_txt2img(
     steps: int = 1,
     allow_nsfw: bool = False,
     on_image_progress: Callable[[int, str], None] | None = None,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
     """First frame: img2img from external reference; remaining frames: text-to-image."""
     import torch
@@ -453,7 +457,7 @@ def _try_external_ref_then_txt2img(
             variant="fp16",
         )
     _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe_i2i)
+    _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index)
     kw_base = _diffusion_kw_for_model(model_id, steps=steps)
     w = int(kw_base.get("width", 1024))
     h = int(kw_base.get("height", 1024))
@@ -507,7 +511,7 @@ def _try_external_ref_then_txt2img(
             variant="fp16",
         )
     _maybe_disable_safety_checker(pipe_txt, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe_txt)
+    _place_pipe_on_device(pipe_txt, cuda_device_index=cuda_device_index)
     dev = "cuda" if str(pipe_txt.device).startswith("cuda") else "cpu"
 
     for i in range(2, n + 1):
@@ -546,6 +550,7 @@ def generate_images(
     use_style_continuity: bool = True,
     external_reference_image: Path | None = None,
     external_reference_strength: float = 0.55,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedImage]:
     """
     Generates images for the provided prompts.
@@ -603,6 +608,7 @@ def generate_images(
                         on_image_progress=on_image_progress,
                         external_reference=ext_path,
                         external_reference_strength=ext_strength,
+                        cuda_device_index=cuda_device_index,
                     )
                     dprint("artist", "generate_images done (style chain)", f"count={len(r)}")
                     return r
@@ -621,6 +627,7 @@ def generate_images(
                         steps=steps,
                         allow_nsfw=allow_nsfw,
                         on_image_progress=on_image_progress,
+                        cuda_device_index=cuda_device_index,
                     )
                     dprint("artist", "generate_images done (external ref + txt2img)", f"count={len(r)}")
                     return r
@@ -635,6 +642,7 @@ def generate_images(
                 steps=steps,
                 allow_nsfw=allow_nsfw,
                 on_image_progress=on_image_progress,
+                cuda_device_index=cuda_device_index,
             )
             dprint("artist", "generate_images done", f"count={len(r)}")
             return r

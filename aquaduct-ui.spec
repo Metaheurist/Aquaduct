@@ -57,6 +57,7 @@ hiddenimports = [
     "UI.tabs.library_tab",
     "UI.tabs.picture_tab",
     "UI.title_bar_outline_button",
+    "UI.startup_splash",
     "UI.media_mode_toggle",
     "UI.frameless_dialog",
     "UI.preview_dialog",

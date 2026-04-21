@@ -196,7 +196,15 @@ def _maybe_enable_slice_inference(pipe) -> None:
                 pass
 
 
-def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps: int, seconds: float) -> list[GeneratedClip]:
+def _try_text_to_video(
+    model_id: str,
+    prompts: list[str],
+    out_dir: Path,
+    *,
+    fps: int,
+    seconds: float,
+    cuda_device_index: int | None = None,
+) -> list[GeneratedClip]:
     """
     Best-effort text-to-video using diffusers. Different repos expose different pipelines; we use the generic
     DiffusionPipeline and common kwargs. If this fails, caller should fall back.
@@ -214,7 +222,7 @@ def _try_text_to_video(model_id: str, prompts: list[str], out_dir: Path, *, fps:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
     except TypeError:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
-    place_diffusion_pipeline(pipe)
+    place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
     _maybe_enable_slice_inference(pipe)
 
     results: list[GeneratedClip] = []
@@ -250,6 +258,7 @@ def _try_image_to_video(
     *,
     fps: int,
     seconds: float,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedClip]:
     """
     Best-effort img→vid. We try passing `image=` to a diffusers pipeline; if the repo doesn't support it,
@@ -269,7 +278,7 @@ def _try_image_to_video(
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
     except TypeError:
         pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
-    place_diffusion_pipeline(pipe)
+    place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
     _maybe_enable_slice_inference(pipe)
 
     results: list[GeneratedClip] = []
@@ -362,6 +371,7 @@ def generate_clips(
     max_clips: int,
     fps: int,
     seconds_per_clip: float,
+    cuda_device_index: int | None = None,
 ) -> list[GeneratedClip]:
     """
     Generates a small set of MP4 clips with the configured video model.
@@ -386,9 +396,24 @@ def generate_clips(
 
     with vram_guard():
         if init_images:
-            r = _try_image_to_video(video_model_id, prompts, init_images, out_dir, fps=fps, seconds=seconds_per_clip)
+            r = _try_image_to_video(
+                video_model_id,
+                prompts,
+                init_images,
+                out_dir,
+                fps=fps,
+                seconds=seconds_per_clip,
+                cuda_device_index=cuda_device_index,
+            )
         else:
-            r = _try_text_to_video(video_model_id, prompts, out_dir, fps=fps, seconds=seconds_per_clip)
+            r = _try_text_to_video(
+                video_model_id,
+                prompts,
+                out_dir,
+                fps=fps,
+                seconds=seconds_per_clip,
+                cuda_device_index=cuda_device_index,
+            )
         if not r:
             raise RuntimeError(
                 f"Video model {video_model_id!r} produced no clips. "

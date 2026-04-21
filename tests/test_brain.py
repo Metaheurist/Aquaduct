@@ -2,7 +2,26 @@ from __future__ import annotations
 
 import pytest
 
-from src.content.brain import _extract_json, enforce_arc, generate_script
+from src.content.brain import _extract_json, _llm_max_input_tokens_cap, enforce_arc, generate_script
+
+
+def test_llm_max_input_tokens_cap_respects_env(monkeypatch):
+    class _Tok:
+        model_max_length = 8192
+
+    monkeypatch.delenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", raising=False)
+    assert _llm_max_input_tokens_cap(_Tok()) == 4096
+
+    monkeypatch.setenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", "2048")
+    assert _llm_max_input_tokens_cap(_Tok()) == 2048
+
+
+def test_llm_max_input_tokens_cap_min_with_tokenizer_max(monkeypatch):
+    class _Tok:
+        model_max_length = 2048
+
+    monkeypatch.delenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", raising=False)
+    assert _llm_max_input_tokens_cap(_Tok()) == 2048
 
 
 def test_extract_json_from_fenced_block():

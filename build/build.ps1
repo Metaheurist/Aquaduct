@@ -131,6 +131,7 @@ if ($UI) {
     "--hidden-import", "UI.tabs.library_tab",
     "--hidden-import", "UI.tabs.picture_tab",
     "--hidden-import", "UI.title_bar_outline_button",
+    "--hidden-import", "UI.startup_splash",
     "--hidden-import", "UI.media_mode_toggle",
     "--hidden-import", "UI.library_fs",
     "--hidden-import", "UI.tab_sections",

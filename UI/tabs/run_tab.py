@@ -177,9 +177,9 @@ def attach_run_tab(win) -> None:
                 )
             else:
                 vf_hint.setText(
-                    "Preset mode: headlines and topic tags come from the **source mode** below and your Topics tab — "
-                    "same sourcing as video runs, but the pipeline renders stills or layouts. "
-                    "Match **Picture** tab: template, output type, image count, and picture format."
+                    "**Preset** uses the **source mode** below and your **Topics** tab to pick ideas — same flow as making a video, "
+                    "except this run creates still images or a layout instead of an MP4.\n\n"
+                    "Choose template, how many images, output type, and picture format on the **Picture** tab."
                 )
             return
         win.run_content_preset_radio.setText(_preset_mode_caption(vf))

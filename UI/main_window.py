@@ -66,7 +66,7 @@ from src.content.crawler import clear_news_seen_cache_files
 from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
 from src.util.fs_delete import rmtree_robust, unlink_file
 from src.models.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
-from src.runtime.preflight import preflight_check
+from src.runtime.preflight import PreflightResult, preflight_check
 from src.runtime.pipeline_control import PipelineRunControl
 from src.render.utils_ffmpeg import find_ffmpeg
 from src.settings.ui_settings import load_settings, save_settings, settings_path
@@ -546,6 +546,33 @@ class MainWindow(QMainWindow):
         )
         return True
 
+    def _focus_tab_by_name(self, name: str) -> None:
+        try:
+            for i in range(self.tabs.count()):
+                if str(self.tabs.tabText(i) or "") == name:
+                    self.tabs.setCurrentIndex(i)
+                    self.raise_()
+                    self.activateWindow()
+                    break
+        except Exception:
+            pass
+
+    def _preflight_failed_ui(self, pf: PreflightResult) -> None:
+        """Focus Model tab when errors are model/API related; show a blocking dialog."""
+        needs_model_tab = any(
+            ("local mode:" in e.lower() or "api mode:" in e.lower() or "model tab" in e.lower())
+            for e in pf.errors
+        )
+        if needs_model_tab:
+            self._focus_tab_by_name("Model")
+        if any("api mode:" in e.lower() for e in pf.errors):
+            title = "Configure API before running"
+        elif any("local mode:" in e.lower() for e in pf.errors):
+            title = "Download models before running"
+        else:
+            title = "Cannot run yet"
+        aquaduct_warning(self, title, "\n".join(pf.errors))
+
     def _maybe_prompt_hf_token(self) -> None:
         """
         If no token is available (env or saved settings), prompt user to paste one.
@@ -915,6 +942,14 @@ class MainWindow(QMainWindow):
                 self._library_refresh()
             if self.tabs.tabText(idx) == "Characters" and hasattr(self, "_characters_refresh_elevenlabs"):
                 self._characters_refresh_elevenlabs()
+            if self.tabs.tabText(idx) == "Model":
+                u = getattr(self, "_update_model_fit_badges", None)
+                if callable(u):
+                    u()
+            if self.tabs.tabText(idx) == "My PC":
+                r = getattr(self, "_refresh_my_pc_fit_table", None)
+                if callable(r):
+                    r()
         except Exception:
             pass
 
@@ -1467,6 +1502,19 @@ class MainWindow(QMainWindow):
         except Exception:
             pic = getattr(self.settings, "picture", PictureSettings())
 
+        _gpu_mode = (
+            str(self.gpu_policy_combo.currentData() if hasattr(self, "gpu_policy_combo") else getattr(self.settings, "gpu_selection_mode", "auto") or "auto")
+            or "auto"
+        ).strip().lower()
+        if _gpu_mode not in ("auto", "single"):
+            _gpu_mode = "auto"
+        _gpu_dev_idx = (
+            int(self.gpu_device_combo.currentData())
+            if hasattr(self, "gpu_device_combo") and self.gpu_device_combo.currentData() is not None
+            else int(getattr(self.settings, "gpu_device_index", 0) or 0)
+        )
+        _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
+
         return AppSettings(
             topic_tags_by_mode=topic_map,
             media_mode=mm,  # type: ignore[arg-type]
@@ -1510,6 +1558,9 @@ class MainWindow(QMainWindow):
             youtube_add_shorts_hashtag=yt_shorts_tag,
             youtube_auto_upload_after_render=yt_auto,
             tutorial_completed=bool(getattr(self.settings, "tutorial_completed", False)),
+            gpu_selection_mode=_gpu_mode,  # type: ignore[arg-type]
+            gpu_device_index=_gpu_dev_idx,
+            resource_graph_monitor_gpu_index=_rg_mon,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             art_style_preset_id=(
                 str(self.art_style_preset_combo.currentData())
@@ -2474,6 +2525,7 @@ class MainWindow(QMainWindow):
                 self._append_log("Preflight failed for queued job:")
                 for e in pf.errors:
                     self._append_log(f"- {e}")
+                self._preflight_failed_ui(pf)
                 self._try_start_next_queued_pipeline()
                 return
 
@@ -2508,6 +2560,10 @@ class MainWindow(QMainWindow):
         dprint("ui", "_on_run")
         self._save_settings()
         if self._pipeline_run_should_queue():
+            pfq = preflight_check(settings=self.settings, strict=True)
+            if not pfq.ok:
+                self._preflight_failed_ui(pfq)
+                return
             qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
             for _ in range(qty):
                 self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
@@ -2530,6 +2586,7 @@ class MainWindow(QMainWindow):
                 self._append_log("Preflight failed. Fix these issues before running:")
                 for e in pf.errors:
                     self._append_log(f"- {e}")
+                self._preflight_failed_ui(pf)
                 return
 
             if self._abort_if_custom_missing_instructions():
@@ -2642,6 +2699,10 @@ class MainWindow(QMainWindow):
 
         self._save_settings()
         if self._pipeline_run_should_queue():
+            pfb = preflight_check(settings=self.settings, strict=True)
+            if not pfb.ok:
+                self._preflight_failed_ui(pfb)
+                return
             self._pipeline_run_queue.append(
                 {
                     "kind": "prebuilt",
@@ -2670,6 +2731,7 @@ class MainWindow(QMainWindow):
                 self._append_log("Preflight failed. Fix these issues before running:")
                 for e in pf.errors:
                     self._append_log(f"- {e}")
+                self._preflight_failed_ui(pf)
                 return
 
             self._attach_and_start_pipeline_worker(
@@ -2765,6 +2827,10 @@ class MainWindow(QMainWindow):
 
         self._save_settings()
         if self._pipeline_run_should_queue():
+            pfs = preflight_check(settings=self.settings, strict=True)
+            if not pfs.ok:
+                self._preflight_failed_ui(pfs)
+                return
             self._pipeline_run_queue.append(
                 {
                     "kind": "storyboard",
@@ -2790,6 +2856,7 @@ class MainWindow(QMainWindow):
                 self._append_log("Preflight failed. Fix these issues before running:")
                 for e in pf.errors:
                     self._append_log(f"- {e}")
+                self._preflight_failed_ui(pf)
                 return
             self._attach_and_start_pipeline_worker(
                 self.settings,

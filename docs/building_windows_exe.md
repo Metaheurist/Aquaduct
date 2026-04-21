@@ -8,6 +8,15 @@ Operator-focused guide for **PyInstaller** builds of the **Aquaduct** desktop UI
 - Repo cloned; PowerShell **ExecutionPolicy** that allows `build/build.ps1` (e.g. `RemoteSigned` for your user scope).
 - Enough disk space for a **`.venv-build`** (or your chosen venv dir) plus PyTorch and project wheels.
 
+## Build environment (one clean venv)
+
+The recommended flow avoids **duplicate PyTorch** installs and keeps **test wheels out** of the packaging environment:
+
+1. **Fresh venv** — `.\build\build.ps1 -Clean` recreates **`.venv-build`** (only what the script installs).
+2. **PyTorch for this machine** — [`scripts/install_pytorch.py`](../scripts/install_pytorch.py) **`--with-rest`** runs **`install_pytorch_for_hardware`** (CUDA index when an NVIDIA GPU is detected, else CPU wheels; macOS uses PyPI), then **`pip install -r requirements.txt`**. **`requirements.txt` does not list `torch`**, so pip does not reinstall torch a second time from that file.
+3. **PyInstaller only** — **`pip install -r requirements-build.txt`** (not full **`requirements-dev.txt`**), so **pytest**, **pytest-qt**, etc. are not installed into **`.venv-build`**. Run the test suite from a separate dev venv (e.g. **`.venv`**) with **`requirements-dev.txt`**.
+4. Optional — **`.\build\build.ps1 -IncludeDevDeps`** installs **`requirements-dev.txt`** into the build venv instead (legacy / debugging only).
+
 ## Golden-path build
 
 From the **repository root**:
@@ -16,7 +25,7 @@ From the **repository root**:
 .\build\build.ps1 -Clean -UI
 ```
 
-This creates a **build venv**, installs PyTorch via [`scripts/install_pytorch.py`](../scripts/install_pytorch.py), installs `requirements-dev.txt`, runs **PyInstaller** in **onedir** mode with **`--noconsole`**, then runs **import smoke** (`scripts/frozen_smoke.py` with `AQUADUCT_IMPORT_SMOKE=1` against the new EXE).
+This creates the **build venv**, runs the steps above, then runs **PyInstaller** in **onedir** mode with **`--noconsole`**, then **import smoke** (`scripts/frozen_smoke.py` against the new EXE).
 
 Outputs:
 
