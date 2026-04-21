@@ -4,7 +4,7 @@ import shutil
 from dataclasses import replace
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QStyle,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -49,6 +48,8 @@ from UI.dialogs.frameless_dialog import aquaduct_question, aquaduct_warning
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
+from UI.theme import resolve_palette
+from UI.widgets.toolbar_svg_icons import qicon_toolbar
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
 
@@ -67,15 +68,6 @@ class _ElevenLabsVoicesThread(QThread):
             self.finished_ok.emit(list_voices(self._api_key))
         except Exception as e:
             self.failed.emit(str(e))
-
-
-def _first_non_empty_standard_icon(style: QStyle, *pixmaps: QStyle.StandardPixmap) -> QIcon:
-    """``SP_DialogSaveAllButton`` is often blank on Windows + Fusion; try alternatives."""
-    for px in pixmaps:
-        ic = style.standardIcon(px)
-        if not ic.isNull():
-            return ic
-    return QIcon()
 
 
 def _fill_voice_combo(combo: QComboBox, current_id: str) -> None:
@@ -168,26 +160,19 @@ def attach_characters_tab(win) -> None:
 
     btn_row = QHBoxLayout()
     btn_row.setSpacing(6)
-    _sty = w.style()
+    _tb_pal = resolve_palette(getattr(win.settings, "branding", None))
+    _tb_muted = str(_tb_pal.get("muted", "#B7B7C2"))
+    _tb_icon_px = 22
     win.characters_add_btn = QPushButton()
-    win.characters_add_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder))
+    win.characters_add_btn.setIcon(qicon_toolbar("folder_plus", _tb_muted, _tb_icon_px))
     win.characters_add_btn.setToolTip("Add character")
     win.characters_add_btn.setAccessibleName("Add character")
     win.characters_dup_btn = QPushButton()
-    _dup_icon = _first_non_empty_standard_icon(
-        _sty,
-        QStyle.StandardPixmap.SP_FileLinkIcon,
-        QStyle.StandardPixmap.SP_DialogSaveAllButton,
-        QStyle.StandardPixmap.SP_DialogApplyButton,
-        QStyle.StandardPixmap.SP_FileDialogContentsView,
-    )
-    win.characters_dup_btn.setIcon(_dup_icon)
-    if _dup_icon.isNull():
-        win.characters_dup_btn.setText("⧉")
+    win.characters_dup_btn.setIcon(qicon_toolbar("duplicate", _tb_muted, _tb_icon_px))
     win.characters_dup_btn.setToolTip("Duplicate character")
     win.characters_dup_btn.setAccessibleName("Duplicate character")
     win.characters_del_btn = QPushButton()
-    win.characters_del_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+    win.characters_del_btn.setIcon(qicon_toolbar("trash", _tb_muted, _tb_icon_px))
     win.characters_del_btn.setToolTip("Delete character")
     win.characters_del_btn.setAccessibleName("Delete character")
     for b in (win.characters_add_btn, win.characters_dup_btn, win.characters_del_btn):

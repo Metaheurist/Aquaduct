@@ -114,7 +114,11 @@ class ResourceGraphDialog(FramelessDialog):
         gpu_hdr.addStretch(1)
         self._gpu_monitor_combo = NoWheelComboBox()
         self._gpu_monitor_combo.setMinimumWidth(220)
-        self._gpu_monitor_combo.setToolTip("Which GPU’s memory usage to plot (saved in settings).")
+        self._gpu_monitor_combo.setToolTip(
+            "VRAM % for this CUDA device (process allocations). "
+            "In Auto GPU policy, script (LLM) and image/video (diffusion) can use different GPUs — "
+            "switch Monitor to compare. ~70–90% on the active GPU during a run is normal; the other GPU may show a lower flat line."
+        )
         gpu_hdr.addWidget(QLabel("Monitor:"))
         gpu_hdr.addWidget(self._gpu_monitor_combo)
         self.body_layout.addLayout(gpu_hdr)

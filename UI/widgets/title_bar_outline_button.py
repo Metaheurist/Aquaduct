@@ -14,12 +14,21 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QApplication, QPushButton
 
 Variant = Literal["accent_icon", "muted_icon", "danger"]
+IconKind = Literal["save", "graph", "help", "close"]
 
 
 class TitleBarOutlineButton(QPushButton):
-    def __init__(self, text: str, *, variant: Variant, parent=None) -> None:
-        super().__init__(text, parent)
+    def __init__(
+        self,
+        text: str,
+        *,
+        variant: Variant,
+        icon_kind: IconKind | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__("" if icon_kind is not None else text, parent)
         self._variant: Variant = variant
+        self._icon_kind: IconKind | None = icon_kind
         self._accent = QColor("#25F4EE")
         self._danger = QColor("#FE2C55")
         self._muted = QColor("#B7B7C2")
@@ -99,9 +108,21 @@ class TitleBarOutlineButton(QPushButton):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.strokePath(path, pen)
 
-        painter.setPen(fg)
-        painter.setFont(self.font())
-        painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignCenter), self.text())
+        if self._icon_kind is not None:
+            from UI.widgets.title_bar_svg_icons import pixmap_for_title_bar_icon
+
+            icon_px = min(self.width(), self.height()) - 14
+            if icon_px < 12:
+                icon_px = 12
+            pm = pixmap_for_title_bar_icon(self._icon_kind, fg, icon_px)
+            if not pm.isNull():
+                x = (self.width() - pm.width()) // 2
+                y = (self.height() - pm.height()) // 2
+                painter.drawPixmap(x, y, pm)
+        else:
+            painter.setPen(fg)
+            painter.setFont(self.font())
+            painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignCenter), self.text())
         painter.restore()
 
 

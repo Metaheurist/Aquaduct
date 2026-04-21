@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -16,6 +14,8 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.help.tutorial_links import help_tooltip_rich
+from UI.theme import resolve_palette
+from UI.widgets.toolbar_svg_icons import qicon_toolbar
 
 
 def attach_tasks_tab(win) -> None:
@@ -35,7 +35,10 @@ def attach_tasks_tab(win) -> None:
     sub.setStyleSheet("color: #8A96A3; font-size: 11px;")
     lay.addWidget(sub)
 
-    _sty = w.style()
+    _tpal = resolve_palette(getattr(win.settings, "branding", None))
+    _t_accent = str(_tpal.get("accent", "#25F4EE"))
+    _t_danger = str(_tpal.get("danger", "#FE2C55"))
+    _t_icon_px = 22
 
     run_group = QGroupBox("Run controls")
     run_group.setStyleSheet(
@@ -47,7 +50,7 @@ def attach_tasks_tab(win) -> None:
     row.setContentsMargins(10, 14, 10, 10)
 
     win.tasks_refresh_btn = QPushButton()
-    win.tasks_refresh_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+    win.tasks_refresh_btn.setIcon(qicon_toolbar("refresh", _t_accent, _t_icon_px))
     win.tasks_refresh_btn.setToolTip(
         help_tooltip_rich(
             "Refresh task list",
@@ -63,10 +66,7 @@ def attach_tasks_tab(win) -> None:
     row.addWidget(win.tasks_refresh_btn)
 
     win.tasks_pause_btn = QPushButton()
-    # SP_MediaPause is very low-contrast on dark Fusion; glyphs stay readable (see _sync_tasks_pause_button_appearance).
-    win.tasks_pause_btn.setIcon(QIcon())
-    win.tasks_pause_btn.setText("⏸")
-    win.tasks_pause_btn.setStyleSheet("color: #E8E8EE; font-size: 14px; font-weight: 600; padding: 0px;")
+    # Pause vs play SVG: _sync_tasks_pause_button_appearance (main window).
     win.tasks_pause_btn.setToolTip(
         help_tooltip_rich(
             "Pause between pipeline steps (not mid–GPU operation). Click again to resume.",
@@ -83,7 +83,7 @@ def attach_tasks_tab(win) -> None:
     row.addWidget(win.tasks_pause_btn)
 
     win.tasks_stop_btn = QPushButton()
-    win.tasks_stop_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+    win.tasks_stop_btn.setIcon(qicon_toolbar("stop", _t_danger, _t_icon_px))
     win.tasks_stop_btn.setToolTip(
         help_tooltip_rich(
             "Request cancel at the next checkpoint (may take a few seconds).",
@@ -106,7 +106,7 @@ def attach_tasks_tab(win) -> None:
         win._sync_tasks_pause_button_appearance()
 
     win.tasks_table = QTableWidget(0, 5)
-    win.tasks_table.setHorizontalHeaderLabels(["Title", "Status", "YouTube", "Created", "Video folder"])
+    win.tasks_table.setHorizontalHeaderLabels(["Title", "Status", "YouTube", "Created", "Output folder"])
     win.tasks_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
     win.tasks_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
     win.tasks_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)

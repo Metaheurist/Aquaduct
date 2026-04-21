@@ -210,7 +210,7 @@ def default_api_models() -> ApiModelRuntimeSettings:
 class BrandingSettings:
     # Theme (optional overrides)
     theme_enabled: bool = False
-    palette_id: str = "default"  # default | tiktok | ocean | sunset | mono | custom
+    palette_id: str = "default"  # preset key in UI.theme.PRESET_PALETTES (+ custom)
 
     bg_enabled: bool = False
     bg_hex: str = "#0F0F10"
