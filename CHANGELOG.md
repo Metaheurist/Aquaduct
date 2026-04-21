@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### GPU / diffusion: multi-GPU offload, placement, video prompts, and SVD VRAM
+- **Device routing** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): In **Auto** with **two or more** CUDA devices, **LLM** and **diffusion** are always assigned **different** ordinals (max-VRAM GPU for image/video, compute-heuristic GPU for script; if those collide, LLM moves to the best remaining GPU). A small safety net avoids assigning both roles to the same index if that ever regresses.
+- **Diffusion offload** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): **`auto`** chooses **sequential** CPU offload when **`torch.cuda.device_count() >= 2`** to keep peak VRAM low on the diffusion GPU. **`enable_sequential_cpu_offload`** now receives **`gpu_id`** when a diffusion CUDA index is set (previously only model offload passed it). Single-GPU **`auto`** still uses **full GPU** (`none`) only from **≥16 GiB** detected VRAM (with host-RAM exceptions unchanged); 8–15 GiB uses **model** offload unless overridden.
+- **Video clips** ([`src/render/clips.py`](src/render/clips.py)): **CLIP** text paths: optional **77-token** round-trip via `CLIPTokenizerFast` after word/char caps (skipped for CogVideoX / LTX). **SVD** img2vid: tighter **`num_frames`** cap on **≤12 GiB** cards, smaller **`decode_chunk_size`** on those GPUs, prior OOM-oriented placement tweaks retained.
+- **Tests**: [`tests/test_diffusion_placement.py`](tests/test_diffusion_placement.py) (multi-GPU sequential default, `gpu_id` on sequential), [`tests/test_clips_img2vid_prompt.py`](tests/test_clips_img2vid_prompt.py).
+- **Docs**: [`README.md`](README.md), [`docs/config.md`](docs/config.md), [`docs/hardware.md`](docs/hardware.md), [`docs/performance.md`](docs/performance.md), [`docs/vram.md`](docs/vram.md), [`docs/ui.md`](docs/ui.md), [`docs/models.md`](docs/models.md).
+
 ### Curated frontier models (image + video), download list, and docs
 - **Model registry** ([`src/models/model_manager.py`](src/models/model_manager.py)): **Image** — *FLUX.1 Schnell*, *Stable Diffusion 3 Medium*, *FLUX.1-dev* alongside SDXL / SD 1.5 / SDXL Base. **Video** — *CogVideoX 2B/5B*, *LTX-Video*, *HunyuanVideo* alongside SVD, ZeroScope, ModelScope T2V.
 - **Rendering** ([`src/render/artist.py`](src/render/artist.py)): T2I loading via **`_load_auto_t2i_pipeline`** / **`_load_auto_i2i_pipeline`** (BF16 for FLUX/SD3; FP16+`variant` for SDXL-class); **`_apply_flux_negative_cfg`** for Flux + negative prompt; presets in **`_IMAGE_T2I_PRESETS`** / **`_diffusion_kw_for_model`**. **Tests**: [`tests/test_diffusion_presets_coverage.py`](tests/test_diffusion_presets_coverage.py).

@@ -57,6 +57,10 @@ Local **image** and **video** diffusion use a shared placement helper ([`src/uti
 | `AQUADUCT_DIFFUSION_CPU_OFFLOAD` | `auto` (default), `off` / `none` / `0` (full GPU when CUDA works), `model`, `sequential` |
 | `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true` — legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
 
+**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** chooses **sequential** offload so only one diffusers submodule at a time uses the **diffusion** GPU’s VRAM (pair with **Auto** device routing so **LLM** and **diffusion** use different CUDA ordinals; see [hardware.md](hardware.md)). **Single-GPU** **`auto`** still uses **`off`** (full pipeline on GPU) only when detected VRAM is **≥16 GiB** (with host-RAM exceptions); otherwise **`model`** or **`sequential`** heuristics apply.
+
+Sequential and model offload both pass the resolved **diffusion CUDA index** into Diffusers as **`gpu_id`** where supported so the active weights move on the intended GPU.
+
 The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; with multiple GPUs you can pick which device’s VRAM to chart. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
 
 **Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured on the **My PC** tab (**Auto** \| **Select GPU** and optional **Device** when pinning one index) and implemented in [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py); see [hardware.md](hardware.md). This is separate from **CPU thread** tuning above.

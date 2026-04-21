@@ -4,6 +4,9 @@ Resolve which CUDA device index to use for LLM vs diffusion (and fit heuristics)
 Auto: highest VRAM for diffusion/image/video; heuristic "compute" score for script (LLM).
 If both heuristics pick the **same** GPU (common when one card wins on speed and VRAM ties go to
 that index), route the LLM to the **best remaining** compute GPU so the second card is used.
+With **two or more** GPUs in Auto, LLM and diffusion are always assigned **different** device
+indices so two heavy models are not pinned to one GPU at once (paired with sequential diffusion
+offload — see ``resolve_diffusion_offload_mode``).
 Single: one pinned GPU for all local stages.
 """
 
@@ -68,7 +71,18 @@ def resolve_device_plan(gpus: list[GpuDevice], settings: AppSettings) -> DeviceP
         if others:
             llm_i = compute_preferred_device_index(others)
             return DevicePlan(llm_device_index=llm_i, diffusion_device_index=vram_i, voice_device_index=llm_i)
-    return DevicePlan(llm_device_index=comp_i, diffusion_device_index=vram_i, voice_device_index=comp_i)
+    plan = DevicePlan(llm_device_index=comp_i, diffusion_device_index=vram_i, voice_device_index=comp_i)
+    # Belt-and-suspenders: with 2+ GPUs, never keep LLM and diffusion on the same index in Auto.
+    if len(gpus) >= 2 and plan.llm_device_index == plan.diffusion_device_index:
+        alt = [g.index for g in gpus if g.index != plan.diffusion_device_index]
+        if alt:
+            llm_alt = int(alt[0])
+            return DevicePlan(
+                llm_device_index=llm_alt,
+                diffusion_device_index=plan.diffusion_device_index,
+                voice_device_index=llm_alt,
+            )
+    return plan
 
 
 def _vram_gb_at(gpus: list[GpuDevice], device_index: int) -> float | None:

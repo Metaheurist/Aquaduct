@@ -15,6 +15,18 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 ## Multi-GPU (CUDA policy override)
 When set, **`AQUADUCT_CUDA_DEVICE`** forces **all** local CUDA stages (LLM, diffusion, etc.) onto that **ordinal** (`0`, `1`, …) or **`cuda:N`**. It overrides the **My PC** GPU policy saved in `ui_settings.json`. Used by [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py). The **My PC** / **Model** tab fit tables still use the same resolver so labels stay consistent with runtime when this env var is unset; when set, fit heuristics follow the pinned index.
 
+With **two or more** GPUs and **Auto** (no env override), the app assigns **script (LLM)** and **diffusion (image/video)** to **different** device indices so two heavy models are not routed to the same GPU by policy.
+
+## Diffusion CPU offload (local image / video)
+Local diffusers pipelines use [`src/util/diffusion_placement.py`](../src/util/diffusion_placement.py). Environment:
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`** | **`auto`** (default): heuristics from detected VRAM + free host RAM. With **multiple CUDA devices**, **`auto` prefers sequential offload** (lowest peak VRAM on the diffusion GPU). **`model`**: move whole components at a time. **`sequential`**: one submodule at a time (slowest, lowest peak). **`off`** / **`none`** / **`0`**: keep the full pipeline on GPU when possible (needs enough VRAM). |
+| **`AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD`** | Legacy: if **`1`** / **`true`**, same as **`sequential`** when the main variable is unset or **`auto`**. |
+
+PyTorch may suggest **`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** when the allocator reports large reserved-but-unallocated blocks; see [PyTorch CUDA memory notes](https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf).
+
 ## Local LLM inference (VRAM)
 When **`model_execution_mode`** is **`local`**, long article text plus instructions can tokenize to a very long prompt. Attention prefill scales with sequence length and can trigger **`CUDA out of memory`** on tight GPUs (for example ~8GB) even with 4-bit weights.
 

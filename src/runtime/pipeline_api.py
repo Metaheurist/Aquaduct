@@ -383,7 +383,7 @@ def run_once_api(
             character=active_character,
             video_format=str(getattr(app, "video_format", "news") or "news"),
         )
-        base_prompts = [s.prompt for s in sb.scenes] or ["vertical 9:16, one clear focal subject, bold readable composition"]
+        base_prompts = [s.prompt for s in sb.scenes] or ["vertical video, one clear subject, bold composition"]
         prompts_img = [base_prompts[i % len(base_prompts)] for i in range(n_img)]
         try:
             br = getattr(app, "branding", None)

@@ -23,7 +23,8 @@ def resolve_diffusion_offload_mode() -> OffloadMode:
     Environment (highest priority first):
 
     - ``AQUADUCT_DIFFUSION_CPU_OFFLOAD``:
-      - ``auto`` (default) — heuristics from ``get_hardware_info()`` + available RAM
+      - ``auto`` (default) — heuristics from ``get_hardware_info()`` + available RAM; **multiple CUDA
+        devices** default to **sequential** offload (lowest peak VRAM on the diffusion GPU).
       - ``off`` / ``none`` / ``0`` / ``false`` — full ``.to("cuda")`` when CUDA is available
       - ``model`` — ``enable_model_cpu_offload()`` (balance of VRAM vs speed)
       - ``sequential`` — ``enable_sequential_cpu_offload()`` (lowest peak VRAM, slowest)
@@ -65,6 +66,17 @@ def _avail_ram_gb() -> float | None:
         return None
 
 
+def _cuda_device_count() -> int:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return int(torch.cuda.device_count())
+    except Exception:
+        pass
+    return 0
+
+
 def _resolve_auto_offload_mode() -> OffloadMode:
     vram_gb: float | None = None
     try:
@@ -80,13 +92,18 @@ def _resolve_auto_offload_mode() -> OffloadMode:
         # No GPU info: sequential offload is the safest default when CUDA still works but VRAM unknown
         return "sequential"
 
+    # Multiple GPUs: keep peak VRAM low on the diffusion GPU so we never rely on two heavy models
+    # occupying the same device (LLM vs diffusion are split by cuda_device_policy).
+    if _cuda_device_count() >= 2:
+        return "sequential"
+
     # Very little free host RAM: avoid aggressive CPU staging (offload copies weights through RAM).
-    # Prefer keeping the full pipeline on GPU only when VRAM is comfortably large (8 GB is not enough
-    # for full-GPU SVD + typical prior loads — that path OOMs on common cards).
-    if avail_gb is not None and avail_gb < 3.0 and vram_gb >= 12.0:
+    # Prefer keeping the full pipeline on GPU only when VRAM is comfortably large.
+    # 8–15 GB: full-GPU diffusion after LLM / image stages routinely OOMs (e.g. SVD img2vid on GPU 1).
+    if avail_gb is not None and avail_gb < 3.0 and vram_gb >= 16.0:
         return "none"
 
-    if vram_gb >= 12.0:
+    if vram_gb >= 16.0:
         if avail_gb is None or avail_gb >= 4.0:
             return "none"
         return "model"
@@ -133,20 +150,14 @@ def place_diffusion_pipeline(pipe, cuda_device_index: int | None = None) -> None
                 pass
         except Exception:
             pass
-        try:
-            pipe.enable_sequential_cpu_offload()
+        if _try_sequential_cpu_offload(pipe, cuda_device_index):
             return
-        except Exception:
-            pass
         pipe.to(dev)
         return
 
     # sequential
-    try:
-        pipe.enable_sequential_cpu_offload()
+    if _try_sequential_cpu_offload(pipe, cuda_device_index):
         return
-    except Exception:
-        pass
     try:
         if cuda_device_index is not None:
             pipe.enable_model_cpu_offload(gpu_id=int(cuda_device_index))
@@ -156,3 +167,21 @@ def place_diffusion_pipeline(pipe, cuda_device_index: int | None = None) -> None
     except Exception:
         pass
     pipe.to(dev)
+
+
+def _try_sequential_cpu_offload(pipe, cuda_device_index: int | None) -> bool:
+    """Call diffusers ``enable_sequential_cpu_offload`` with ``gpu_id`` when available."""
+    try:
+        if cuda_device_index is not None:
+            pipe.enable_sequential_cpu_offload(gpu_id=int(cuda_device_index))
+        else:
+            pipe.enable_sequential_cpu_offload()
+        return True
+    except TypeError:
+        try:
+            pipe.enable_sequential_cpu_offload()
+            return True
+        except Exception:
+            return False
+    except Exception:
+        return False

@@ -269,8 +269,8 @@ def _pro_prompt_for_text_to_video(*, pkg: VideoPackage, prompts: list[str]) -> s
                 beats.append(t)
     core = " | ".join(([title] if title else []) + beats)
     core = _strip_negative_and_noise(core)
-    # Hard cap to avoid CLIP overflow.
-    return _cap_words(core, 55)
+    # Hard cap — CLIP text encoders are ~77 tokens; words ≠ tokens.
+    return _cap_words(core, 40)
 
 
 def _split_into_pro_scenes_from_script(
@@ -293,22 +293,22 @@ def _split_into_pro_scenes_from_script(
     out: list[str] = []
 
     def _motion_cue(i: int) -> str:
-        # Keep cues short; they must survive CLIP token limits.
+        # Short cues — CLIP T2V stacks often cap at ~77 tokens for the whole prompt.
         if vf in ("cartoon", "unhinged"):
             cues = (
-                "fast push-in, whip pan",
-                "snap zoom reaction, squash-and-stretch motion",
-                "handheld wobble, chaotic background movement",
-                "quick dolly left-to-right, motion blur streaks",
-                "hard cut feel, character lunges toward camera",
-                "spin transition, exaggerated smear frames",
+                "push-in, whip pan",
+                "snap zoom, squash-stretch",
+                "handheld wobble",
+                "dolly blur",
+                "lunge to camera",
+                "spin smear",
             )
         else:
             cues = (
-                "slow push-in, handheld but stable",
-                "parallax drift, subtle camera move",
-                "gentle pan, cinematic motion",
-                "rack focus feel, steadycam",
+                "slow push-in",
+                "parallax drift",
+                "gentle pan",
+                "rack focus",
             )
         return cues[int(i) % len(cues)]
 
@@ -316,19 +316,20 @@ def _split_into_pro_scenes_from_script(
         st = _strip_negative_and_noise(scene_text)
         if not st:
             return
-        # 55 words keeps us safely under CLIP 77 tokens in practice.
-        if len(st.split()) <= 55:
+        # ~40 words targets under 77 CLIP tokens including punctuation.
+        _max_scene = 40
+        if len(st.split()) <= _max_scene:
             out.append(st)
             return
         words = st.split()
         # Split into chunks; keep continuity by repeating the title prefix.
-        chunk = 45
+        chunk = 32
         start = 0
         while start < len(words) and len(out) < 16:
             part = " ".join(words[start : start + chunk]).strip()
             if title:
                 part = f"{title} | {part}"
-            out.append(_cap_words(part, 55))
+            out.append(_cap_words(part, _max_scene))
             start += chunk
 
     # Prefer visual prompts for comedy formats (motion models need visual/action cues; narration is not a scene prompt).
@@ -338,16 +339,16 @@ def _split_into_pro_scenes_from_script(
         if segs:
             v0 = " ".join(str(getattr(segs[0], "visual_prompt", "") or "").split()).strip()
             if v0:
-                _push(f"{v0}, {_motion_cue(len(out))}, vertical 9:16")
+                _push(f"{v0}, {_motion_cue(len(out))}")
         for seg in segs:
             vis = " ".join(str(getattr(seg, "visual_prompt", "") or "").split()).strip()
             if vis:
-                _push(f"{vis}, {_motion_cue(len(out))}, vertical 9:16")
+                _push(f"{vis}, {_motion_cue(len(out))}")
         # CTA: reuse last segment visual if present; otherwise fall back.
         if segs:
             vlast = " ".join(str(getattr(segs[-1], "visual_prompt", "") or "").split()).strip()
             if vlast:
-                _push(f"{vlast}, {_motion_cue(len(out))}, vertical 9:16")
+                _push(f"{vlast}, {_motion_cue(len(out))}")
     else:
         # Prefer script segments as scenes; include hook/CTA as their own scenes.
         if (pkg.hook or "").strip():
@@ -811,7 +812,7 @@ def run_once(
                 character=active_character,
                 video_format=str(getattr(app, "video_format", "news") or "news"),
             )
-            base_prompts = [s.prompt for s in sb.scenes] or ["vertical 9:16, one clear focal subject, bold readable composition"]
+            base_prompts = [s.prompt for s in sb.scenes] or ["vertical video, one clear subject, bold composition"]
             base_seeds = [int(s.seed) for s in sb.scenes] or [123]
             prompts_img = [base_prompts[i % len(base_prompts)] for i in range(n_img)]
             seeds_img = [int(base_seeds[i % len(base_seeds)]) + (i // max(1, len(base_seeds))) * 7919 for i in range(n_img)]
