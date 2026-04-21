@@ -47,7 +47,7 @@ For **local** runs, **image** and **video** diffusion call paths merge **per-rep
 
 ## Models
 `get_models()` defines:
-- LLM: `Qwen/Qwen3-14B-Instruct` (curated default; see [models](models.md))
+- LLM: `Qwen/Qwen3-14B` (curated default; see [models](models.md))
 - Images: `black-forest-labs/FLUX.1-schnell` (default when **Image** is unset; field name `sdxl_turbo_id` is historical)
 - Voice: `hexgrad/Kokoro-82M`
 

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fix: curated Qwen3 14B Hub id — `Qwen/Qwen3-14B` (not `-Instruct`)
+- **Problem**: curated default **`Qwen/Qwen3-14B-Instruct`** does not exist on the Hub and returned **404 / "Repository Not Found"** in [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1) and [`scripts/download_hf_models.py`](scripts/download_hf_models.py) even when `HF_TOKEN` was authenticated.
+- **Reason**: Qwen3 dropped the separate `-Instruct` suffix used in Qwen2.5 — the base repo [`Qwen/Qwen3-14B`](https://huggingface.co/Qwen/Qwen3-14B) is already the chat / instruct repo (see model card, architecture `Qwen3ForCausalLM`, tokenizer with `<|im_start|>` chat template).
+- **Fix**: normalize Hub id to **`Qwen/Qwen3-14B`** in [`src/core/config.py`](src/core/config.py) (`get_models().llm_id`), [`src/models/model_manager.py`](src/models/model_manager.py) (Script row 1), [`src/models/inference_profiles.py`](src/models/inference_profiles.py) (`pick_script_profile` exact-match + `_fallback_llm`), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1), [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/prune_models.py`](scripts/prune_models.py). The parallel copy at **`H:\AI Models\download_all_for_transfer.ps1`** was updated in place.
+- **Docs**: [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/models.md`](docs/reference/models.md) (note that Qwen3 has no `-Instruct` suffix), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
+
 ### Local pipeline: **VRAM inference profiles** (Auto / Single GPU policy)
 - **Module** [`src/models/inference_profiles.py`](src/models/inference_profiles.py): maps **effective VRAM per role** (same as [`cuda_device_policy.effective_vram_gb_for_kind`](src/util/cuda_device_policy.py) + fit badges) to **bands** (`lt_8` … `ge_40`, `unknown`). Per **Hub id**, selects **ScriptProfile** (input / output token caps; repo-specific caps for Qwen3, Miqu, Fimbulvetr, DeepSeek, etc.), **ImageProfile** (resolution, steps, guidance for FLUX / SD3.5 families), **VideoProfile** (frames, steps, resolution where applicable, `extra` for guidance / LTX-2 negative / frame_rate), and **VoiceProfile** (placeholder for Kokoro / MOSS).
 - **Merge helpers**: `merge_t2i_from_settings` / `merge_t2v_from_settings` applied after model baselines in [`src/render/artist.py`](src/render/artist.py) and [`src/render/clips.py`](src/render/clips.py). **LTX-2**: `(num_frames - 1) % 8 == 0` enforced after merge. **CogVideoX 5B** / **Mochi**: band adjusts frames / steps without forcing resolution where the pipeline uses defaults.
@@ -31,8 +37,8 @@ All notable changes to this project will be documented in this file.
 - **Downloads**: [`scripts/download_hf_models.py`](scripts/download_hf_models.py) `ALL_REPOS`, [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1).
 - **Docs**: [`docs/reference/models.md`](docs/reference/models.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
 
-### Script (LLM): default **Qwen3 14B Instruct**
-- **Default** curated script model is now **`Qwen/Qwen3-14B-Instruct`** (replaces the prior 8B Llama-family default). Rationale: stronger creative and multi-turn behavior in current public stacks; use standard chat / non–extended-thinking generation paths in your own inference setup when you want fastest prose. **VRAM** heuristics for this id in [`src/models/hardware.py`](src/models/hardware.py).
+### Script (LLM): default **Qwen3 14B**
+- **Default** curated script model is now **`Qwen/Qwen3-14B`** (replaces the prior 8B Llama-family default; Qwen3 does **not** publish a separate `-Instruct` suffix — the base repo is the chat/instruct model). Rationale: stronger creative and multi-turn behavior in current public stacks; use standard chat / non–extended-thinking generation paths in your own inference setup when you want fastest prose. **VRAM** heuristics for this id in [`src/models/hardware.py`](src/models/hardware.py).
 - **Downloads / prune** lists updated: [`src/core/config.py`](src/core/config.py) `get_models()`, [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1), [`scripts/prune_models.py`](scripts/prune_models.py).
 - **Docs**: [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/models.md`](docs/reference/models.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
 
@@ -49,7 +55,7 @@ All notable changes to this project will be documented in this file.
 - **Docs / tests**: [`docs/reference/models.md`](docs/reference/models.md), [`tests/test_auto_fit.py`](tests/test_auto_fit.py), [`tests/test_diffusion_presets_coverage.py`](tests/test_diffusion_presets_coverage.py).
 
 ### Script (LLM): curated storytelling stack (four picks) — *superseded default; see “Qwen3 14B” above*
-- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): Script row **(1)** is **`Qwen/Qwen3-14B-Instruct`**; **(2) Fimbulvetr** — `Sao10K/Fimbulvetr-11B-v2`, **(3) Midnight Miqu** — `sophosympatheia/Midnight-Miqu-70B-v1.5`, **(4) DeepSeek-V3** — `deepseek-ai/DeepSeek-V3`. Users can still paste any compatible Hub id.
+- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): Script row **(1)** is **`Qwen/Qwen3-14B`**; **(2) Fimbulvetr** — `Sao10K/Fimbulvetr-11B-v2`, **(3) Midnight Miqu** — `sophosympatheia/Midnight-Miqu-70B-v1.5`, **(4) DeepSeek-V3** — `deepseek-ai/DeepSeek-V3`. Users can still paste any compatible Hub id.
 - **Fit** ([`src/models/hardware.py`](src/models/hardware.py)): Tighter per-repo **script** VRAM hints for these picks (plus 8B-class legacy heuristics when a typed id matches).
 - **Downloads**: lists aligned in [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1). [`scripts/prune_models.py`](scripts/prune_models.py) example preset id updated.
 - **Docs**: [`docs/reference/config.md`](docs/reference/config.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/reference/models.md`](docs/reference/models.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).

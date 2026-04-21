@@ -8,7 +8,7 @@ Convert scraped headlines/links into a short-form **tool review** package:
 
 ## Primary mode (local LLM)
 Attempts to run:
-- `Qwen/Qwen3-14B-Instruct` (default curated **Qwen3 14B** instruct; Fimbulvetr 11B, Midnight Miqu 70B, and **DeepSeek-V3** 671B MoE are also listed for heavier / reasoning workloads — see [models](../reference/models.md))
+- `Qwen/Qwen3-14B` (default curated **Qwen3 14B** chat/instruct repo; Fimbulvetr 11B, Midnight Miqu 70B, and **DeepSeek-V3** 671B MoE are also listed for heavier / reasoning workloads — see [models](../reference/models.md))
 - in **4-bit** using `bitsandbytes`
 
 ## Fallback mode

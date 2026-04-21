@@ -113,7 +113,7 @@ class Models:
 
 def get_models() -> Models:
     return Models(
-        llm_id="Qwen/Qwen3-14B-Instruct",
+        llm_id="Qwen/Qwen3-14B",
         sdxl_turbo_id="black-forest-labs/FLUX.1-schnell",
         kokoro_id="hexgrad/Kokoro-82M",
     )

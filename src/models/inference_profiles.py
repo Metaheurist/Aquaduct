@@ -139,7 +139,7 @@ def pick_script_profile(repo_id: str, vram_gb: float | None) -> ScriptProfile:
         return ScriptProfile(f"miqu-{p.label}", mit, min(p.max_new_tokens, 512))
     if "fimbulvetr" in m:
         return ScriptProfile(f"fimbulvetr-{p.label}", p.max_input_tokens, p.max_new_tokens)
-    if m == "qwen/qwen3-14b-instruct" or ("qwen3" in m and "14" in m.replace(" ", "")):
+    if m == "qwen/qwen3-14b" or m == "qwen/qwen3-14b-instruct" or ("qwen3" in m and "14" in m.replace(" ", "")):
         return ScriptProfile(f"qwen3-14b-{p.label}", p.max_input_tokens, p.max_new_tokens)
     return ScriptProfile(p.label, p.max_input_tokens, p.max_new_tokens)
 
@@ -459,7 +459,7 @@ def _fallback_llm() -> str:
 
         return get_models().llm_id
     except Exception:
-        return "Qwen/Qwen3-14B-Instruct"
+        return "Qwen/Qwen3-14B"
 
 
 def _fallback_img() -> str:

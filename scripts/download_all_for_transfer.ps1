@@ -113,13 +113,13 @@ from pathlib import Path
 HF_TOKEN = ""
 
 MINIMAL_REPOS = [
-    "Qwen/Qwen3-14B-Instruct",
+    "Qwen/Qwen3-14B",
     "black-forest-labs/FLUX.1-schnell",
     "hexgrad/Kokoro-82M",
 ]
 
 ALL_REPOS = [
-    "Qwen/Qwen3-14B-Instruct",
+    "Qwen/Qwen3-14B",
     "Sao10K/Fimbulvetr-11B-v2",
     "sophosympatheia/Midnight-Miqu-70B-v1.5",
     "deepseek-ai/DeepSeek-V3",
