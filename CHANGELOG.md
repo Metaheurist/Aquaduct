@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### UI: vector icons, tab alignment, theme palettes, LLM VRAM caps, multi-GPU Auto split
+- **Title bar** ([`UI/widgets/title_bar_outline_button.py`](UI/widgets/title_bar_outline_button.py), [`UI/widgets/title_bar_svg_icons.py`](UI/widgets/title_bar_svg_icons.py), [`UI/main_window.py`](UI/main_window.py)): Save / resource graph / Help / Close use **QSvgRenderer**-drawn strokes (theme-colored) instead of emoji/text; LRU-cached pixmaps.
+- **Characters toolbar** ([`UI/widgets/toolbar_svg_icons.py`](UI/widgets/toolbar_svg_icons.py), [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)): Add / duplicate / delete use SVG icons (muted palette); removed Fusion standard pixmaps + duplicate fallback glyph.
+- **Tasks run controls** ([`UI/tabs/tasks_tab.py`](UI/tabs/tasks_tab.py), [`UI/main_window.py`](UI/main_window.py)): Refresh / pause|play / stop use SVG icons (accent / text / danger); `_sync_tasks_pause_button_appearance` swaps pause vs play vectors.
+- **Frozen EXE** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden import **`PyQt6.QtSvg`** for SVG rendering.
+- **Tabs** ([`UI/theme/palette.py`](UI/theme/palette.py)): **`QTabWidget::tab-bar { left: 10px; }`** so the tab strip aligns with the pane below (reduces left overhang on dark Fusion).
+- **Branding palettes** ([`UI/theme/palette.py`](UI/theme/palette.py), [`UI/tabs/branding_tab.py`](UI/tabs/branding_tab.py)): Added presets **forest**, **lavender**, **ember**, **slate**, **rose**, **amber**, **nord**, **dracula** (in addition to default / tiktok / ocean / sunset / mono).
+- **Local LLM VRAM** ([`src/content/brain.py`](src/content/brain.py)): When **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** is unset, **CUDA total VRAM** tightens the default input cap (e.g. &lt;10 GiB → **1536** tokens) to reduce prefill OOM on ~8 GB cards; `empty_cache()` before `generate()` retained/extended.
+- **Multi-GPU Auto** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): If **max-VRAM** and **compute** heuristics pick the **same** GPU, **LLM** moves to the **best remaining** compute GPU so a second card is used; [`UI/widgets/gpu_policy_toggle.py`](UI/widgets/gpu_policy_toggle.py) + resource graph Monitor tooltip updated. **Tests**: [`tests/test_cuda_device_policy.py`](tests/test_cuda_device_policy.py).
+
 ### Desktop UI: section cards, My PC GPU refresh, tab polish
 - **Theme** ([`UI/theme.py`](UI/theme.py)): `QFrame#SettingsSectionCard` uses palette **`card`**; scoped QSS for inputs inside cards (slightly lifted background) so nested controls do not read as a flat double slab.
 - **Sections** ([`UI/tab_sections.py`](UI/tab_sections.py)): **`section_card()`** returns a framed layout helper aligned with **`section_title()`** (documented as using the **`card`** token).

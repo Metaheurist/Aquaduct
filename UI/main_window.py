@@ -14,7 +14,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PyQt6.QtGui import QDesktopServices, QGuiApplication, QIcon
+from PyQt6.QtGui import QDesktopServices, QGuiApplication
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         title_row.addWidget(self.media_mode_toggle, 0, Qt.AlignmentFlag.AlignCenter)
         title_row.addStretch(1)
 
-        save_btn = TitleBarOutlineButton("💾", variant="accent_icon")
+        save_btn = TitleBarOutlineButton("", variant="accent_icon", icon_kind="save")
         save_btn.setFixedSize(44, 32)
         save_btn.setToolTip(
             help_tooltip_rich(
@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         save_btn.clicked.connect(self._save_settings)
         title_row.addWidget(save_btn, 0, Qt.AlignmentFlag.AlignRight)
 
-        graph_btn = TitleBarOutlineButton("📈", variant="accent_icon")
+        graph_btn = TitleBarOutlineButton("", variant="accent_icon", icon_kind="graph")
         graph_btn.setFixedSize(44, 32)
         graph_btn.setToolTip(
             help_tooltip_rich(
@@ -199,7 +199,7 @@ class MainWindow(QMainWindow):
         graph_btn.clicked.connect(self._show_resource_graph)
         title_row.addWidget(graph_btn, 0, Qt.AlignmentFlag.AlignRight)
 
-        help_btn = TitleBarOutlineButton("?", variant="muted_icon")
+        help_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="help")
         help_btn.setFixedSize(44, 32)
         help_btn.setToolTip(
             help_tooltip_rich(
@@ -211,7 +211,7 @@ class MainWindow(QMainWindow):
         help_btn.clicked.connect(lambda: self._show_tutorial_dialog(first_run=False))
         title_row.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignRight)
 
-        close_btn = TitleBarOutlineButton("✕", variant="danger")
+        close_btn = TitleBarOutlineButton("", variant="danger", icon_kind="close")
         close_btn.setFixedSize(44, 32)
         close_btn.clicked.connect(self.close)
         title_row.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
@@ -2427,7 +2427,7 @@ class MainWindow(QMainWindow):
 
         if prebuilt_pkg is not None:
             self._set_tasks_active_row(
-                "Pipeline run",
+                self._pipeline_tasks_title(settings, branch="prebuilt"),
                 format_status_line("pipeline_run", 0, -1, "Queued (approved preview)…"),
                 folder="In progress",
             )
@@ -2449,7 +2449,7 @@ class MainWindow(QMainWindow):
 
         if prebuilt_prompts is not None and prebuilt_seeds is not None:
             self._set_tasks_active_row(
-                "Pipeline run",
+                self._pipeline_tasks_title(settings, branch="storyboard"),
                 format_status_line("pipeline_run", 0, -1, "Queued (approved storyboard)…"),
                 folder="In progress",
             )
@@ -2471,7 +2471,7 @@ class MainWindow(QMainWindow):
             return
 
         self._set_tasks_active_row(
-            "Pipeline run",
+            self._pipeline_tasks_title(settings, branch="run"),
             format_status_line("pipeline_run", 0, -1, "Queued…"),
             folder="In progress",
         )
@@ -2626,7 +2626,9 @@ class MainWindow(QMainWindow):
                 self.preview_btn.setText("Previewing…")
             except Exception:
                 pass
-        self._set_tasks_active_row("Preview script", "Starting…", folder="—")
+        self._set_tasks_active_row(
+            self._task_title_with_mode(self.settings, "Preview script"), "Starting…", folder="—"
+        )
 
         self._pipeline_control = PipelineRunControl()
         self.preview_worker = PreviewWorker(self.settings, run_control=self._pipeline_control)
@@ -2761,7 +2763,9 @@ class MainWindow(QMainWindow):
                 self.storyboard_btn.setText("Storyboard…")
             except Exception:
                 pass
-        self._set_tasks_active_row("Storyboard preview", "Starting…", folder="—")
+        self._set_tasks_active_row(
+            self._task_title_with_mode(self.settings, "Storyboard preview"), "Starting…", folder="—"
+        )
 
         self._pipeline_control = PipelineRunControl()
         self.storyboard_worker = StoryboardWorker(self.settings, run_control=self._pipeline_control)
@@ -2977,21 +2981,26 @@ class MainWindow(QMainWindow):
         self._update_tasks_control_buttons()
 
     def _sync_tasks_pause_button_appearance(self) -> None:
-        """Pause vs Resume: theme media icons are nearly invisible on dark Fusion; use high-contrast glyphs."""
+        """Pause vs resume: vector icons (readable on dark Fusion)."""
         if not hasattr(self, "tasks_pause_btn"):
             return
         btn = self.tasks_pause_btn
         try:
+            from UI.theme import resolve_palette
+            from UI.widgets.toolbar_svg_icons import qicon_toolbar
+
             rc = self._pipeline_control
             paused = bool(rc is not None and rc.is_paused())
-            btn.setIcon(QIcon())
-            btn.setStyleSheet("color: #E8E8EE; font-size: 14px; font-weight: 600; padding: 0px;")
+            pals = resolve_palette(getattr(self.settings, "branding", None))
+            text_hex = str(pals.get("text", "#E8E8EE"))
+            _size = 22
+            btn.setText("")
+            btn.setStyleSheet("")
+            btn.setIcon(qicon_toolbar("play" if paused else "pause", text_hex, _size))
             if paused:
-                btn.setText("▶")
                 btn.setToolTip("Resume pipeline")
                 btn.setAccessibleName("Resume")
             else:
-                btn.setText("⏸")
                 btn.setToolTip(
                     "Pause between pipeline steps (not mid–GPU operation). Click again to resume."
                 )
@@ -3081,13 +3090,39 @@ class MainWindow(QMainWindow):
         self._append_log("Storyboard preview cancelled.")
         self._try_start_next_queued_pipeline()
 
-    def _queued_pipeline_row_title(self, kind: str) -> str:
+    @staticmethod
+    def _media_mode_label_for_settings(settings: AppSettings | None) -> str:
+        if settings is None:
+            return "Video"
+        mm = str(getattr(settings, "media_mode", "video") or "video").strip().lower()
+        return "Photo" if mm == "photo" else "Video"
+
+    def _task_title_with_mode(self, settings: AppSettings, text: str) -> str:
+        return f"{self._media_mode_label_for_settings(settings)} · {text}"
+
+    def _pipeline_tasks_title(self, settings: AppSettings, *, branch: str = "run") -> str:
+        m = self._media_mode_label_for_settings(settings)
+        if branch == "prebuilt":
+            return f"{m} · Pipeline run (preview)"
+        if branch == "storyboard":
+            return f"{m} · Pipeline run (storyboard)"
+        return f"{m} · Pipeline run"
+
+    def _queued_pipeline_row_title(self, kind: str, qitem: dict | None = None) -> str:
+        s: AppSettings | None = None
+        if isinstance(qitem, dict):
+            cand = qitem.get("settings")
+            if isinstance(cand, AppSettings):
+                s = cand
+        if s is None:
+            s = self.settings
+        m = self._media_mode_label_for_settings(s)
         k = (kind or "pipeline").strip().lower()
         if k == "prebuilt":
-            return "Queued pipeline (approved preview)"
+            return f"{m} · Queued pipeline (approved preview)"
         if k == "storyboard":
-            return "Queued pipeline (approved storyboard)"
-        return "Queued pipeline run"
+            return f"{m} · Queued pipeline (approved storyboard)"
+        return f"{m} · Queued pipeline run"
 
     def _tasks_refresh(self) -> None:
         if not hasattr(self, "tasks_table"):
@@ -3115,7 +3150,7 @@ class MainWindow(QMainWindow):
                 continue
             qkind = str(qitem.get("kind") or "pipeline")
             self.tasks_table.insertRow(row)
-            tq = QTableWidgetItem(self._queued_pipeline_row_title(qkind))
+            tq = QTableWidgetItem(self._queued_pipeline_row_title(qkind, qitem))
             tq.setData(Qt.ItemDataRole.UserRole, _TASKS_QUEUED_PIPELINE_TOKEN)
             tq.setData(Qt.ItemDataRole.UserRole + 1, int(qi))
             self.tasks_table.setItem(row, 0, tq)

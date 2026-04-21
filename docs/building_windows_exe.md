@@ -69,7 +69,7 @@ User data and settings typically live under the app’s working directory or pat
 | Symptom | Things to check |
 |--------|-------------------|
 | SSL / HTTPS errors (ElevenLabs, OpenAI, etc.) | Build uses **`--collect-all certifi`**; run from a writable cwd; corporate TLS inspection may need extra trust. |
-| Missing module at runtime (`ModuleNotFoundError` in `-debug`) | Add **`--hidden-import`** in **`build/build.ps1`** and the same name in **`aquaduct-ui.spec`** `hiddenimports`; prefer imports from the main window chain so `collect_submodules('UI')` sees new packages. |
+| Missing module at runtime (`ModuleNotFoundError` in `-debug`) | Add **`--hidden-import`** in **`build/build.ps1`** and the same name in **`aquaduct-ui.spec`** `hiddenimports`; prefer imports from the main window chain so `collect_submodules('UI')` sees new packages. SVG title/toolbar icons require **`PyQt6.QtSvg`**. |
 | Huge EXE or slow extract | **Onefile** extracts to a temp dir each launch; **onedir** (`build.ps1 -UI` without `-OneFile`) is often faster to start. |
 
 ## Related documentation

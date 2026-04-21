@@ -86,6 +86,14 @@ def attach_branding_tab(win) -> None:
         ("Ocean", "ocean"),
         ("Sunset", "sunset"),
         ("Monochrome", "mono"),
+        ("Amber night", "amber"),
+        ("Dracula", "dracula"),
+        ("Ember", "ember"),
+        ("Forest", "forest"),
+        ("Lavender", "lavender"),
+        ("Nord night", "nord"),
+        ("Rose", "rose"),
+        ("Slate", "slate"),
         ("Custom (choose colors below)", "custom"),
     ]
     for label, pid in palette_items:

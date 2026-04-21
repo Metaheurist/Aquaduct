@@ -17,6 +17,7 @@ if _docs.is_dir():
 
 binaries = []
 hiddenimports = [
+    "PyQt6.QtSvg",
     "PIL",
     "soundfile",
     "pyttsx3",

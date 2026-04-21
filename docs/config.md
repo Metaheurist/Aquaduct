@@ -18,7 +18,7 @@ When set, **`AQUADUCT_CUDA_DEVICE`** forces **all** local CUDA stages (LLM, diff
 ## Local LLM inference (VRAM)
 When **`model_execution_mode`** is **`local`**, long article text plus instructions can tokenize to a very long prompt. Attention prefill scales with sequence length and can trigger **`CUDA out of memory`** on tight GPUs (for example ~8GB) even with 4-bit weights.
 
-- **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** — hard cap on **input** (prompt) tokens for the local transformers `generate()` path in [`src/content/brain.py`](../src/content/brain.py). If unset, the default is **4096**, or **`min(4096, tokenizer.model_max_length)`** when the tokenizer exposes a finite `model_max_length`. Values are clamped to **256–100000**. Set lower (for example **`2048`**) if you still hit OOM during script generation.
+- **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** — hard cap on **input** (prompt) tokens for the local transformers `generate()` path in [`src/content/brain.py`](../src/content/brain.py). If unset, the base cap is **4096**, or **`min(4096, tokenizer.model_max_length)`** when the tokenizer exposes a finite `model_max_length`; values are clamped to **256–100000**. When this env var is **not** set and **CUDA** is available, an additional cap is applied from **total GPU VRAM** (for example **1536** tokens when total VRAM is under ~10 GiB) to reduce attention **prefill** OOM on tight GPUs. Override explicitly with **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** if you need longer prompts and have headroom.
 
 ## Paths
 `get_paths()` defines:

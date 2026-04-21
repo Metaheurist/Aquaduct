@@ -32,7 +32,22 @@ def test_resolve_auto_splits_llm_and_diffusion() -> None:
     s = replace(AppSettings(), gpu_selection_mode="auto")
     plan = resolve_device_plan(gpus, s)
     assert plan.diffusion_device_index == 1  # 12GB
-    assert plan.llm_device_index in (0, 1)
+    # Max-VRAM and compute both prefer the 12GB card — LLM should move to the other GPU.
+    assert plan.llm_device_index == 0
+    assert plan.voice_device_index == 0
+
+
+def test_resolve_auto_when_vram_and_compute_same_gpu_splits_llm_to_other() -> None:
+    """Equal VRAM tie → index 0 wins both heuristics; LLM must use GPU 1 so both GPUs participate."""
+    gpus = [
+        GpuDevice(index=0, name="A", total_vram_bytes=12 * 1024**3, multiprocessor_count=40, major=8, minor=6, clock_rate_khz=1800000),
+        GpuDevice(index=1, name="B", total_vram_bytes=12 * 1024**3, multiprocessor_count=40, major=8, minor=6, clock_rate_khz=1800000),
+    ]
+    s = replace(AppSettings(), gpu_selection_mode="auto")
+    plan = resolve_device_plan(gpus, s)
+    assert plan.diffusion_device_index == 0
+    assert plan.llm_device_index == 1
+    assert plan.voice_device_index == 1
 
 
 def test_effective_vram_per_kind() -> None:

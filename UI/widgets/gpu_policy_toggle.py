@@ -57,6 +57,7 @@ class GpuPolicyToggle(QWidget):
 
         self._auto.setToolTip(
             "LLM tends toward the compute-heuristic CUDA device; image/video diffusion uses the max-VRAM GPU. "
+            "If both would use the same GPU, the LLM moves to the best other CUDA device so both cards stay busy. "
             "VRAM is not merged across GPUs."
         )
         self._single.setToolTip("All local pipeline stages use the CUDA index chosen in Device.")

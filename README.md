@@ -137,7 +137,7 @@ python -m UI
 
 The title bar includes a **Photo \| Video** toggle (persists as `media_mode` in `ui_settings.json`) to switch between the picture pipeline and the video pipeline; **Library** and open-folder actions follow the active mode.
 
-Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** and **rounded outline** buttons drawn like the main window title bar (not legacy square Fusion borders); native **file/folder** pickers stay OS-standard.
+Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** and **rounded outline** buttons drawn like the main window title bar (not legacy square Fusion borders); native **file/folder** pickers stay OS-standard. The title bar and compact toolbars (e.g. Characters, Tasks **Run controls**) use **SVG** icons (crisp at any DPI); theme palettes include several named dark presets on the **Branding** tab.
 
 Tabs:
 - **Run**: in **Video** mode, set **Videos to generate** to queue **that many independent full runs** (each produces one video); **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
@@ -192,5 +192,5 @@ Example:
 ## Notes
 - First run will download models from Hugging Face (can be large).
 - GPU memory is limited (8GB class GPUs are common): the pipeline loads/unloads models between stages.
-- **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. The title-bar **resource graph** can chart VRAM for a selected GPU. Details: [docs/hardware.md](docs/hardware.md), [docs/config.md](docs/config.md#multi-gpu-cuda-policy-override).
+- **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. In **Auto**, if the “fastest” and “most VRAM” heuristics would pick the same GPU, the app routes the **local LLM** to another CUDA device so both cards can stay busy. The title-bar **resource graph** charts VRAM per **Monitor** selection. Details: [docs/hardware.md](docs/hardware.md), [docs/config.md](docs/config.md#multi-gpu-cuda-policy-override).
 

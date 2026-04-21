@@ -105,6 +105,7 @@ $extra = @(
 if ($UI) {
   $extra += @(
     "--collect-submodules", "UI",
+    "--hidden-import", "PyQt6.QtSvg",
     "--hidden-import", "main",
     "--hidden-import", "UI",
     "--hidden-import", "UI.ui_app",

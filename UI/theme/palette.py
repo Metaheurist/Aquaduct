@@ -23,10 +23,17 @@ class Palette(TypedDict):
 
 QSS_TEMPLATE = r"""
 QWidget {{ background: {bg}; color: {text}; font-family: "Segoe UI", "Arial"; font-size: 12px; }}
+/* QLabel subclasses QWidget; the rule above would paint every label with {bg}, so text looks like black bars on
+   section cards (card color is different). Keep labels visually transparent so the parent/card shows through. */
+QLabel {{ background-color: transparent; }}
 QDialog#FramelessDialogShell {{
   background: {panel};
   border: 1px solid {border};
   border-radius: 14px;
+}}
+QTabWidget::tab-bar {{
+  /* Nudge tabs right so the first tab aligns with the pane below (avoids left overhang vs rounded content). */
+  left: 10px;
 }}
 QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 8px; background: {panel}; }}
 QFrame#SettingsSectionCard {{
@@ -170,6 +177,102 @@ PRESET_PALETTES: dict[str, Palette] = {
         "muted": "#C7C7C7",
         "accent": "#FFFFFF",
         "danger": "#FF4D4D",
+    },
+    "forest": {
+        "bg": "#0A120E",
+        "panel": "#0C1610",
+        "surface": "#142A1E",
+        "card": "#1A3328",
+        "control_bg": "#121F18",
+        "border": "#2A4A38",
+        "text": "#F0FFF4",
+        "muted": "#9CB8A8",
+        "accent": "#6EE7B7",
+        "danger": "#F87171",
+    },
+    "lavender": {
+        "bg": "#0E0A14",
+        "panel": "#0C0812",
+        "surface": "#1A1424",
+        "card": "#221A2E",
+        "control_bg": "#151020",
+        "border": "#2D2440",
+        "text": "#F5F0FF",
+        "muted": "#B8A8C8",
+        "accent": "#C4B5FD",
+        "danger": "#FB7185",
+    },
+    "ember": {
+        "bg": "#0F0A08",
+        "panel": "#0C0706",
+        "surface": "#261A14",
+        "card": "#301F18",
+        "control_bg": "#1A1210",
+        "border": "#403028",
+        "text": "#FFF5F0",
+        "muted": "#C9A89A",
+        "accent": "#FF6B35",
+        "danger": "#E11D48",
+    },
+    "slate": {
+        "bg": "#0C0E12",
+        "panel": "#0A0C10",
+        "surface": "#161B22",
+        "card": "#1C232D",
+        "control_bg": "#131820",
+        "border": "#2D3748",
+        "text": "#F1F5F9",
+        "muted": "#94A3B8",
+        "accent": "#38BDF8",
+        "danger": "#F43F5E",
+    },
+    "rose": {
+        "bg": "#10080C",
+        "panel": "#0C0608",
+        "surface": "#24141C",
+        "card": "#2E1822",
+        "control_bg": "#1A1012",
+        "border": "#3D243A",
+        "text": "#FFF1F5",
+        "muted": "#D4A5B0",
+        "accent": "#FB7185",
+        "danger": "#E11D48",
+    },
+    "amber": {
+        "bg": "#0F0A08",
+        "panel": "#0C0808",
+        "surface": "#221A08",
+        "card": "#2A200C",
+        "control_bg": "#181008",
+        "border": "#3D3418",
+        "text": "#FFFBF0",
+        "muted": "#C4B59A",
+        "accent": "#FBBF24",
+        "danger": "#EF4444",
+    },
+    "nord": {
+        "bg": "#0D1117",
+        "panel": "#0C1018",
+        "surface": "#1A222E",
+        "card": "#1E2632",
+        "control_bg": "#151B24",
+        "border": "#2E3440",
+        "text": "#ECEFF4",
+        "muted": "#9CA8B8",
+        "accent": "#88C0D0",
+        "danger": "#BF616A",
+    },
+    "dracula": {
+        "bg": "#0E0E12",
+        "panel": "#0A0A0E",
+        "surface": "#1A1A22",
+        "card": "#22222E",
+        "control_bg": "#18181E",
+        "border": "#2E2E3A",
+        "text": "#F8F8F2",
+        "muted": "#B8B8C8",
+        "accent": "#BD93F9",
+        "danger": "#FF5555",
     },
 }
 

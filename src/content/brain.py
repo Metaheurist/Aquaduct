@@ -1243,13 +1243,47 @@ def torch_cuda_kernels_work() -> bool:
         return False
 
 
+def _llm_max_input_tokens_cap_from_vram() -> int | None:
+    """
+    When VRAM is tight, lower the tokenizer cap so prefill (attention) does not OOM.
+
+    Returns None if no extra cap should apply (caller uses base defaults only).
+    Skipped when ``AQUADUCT_LLM_MAX_INPUT_TOKENS`` is set — user override wins.
+    """
+    import os
+
+    if (os.environ.get("AQUADUCT_LLM_MAX_INPUT_TOKENS") or "").strip().isdigit():
+        return None
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        total = int(torch.cuda.get_device_properties(0).total_memory)
+    except Exception:
+        return None
+    # Prefill memory scales badly with sequence length; fp16 7–8B models already
+    # consume most of an 8GB card — keep inputs conservative unless user overrides.
+    _GIB = 1024**3
+    if total < 10 * _GIB:
+        return 1536
+    if total < 12 * _GIB:
+        return 2048
+    if total < 16 * _GIB:
+        return 3072
+    if total < 24 * _GIB:
+        return 4096
+    return None
+
+
 def _llm_max_input_tokens_cap(tokenizer: Any) -> int:
     """
     Cap prompt length for local ``generate()`` so long article/context strings do not
     blow VRAM during attention prefill (common on ~8GB GPUs).
 
     Override with env ``AQUADUCT_LLM_MAX_INPUT_TOKENS`` (integer; clamped 256–100000).
-    Default: min(4096, tokenizer.model_max_length) when the latter is sane, else 4096.
+    Default: min(4096, tokenizer.model_max_length) when the latter is sane, else 4096,
+    then further reduced on low-VRAM CUDA devices (see ``_llm_max_input_tokens_cap_from_vram``).
     """
     import os
 
@@ -1259,8 +1293,13 @@ def _llm_max_input_tokens_cap(tokenizer: Any) -> int:
     default_cap = 4096
     mm = getattr(tokenizer, "model_max_length", None)
     if isinstance(mm, int) and 0 < mm < 100_000:
-        return min(default_cap, mm)
-    return default_cap
+        base = min(default_cap, mm)
+    else:
+        base = default_cap
+    vram_cap = _llm_max_input_tokens_cap_from_vram()
+    if vram_cap is not None:
+        return min(base, vram_cap)
+    return base
 
 
 def load_causal_lm_from_pretrained(
@@ -1469,6 +1508,8 @@ def _generate_with_transformers(
 
         def _run_gen() -> None:
             with torch.inference_mode():
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 model.generate(**generation_kwargs)
 
         th = Thread(target=_run_gen, daemon=True)
@@ -1492,6 +1533,8 @@ def _generate_with_transformers(
         dprint("brain", "streamed generation failed, falling back", str(e))
         _emit_llm(on_llm_task, "llm_generate", 10, "Fallback: one-shot generate…")
         with torch.inference_mode():
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             out = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
