@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QLineEdit, QSizePolicy, QTextEdit, QToolButton, QWidget
 
-from UI.frameless_dialog import aquaduct_warning
+from UI.dialogs.frameless_dialog import aquaduct_warning
 
 from src.core.config import get_models
 

@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 
 
 def attach_captions_tab(win) -> None:

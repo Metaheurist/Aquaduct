@@ -10,7 +10,7 @@ class GpuPolicyToggle(QWidget):
     """
     Segmented control: **Auto** vs **Select GPU** (pins one CUDA device).
 
-    Mirrors :class:`UI.media_mode_toggle.MediaModeToggle` API shape:
+    Mirrors :class:`UI.widgets.media_mode_toggle.MediaModeToggle` API shape:
     ``currentIndex()``, ``setCurrentIndex()``, ``currentIndexChanged``, ``currentData()``.
     """
 

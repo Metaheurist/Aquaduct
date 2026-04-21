@@ -65,7 +65,7 @@ def main() -> None:
 
     splash = None
     if _splash_enabled():
-        from UI.startup_splash import StartupSplash
+        from UI.dialogs.startup_splash import StartupSplash
 
         splash = StartupSplash(app)
         splash.show()

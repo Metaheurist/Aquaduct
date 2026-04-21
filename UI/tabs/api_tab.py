@@ -17,8 +17,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
-from UI.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 
 
 def attach_api_tab(win) -> None:
@@ -46,7 +46,7 @@ def attach_api_tab(win) -> None:
     sub.setToolTip("HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.")
     il.addWidget(sub)
 
-    from UI.api_model_widgets import build_generation_api_panel
+    from UI.services.api_model_widgets import build_generation_api_panel
 
     win.generation_api_panel = build_generation_api_panel(win)
     il.insertWidget(2, win.generation_api_panel)

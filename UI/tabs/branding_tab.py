@@ -21,9 +21,9 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.config import BrandingSettings
-from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.theme import PRESET_PALETTES, build_qss, resolve_palette
-from UI.title_bar_outline_button import refresh_open_main_window_title_chrome
+from UI.widgets.title_bar_outline_button import refresh_open_main_window_title_chrome
 
 
 def _hex_or_default(text: str, default_hex: str) -> str:

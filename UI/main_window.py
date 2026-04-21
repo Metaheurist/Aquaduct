@@ -30,16 +30,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.frameless_dialog import (
+from UI.dialogs.frameless_dialog import (
     aquaduct_information,
     aquaduct_message_with_details,
     aquaduct_question,
     aquaduct_warning,
     show_hf_token_dialog,
 )
-from UI.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
-from UI.media_mode_toggle import MediaModeToggle
-from UI.title_bar_outline_button import TitleBarOutlineButton
+from UI.help.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
+from UI.widgets.media_mode_toggle import MediaModeToggle
+from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
 from UI.theme import resolve_palette
 
 from src.core.config import (
@@ -73,8 +73,8 @@ from src.settings.ui_settings import load_settings, save_settings, settings_path
 from src.content.personalities import get_personality_by_id
 from debug import dprint
 
-from UI.paths import project_root
-from UI.brain_expand import script_llm_model_id_from_ui
+from UI.services.paths import project_root
+from UI.services.brain_expand import script_llm_model_id_from_ui
 from UI.tabs import (
     attach_api_tab,
     attach_branding_tab,
@@ -92,7 +92,7 @@ from UI.tabs import (
 )
 from UI.tabs.run_tab import refresh_run_tab_for_media_mode
 from UI.tabs.library_tab import refresh_library_tab_for_media_mode
-from UI.download_popup import DownloadPopup, ImportPopup
+from UI.dialogs.download_popup import DownloadPopup, ImportPopup
 from UI.workers import (
     FFmpegEnsureWorker,
     ModelDownloadWorker,
@@ -104,9 +104,9 @@ from UI.workers import (
     YouTubeUploadWorker,
 )
 from UI.workers import TopicDiscoverWorker, firecrawl_search_ready
-from UI.preview_dialog import PreviewDialog
-from UI.storyboard_dialog import StoryboardPreviewDialog
-from UI.progress_tasks import format_status_line
+from UI.dialogs.preview_dialog import PreviewDialog
+from UI.dialogs.storyboard_dialog import StoryboardPreviewDialog
+from UI.services.progress_tasks import format_status_line
 
 _TASKS_ACTIVE_JOB_TOKEN = "__active_job__"
 _TASKS_QUEUED_PIPELINE_TOKEN = "__queued_pipeline__"
@@ -1598,7 +1598,7 @@ class MainWindow(QMainWindow):
         return models_dir_for_app(self._collect_settings_from_ui())
 
     def _show_resource_graph(self) -> None:
-        from UI.resource_graph_dialog import ResourceGraphDialog
+        from UI.dialogs.resource_graph_dialog import ResourceGraphDialog
 
         if getattr(self, "_resource_graph_dialog", None) is None:
             self._resource_graph_dialog = ResourceGraphDialog(self)
@@ -1623,7 +1623,7 @@ class MainWindow(QMainWindow):
         topic_id: str | None = None,
         slide: int = 0,
     ) -> None:
-        from UI.tutorial_dialog import TutorialDialog
+        from UI.dialogs.tutorial_dialog import TutorialDialog
 
         dlg = TutorialDialog(self, start_topic_id=topic_id, start_slide=slide)
         if first_run:
@@ -1806,7 +1806,7 @@ class MainWindow(QMainWindow):
             return
         self._append_log("Opening dependency installer (PyTorch + requirements.txt)…")
         try:
-            from UI.install_deps_dialog import install_dependencies_with_dialog
+            from UI.dialogs.install_deps_dialog import install_dependencies_with_dialog
 
             code, out = install_dependencies_with_dialog(self)
             if hasattr(self, "deps_status"):

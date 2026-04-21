@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from UI.frameless_dialog import FramelessDialog
+from UI.dialogs.frameless_dialog import FramelessDialog
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,9 +18,9 @@ from PyQt6.QtWidgets import (
 
 from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
 from src.core.config import VIDEO_FORMATS
-from UI.no_wheel_controls import NoWheelComboBox
-from UI.tab_sections import section_card, section_title
-from UI.tutorial_links import help_tooltip_rich
+from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.tab_sections import section_card, section_title
+from UI.help.tutorial_links import help_tooltip_rich
 
 
 def _is_creative_topics_mode(topic_mode: str | None) -> bool:

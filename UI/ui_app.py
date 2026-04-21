@@ -113,7 +113,7 @@ def _maybe_import_smoke_and_exit() -> None:
         "src.runtime.pipeline_api",
         "src.runtime.generation_facade",
         "UI.workers",
-        "UI.api_model_widgets",
+        "UI.services.api_model_widgets",
         # Pulls PyQt6, MainWindow, and tab graph — catches missing frozen deps early.
         "UI.app",
     ):

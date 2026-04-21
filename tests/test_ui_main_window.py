@@ -48,7 +48,7 @@ def test_save_button_calls_save_settings(qtbot, monkeypatch, patch_paths, write_
 
 @pytest.mark.qt
 def test_storyboard_dialog_constructs(qtbot, tmp_path):
-    from UI.storyboard_dialog import StoryboardPreviewDialog
+    from UI.dialogs.storyboard_dialog import StoryboardPreviewDialog
 
     manifest = tmp_path / "manifest.json"
     grid = tmp_path / "grid.png"

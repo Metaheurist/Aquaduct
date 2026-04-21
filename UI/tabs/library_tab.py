@@ -15,9 +15,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
-from UI.tab_sections import add_section_spacing, section_card, section_title
-from UI.tutorial_links import help_tooltip_rich
+from UI.services.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
+from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.help.tutorial_links import help_tooltip_rich
 
 
 def attach_library_tab(win) -> None:

@@ -19,9 +19,9 @@ from src.models.hardware import (
 )
 from src.models.model_manager import model_options
 from src.util.cuda_device_policy import effective_vram_gb_for_kind
-from UI.gpu_policy_toggle import GpuPolicyToggle
-from UI.no_wheel_controls import NoWheelComboBox
-from UI.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.gpu_policy_toggle import GpuPolicyToggle
+from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 
 
 def _fit_colors(marker: str) -> tuple[QColor, QColor]:

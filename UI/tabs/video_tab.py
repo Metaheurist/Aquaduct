@@ -20,9 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
-from UI.tab_sections import add_section_spacing, section_title
-from UI.tutorial_links import help_tooltip_rich
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
+from UI.widgets.tab_sections import add_section_spacing, section_title
+from UI.help.tutorial_links import help_tooltip_rich
 from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
     distinct_resolutions,

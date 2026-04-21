@@ -18,9 +18,9 @@ from src.core.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
 from src.content.characters_store import load_all
 from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
-from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
-from UI.tab_sections import add_section_spacing, section_card, section_title
-from UI.tutorial_links import help_tooltip_rich
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.help.tutorial_links import help_tooltip_rich
 
 
 def attach_run_tab(win) -> None:
@@ -325,7 +325,7 @@ def attach_run_tab(win) -> None:
 
 def refresh_run_tab_for_media_mode(win) -> None:
     """Keep Run tab labels and actions aligned with Video vs Photo mode."""
-    from UI.tutorial_links import help_tooltip_rich
+    from UI.help.tutorial_links import help_tooltip_rich
 
     mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
     is_photo = mm == "photo"
