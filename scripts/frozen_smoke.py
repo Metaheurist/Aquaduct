@@ -31,6 +31,7 @@ _MODULES = (
     "src.runtime.generation_facade",
     "UI.workers",
     "UI.api_model_widgets",
+    "UI.app",
 )
 
 

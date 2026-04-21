@@ -11,11 +11,12 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+from UI.title_bar_outline_button import styled_outline_button
 
 
 class FramelessDialog(QDialog):
@@ -45,12 +46,11 @@ class FramelessDialog(QDialog):
         self._title_lbl = QLabel(title)
         self._title_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #FFFFFF;")
         tb.addWidget(self._title_lbl, 1)
-        close_btn = QPushButton("✕")
-        close_btn.setObjectName("closeBtn")
-        close_btn.setFixedSize(44, 32)
+        close_btn = styled_outline_button("✕", "danger", fixed=(44, 32))
         close_btn.setToolTip("Close")
         close_btn.clicked.connect(self.reject)
         tb.addWidget(close_btn)
+        self._frameless_close_button = close_btn
         outer.addWidget(self._title_bar)
 
         self.body = QWidget()
@@ -101,8 +101,7 @@ def aquaduct_information(parent, title: str, text: str) -> None:
     d.setMinimumWidth(420)
     d.body_layout.addWidget(_muted_label(text))
     row = QHBoxLayout()
-    ok = QPushButton("OK")
-    ok.setObjectName("primary")
+    ok = styled_outline_button("OK", "accent_icon", min_width=88)
     ok.clicked.connect(d.accept)
     row.addStretch(1)
     row.addWidget(ok)
@@ -124,10 +123,8 @@ def aquaduct_question(parent, title: str, text: str, *, default_no: bool = True)
     d.setMinimumWidth(480)
     d.body_layout.addWidget(_muted_label(text))
     row = QHBoxLayout()
-    yes = QPushButton("Yes")
-    yes.setObjectName("primary")
-    no = QPushButton("No")
-    no.setObjectName("danger")
+    yes = styled_outline_button("Yes", "accent_icon", min_width=76)
+    no = styled_outline_button("No", "danger", min_width=76)
     row.addStretch(1)
     row.addWidget(yes)
     row.addWidget(no)
@@ -185,8 +182,7 @@ def aquaduct_message_with_details(
         d.body_layout.addWidget(det, 1)
 
     row = QHBoxLayout()
-    ok = QPushButton("OK")
-    ok.setObjectName("primary")
+    ok = styled_outline_button("OK", "accent_icon", min_width=88)
     ok.clicked.connect(d.accept)
     row.addStretch(1)
     row.addWidget(ok)
@@ -226,10 +222,9 @@ def show_hf_token_dialog(parent) -> tuple[bool, str]:
     dlg.body_layout.addWidget(inp)
 
     row = QHBoxLayout()
-    cancel = QPushButton("Cancel")
+    cancel = styled_outline_button("Cancel", "muted_icon", min_width=96)
     cancel.clicked.connect(dlg.reject)
-    ok = QPushButton("OK")
-    ok.setObjectName("primary")
+    ok = styled_outline_button("OK", "accent_icon", min_width=88)
     row.addStretch(1)
     row.addWidget(cancel)
     row.addWidget(ok)

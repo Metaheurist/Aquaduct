@@ -83,6 +83,54 @@ def scan_finished_videos(videos_dir: Path) -> list[FinishedVideoFolder]:
     return out
 
 
+def scan_finished_pictures(pictures_dir: Path) -> list[FinishedVideoFolder]:
+    """Subfolders of ``pictures_dir`` that contain ``final.png``, newest first (same row shape as videos)."""
+    out: list[FinishedVideoFolder] = []
+    try:
+        if not pictures_dir.is_dir():
+            return out
+        for p in pictures_dir.iterdir():
+            if not p.is_dir():
+                continue
+            fin = p / "final.png"
+            if not fin.is_file():
+                continue
+            title = _read_title_from_video_dir(p)
+            mtimes: list[float] = []
+            try:
+                mtimes.append(fin.stat().st_mtime)
+            except OSError:
+                pass
+            meta = p / "meta.json"
+            if meta.is_file():
+                try:
+                    mtimes.append(meta.stat().st_mtime)
+                except OSError:
+                    pass
+            try:
+                mtimes.append(p.stat().st_mtime)
+            except OSError:
+                pass
+            m = max(mtimes) if mtimes else 0.0
+            try:
+                b = int(fin.stat().st_size)
+            except OSError:
+                b = 0
+            out.append(
+                FinishedVideoFolder(
+                    path=p.resolve(),
+                    title=title,
+                    folder_name=p.name,
+                    modified_ts=m,
+                    final_bytes=b,
+                )
+            )
+    except OSError:
+        return out
+    out.sort(key=lambda e: e.modified_ts, reverse=True)
+    return out
+
+
 def scan_run_workspaces(runs_dir: Path) -> list[RunWorkspaceFolder]:
     """All subfolders under ``runs_dir``, newest first."""
     out: list[RunWorkspaceFolder] = []

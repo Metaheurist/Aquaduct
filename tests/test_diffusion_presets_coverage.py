@@ -34,9 +34,16 @@ def test_model_options_video_clip_models_match_clip_registry():
 def test_video_pipe_kwargs_for_each_curated_clip_model():
     for rid in CURATED_VIDEO_CLIP_REPO_IDS:
         kw = _video_pipe_kwargs(rid, num_frames=24)
-        assert kw["num_frames"] == 24
+        if "stable-video-diffusion" in rid:
+            assert kw["num_frames"] <= 24
+        else:
+            assert kw["num_frames"] == 24
         assert kw["num_inference_steps"] >= 1
     svd = _video_pipe_kwargs("stabilityai/stable-video-diffusion-img2vid-xt", num_frames=16)
     assert svd["motion_bucket_id"] == 127
     zs = _video_pipe_kwargs("cerspense/zeroscope_v2_576w", num_frames=24)
     assert zs["width"] == 576 and zs["height"] == 320
+    zs_s = _video_pipe_kwargs("cerspense/zeroscope_v2_30x448x256", num_frames=24)
+    assert zs_s["width"] == 448 and zs_s["height"] == 256
+    ms = _video_pipe_kwargs("damo-vilab/text-to-video-ms-1.7b", num_frames=16)
+    assert ms["width"] == 256 and ms["height"] == 256 and ms["num_frames"] == 16

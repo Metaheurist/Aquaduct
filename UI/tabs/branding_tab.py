@@ -21,8 +21,9 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.config import BrandingSettings
-from UI.no_wheel_controls import NoWheelComboBox
+from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.theme import PRESET_PALETTES, build_qss, resolve_palette
+from UI.title_bar_outline_button import refresh_open_main_window_title_chrome
 
 
 def _hex_or_default(text: str, default_hex: str) -> str:
@@ -215,6 +216,7 @@ def attach_branding_tab(win) -> None:
     # ---- Video style section (palette affects prompts + captions) ----
     vs_header = QLabel("Video style (palette → prompts + captions)")
     vs_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
+    win.brand_video_style_section_header = vs_header
     content_lay.addWidget(vs_header)
 
     win.brand_video_style_enable = QCheckBox("Apply branding to generated video style")
@@ -235,8 +237,38 @@ def attach_branding_tab(win) -> None:
     vs_row.addStretch(1)
     content_lay.addLayout(vs_row)
 
+    # ---- Photo style section (layouts) ----
+    photo_header = QLabel("Photo style (layouts)")
+    photo_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
+    win.brand_photo_section_header = photo_header
+    content_lay.addWidget(photo_header)
+
+    win.brand_photo_style_enable = QCheckBox("Apply branding to photo layouts (poster/newspaper/comic)")
+    win.brand_photo_style_enable.setChecked(bool(getattr(b, "photo_style_enabled", False)))
+    content_lay.addWidget(win.brand_photo_style_enable)
+
+    pf_row = QHBoxLayout()
+    win.brand_photo_frame_enable = QCheckBox("Add frame border")
+    win.brand_photo_frame_enable.setChecked(bool(getattr(b, "photo_frame_enabled", False)))
+    pf_row.addWidget(win.brand_photo_frame_enable)
+    pf_row.addStretch(1)
+    content_lay.addLayout(pf_row)
+
+    pf_form = QFormLayout()
+    win.brand_photo_frame_width = NoWheelSpinBox()
+    win.brand_photo_frame_width.setRange(0, 120)
+    win.brand_photo_frame_width.setValue(int(getattr(b, "photo_frame_width", 24) or 24))
+    pf_form.addRow("Frame width (px)", win.brand_photo_frame_width)
+
+    win.brand_photo_paper_hex = QLineEdit()
+    win.brand_photo_paper_hex.setPlaceholderText("#F2F0E9 (paper tint)")
+    win.brand_photo_paper_hex.setText(str(getattr(b, "photo_paper_hex", "#F2F0E9") or "#F2F0E9"))
+    pf_form.addRow("Paper tint", win.brand_photo_paper_hex)
+    content_lay.addLayout(pf_form)
+
     wmark_header = QLabel("Logo watermark (videos)")
     wmark_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
+    win.brand_watermark_section_header = wmark_header
     content_lay.addWidget(wmark_header)
 
     win.brand_watermark_enable = QCheckBox("Watermark generated videos with a logo")
@@ -321,6 +353,10 @@ def attach_branding_tab(win) -> None:
             video_style_strength=str(win.brand_video_style_strength.currentData() or "subtle")
             if hasattr(win, "brand_video_style_strength")
             else "subtle",
+            photo_style_enabled=bool(win.brand_photo_style_enable.isChecked()) if hasattr(win, "brand_photo_style_enable") else False,
+            photo_frame_enabled=bool(win.brand_photo_frame_enable.isChecked()) if hasattr(win, "brand_photo_frame_enable") else False,
+            photo_frame_width=int(win.brand_photo_frame_width.value()) if hasattr(win, "brand_photo_frame_width") else 24,
+            photo_paper_hex=_hex_or_default(win.brand_photo_paper_hex.text(), "#F2F0E9") if hasattr(win, "brand_photo_paper_hex") else "#F2F0E9",
         )
 
     def _apply_live_theme() -> None:
@@ -331,6 +367,7 @@ def attach_branding_tab(win) -> None:
             branding = _branding_from_ui()
             pal = resolve_palette(branding)
             app.setStyleSheet(build_qss(pal))
+            refresh_open_main_window_title_chrome()
         except Exception:
             pass
 

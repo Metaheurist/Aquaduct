@@ -58,6 +58,20 @@ ART_STYLE_PRESETS: tuple[ArtStylePreset, ...] = (
         reference_strength=0.48,
     ),
     ArtStylePreset(
+        id="meme_brainrot",
+        label="Surreal meme / brainrot",
+        prompt_affix=(
+            "thick black outlines, flat garish colors, sticker and shitpost meme energy, "
+            "wrong perspective, absurd character mashups, crowded comic background, "
+            "Italian brainrot chaotic Shorts look, cel-shaded, not photoreal, not sleek corporate sci-fi"
+        ),
+        negative_affix=(
+            "photorealistic, sleek product render, empty abstract neon machinery, stock cyberpunk corridor, "
+            "minimalist void, single random futuristic wheel"
+        ),
+        reference_strength=0.44,
+    ),
+    ArtStylePreset(
         id="docu_real",
         label="Documentary real",
         prompt_affix="documentary realism, natural light continuity, handheld but stable grade",

@@ -115,6 +115,50 @@ def _prompt_news_clarity(pkg: VideoPackage, web_digest: str, reference_notes: st
     )
 
 
+def _prompt_creepypasta_beats(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    arc = (
+        "Enforce a clear horror-fiction arc: uneasy hook → rising dread → twist/reveal → aftershock → CTA in narrator voice.\n"
+        "Fiction only — do not frame as true crime or real events.\n"
+    )
+    return (
+        f"You revise short-form CREEPYPASTA / horror-fiction vertical scripts (video_format={vf!r}).\n"
+        f"{arc}"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Current script JSON (rewrite completely if needed, preserve fictional intent):\n"
+        f"{body}\n"
+    )
+
+
+def _prompt_creepypasta_policy(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    return (
+        "You are a safety editor for fictional horror shorts.\n"
+        "Remove slurs, hate, harassment, sexual violence, glorification of self-harm, and graphic gore instructions.\n"
+        "Keep dread atmospheric; hedge any line that could be read as a real threat toward a real person.\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Script JSON:\n"
+        f"{body}\n"
+    )
+
+
+def _prompt_creepypasta_clarity(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    return (
+        "Tighten narrator lines for TTS: shorter sentences, slower dread rhythm where needed, no stage directions in narration.\n"
+        "Keep visual_prompt concrete (silhouettes, lighting, setting, one uncanny action, 9:16) — avoid readable wall text.\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Script JSON:\n"
+        f"{body}\n"
+    )
+
+
 def _prompt_comedy_dialogue(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
     body = package_to_json_text(pkg)
     ctx = _ctx_block(web_digest, reference_notes)
@@ -207,6 +251,13 @@ def _stages_for_format(vf: str) -> tuple[_StageSpec, ...]:
             _StageSpec("policy", "Safety polish", "llm_full_json", _prompt_comedy_policy),
             _StageSpec("elaboration", "Length & elaboration", "elaboration_gate", None),
             _StageSpec("punchline", "Punchline polish", "llm_full_json", _prompt_comedy_punchline),
+        )
+    if v == "creepypasta":
+        return (
+            _StageSpec("beats", "Horror arc & dread", "llm_full_json", _prompt_creepypasta_beats),
+            _StageSpec("policy", "Safety polish", "llm_full_json", _prompt_creepypasta_policy),
+            _StageSpec("elaboration", "Length & elaboration", "elaboration_gate", None),
+            _StageSpec("clarity", "Clarity & TTS", "llm_full_json", _prompt_creepypasta_clarity),
         )
     # unhinged
     return (

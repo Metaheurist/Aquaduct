@@ -16,6 +16,7 @@ from src.core.config import (
     AppSettings,
     BrandingSettings,
     ModelExecutionMode,
+    PictureSettings,
     VideoSettings,
     VIDEO_FORMATS,
     VideoFormat,
@@ -207,6 +208,10 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         video_style_strength=str(branding_raw.get("video_style_strength", "subtle"))
         if str(branding_raw.get("video_style_strength", "subtle")) in ("subtle", "strong")
         else "subtle",
+        photo_style_enabled=bool(branding_raw.get("photo_style_enabled", False)),
+        photo_frame_enabled=bool(branding_raw.get("photo_frame_enabled", False)),
+        photo_frame_width=int(branding_raw.get("photo_frame_width", 24)),
+        photo_paper_hex=str(branding_raw.get("photo_paper_hex", "#F2F0E9") or "#F2F0E9"),
     )
 
     topic_map = (
@@ -216,14 +221,37 @@ def app_settings_from_dict(data: Any) -> AppSettings:
     if legacy_flat and not (topic_map.get("news") or []):
         topic_map = {**topic_map, "news": legacy_flat}
 
+    media_mode = str(data.get("media_mode", "video") or "video").strip().lower() if isinstance(data, dict) else "video"
+    if media_mode not in ("video", "photo"):
+        media_mode = "video"
+
     video_format = _norm_video_format(data.get("video_format")) if isinstance(data, dict) else "news"
     api_models = _parse_api_models(data.get("api_models")) if isinstance(data, dict) else default_api_models()
     model_execution_mode = _norm_model_execution_mode(data.get("model_execution_mode")) if isinstance(data, dict) else "local"
     models_storage_mode = _norm_models_storage_mode(data.get("models_storage_mode")) if isinstance(data, dict) else "default"
     models_external_path = str(data.get("models_external_path", "") or "") if isinstance(data, dict) else ""
 
+    picture_raw = data.get("picture", {}) if isinstance(data, dict) else {}
+    if not isinstance(picture_raw, dict):
+        picture_raw = {}
+    pic_out = str(picture_raw.get("output_type", "single_image") or "single_image").strip()
+    if pic_out not in ("single_image", "image_set", "layouted"):
+        pic_out = "single_image"
+    pic_fmt = str(picture_raw.get("picture_format", "poster") or "poster").strip()
+    if pic_fmt not in ("poster", "newspaper", "comic"):
+        pic_fmt = "poster"
+    picture = PictureSettings(
+        template_id=str(picture_raw.get("template_id", "vertical_1080") or "vertical_1080"),
+        width=int(picture_raw.get("width", 1080)),
+        height=int(picture_raw.get("height", 1920)),
+        output_type=pic_out,  # type: ignore[arg-type]
+        image_count=int(picture_raw.get("image_count", 6)),
+        picture_format=pic_fmt,  # type: ignore[arg-type]
+    )
+
     return AppSettings(
         topic_tags_by_mode=topic_map,
+        media_mode=media_mode,  # type: ignore[arg-type]
         video_format=video_format,
         model_execution_mode=model_execution_mode,
         models_storage_mode=models_storage_mode,  # type: ignore[arg-type]
@@ -256,6 +284,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         voice_model_id=str(data.get("voice_model_id", "")) if isinstance(data, dict) else "",
         allow_nsfw=bool(data.get("allow_nsfw", False)) if isinstance(data, dict) else False,
         video=video,
+        picture=picture,
         branding=branding,
         tiktok_enabled=bool(data.get("tiktok_enabled", False)) if isinstance(data, dict) else False,
         tiktok_client_key=str(data.get("tiktok_client_key", "")) if isinstance(data, dict) else "",

@@ -10,6 +10,7 @@ from UI.tabs.run_tab import attach_run_tab
 from UI.tabs.settings_tab import attach_settings_tab
 from UI.tabs.topics_tab import attach_topics_tab
 from UI.tabs.video_tab import attach_video_tab
+from UI.tabs.picture_tab import attach_picture_tab
 from UI.tabs.effects_tab import attach_effects_tab
 from UI.tabs.library_tab import attach_library_tab
 
@@ -18,6 +19,7 @@ __all__ = [
     "attach_run_tab",
     "attach_topics_tab",
     "attach_video_tab",
+    "attach_picture_tab",
     "attach_effects_tab",
     "attach_captions_tab",
     "attach_branding_tab",

@@ -170,19 +170,16 @@ def attach_video_tab(win) -> None:
     win.use_slideshow_chk = QCheckBox("Generate images and stitch (slideshow mode)")
     win.use_slideshow_chk.setChecked(bool(win.settings.video.use_image_slideshow))
     form_video.addRow("", win.use_slideshow_chk)
-
-    win.pro_mode_chk = QCheckBox("Pro mode (multi-scene video from script)")
-    win.pro_mode_chk.setChecked(bool(getattr(win.settings.video, "pro_mode", False)))
-    win.pro_mode_chk.setToolTip(
+    # Video mode now always uses Pro (scene-by-scene motion). Slideshow is disabled.
+    win.use_slideshow_chk.setChecked(False)
+    win.use_slideshow_chk.setEnabled(False)
+    win.use_slideshow_chk.setToolTip(
         help_tooltip_rich(
-            "Splits the script into scene prompts. Text-to-video models (e.g. ZeroScope) animate prompts directly. "
-            "Image-to-video models (e.g. Stable Video Diffusion) first render each scene as a still with the Image model, "
-            "then animate those keyframes. Slideshow must be off.",
+            "Video mode always runs Pro scene-by-scene generation (no slideshow mode).",
             "video",
             slide=1,
         )
     )
-    form_video.addRow("", win.pro_mode_chk)
 
     win.pro_clip_seconds_spin = NoWheelDoubleSpinBox()
     win.pro_clip_seconds_spin.setRange(0.5, 120.0)
@@ -372,11 +369,8 @@ def attach_video_tab(win) -> None:
             win.bitrate_combo.setCurrentText(pr.bitrate_preset)
             win.clips_spin.setValue(int(pr.clips_per_video))
             win.clip_seconds_spin.setValue(int(round(pr.clip_seconds)))
-            win.pro_mode_chk.setChecked(bool(getattr(pr, "pro_mode", False)))
             win.pro_clip_seconds_spin.setValue(float(getattr(pr, "pro_clip_seconds", 4.0)))
-            if getattr(pr, "pro_mode", False):
-                win.use_slideshow_chk.setChecked(False)
-            _sync_pro_mode_ui()
+            win.use_slideshow_chk.setChecked(False)
         finally:
             win._applying_video_template = False
 
@@ -405,23 +399,6 @@ def attach_video_tab(win) -> None:
     win._mark_video_template_custom = _mark_video_template_custom
     win._video_platform_preset_id = ""
 
-    def _sync_pro_mode_ui() -> None:
-        pro = bool(win.pro_mode_chk.isChecked())
-        lbl = form_video.labelForField(win.images_spin)
-        if lbl is not None:
-            lbl.setVisible(not pro)
-        win.images_spin.setVisible(not pro)
-        win.pro_clip_seconds_spin.setEnabled(pro)
-        if pro:
-            win.use_slideshow_chk.setChecked(False)
-            win.use_slideshow_chk.setEnabled(False)
-        else:
-            win.use_slideshow_chk.setEnabled(True)
-
-    def _on_pro_mode_toggled(*_a) -> None:
-        _sync_pro_mode_ui()
-        _mark_video_template_custom()
-
     win._platform_preset_tile_group.buttonClicked.connect(_on_preset_tile_clicked)
 
     win.format_combo.currentIndexChanged.connect(lambda *_: _mark_video_template_custom())
@@ -435,7 +412,6 @@ def attach_video_tab(win) -> None:
         win.clip_seconds_spin,
     ):
         _spin.valueChanged.connect(lambda *_: _mark_video_template_custom())
-    win.pro_mode_chk.toggled.connect(_on_pro_mode_toggled)
     win.pro_clip_seconds_spin.valueChanged.connect(lambda *_: _mark_video_template_custom())
 
     # Restore template selection from settings (prefer saved id, else infer from numbers)
@@ -457,7 +433,7 @@ def attach_video_tab(win) -> None:
                 bitrate_preset=str(v.bitrate_preset),
                 clips_per_video=int(getattr(v, "clips_per_video", 3)),
                 clip_seconds=float(getattr(v, "clip_seconds", 4.0)),
-                pro_mode=bool(getattr(v, "pro_mode", False)),
+                pro_mode=True,
                 pro_clip_seconds=float(getattr(v, "pro_clip_seconds", 4.0)),
             )
             if inferred and inferred in win._platform_preset_tile_buttons:
@@ -468,4 +444,11 @@ def attach_video_tab(win) -> None:
                 win._video_platform_preset_id = ""
     finally:
         win._applying_video_template = False
-        _sync_pro_mode_ui()
+        # Hide slideshow-only control (images_per_video) since Video is always Pro.
+        try:
+            lbl = form_video.labelForField(win.images_spin)
+            if lbl is not None:
+                lbl.setVisible(False)
+            win.images_spin.setVisible(False)
+        except Exception:
+            pass

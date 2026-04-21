@@ -1,8 +1,9 @@
 """
 Optional web digest + reference image download for the script pipeline (Firecrawl).
 
-For **cartoon** and **unhinged** video formats, search is biased toward memes / viral / templates and runs
-extra Firecrawl queries so scraped pages yield more meme-adjacent reference images for diffusion.
+For **cartoon** and **unhinged**, search is biased toward memes / viral / templates. For **creepypasta**, toward
+horror fiction / atmospheric references. Extra Firecrawl supplement queries run for those modes so scraped pages
+yield richer reference images for diffusion.
 """
 
 from __future__ import annotations
@@ -101,6 +102,17 @@ def _search_query(topic_tags: list[str], source_titles: list[str], video_format:
             "newest viral memes OR trending Twitter meme OR chaotic meme OR absurdist shitpost OR brainrot 2025",
             240,
         )
+    if vf == "creepypasta":
+        horror_bias = (
+            "(creepypasta OR horror fiction OR scary story OR nosleep OR urban legend OR paranormal OR "
+            "unsettling short story OR liminal horror OR ghost story OR atmospheric dread)"
+        )
+        if base:
+            return _trim(f"{base} {horror_bias}", 240)
+        return _trim(
+            "creepypasta atmospheric horror reference OR liminal space photography OR vintage horror illustration",
+            240,
+        )
     q = base
     return _trim(q, 240) or "breaking news today"
 
@@ -111,9 +123,9 @@ def _meme_supplement_searches(
     topic_tags: list[str],
     source_titles: list[str],
 ) -> list[str]:
-    """Extra Firecrawl queries for cartoon/unhinged to pull meme-heavy pages and reference art."""
+    """Extra Firecrawl queries for creative video formats to pull richer reference pages."""
     vf = normalize_video_format(video_format)
-    if vf not in ("cartoon", "unhinged"):
+    if vf not in ("cartoon", "unhinged", "creepypasta"):
         return []
     tags = [t.strip() for t in topic_tags if str(t).strip()][:4]
     tag_expr = " OR ".join(f'"{t}"' for t in tags)
@@ -129,6 +141,18 @@ def _meme_supplement_searches(
             ),
             _trim(
                 "(trending meme OR viral cartoon OR animation meme OR comic meme OR meme redraw reference)",
+                240,
+            ),
+        ]
+    if vf == "creepypasta":
+        return [
+            _trim(
+                f"{lead}{tag_prefix}"
+                "(liminal space photography OR analog horror still OR foggy street at night OR abandoned building interior)",
+                240,
+            ),
+            _trim(
+                "(vintage horror illustration OR unsettling silhouette art OR moonlit forest OR empty hallway)",
                 240,
             ),
         ]
@@ -191,9 +215,9 @@ def build_script_context(
     """
     Build optional web digest and download reference images.
 
-    For ``video_format`` **cartoon** or **unhinged**, search queries bias toward memes / viral content and
-    two supplement Firecrawl searches run to find more meme-adjacent pages; more pages are scraped and
-    more reference images may be saved when ``want_refs`` is true.
+    For ``video_format`` **cartoon**, **unhinged**, or **creepypasta**, search queries bias toward meme/viral or
+    horror-atmosphere content; two supplement Firecrawl searches run; more pages are scraped and more reference
+    images may be saved when ``want_refs`` is true.
 
     Returns:
         digest_text (trimmed, for LLM),
@@ -211,10 +235,10 @@ def build_script_context(
     can_fc = bool(api_key) and bool(firecrawl_enabled)
 
     vf_norm = normalize_video_format(video_format or "news")
-    meme_mode = vf_norm in ("cartoon", "unhinged")
-    max_scrape = MAX_PAGES_TO_SCRAPE_MEME_MODES if meme_mode else MAX_PAGES_TO_SCRAPE
-    max_ref_save = MAX_REFERENCE_IMAGES_MEME_MODES if meme_mode else MAX_REFERENCE_IMAGES
-    img_cap = 16 if meme_mode else 12
+    rich_web_mode = vf_norm in ("cartoon", "unhinged", "creepypasta")
+    max_scrape = MAX_PAGES_TO_SCRAPE_MEME_MODES if rich_web_mode else MAX_PAGES_TO_SCRAPE
+    max_ref_save = MAX_REFERENCE_IMAGES_MEME_MODES if rich_web_mode else MAX_REFERENCE_IMAGES
+    img_cap = 16 if rich_web_mode else 12
 
     if want_web and can_fc:
         q = _search_query(topic_tags, source_titles, video_format)
@@ -238,7 +262,7 @@ def build_script_context(
             dprint("story_context", "search failed", str(e))
 
         supplement: list[str] = []
-        if meme_mode:
+        if rich_web_mode:
             supplement = _meme_supplement_searches(
                 video_format=vf_norm, topic_tags=topic_tags, source_titles=source_titles
             )
@@ -249,11 +273,16 @@ def build_script_context(
                     )
                     _merge_hits(raw_s)
                 except Exception as e:
-                    dprint("story_context", "meme supplement search failed", mq[:60], str(e))
+                    dprint("story_context", "supplement search failed", mq[:60], str(e))
 
         digest_parts.append(f"## Search query\n{q}\n")
         if supplement:
-            digest_parts.append("\n## Meme / viral supplement queries\n")
+            sup_heading = (
+                "Horror / atmosphere supplement queries"
+                if vf_norm == "creepypasta"
+                else "Meme / viral supplement queries"
+            )
+            digest_parts.append(f"\n## {sup_heading}\n")
             for mq in supplement:
                 digest_parts.append(f"- {mq}\n")
         digest_parts.append("\n## Result links\n")

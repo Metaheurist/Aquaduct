@@ -275,10 +275,18 @@ def rate_model_fit_for_repo(
             need_ok = 10.0
             need_ex = 14.0
             why = "Image-to-video diffusion is VRAM-heavy."
+        elif "zeroscope" in rid and ("30x448" in rid or "448x256" in rid):
+            need_ok = 5.0
+            need_ex = 8.0
+            why = "ZeroScope 448×256 is lighter than the 576w variant."
         elif "zeroscope" in rid:
             need_ok = 6.0
             need_ex = 10.0
             why = "Text-to-video at 576w is moderate weight."
+        elif "text-to-video-ms" in rid or "modelscope" in rid:
+            need_ok = 8.0
+            need_ex = 12.0
+            why = "ModelScope 1.7B text-to-video is moderate weight at 256²."
         else:
             need_ok = 8.0
             need_ex = 12.0
@@ -354,6 +362,9 @@ _IMAGE_PREF_ORDER: tuple[str, ...] = (
 
 _MOTION_VIDEO_PREF_ORDER: tuple[str, ...] = (
     "cerspense/zeroscope_v2_576w",
+    "cerspense/zeroscope_v2_30x448x256",
+    "damo-vilab/text-to-video-ms-1.7b",
+    "stabilityai/stable-video-diffusion-img2vid",
     "stabilityai/stable-video-diffusion-img2vid-xt",
 )
 

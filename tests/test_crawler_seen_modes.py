@@ -182,14 +182,20 @@ def test_effective_query_mode_tailors_search_bias() -> None:
     assert "sketch" in u
     assert "viral" in u.lower() or "meme" in u.lower() or "trending" in u.lower()
 
+    cp = _effective_query(query="", topic_tags=["attic"], topic_mode="creepypasta")
+    assert "attic" in cp
+    assert "horror" in cp.lower() or "creepypasta" in cp.lower() or "scary" in cp.lower()
+
     assert "AI tool" in _default_headline_query("news") or "AI" in _default_headline_query("news")
     assert _default_headline_query("explainer") == _default_headline_query("news")
     cdef = _default_headline_query("cartoon").lower()
-    assert "writing prompt" in cdef or "short story" in cdef or "reddit" in cdef
+    assert "cartoon" in cdef or "animation" in cdef or "meme" in cdef
     assert "premiere" not in cdef and "trailer" not in cdef
     assert "tutorial" not in cdef
     uh_def = _default_headline_query("unhinged").lower()
     assert "viral" in uh_def or "meme" in uh_def or "internet culture" in uh_def
+    cp_def = _default_headline_query("creepypasta").lower()
+    assert "creepypasta" in cp_def or "nosleep" in cp_def or "horror" in cp_def
 
 
 def test_clear_news_seen_cache_files_empty_dir(tmp_path) -> None:

@@ -81,46 +81,13 @@ QPushButton[buttonRole="secondary"]:hover {{
 QPushButton[buttonRole="secondary"]:pressed {{ border: 1px solid {danger}; }}
 QPushButton#primary {{ background: {accent}; color: {panel}; border: 1px solid {accent}; font-weight: 600; }}
 QPushButton#danger {{ background: {danger}; color: {text}; border: 1px solid {danger}; font-weight: 600; }}
-QPushButton#closeBtn {{
+/* Frameless ✕, download popups, and main-window title pills use TitleBarOutlineButton (custom paint); strip QSS borders so Fusion does not rasterize dotted arcs. */
+QPushButton[chrome="title_outline"] {{
+  border: none;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: #FF6B8A;
-  font-weight: 800;
   padding: 4px 10px;
-}}
-QPushButton#closeBtn:hover {{ background: rgba(254, 44, 85, 0.18); border: 1px solid rgba(254, 44, 85, 0.35); color: {text}; }}
-QPushButton#closeBtn:pressed {{ background: rgba(254, 44, 85, 0.28); }}
-QPushButton#saveBtn {{
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: {accent};
   font-weight: 800;
-  padding: 4px 10px;
 }}
-QPushButton#saveBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
-QPushButton#saveBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
-QPushButton#graphBtn {{
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: {accent};
-  font-weight: 800;
-  padding: 4px 10px;
-}}
-QPushButton#graphBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
-QPushButton#graphBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
-QPushButton#helpBtn {{
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: {muted};
-  font-weight: 800;
-  padding: 4px 10px;
-}}
-QPushButton#helpBtn:hover {{ background: rgba(37, 244, 238, 0.12); border: 1px solid rgba(37, 244, 238, 0.30); color: {text}; }}
-QPushButton#helpBtn:pressed {{ background: rgba(37, 244, 238, 0.22); }}
 QCheckBox {{ spacing: 10px; color: {text}; font-weight: 600; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid {border}; background: {control_bg}; }}
 QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}

@@ -29,3 +29,13 @@ def test_import_ui_api_model_widgets() -> None:
 def test_import_ui_tutorial_links() -> None:
     pytest.importorskip("PyQt6.QtWidgets")
     importlib.import_module("UI.tutorial_links")
+
+
+def test_import_ui_title_bar_outline_button() -> None:
+    pytest.importorskip("PyQt6.QtWidgets")
+    importlib.import_module("UI.title_bar_outline_button")
+
+
+def test_import_ui_frameless_dialog() -> None:
+    pytest.importorskip("PyQt6.QtWidgets")
+    importlib.import_module("UI.frameless_dialog")

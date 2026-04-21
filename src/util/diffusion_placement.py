@@ -81,8 +81,9 @@ def _resolve_auto_offload_mode() -> OffloadMode:
         return "sequential"
 
     # Very little free host RAM: avoid aggressive CPU staging (offload copies weights through RAM).
-    # Prefer keeping the full pipeline on GPU if the card is large enough.
-    if avail_gb is not None and avail_gb < 3.0 and vram_gb >= 8.0:
+    # Prefer keeping the full pipeline on GPU only when VRAM is comfortably large (8 GB is not enough
+    # for full-GPU SVD + typical prior loads — that path OOMs on common cards).
+    if avail_gb is not None and avail_gb < 3.0 and vram_gb >= 12.0:
         return "none"
 
     if vram_gb >= 12.0:

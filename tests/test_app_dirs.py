@@ -37,6 +37,19 @@ def test_get_paths_uses_app_data_subdirs(monkeypatch, tmp_path):
     assert p.runs_dir == p.app_data_dir / "runs"
 
 
+def test_media_output_root_video_vs_photo(monkeypatch, tmp_path):
+    import src.core.app_dirs as ad
+    from src.core.config import get_paths, media_output_root
+
+    monkeypatch.setattr(ad, "_migrated", False)
+    monkeypatch.setattr(ad, "installation_dir", lambda: tmp_path)
+
+    paths = get_paths()
+    assert media_output_root(paths, "video") == paths.videos_dir
+    assert media_output_root(paths, "photo") == paths.pictures_dir
+    assert media_output_root(paths, None) == paths.videos_dir
+
+
 def test_repo_logs_under_installation_dir(monkeypatch, tmp_path):
     from src.util import repo_logs
 

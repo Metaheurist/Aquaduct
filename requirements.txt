@@ -7,6 +7,7 @@
 requests>=2.32.0
 beautifulsoup4>=4.12.0
 lxml>=5.2.0
+python-dotenv>=1.0.0
 
 # Local LLM + image generation (install torch first: scripts/install_pytorch.py)
 transformers>=4.45.0

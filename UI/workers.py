@@ -14,7 +14,7 @@ from src.content.brain_api import (
     generate_script_openai,
 )
 from src.content.firecrawl_news import resolve_firecrawl_api_key
-from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings, get_paths
+from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings, get_paths, media_output_root
 from src.runtime.api_generation import generate_still_png_bytes
 from src.runtime.model_backend import is_api_mode
 from src.content.crawler import (
@@ -25,7 +25,13 @@ from src.content.crawler import (
     news_item_to_script_source,
     pick_one_item,
 )
-from src.content.topics import effective_topic_tags, news_cache_mode_for_run, topic_tags_for_mode
+from src.content.topics import (
+    effective_topic_tags,
+    news_cache_mode_for_run,
+    topic_tags_for_mode,
+    video_format_is_creative_topics_mode,
+    video_format_skips_seen_url_disk_cache,
+)
 from src.content.topic_discovery import discover_topics_from_items
 from src.content.topic_research_assets import topic_research_digest_for_script, write_topic_research_pack
 from src.models.model_manager import (
@@ -217,7 +223,7 @@ class TopicDiscoverWorker(QThread):
                 **_firecrawl_kwargs(app),
             )
             topics = discover_topics_from_items(items, limit=40, topic_mode=self.topic_mode)
-            if self.topic_mode in ("cartoon", "unhinged") and items:
+            if video_format_is_creative_topics_mode(self.topic_mode) and items:
                 try:
                     pack = write_topic_research_pack(
                         items=items,
@@ -969,14 +975,18 @@ class PreviewWorker(QThread):
                 pkg = enforce_arc(pkg, video_format=vf)
             else:
                 cm = news_cache_mode_for_run(app)
-                self.progress.emit(
-                    "headlines",
-                    0,
-                    -1,
-                    "Fetching headlines…" if cm == "unhinged" else "Reading news cache…",
+                _hl = (
+                    "Fetching creepypasta sources…"
+                    if str(cm).strip().lower() == "creepypasta"
+                    else (
+                        "Fetching headlines…"
+                        if video_format_skips_seen_url_disk_cache(cm)
+                        else "Reading news cache…"
+                    )
                 )
+                self.progress.emit("headlines", 0, -1, _hl)
                 fc = _firecrawl_kwargs(app)
-                if cm == "unhinged":
+                if video_format_skips_seen_url_disk_cache(cm):
                     if bool(getattr(app.video, "high_quality_topic_selection", True)):
                         items = get_scored_items(
                             paths.news_cache_dir,
@@ -1240,14 +1250,18 @@ class StoryboardWorker(QThread):
                             pass
             else:
                 cm = news_cache_mode_for_run(app)
-                self.progress.emit(
-                    "headlines",
-                    0,
-                    -1,
-                    "Fetching headlines…" if cm == "unhinged" else "Reading news cache…",
+                _hl = (
+                    "Fetching creepypasta sources…"
+                    if str(cm).strip().lower() == "creepypasta"
+                    else (
+                        "Fetching headlines…"
+                        if video_format_skips_seen_url_disk_cache(cm)
+                        else "Reading news cache…"
+                    )
                 )
+                self.progress.emit("headlines", 0, -1, _hl)
                 fc = _firecrawl_kwargs(app)
-                if cm == "unhinged":
+                if video_format_skips_seen_url_disk_cache(cm):
                     if bool(getattr(app.video, "high_quality_topic_selection", True)):
                         items = get_scored_items(
                             paths.news_cache_dir,
@@ -1407,7 +1421,8 @@ class StoryboardWorker(QThread):
             prepare_for_next_model()
 
             safe_dir = pipeline_main.safe_title_to_dirname(pkg.title)
-            video_dir = paths.videos_dir / safe_dir
+            _mm_sb = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+            video_dir = media_output_root(paths, _mm_sb) / safe_dir
             assets_dir = video_dir / "assets"
             if not character_selected_in_settings(app):
                 try:
@@ -1439,6 +1454,7 @@ class StoryboardWorker(QThread):
                 branding=getattr(app, "branding", None),
                 max_scenes=8,
                 character=active_ch,
+                video_format=vf,
             )
             self.progress.emit("storyboard_build", 100, -1, "Storyboard structured")
 

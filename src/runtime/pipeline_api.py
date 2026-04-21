@@ -25,8 +25,8 @@ from src.content.crawler import (
     pick_one_item,
 )
 from src.content.personality_auto import auto_pick_personality
-from src.content.topics import effective_topic_tags, news_cache_mode_for_run
-from src.core.config import AppSettings, VideoSettings, get_models, get_paths, safe_title_to_dirname
+from src.content.topics import effective_topic_tags, news_cache_mode_for_run, video_format_skips_seen_url_disk_cache
+from src.core.config import AppSettings, VideoSettings, get_models, get_paths, media_output_root, safe_title_to_dirname
 from src.render.branding_video import apply_palette_to_prompts
 from src.render.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
@@ -113,6 +113,10 @@ def run_once_api(
     paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
     paths.runs_dir.mkdir(parents=True, exist_ok=True)
     paths.videos_dir.mkdir(parents=True, exist_ok=True)
+    paths.pictures_dir.mkdir(parents=True, exist_ok=True)
+    _mm_out = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+    _projects_root = media_output_root(paths, _mm_out)
+    _projects_root.mkdir(parents=True, exist_ok=True)
 
     if not find_ffmpeg(paths.ffmpeg_dir):
         dprint("pipeline", "Downloading FFmpeg…")
@@ -145,7 +149,7 @@ def run_once_api(
             fc = _firecrawl_kwargs(app)
             tags = effective_topic_tags(app)
             cm = news_cache_mode_for_run(app)
-            if cm == "unhinged":
+            if video_format_skips_seen_url_disk_cache(cm):
                 if bool(getattr(video_settings, "high_quality_topic_selection", True)):
                     items = get_scored_items(
                         paths.news_cache_dir,
@@ -338,7 +342,7 @@ def run_once_api(
                 active_character = cast_to_ephemeral_character(cast=cast, video_format=vf_cast2)
                 char_ctx = character_context_for_brain(active_character)
                 safe_dir_cast = safe_title_to_dirname(pkg.title)
-                video_dir_cast = paths.videos_dir / safe_dir_cast
+                video_dir_cast = _projects_root / safe_dir_cast
                 assets_dir_cast = video_dir_cast / "assets"
                 assets_dir_cast.mkdir(parents=True, exist_ok=True)
                 (assets_dir_cast / "generated_cast.json").write_text(
@@ -352,7 +356,7 @@ def run_once_api(
     _pipe_progress(on_progress, 44, -1, f"Script ready (API) — {personality_pick.preset.label}")
 
     safe_dir = safe_title_to_dirname(pkg.title)
-    video_dir = paths.videos_dir / safe_dir
+    video_dir = _projects_root / safe_dir
     assets_dir = video_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
 

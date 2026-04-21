@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout
+from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
+
+from UI.title_bar_outline_button import styled_outline_button
 
 
 class DownloadPopup(QDialog):
@@ -32,16 +34,12 @@ class DownloadPopup(QDialog):
         self.title.setStyleSheet("font-size: 14px; font-weight: 800;")
         top.addWidget(self.title, 1)
 
-        pause = QPushButton("⏸")
-        pause.setObjectName("pauseBtn")
-        pause.setFixedSize(44, 32)
+        pause = styled_outline_button("⏸", "muted_icon", fixed=(44, 32))
         pause.setToolTip("Pause (you can resume later)")
         pause.clicked.connect(self._request_pause)
         top.addWidget(pause, 0, Qt.AlignmentFlag.AlignRight)
 
-        close = QPushButton("✕")
-        close.setObjectName("closeBtn")
-        close.setFixedSize(44, 32)
+        close = styled_outline_button("✕", "danger", fixed=(44, 32))
         close.clicked.connect(self._request_cancel)
         top.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
         lay.addLayout(top)
@@ -120,9 +118,7 @@ class ImportPopup(QDialog):
         self.title.setStyleSheet("font-size: 14px; font-weight: 800;")
         top.addWidget(self.title, 1)
 
-        close = QPushButton("✕")
-        close.setObjectName("closeBtn")
-        close.setFixedSize(44, 32)
+        close = styled_outline_button("✕", "danger", fixed=(44, 32))
         close.clicked.connect(self._request_cancel)
         top.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
         lay.addLayout(top)

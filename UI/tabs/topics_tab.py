@@ -16,14 +16,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.content.topics import normalize_video_format
+from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
 from src.core.config import VIDEO_FORMATS
 from UI.no_wheel_controls import NoWheelComboBox
 from UI.tutorial_links import help_tooltip_rich
 
 
 def _is_creative_topics_mode(topic_mode: str | None) -> bool:
-    return normalize_video_format(str(topic_mode or "news")) in ("cartoon", "unhinged")
+    return video_format_is_creative_topics_mode(str(topic_mode or "news"))
 
 
 def _pick_topics_dialog(
@@ -49,7 +49,7 @@ def _pick_topics_dialog(
     if creative:
         sub = QLabel(
             "Phrases are parsed from page titles Firecrawl found while searching for jokes, memes, short stories, "
-            "art, and fandom threads (not Google News headlines). "
+            "horror fiction, art, and fandom threads (not Google News headlines). "
             + (
                 "Enable Firecrawl on the API tab with a key for reliable results."
                 if not firecrawl_ready
@@ -121,8 +121,8 @@ def _no_topics_dialog(
         d.body_layout.addWidget(header)
         if not firecrawl_ready:
             sub = QLabel(
-                "Cartoon and Unhinged Discover uses Firecrawl to search the open web for jokes, memes, stories, "
-                "and image-heavy pages (then turns titles into topic tags).\n\n"
+                "Creative formats (Cartoon, Unhinged, Creepypasta) use Firecrawl to search the open web for jokes, memes, "
+                "horror fiction, stories, and image-heavy pages (then turns titles into topic tags).\n\n"
                 "Turn on Firecrawl on the API tab and add your API key (or set the FIRECRAWL_API_KEY "
                 "environment variable), then try Discover again."
             )
@@ -155,7 +155,7 @@ def attach_topics_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
 
-    header = QLabel("Topic tags (per video format)")
+    header = QLabel("Topic tags (per source mode)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
@@ -168,6 +168,7 @@ def attach_topics_tab(win) -> None:
     win.topics_mode_combo.addItem("Cartoon", "cartoon")
     win.topics_mode_combo.addItem("Explainer", "explainer")
     win.topics_mode_combo.addItem("Cartoon (unhinged)", "unhinged")
+    win.topics_mode_combo.addItem("Creepypasta", "creepypasta")
     tm = str(getattr(win.settings, "video_format", "news") or "news")
     if tm not in VIDEO_FORMATS:
         tm = "news"
@@ -178,9 +179,10 @@ def attach_topics_tab(win) -> None:
     lay.addLayout(mode_row)
 
     mode_hint = QLabel(
-        "Lists are separate per format. News and Explainer Discover use headline-style ideas. "
-        "Cartoon and Unhinged use Firecrawl to search the web for jokes, memes, stories, and art pages, "
-        "then suggest topic tags from page titles (enable Firecrawl on the API tab). "
+        "Lists are separate per source mode (same modes as the Run tab headline/topic control). "
+        "In **Photo** mode, these tags still steer preset prompts and headline picks. "
+        "News and Explainer Discover use headline-style ideas. "
+        "Cartoon, Unhinged, and Creepypasta use Firecrawl for creative web pages. "
         "Approved picks are added here."
     )
     mode_hint.setWordWrap(True)

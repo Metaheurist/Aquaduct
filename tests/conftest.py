@@ -31,6 +31,7 @@ def patch_paths(monkeypatch: pytest.MonkeyPatch, tmp_repo_root: Path):
             news_cache_dir=data_dir / "news_cache",
             runs_dir=ada / "runs",
             videos_dir=ada / "videos",
+            pictures_dir=ada / "pictures",
             models_dir=ada / "models",
             cache_dir=cache_dir,
             ffmpeg_dir=cache_dir / "ffmpeg",
@@ -59,6 +60,19 @@ def no_network(monkeypatch: pytest.MonkeyPatch):
         raise RuntimeError("Network disabled in unit tests; mock requests.get")
 
     monkeypatch.setattr(requests, "get", _blocked)
+
+
+@pytest.fixture()
+def qapplication():
+    """Minimal QApplication for UI unit tests when pytest-qt is not installed."""
+    pytest.importorskip("PyQt6.QtWidgets")
+    from PyQt6.QtWidgets import QApplication
+    import sys
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+    return app
 
 
 @pytest.fixture()

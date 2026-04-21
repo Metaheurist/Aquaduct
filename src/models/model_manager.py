@@ -46,7 +46,28 @@ def model_options() -> list[ModelOption]:
             "video",
             size_hint="~8-12GB",
         ),
+        ModelOption(
+            "Stable Video Diffusion (img2vid, base checkpoint)",
+            "stabilityai/stable-video-diffusion-img2vid",
+            "slow",
+            "video",
+            size_hint="~8-12GB",
+        ),
         ModelOption("ZeroScope v2 576w (text-to-video clips)", "cerspense/zeroscope_v2_576w", "slow", "video", size_hint="~6-8GB"),
+        ModelOption(
+            "ZeroScope v2 448×256 (lighter text-to-video)",
+            "cerspense/zeroscope_v2_30x448x256",
+            "faster",
+            "video",
+            size_hint="~4-6GB",
+        ),
+        ModelOption(
+            "ModelScope Text-to-Video 1.7B (research, English prompts)",
+            "damo-vilab/text-to-video-ms-1.7b",
+            "slow",
+            "video",
+            size_hint="~8-10GB",
+        ),
         # Voice (TTS) - Hugging Face snapshots for local weights (pipeline TTS path is still ElevenLabs -> Kokoro hook -> pyttsx3)
         ModelOption("Kokoro 82M", "hexgrad/Kokoro-82M", "fastest", "voice", size_hint="82M"),
         ModelOption("MMS-TTS English (Meta, lightweight)", "facebook/mms-tts-eng", "faster", "voice", size_hint="MMS-TTS"),

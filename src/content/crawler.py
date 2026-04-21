@@ -147,6 +147,13 @@ def _default_headline_query(mode: str | None) -> str:
             "\"internet humor\") "
             "(cartoon OR animation OR animated OR \"animated short\" OR parody OR satire OR meme OR comedy)"
         )
+    if m == "creepypasta":
+        # Online short horror / urban legend fiction (adapt for video — not true-crime gore).
+        return (
+            "(creepypasta OR \"short horror story\" OR \"scary story\" OR nosleep OR \"urban legend\" OR "
+            "\"two sentence horror\" OR \"horror fiction\" OR \"ghost story\" OR liminal OR paranormal OR unsettling) "
+            "(reddit OR creepypasta OR wattpad OR quotev OR tumblr OR blog OR forum OR story)"
+        )
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
 
@@ -186,14 +193,20 @@ def _effective_query(
                 f"(unhinged OR absurd OR surreal OR brainrot OR chaotic OR meme OR shitpost OR cursed OR liminal) "
                 f"(cartoon OR animation OR animated OR parody OR satire OR \"animated short\" OR absurdist)"
             )
+        if mode == "creepypasta":
+            return (
+                f"({tag_expr}) "
+                f"(creepypasta OR horror OR scary OR paranormal OR unsettling OR liminal OR \"short story\" OR nosleep OR "
+                f"\"urban legend\" OR \"ghost story\")"
+            )
         return f"({tag_expr}) {_default_headline_query(mode)}"
     return _default_headline_query(mode)
 
 
 def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[str] | None) -> list[str]:
-    """Alternate search strings when the primary creative query under-fills (cartoon / unhinged only)."""
+    """Alternate search strings when the primary creative query under-fills (cartoon / unhinged / creepypasta)."""
     m = _cache_mode_key(topic_mode)
-    if m not in ("cartoon", "unhinged"):
+    if m not in ("cartoon", "unhinged", "creepypasta"):
         return []
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     tag_prefix = ""
@@ -206,6 +219,16 @@ def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[s
             "(\"animated short\" OR animatic OR \"2D cartoon\" OR \"cartoon clip\") (comedy OR parody OR meme OR absurdist)",
             "(\"cartoon meme\" OR \"animation meme\" OR \"funny cartoon\" OR \"cursed cartoon\") (viral OR absurdist OR surreal)",
             "(\"character animation\" OR \"cartoon style\" OR illustration) (comedy OR humor OR satire) (animated OR cartoon)",
+        ]
+    elif m == "creepypasta":
+        rest = [
+            "(site:reddit.com/r/nosleep OR site:reddit.com/r/creepypasta OR site:reddit.com/r/shortscarystories) "
+            "(horror OR scary OR unsettling OR paranormal OR liminal)",
+            "(creepypasta wiki OR creepypasta.com OR \"creepypasta stories\" OR \"classic creepypasta\") "
+            "(story OR legend OR fiction)",
+            "(\"two sentence horror\" OR micro horror OR \"flash fiction\" horror OR \"urban legend\" story) "
+            "(reddit OR tumblr OR blog)",
+            "(backrooms OR liminal space OR uncanny OR \"found footage\" style) (fiction OR story OR creepypasta)",
         ]
     else:
         rest = [
@@ -232,7 +255,7 @@ def _fetch_headlines(
 
     For **news/explainer**, RSS/MarkTechPost run when Firecrawl under-fills.
 
-    For **cartoon/unhinged**: extra Firecrawl meme-oriented queries run first. If still short,
+    For **cartoon/unhinged/creepypasta**: extra Firecrawl-oriented alternate queries run when enabled. If still short,
     RSS + MarkTechPost run **unless** ``topic_discover_only`` is True (Topics tab **Discover** only),
     so preset runs / storyboard can still get URLs without Firecrawl.
     """
@@ -337,7 +360,7 @@ def _fetch_headlines(
             if len(fetched) >= need:
                 break
 
-    # Pipeline / runs / storyboard: cartoon & unhinged still get RSS+MarkTechPost if Firecrawl did not fill.
+    # Pipeline / runs / storyboard: creative modes still get RSS+MarkTechPost if Firecrawl did not fill.
     # Topics → Discover passes topic_discover_only=True to keep headline RSS off for those modes.
     if (
         not use_headlines
@@ -458,7 +481,7 @@ def fetch_latest_items(
     """
     Fetches up to `limit` items from sources WITHOUT applying the seen-cache filter.
 
-    Set ``topic_discover_only=True`` only for the Topics tab **Discover** button (cartoon/unhinged skip
+    Set ``topic_discover_only=True`` only for the Topics tab **Discover** button (creative modes skip
     headline RSS in that path). Pipeline and ``get_scored_items`` use the default ``False`` so runs
     can fall back to Google News RSS when Firecrawl returns nothing.
     """
@@ -573,7 +596,7 @@ def get_scored_items(
     then return up to `limit` best items.
 
     When ``persist_cache`` is False, URL/title history under ``news_cache_dir`` is not read or
-    written (used for Cartoon unhinged preset runs).
+    written (used for unhinged / creepypasta preset runs).
     """
     from .content_quality import diversify, load_seen_titles, save_seen_titles, score_item
 

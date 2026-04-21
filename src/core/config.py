@@ -10,11 +10,27 @@ ModelsStorageMode = Literal["default", "external"]
 from .app_dirs import application_data_dir, installation_dir
 
 # Pipeline + per-mode topic lists use the same IDs.
-VideoFormat = Literal["news", "cartoon", "explainer", "unhinged"]
+VideoFormat = Literal["news", "cartoon", "explainer", "unhinged", "creepypasta"]
 
-VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer", "unhinged")
+VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer", "unhinged", "creepypasta")
 
 RunContentMode = Literal["preset", "custom"]
+
+# High-level UI/pipeline mode (separate from model execution Local/API).
+MediaMode = Literal["video", "photo"]
+
+PictureOutputType = Literal["single_image", "image_set", "layouted"]
+PictureFormat = Literal["poster", "newspaper", "comic"]
+
+
+@dataclass(frozen=True)
+class PictureSettings:
+    template_id: str = "vertical_1080"
+    width: int = 1080
+    height: int = 1920
+    output_type: PictureOutputType = "single_image"
+    image_count: int = 6
+    picture_format: PictureFormat = "poster"
 
 
 def video_format_supports_facts_card(video_format: str | None) -> bool:
@@ -46,9 +62,17 @@ class Paths:
     news_cache_dir: Path
     runs_dir: Path
     videos_dir: Path
+    # Photo pipeline outputs (per-project folders with ``final.png`` + ``assets/``).
+    pictures_dir: Path
     models_dir: Path
     cache_dir: Path
     ffmpeg_dir: Path
+
+
+def media_output_root(paths: Paths, media_mode: str | None) -> Path:
+    """Where finished media projects are stored: ``videos/`` vs ``pictures/``."""
+    mm = str(media_mode or "video").strip().lower()
+    return paths.pictures_dir if mm == "photo" else paths.videos_dir
 
 
 def get_paths() -> Paths:
@@ -58,6 +82,7 @@ def get_paths() -> Paths:
     news_cache_dir = data_dir / "news_cache"
     runs_dir = ada / "runs"
     videos_dir = ada / "videos"
+    pictures_dir = ada / "pictures"
     models_dir = ada / "models"
     cache_dir = ada / ".cache"
     ffmpeg_dir = cache_dir / "ffmpeg"
@@ -69,6 +94,7 @@ def get_paths() -> Paths:
         news_cache_dir=news_cache_dir,
         runs_dir=runs_dir,
         videos_dir=videos_dir,
+        pictures_dir=pictures_dir,
         models_dir=models_dir,
         cache_dir=cache_dir,
         ffmpeg_dir=ffmpeg_dir,
@@ -212,10 +238,18 @@ class BrandingSettings:
     video_style_enabled: bool = False
     video_style_strength: Literal["subtle", "strong"] = "subtle"
 
+    # Photo style (optional): affects still prompts + layout rendering
+    photo_style_enabled: bool = False
+    photo_frame_enabled: bool = False
+    photo_frame_width: int = 24
+    # Used as a paper-like background tint for layouts (poster/newspaper/comic).
+    photo_paper_hex: str = "#F2F0E9"
+
 
 @dataclass(frozen=True)
 class AppSettings:
     topic_tags_by_mode: dict[str, list[str]] = field(default_factory=default_topic_tags_by_mode)
+    media_mode: MediaMode = "video"
     video_format: VideoFormat = "news"
     prefer_gpu: bool = True
     try_llm_4bit: bool = True
@@ -248,6 +282,7 @@ class AppSettings:
     voice_model_id: str = ""
     allow_nsfw: bool = False  # allow NSFW content (disable safety checker)
     video: VideoSettings = VideoSettings()
+    picture: PictureSettings = PictureSettings()
     branding: BrandingSettings = BrandingSettings()
     # TikTok Content Posting API (OAuth + optional upload). See docs/tiktok.md
     tiktok_enabled: bool = False

@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from UI.library_fs import format_byte_size, scan_finished_videos, scan_run_workspaces
+from UI.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
 from UI.tab_sections import add_section_spacing
 from UI.tutorial_links import help_tooltip_rich
 
@@ -30,12 +30,10 @@ def attach_library_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
-    sub = QLabel(
-        "Browse finished video outputs under videos/ (final.mp4 + assets/) and intermediate run folders under runs/. "
-        "Use Refresh after a render completes."
-    )
+    sub = QLabel()
     sub.setWordWrap(True)
     sub.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    win._library_intro_label = sub
     lay.addWidget(sub)
 
     _sty = w.style()
@@ -44,13 +42,7 @@ def attach_library_tab(win) -> None:
 
     win.library_refresh_btn = QPushButton()
     win.library_refresh_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
-    win.library_refresh_btn.setToolTip(
-        help_tooltip_rich(
-            "Rescan videos/ and runs/",
-            "tasks_library",
-            slide=1,
-        )
-    )
+    win.library_refresh_btn.setObjectName("libraryRefreshBtn")
     win.library_refresh_btn.setAccessibleName("Refresh library")
     win.library_refresh_btn.clicked.connect(win._library_refresh)
     win.library_refresh_btn.setMinimumWidth(30)
@@ -73,7 +65,8 @@ def attach_library_tab(win) -> None:
 
     add_section_spacing(lay, px=8)
 
-    vg = QGroupBox("videos/ — projects with final.mp4")
+    vg = QGroupBox()
+    win._library_media_group = vg
     vg.setStyleSheet(
         "QGroupBox { font-size: 12px; font-weight: 600; margin-top: 6px; } "
         "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #B7B7C2; }"
@@ -164,8 +157,11 @@ def attach_library_tab(win) -> None:
             return "—"
 
     def _fill() -> None:
+        mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+        media_root = win.paths.pictures_dir if mm == "photo" else win.paths.videos_dir
         win.library_videos_table.setRowCount(0)
-        for v in scan_finished_videos(win.paths.videos_dir):
+        rows = scan_finished_pictures(media_root) if mm == "photo" else scan_finished_videos(media_root)
+        for v in rows:
             r = win.library_videos_table.rowCount()
             win.library_videos_table.insertRow(r)
             t0 = QTableWidgetItem(v.title[:200])
@@ -190,4 +186,52 @@ def attach_library_tab(win) -> None:
             )
 
     win._library_fill_tables = _fill
-    _fill()
+    refresh_library_tab_for_media_mode(win)
+
+
+def refresh_library_tab_for_media_mode(win) -> None:
+    """Align Library copy, group titles, and scans with Photo vs Video mode."""
+    mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+    is_photo = mm == "photo"
+    if hasattr(win, "_library_intro_label"):
+        if is_photo:
+            win._library_intro_label.setText(
+                "Browse finished photo projects under pictures/ (final.png + assets/, including generated images). "
+                "Intermediate pipeline workspaces stay under runs/. Use Refresh after a render completes."
+            )
+        else:
+            win._library_intro_label.setText(
+                "Browse finished video outputs under videos/ (final.mp4 + assets/) and intermediate run folders under runs/. "
+                "Use Refresh after a render completes."
+            )
+    if hasattr(win, "library_refresh_btn"):
+        win.library_refresh_btn.setToolTip(
+            help_tooltip_rich(
+                "Rescan pictures/ and runs/" if is_photo else "Rescan videos/ and runs/",
+                "tasks_library",
+                slide=1,
+            )
+        )
+    if hasattr(win, "library_open_videos_root_btn"):
+        win.library_open_videos_root_btn.setText("Open pictures folder" if is_photo else "Open videos folder")
+        win.library_open_videos_root_btn.setToolTip(
+            "Open the pictures/ root (photo mode outputs)" if is_photo else "Open the videos/ root in the file manager"
+        )
+    if hasattr(win, "_library_media_group") and win._library_media_group is not None:
+        win._library_media_group.setTitle(
+            "pictures/ — projects with final.png" if is_photo else "videos/ — projects with final.mp4"
+        )
+    if hasattr(win, "library_videos_table"):
+        win.library_videos_table.setHorizontalHeaderLabels(
+            ["Title", "Folder", "Modified", "final.png" if is_photo else "final.mp4"]
+        )
+    if hasattr(win, "library_video_play_btn"):
+        win.library_video_play_btn.setText("Open final.png" if is_photo else "Play final.mp4")
+        win.library_video_play_btn.setToolTip(
+            "Open final.png with the default app" if is_photo else "Open final.mp4 with the default app"
+        )
+    if hasattr(win, "_library_fill_tables"):
+        try:
+            win._library_fill_tables()
+        except Exception:
+            pass

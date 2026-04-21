@@ -55,6 +55,16 @@ hiddenimports = [
     "UI.tabs.captions_tab",
     "UI.tabs.my_pc_tab",
     "UI.tabs.library_tab",
+    "UI.tabs.picture_tab",
+    "UI.title_bar_outline_button",
+    "UI.media_mode_toggle",
+    "UI.frameless_dialog",
+    "UI.preview_dialog",
+    "UI.storyboard_dialog",
+    "UI.resource_graph_dialog",
+    "UI.download_popup",
+    "UI.brain_expand",
+    "UI.progress_tasks",
     "src.util.cpu_parallelism",
     "src.runtime.pipeline_api",
     "src.runtime.generation_facade",
@@ -76,6 +86,18 @@ datas += copy_metadata("huggingface_hub")
 datas += copy_metadata("accelerate")
 datas += copy_metadata("safetensors")
 datas += copy_metadata("bitsandbytes")
+try:
+    datas += copy_metadata("python-dotenv")
+except Exception:
+    pass
+try:
+    datas += copy_metadata("psutil")
+except Exception:
+    pass
+try:
+    datas += copy_metadata("rich")
+except Exception:
+    pass
 hiddenimports += collect_submodules("src")
 hiddenimports += collect_submodules("debug")
 hiddenimports += collect_submodules("UI")
@@ -103,6 +125,16 @@ tmp_ret = collect_all("certifi")
 datas += tmp_ret[0]
 binaries += tmp_ret[1]
 hiddenimports += tmp_ret[2]
+
+# Runtime deps from requirements.txt (often missed by graph analysis on onefile builds).
+for _pkg in ("psutil", "rich", "bs4", "lxml", "dotenv"):
+    try:
+        tmp_ret = collect_all(_pkg)
+        datas += tmp_ret[0]
+        binaries += tmp_ret[1]
+        hiddenimports += tmp_ret[2]
+    except Exception:
+        pass
 
 a = Analysis(
     [str(_ROOT / "UI" / "ui_app.py")],

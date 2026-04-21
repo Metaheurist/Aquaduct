@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
     QSizePolicy,
     QTextEdit,
     QVBoxLayout,
@@ -19,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.frameless_dialog import FramelessDialog
+from UI.title_bar_outline_button import styled_outline_button
 
 
 class _Topic:
@@ -82,7 +82,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
             ),
             (
                 "Format, personality, character",
-                "Video format (News, Cartoon, Explainer, Cartoon unhinged) selects which topic list and "
+                "Video format (News, Cartoon, Explainer, Cartoon unhinged, Creepypasta) selects which topic list and "
                 "crawler behavior apply, together with the Topics tab.\n\n"
                 "Personality biases tone. Character (optional) ties voice and visuals to a profile from the "
                 "Characters tab.",
@@ -334,17 +334,15 @@ class TutorialDialog(FramelessDialog):
 
         nav.addStretch(1)
 
-        self._prev_btn = QPushButton("◀  Previous")
-        self._prev_btn.setProperty("buttonRole", "secondary")
+        self._prev_btn = styled_outline_button("◀  Previous", "muted_icon", min_width=120)
         self._prev_btn.clicked.connect(self._prev_slide)
         nav.addWidget(self._prev_btn)
 
-        self._next_btn = QPushButton("Next  ▶")
-        self._next_btn.setObjectName("primary")
+        self._next_btn = styled_outline_button("Next  ▶", "accent_icon", min_width=120)
         self._next_btn.clicked.connect(self._next_slide)
         nav.addWidget(self._next_btn)
 
-        done = QPushButton("Close")
+        done = styled_outline_button("Close", "accent_icon", min_width=96)
         done.clicked.connect(self.accept)
         nav.addWidget(done)
 

@@ -38,3 +38,13 @@ def topic_tags_for_mode(app: AppSettings, mode: str) -> list[str]:
 def news_cache_mode_for_run(app: AppSettings) -> str:
     """Which URL/title dedupe bucket to use (matches `video_format`)."""
     return normalize_video_format(getattr(app, "video_format", None))
+
+
+def video_format_skips_seen_url_disk_cache(value: str | None) -> bool:
+    """Preset modes that fetch fresh URLs each run without persisting seen_<mode>.json (Firecrawl-heavy)."""
+    return normalize_video_format(value) in ("unhinged", "creepypasta")
+
+
+def video_format_is_creative_topics_mode(value: str | None) -> bool:
+    """Topics tab Discover: web-first creative sourcing (not Google News headline lists)."""
+    return normalize_video_format(value) in ("cartoon", "unhinged", "creepypasta")

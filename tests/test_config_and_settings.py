@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from src.core.config import AppSettings, VideoSettings
-from src.content.topics import effective_topic_tags, news_cache_mode_for_run, normalize_video_format, video_format_uses_news_style_sourcing
+from src.content.topics import (
+    effective_topic_tags,
+    news_cache_mode_for_run,
+    normalize_video_format,
+    video_format_is_creative_topics_mode,
+    video_format_skips_seen_url_disk_cache,
+    video_format_uses_news_style_sourcing,
+)
 from src.settings.ui_settings import load_settings, save_settings
 
 
@@ -76,6 +83,16 @@ def test_ui_settings_tutorial_completed_roundtrip(tmp_repo_root, monkeypatch):
     assert s2.tutorial_completed is True
 
 
+def test_ui_settings_media_mode_roundtrip(tmp_repo_root, monkeypatch):
+    from src.settings import ui_settings as ui_mod
+
+    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
+    s = AppSettings(media_mode="photo")  # type: ignore[arg-type]
+    save_settings(s)
+    s2 = load_settings()
+    assert s2.media_mode == "photo"
+
+
 def test_ui_settings_roundtrip_custom_video_fields(tmp_repo_root, monkeypatch):
     from src.settings import ui_settings as ui_mod
 
@@ -137,11 +154,26 @@ def test_effective_topic_tags_unhinged():
     assert effective_topic_tags(s) == ["meme", "sketch"]
 
 
+def test_effective_topic_tags_creepypasta():
+    s = AppSettings(
+        topic_tags_by_mode={
+            "news": ["n1"],
+            "cartoon": [],
+            "explainer": [],
+            "unhinged": [],
+            "creepypasta": ["nosleep", "liminal"],
+        },
+        video_format="creepypasta",
+    )
+    assert effective_topic_tags(s) == ["nosleep", "liminal"]
+
+
 def test_video_format_uses_news_style_sourcing_only_news_and_explainer():
     assert video_format_uses_news_style_sourcing("news") is True
     assert video_format_uses_news_style_sourcing("explainer") is True
     assert video_format_uses_news_style_sourcing("cartoon") is False
     assert video_format_uses_news_style_sourcing("unhinged") is False
+    assert video_format_uses_news_style_sourcing("creepypasta") is False
 
 
 def test_news_cache_mode_for_run_matches_video_format():
@@ -149,6 +181,7 @@ def test_news_cache_mode_for_run_matches_video_format():
     assert news_cache_mode_for_run(AppSettings(video_format="NEWS")) == "news"
     assert news_cache_mode_for_run(AppSettings(video_format="explainer")) == "explainer"
     assert news_cache_mode_for_run(AppSettings(video_format="unhinged")) == "unhinged"
+    assert news_cache_mode_for_run(AppSettings(video_format="creepypasta")) == "creepypasta"
 
 
 def test_news_cache_mode_for_run_unknown_defaults_to_news():
@@ -160,6 +193,18 @@ def test_news_cache_mode_for_run_unknown_defaults_to_news():
 def test_normalize_video_format_unhinged():
     assert normalize_video_format("UNHINGED") == "unhinged"
     assert normalize_video_format("unhinged") == "unhinged"
+
+
+def test_normalize_video_format_creepypasta():
+    assert normalize_video_format("CREEPYPASTA") == "creepypasta"
+    assert normalize_video_format("creepypasta") == "creepypasta"
+
+
+def test_video_format_pipeline_helpers_creepypasta():
+    assert video_format_skips_seen_url_disk_cache("creepypasta") is True
+    assert video_format_skips_seen_url_disk_cache("unhinged") is True
+    assert video_format_skips_seen_url_disk_cache("news") is False
+    assert video_format_is_creative_topics_mode("creepypasta") is True
 
 
 def test_save_settings_calls_mark_hidden(tmp_repo_root, monkeypatch):

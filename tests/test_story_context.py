@@ -22,16 +22,25 @@ def test_search_query_unhinged_biases_memes():
     assert "meme" in q.lower() or "viral" in q.lower()
 
 
+def test_search_query_creepypasta_biases_horror():
+    qc = _search_query(["mirror"], ["Basement door"], video_format="creepypasta")
+    assert "mirror" in qc.lower()
+    assert "horror" in qc.lower() or "creepypasta" in qc.lower() or "scary" in qc.lower()
+
+
 def test_search_query_news_default():
     q = _search_query(["AI"], [], video_format="news")
     assert "AI" in q
 
 
-def test_meme_supplement_only_cartoon_unhinged():
+def test_meme_supplement_only_creative_formats():
     assert len(_meme_supplement_searches(video_format="news", topic_tags=[], source_titles=[])) == 0
     a = _meme_supplement_searches(video_format="cartoon", topic_tags=["x"], source_titles=[])
     assert len(a) == 2
     assert any("meme" in x.lower() or "knowyourmeme" in x.lower() for x in a)
+    cp = _meme_supplement_searches(video_format="creepypasta", topic_tags=[], source_titles=[])
+    assert len(cp) == 2
+    assert any("liminal" in x.lower() or "horror" in x.lower() or "fog" in x.lower() for x in cp)
 
 
 def test_build_script_context_cartoon_calls_extra_searches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -61,6 +70,33 @@ def test_build_script_context_cartoon_calls_extra_searches(monkeypatch: pytest.M
     # primary query + 2 supplement searches = 3 Firecrawl search calls
     assert len(calls) >= 3
     assert "meme" in calls[0].lower() or "viral" in calls[0].lower()
+
+
+def test_build_script_context_creepypasta_calls_extra_searches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    calls: list[str] = []
+
+    def fake_search(q: str, *, limit: int, api_key: str):
+        calls.append(q)
+        return [{"title": "H", "url": f"https://ex.com/{len(calls)}", "source": "x"}]
+
+    def fake_scrape(url: str, *, api_key: str, timeout_s: int = 60):
+        return f"![x](https://picsum.photos/seed/{hash(url) % 1000}/40/40)\n"
+
+    monkeypatch.setattr("src.content.story_context.firecrawl_search_news", fake_search)
+    monkeypatch.setattr("src.content.story_context.firecrawl_scrape_markdown", fake_scrape)
+
+    digest, _paths, _primary, _notes = build_script_context(
+        topic_tags=["mirror"],
+        source_titles=["seed"],
+        stored_firecrawl_key="k",
+        firecrawl_enabled=True,
+        want_web=True,
+        want_refs=False,
+        out_dir=tmp_path,
+        video_format="creepypasta",
+    )
+    assert "Horror / atmosphere supplement" in digest
+    assert len(calls) >= 3
 
 
 def test_build_script_context_news_one_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

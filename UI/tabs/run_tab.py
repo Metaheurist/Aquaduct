@@ -35,6 +35,7 @@ def attach_run_tab(win) -> None:
     qty_row = QHBoxLayout()
     qty_lbl = QLabel("Videos to generate")
     qty_lbl.setStyleSheet("color: #B7B7C2;")
+    win._run_qty_label = qty_lbl
     qty_row.addWidget(qty_lbl)
     win.run_qty_spin = NoWheelSpinBox()
     win.run_qty_spin.setRange(1, 50)
@@ -52,14 +53,15 @@ def attach_run_tab(win) -> None:
     lay.addLayout(qty_row)
 
     fmt_row = QHBoxLayout()
-    fmt_lbl = QLabel("Video format")
-    fmt_lbl.setStyleSheet("color: #B7B7C2;")
-    fmt_row.addWidget(fmt_lbl)
+    win._video_format_label = QLabel("Video format")
+    win._video_format_label.setStyleSheet("color: #B7B7C2;")
+    fmt_row.addWidget(win._video_format_label)
     win.video_format_combo = NoWheelComboBox()
     win.video_format_combo.addItem("News (headlines)", "news")
     win.video_format_combo.addItem("Cartoon", "cartoon")
     win.video_format_combo.addItem("Explainer", "explainer")
     win.video_format_combo.addItem("Cartoon (unhinged)", "unhinged")
+    win.video_format_combo.addItem("Creepypasta (web horror)", "creepypasta")
     cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
     if cur_vf not in VIDEO_FORMATS:
         cur_vf = "news"
@@ -68,6 +70,28 @@ def attach_run_tab(win) -> None:
     fmt_row.addWidget(win.video_format_combo, 1)
     fmt_row.addStretch(1)
     lay.addLayout(fmt_row)
+
+    pic_row = QHBoxLayout()
+    win._picture_format_label = QLabel("Picture format")
+    win._picture_format_label.setStyleSheet("color: #B7B7C2;")
+    pic_row.addWidget(win._picture_format_label)
+    win.picture_format_run_combo = NoWheelComboBox()
+    win.picture_format_run_combo.addItem("Poster", "poster")
+    win.picture_format_run_combo.addItem("Newspaper", "newspaper")
+    win.picture_format_run_combo.addItem("Comic", "comic")
+    win.picture_format_run_combo.setCurrentIndex(0)
+    pic_row.addWidget(win.picture_format_run_combo, 1)
+    pic_row.addStretch(1)
+    lay.addLayout(pic_row)
+
+    # Initial mode visibility (title-bar toggle updates via main_window._apply_media_mode_ui).
+    try:
+        mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+        is_photo = mm == "photo"
+        win._picture_format_label.setVisible(is_photo)
+        win.picture_format_run_combo.setVisible(is_photo)
+    except Exception:
+        pass
 
     style_row = QHBoxLayout()
     style_lbl = QLabel("Art style (visual continuity)")
@@ -130,6 +154,8 @@ def attach_run_tab(win) -> None:
         """Preset row explains how headlines are sourced (matches pipeline behavior)."""
         if vf == "unhinged":
             return "Preset (topics + fresh headlines)"
+        if vf == "creepypasta":
+            return "Preset (topics + web horror fiction)"
         if vf == "news":
             return "Preset (news cache + topics)"
         # cartoon / explainer: per-format URL cache under data/news_cache/, not the news bucket
@@ -138,7 +164,24 @@ def attach_run_tab(win) -> None:
     def _sync_content_mode_ui() -> None:
         custom = win.run_content_custom_radio.isChecked()
         win.custom_instructions_edit.setVisible(custom)
+        mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
         vf = str(win.video_format_combo.currentData() or "news")
+        if mm == "photo":
+            win.run_content_preset_radio.setText("Preset (topics + headlines for prompts)")
+            if custom:
+                vf_hint.setText(
+                    "Custom mode: your instructions drive the still / layout brief (no headline crawl). "
+                    "Use the Picture tab for template size, output type, and poster/newspaper/comic format. "
+                    f"Topic tags from the Topics tab (for the selected source mode below) still bias prompts when relevant. "
+                    f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters.)"
+                )
+            else:
+                vf_hint.setText(
+                    "Preset mode: headlines and topic tags come from the **source mode** below and your Topics tab — "
+                    "same sourcing as video runs, but the pipeline renders stills or layouts. "
+                    "Match **Picture** tab: template, output type, image count, and picture format."
+                )
+            return
         win.run_content_preset_radio.setText(_preset_mode_caption(vf))
         if custom:
             extra = ""
@@ -146,6 +189,11 @@ def attach_run_tab(win) -> None:
                 extra = (
                     " Cartoon (unhinged) targets adult-animation satire (absurdist / shock-cartoon energy); "
                     "local TTS rotates voices per beat (single cloud voice if your character uses ElevenLabs)."
+                )
+            elif vf == "creepypasta":
+                extra = (
+                    " Creepypasta mode writes fictional horror from web-sourced story pages (Firecrawl). "
+                    "Stay fiction-only — no true-crime framing."
                 )
             vf_hint.setText(
                 "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
@@ -159,13 +207,20 @@ def attach_run_tab(win) -> None:
                 "Adult-animation satire tone. Local TTS rotates one system voice per script beat; "
                 "when a character uses ElevenLabs, one voice is used for the full track."
             )
+        elif vf == "creepypasta":
+            vf_hint.setText(
+                "Creepypasta: Preset crawls the open web for short horror / creepypasta fiction (Firecrawl search + optional RSS fallback). "
+                "Uses your Topics tags to steer queries; no local seen-URL cache. Enable Firecrawl on the API tab for best results."
+            )
         else:
             vf_hint.setText("Tags for the run come from the Topics tab list for this format.")
 
     win.run_content_preset_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
     win.run_content_custom_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
     win.video_format_combo.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
+    win._sync_run_content_hints = _sync_content_mode_ui
     _sync_content_mode_ui()
+    win.vf_hint_label = vf_hint
     lay.addWidget(vf_hint)
 
     # Personality selection
@@ -246,3 +301,48 @@ def attach_run_tab(win) -> None:
     lay.addLayout(row)
 
     win.tabs.addTab(w, "Run")
+
+
+def refresh_run_tab_for_media_mode(win) -> None:
+    """Keep Run tab labels and actions aligned with Video vs Photo mode."""
+    from UI.tutorial_links import help_tooltip_rich
+
+    mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+    is_photo = mm == "photo"
+    if hasattr(win, "_run_qty_label"):
+        win._run_qty_label.setText("Runs to generate" if is_photo else "Videos to generate")
+    if hasattr(win, "run_qty_spin"):
+        if is_photo:
+            win.run_qty_spin.setToolTip(
+                "Each count is one photo pipeline run (each project folder under .Aquaduct_data/pictures/)."
+            )
+        else:
+            win.run_qty_spin.setToolTip(
+                help_tooltip_rich(
+                    "Each count is one full pipeline run (one video). "
+                    "Runs after the first are queued and start automatically when the previous run finishes.",
+                    "run",
+                    slide=0,
+                )
+            )
+    if hasattr(win, "_video_format_label"):
+        win._video_format_label.setText("Headline & topic mode" if is_photo else "Video format")
+    if hasattr(win, "custom_instructions_edit"):
+        if is_photo:
+            win.custom_instructions_edit.setPlaceholderText(
+                "Describe the still or layout: subject, composition, style, on-image text, mood… "
+                f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters stored.)"
+            )
+        else:
+            win.custom_instructions_edit.setPlaceholderText(
+                "Describe the video: topic, angle, tone, structure, visual vibe, CTA… "
+                f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters stored.)"
+            )
+    if hasattr(win, "preview_btn"):
+        win.preview_btn.setVisible(not is_photo)
+    if hasattr(win, "storyboard_btn"):
+        win.storyboard_btn.setVisible(not is_photo)
+    if hasattr(win, "open_videos_btn"):
+        win.open_videos_btn.setText("Open outputs folder" if is_photo else "Open videos folder")
+    if hasattr(win, "_sync_run_content_hints"):
+        win._sync_run_content_hints()
