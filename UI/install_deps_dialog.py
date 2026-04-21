@@ -8,11 +8,11 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QProgressBar,
-    QPushButton,
     QTextEdit,
 )
 
 from UI.frameless_dialog import FramelessDialog
+from UI.title_bar_outline_button import styled_outline_button
 
 from src.models.torch_install import (
     PipSubprocessRef,
@@ -133,15 +133,14 @@ class InstallDepsDialog(FramelessDialog):
         self.body_layout.addWidget(self._log, 1)
 
         row = QHBoxLayout()
-        self._ok = QPushButton("Close")
-        self._ok.setObjectName("primary")
+        self._ok = styled_outline_button("Close", "accent_icon", min_width=96)
         self._ok.setEnabled(True)
         self._ok.clicked.connect(self._on_close_clicked)
         row.addStretch(1)
         row.addWidget(self._ok)
         self.body_layout.addLayout(row)
 
-        self._close_btn = self.findChild(QPushButton, "closeBtn")
+        self._close_btn = getattr(self, "_frameless_close_button", None)
 
     def reject(self) -> None:  # type: ignore[override]
         if self._worker is not None and self._worker.isRunning():

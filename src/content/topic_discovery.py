@@ -93,9 +93,30 @@ _CREATIVE_BOOST_TERMS = (
     "character",
 )
 
+_CREEPYPASTA_BOOST_TERMS = (
+    "creepypasta",
+    "horror",
+    "scary",
+    "nosleep",
+    "ghost",
+    "paranormal",
+    "legend",
+    "unsettling",
+    "liminal",
+    "spooky",
+    "haunted",
+    "fiction",
+    "urban",
+    "cursed",
+    "eerie",
+)
+
 
 def _creative_topic_boost(s: str, topic_mode: str | None) -> int:
     m = normalize_video_format(topic_mode or "news")
+    if m == "creepypasta":
+        sl = s.lower()
+        return sum(2 for w in _CREEPYPASTA_BOOST_TERMS if w in sl)
     if m not in ("cartoon", "unhinged"):
         return 0
     sl = s.lower()
@@ -104,7 +125,7 @@ def _creative_topic_boost(s: str, topic_mode: str | None) -> int:
 
 def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
     m = normalize_video_format(topic_mode or "news")
-    if m not in ("cartoon", "unhinged"):
+    if m not in ("cartoon", "unhinged", "creepypasta"):
         return False
     t = " ".join(s.split()).strip()
     if not t:
@@ -117,6 +138,27 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
     words = t.split()
     if len(words) == 1 and words[0].lower() in _CREATIVE_SINGLE_JUNK:
         return True
+    if m == "creepypasta":
+        horror_ok = any(
+            k in sl
+            for k in (
+                "horror",
+                "scary",
+                "creepypasta",
+                "ghost",
+                "nosleep",
+                "legend",
+                "paranormal",
+                "story",
+                "fiction",
+                "unsettling",
+                "liminal",
+                "haunted",
+            )
+        )
+        if re.search(r"\b(youtube|netflix|instagram|tiktok|facebook)\b", sl) and not horror_ok:
+            return True
+        return False
     # Bare platform / venue lines with no animation signal
     if re.search(
         r"\b(youtube|netflix|instagram|tiktok)\b",
@@ -128,7 +170,7 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
 
 def _title_too_generic_for_creative(title: str, topic_mode: str | None) -> bool:
     m = normalize_video_format(topic_mode or "news")
-    if m not in ("cartoon", "unhinged"):
+    if m not in ("cartoon", "unhinged", "creepypasta"):
         return False
     sl = (title or "").lower()
     if _LISTICLE_OR_CLICKBAIT.search(sl):
@@ -216,7 +258,7 @@ def _fallback_topics_from_titles(
         out.append(t)
         if len(out) >= max(1, int(limit)):
             break
-    if not out and items and normalize_video_format(topic_mode or "news") in ("cartoon", "unhinged"):
+    if not out and items and normalize_video_format(topic_mode or "news") in ("cartoon", "unhinged", "creepypasta"):
         # Last resort: still show something if everything was filtered.
         seen2: set[str] = set()
         for it in items:

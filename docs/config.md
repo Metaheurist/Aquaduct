@@ -16,8 +16,11 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 `get_paths()` defines:
 - `data/news_cache/` — per-format dedupe files `seen_<mode>.json` and `seen_titles_<mode>.json` (plus optional legacy `seen.json` / `seen_titles.json` for migration); local-only, not committed
 - `runs/`
-- `videos/`
+- `videos/` — under **`.Aquaduct_data/videos`** (finished video projects when **`media_mode`** is **`video`**)
+- `pictures/` — under **`.Aquaduct_data/pictures`** (finished photo projects when **`media_mode`** is **`photo`**)
 - `.cache/ffmpeg/`
+
+[`media_output_root()`](../src/core/config.py) returns **`paths.videos_dir`** or **`paths.pictures_dir`** based on the active **`media_mode`** (see below).
 
 ## Models
 `get_models()` defines:
@@ -41,6 +44,7 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
+- `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](ui.md))
 - `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)

@@ -107,6 +107,7 @@ def build_storyboard(
     branding=None,
     max_scenes: int = 10,
     character: Character | None = None,
+    video_format: str | None = None,
 ) -> Storyboard:
     """
     Convert VideoPackage beats into storyboarded scenes with roles/shot types/overlays and deterministic seeds.
@@ -138,7 +139,16 @@ def build_storyboard(
             neg = f"{neg}, {extra}" if neg else extra
             if len(neg) > 3000:
                 neg = neg[:3000]
-        prompts = [condition_prompt(p, scene_type=scene_types[i], idx=i, negatives=neg) for i, p in enumerate(prompts)]
+        prompts = [
+            condition_prompt(
+                p,
+                scene_type=scene_types[i],
+                idx=i,
+                negatives=neg,
+                video_format=video_format,
+            )
+            for i, p in enumerate(prompts)
+        ]
     except Exception:
         pass
 

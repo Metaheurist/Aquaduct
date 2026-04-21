@@ -61,7 +61,7 @@ PyTorch-only (no `requirements.txt`) for both: add `-PyTorchOnly` to the `.ps1`,
 - **PyQt6**: only required when using the graphical control panel (`python -m UI`). The headless `main.py` pipeline does not need it.
 
 ## Development / tests + build
-- **`requirements-dev.txt`**: **pytest** stack plus **PyInstaller** (for `build/build.ps1`). **`pytest-qt`** is for `@pytest.mark.qt` tests (desktop UI). Core tests run without PyQt; full UI test runs need PyQt6 and pytest-qt. Pipeline **run-queue** payload shapes: [`tests/test_pipeline_run_queue_contract.py`](tests/test_pipeline_run_queue_contract.py) (no Qt); main-window queue behavior: [`tests/test_ui_main_window.py`](tests/test_ui_main_window.py).
+- **`requirements-dev.txt`**: **pytest** stack plus **PyInstaller** (for `build/build.ps1`). **`pytest-qt`** is for `@pytest.mark.qt` tests that use the **`qtbot`** fixture (desktop UI). Some **`@pytest.mark.qt`** modules only need **PyQt6** and the shared **`qapplication`** fixture in [`tests/conftest.py`](tests/conftest.py) (e.g. [`tests/test_title_bar_outline_button.py`](tests/test_title_bar_outline_button.py)). Core tests run without PyQt; full UI test runs need PyQt6 and usually pytest-qt. Pipeline **run-queue** payload shapes: [`tests/test_pipeline_run_queue_contract.py`](tests/test_pipeline_run_queue_contract.py) (no Qt); main-window queue behavior: [`tests/test_ui_main_window.py`](tests/test_ui_main_window.py).
 
 ### Test tiers (pytest)
 

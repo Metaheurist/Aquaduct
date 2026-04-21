@@ -70,6 +70,17 @@ def test_tight_host_ram_and_decent_vram_prefers_none(monkeypatch: pytest.MonkeyP
     assert dp.resolve_diffusion_offload_mode() == "none"
 
 
+def test_tight_host_ram_8gb_vram_prefers_model_not_full_gpu(monkeypatch: pytest.MonkeyPatch, clear_offload_env: None) -> None:
+    """~8 GB VRAM cannot safely run full-GPU SVD after other loads; do not pick ``none`` here."""
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=64.0, gpu_name="g", vram_gb=8.0),
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 2.0)
+    assert dp.resolve_diffusion_offload_mode() == "model"
+
+
 def test_place_pipeline_cpu_when_no_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
     import torch
 

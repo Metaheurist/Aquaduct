@@ -114,6 +114,8 @@ def _maybe_import_smoke_and_exit() -> None:
         "src.runtime.generation_facade",
         "UI.workers",
         "UI.api_model_widgets",
+        # Pulls PyQt6, MainWindow, and tab graph — catches missing frozen deps early.
+        "UI.app",
     ):
         importlib.import_module(mod)
     print("AQUADUCT_IMPORT_SMOKE_OK", flush=True)

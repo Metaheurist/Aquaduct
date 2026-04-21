@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import shutil
@@ -51,14 +52,15 @@ from src.content.prompt_conditioning import (
 from src.content.story_context import build_script_context
 from src.content.topic_research_assets import topic_research_digest_for_script
 from src.content.story_pipeline import run_multistage_refinement
-from src.content.storyboard import build_storyboard, write_manifest
-from src.content.topics import effective_topic_tags, news_cache_mode_for_run
+from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
+from src.content.topics import effective_topic_tags, news_cache_mode_for_run, video_format_skips_seen_url_disk_cache
 from src.core.config import (
     AppSettings,
     SCRIPT_HEADLINE_FETCH_LIMIT,
     VideoSettings,
     get_models,
     get_paths,
+    media_output_root,
     safe_title_to_dirname,
 )
 from src.core.models_dir import clear_pipeline_models_dir, models_dir_for_app, set_pipeline_models_dir
@@ -215,6 +217,38 @@ def _cap_words(text: str, n_words: int) -> str:
     return (" ".join(parts[: max(1, int(n_words))])).strip()
 
 
+_HASHTAG_RE = re.compile(r"(?:^|\s)#[A-Za-z0-9_]{2,40}\b")
+
+
+def _scrub_spoken_text(text: str, *, video_format: str) -> str:
+    """
+    Cleanup for TTS/captions: remove hashtags and common broken filler that slips through.
+    Keep this conservative—it's a safety net, not a rewriting model.
+    """
+    vf = (video_format or "news").strip().lower()
+    t = str(text or "").strip()
+    if not t:
+        return ""
+
+    # Remove hashtags from spoken lines (metadata hashtags still exist separately).
+    t = _HASHTAG_RE.sub(" ", " " + t).strip()
+
+    # Remove common LLM artifact fragments / banned filler that harm pacing.
+    low = t.lower()
+    if vf in ("cartoon", "unhinged"):
+        # "one of the..." scaffolding tends to appear as broken mid-sentence filler.
+        t = re.sub(r"\bthe\s+one\s+of\s+the\b", "the", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bone\s+of\s+the\b", "the", t, flags=re.IGNORECASE)
+        # Known broken phrase we've observed in runs.
+        t = re.sub(r"\bwe[’']?ll\s+often\s+know\b", "we'll see", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bat\s+the\s+the\b", "at the", t, flags=re.IGNORECASE)
+
+    # Collapse repeated punctuation and whitespace.
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\.\.\.+", "…", t).strip()
+    return t
+
+
 def _pro_prompt_for_text_to_video(*, pkg: VideoPackage, prompts: list[str]) -> str:
     """
     Build a short Pro prompt that won't exceed CLIP token limits (e.g. ZeroScope ~77 tokens).
@@ -257,6 +291,26 @@ def _split_into_pro_scenes_from_script(
     title = (" ".join(str(pkg.title or "").split()).strip()) if use_title else ""
     out: list[str] = []
 
+    def _motion_cue(i: int) -> str:
+        # Keep cues short; they must survive CLIP token limits.
+        if vf in ("cartoon", "unhinged"):
+            cues = (
+                "fast push-in, whip pan",
+                "snap zoom reaction, squash-and-stretch motion",
+                "handheld wobble, chaotic background movement",
+                "quick dolly left-to-right, motion blur streaks",
+                "hard cut feel, character lunges toward camera",
+                "spin transition, exaggerated smear frames",
+            )
+        else:
+            cues = (
+                "slow push-in, handheld but stable",
+                "parallax drift, subtle camera move",
+                "gentle pan, cinematic motion",
+                "rack focus feel, steadycam",
+            )
+        return cues[int(i) % len(cues)]
+
     def _push(scene_text: str) -> None:
         st = _strip_negative_and_noise(scene_text)
         if not st:
@@ -276,15 +330,33 @@ def _split_into_pro_scenes_from_script(
             out.append(_cap_words(part, 55))
             start += chunk
 
-    # Prefer script segments as scenes; include hook/CTA as their own scenes.
-    if (pkg.hook or "").strip():
-        _push(f"{title} | {pkg.hook}" if title else str(pkg.hook).strip())
-    for seg in (pkg.segments or []):
-        nar = " ".join(str(getattr(seg, "narration", "") or "").split()).strip()
-        if nar:
-            _push(f"{title} | {nar}" if title else nar)
-    if (pkg.cta or "").strip():
-        _push(f"{title} | {pkg.cta}" if title else str(pkg.cta).strip())
+    # Prefer visual prompts for comedy formats (motion models need visual/action cues; narration is not a scene prompt).
+    if vf in ("cartoon", "unhinged"):
+        segs = list(pkg.segments or [])
+        # Hook: reuse first segment visual if present.
+        if segs:
+            v0 = " ".join(str(getattr(segs[0], "visual_prompt", "") or "").split()).strip()
+            if v0:
+                _push(f"{v0}, {_motion_cue(len(out))}, vertical 9:16")
+        for seg in segs:
+            vis = " ".join(str(getattr(seg, "visual_prompt", "") or "").split()).strip()
+            if vis:
+                _push(f"{vis}, {_motion_cue(len(out))}, vertical 9:16")
+        # CTA: reuse last segment visual if present; otherwise fall back.
+        if segs:
+            vlast = " ".join(str(getattr(segs[-1], "visual_prompt", "") or "").split()).strip()
+            if vlast:
+                _push(f"{vlast}, {_motion_cue(len(out))}, vertical 9:16")
+    else:
+        # Prefer script segments as scenes; include hook/CTA as their own scenes.
+        if (pkg.hook or "").strip():
+            _push(f"{title} | {pkg.hook}" if title else str(pkg.hook).strip())
+        for seg in (pkg.segments or []):
+            nar = " ".join(str(getattr(seg, "narration", "") or "").split()).strip()
+            if nar:
+                _push(f"{title} | {nar}" if title else nar)
+        if (pkg.cta or "").strip():
+            _push(f"{title} | {pkg.cta}" if title else str(pkg.cta).strip())
 
     # Fallback: use visual prompts if narration is empty.
     if not out:
@@ -327,6 +399,15 @@ def run_once(
             on_progress=on_progress,
         )
     video_settings = app.video
+    # Video mode always runs Pro (scene-by-scene). Even if settings/CLI payloads contain older values,
+    # force the effective settings here so the pipeline stays predictable.
+    try:
+        mm = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+        if mm == "video":
+            video_settings = replace(video_settings, pro_mode=True, use_image_slideshow=False)
+            app = replace(app, video=video_settings)
+    except Exception:
+        pass
     set_pipeline_models_dir(models_dir_for_app(app))
     try:
         dprint(
@@ -345,6 +426,10 @@ def run_once(
         paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
         paths.runs_dir.mkdir(parents=True, exist_ok=True)
         paths.videos_dir.mkdir(parents=True, exist_ok=True)
+        paths.pictures_dir.mkdir(parents=True, exist_ok=True)
+        _mm_out = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+        _projects_root = media_output_root(paths, _mm_out)
+        _projects_root.mkdir(parents=True, exist_ok=True)
     
         if not find_ffmpeg(paths.ffmpeg_dir):
             dprint("pipeline", "Downloading FFmpeg to .Aquaduct_data/.cache/ffmpeg/ (first run; needs internet; may take several minutes)…")
@@ -379,8 +464,8 @@ def run_once(
                 fc = _firecrawl_kwargs(app)
                 tags = effective_topic_tags(app)
                 cm = news_cache_mode_for_run(app)
-                # Cartoon (unhinged): do not read/write news_cache — fetch fresh each run.
-                if cm == "unhinged":
+                # Unhinged / creepypasta: do not read/write news_cache — fetch fresh each run.
+                if video_format_skips_seen_url_disk_cache(cm):
                     if bool(getattr(video_settings, "high_quality_topic_selection", True)):
                         items = get_scored_items(
                             paths.news_cache_dir,
@@ -668,7 +753,7 @@ def run_once(
                 char_ctx = character_context_for_brain(active_character)
     
                 safe_dir_cast = safe_title_to_dirname(pkg.title)
-                video_dir_cast = paths.videos_dir / safe_dir_cast
+                video_dir_cast = _projects_root / safe_dir_cast
                 assets_dir_cast = video_dir_cast / "assets"
                 assets_dir_cast.mkdir(parents=True, exist_ok=True)
                 (assets_dir_cast / "generated_cast.json").write_text(
@@ -696,16 +781,102 @@ def run_once(
         prepare_for_next_model()
     
         safe_dir = safe_title_to_dirname(pkg.title)
-        video_dir = paths.videos_dir / safe_dir
+        video_dir = _projects_root / safe_dir
         assets_dir = video_dir / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Photo mode: generate stills and optional layouts (no voice/captions, no mp4).
+        try:
+            mm_eff = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+        except Exception:
+            mm_eff = "video"
+        if mm_eff == "photo":
+            pic = getattr(app, "picture", None)
+            pic_out = str(getattr(pic, "output_type", "single_image") or "single_image")
+            pic_fmt = str(getattr(pic, "picture_format", "poster") or "poster")
+            n_img = int(getattr(pic, "image_count", 6) or 6)
+            n_img = max(1, min(32, n_img))
+
+            _pipe_progress(on_progress, 50, -1, "Photo mode: generating images…")
+            _rc(run_control)
+
+            sb = build_storyboard(
+                pkg,
+                seed_base=getattr(video_settings, "seed_base", None),
+                branding=getattr(app, "branding", None),
+                max_scenes=max(1, min(10, n_img)),
+                character=active_character,
+                video_format=str(getattr(app, "video_format", "news") or "news"),
+            )
+            base_prompts = [s.prompt for s in sb.scenes] or ["vertical 9:16, one clear focal subject, bold readable composition"]
+            base_seeds = [int(s.seed) for s in sb.scenes] or [123]
+            prompts_img = [base_prompts[i % len(base_prompts)] for i in range(n_img)]
+            seeds_img = [int(base_seeds[i % len(base_seeds)]) + (i // max(1, len(base_seeds))) * 7919 for i in range(n_img)]
+            try:
+                br = getattr(app, "branding", None)
+                if br is not None and bool(getattr(br, "photo_style_enabled", False)):
+                    prompts_img = [
+                        f"{p}, print-ready design, paper texture, clean negative space, high detail still"
+                        for p in prompts_img
+                    ]
+            except Exception:
+                pass
+
+            img_dir = assets_dir / "images"
+            gen = generate_images(
+                sdxl_turbo_model_id=img_id,
+                prompts=prompts_img,
+                out_dir=img_dir,
+                max_images=n_img,
+                seeds=seeds_img,
+                allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
+                art_style_preset_id=str(getattr(app, "art_style_preset_id", "balanced") or "balanced"),
+                use_style_continuity=True,
+            )
+            img_paths = [g.path for g in gen if getattr(g, "path", None) is not None]
+            if not img_paths:
+                raise RuntimeError("Photo mode produced no images.")
+
+            out_final_png = video_dir / "final.png"
+            if pic_out == "layouted":
+                from src.render.layouts import render_layout  # type: ignore
+
+                render_layout(
+                    picture_format=pic_fmt,
+                    images=img_paths,
+                    title=str(getattr(pkg, "title", "") or ""),
+                    out_path=out_final_png,
+                    size=(int(getattr(pic, "width", 1080) or 1080), int(getattr(pic, "height", 1920) or 1920)),
+                    branding=getattr(app, "branding", None),
+                )
+            elif pic_out == "image_set":
+                grid = assets_dir / "preview_grid.png"
+                render_preview_grid(scene_paths=img_paths, out_grid=grid, cols=3, thumb=320)
+                try:
+                    grid.replace(out_final_png)
+                except Exception:
+                    out_final_png.write_bytes(grid.read_bytes())
+            else:
+                # single_image (default): copy first image
+                try:
+                    out_final_png.write_bytes(img_paths[0].read_bytes())
+                except Exception:
+                    try:
+                        import shutil
+
+                        shutil.copy2(img_paths[0], out_final_png)
+                    except Exception:
+                        pass
+
+            _pipe_progress(on_progress, 93, -1, "Photo export complete")
+            return out_final_png
     
         # Voice
         _pipe_progress(on_progress, 50, -1, "Generating voice / captions…")
         voice_wav = assets_dir / "voice.wav"
         captions_json = assets_dir / "captions.json"
         vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
-        narration = pkg.narration_text()
+        narration = _scrub_spoken_text(pkg.narration_text(), video_format=vf_voice)
         pid_voice = effective_personality_id
         py_tts_voice: str | None = None
         kokoro_sp: str | None = None
@@ -736,12 +907,12 @@ def run_once(
         if rotate_unhinged:
             parts: list[str] = []
             if pkg.hook.strip():
-                parts.append(pkg.hook.strip())
+                parts.append(_scrub_spoken_text(pkg.hook.strip(), video_format=vf_voice))
             for seg in pkg.segments or []:
                 if (seg.narration or "").strip():
-                    parts.append(seg.narration.strip())
+                    parts.append(_scrub_spoken_text(seg.narration.strip(), video_format=vf_voice))
             if pkg.cta.strip():
-                parts.append(pkg.cta.strip())
+                parts.append(_scrub_spoken_text(pkg.cta.strip(), video_format=vf_voice))
             texts_uh: list[str] = []
             for raw in parts:
                 st = shape_tts_text(raw, personality_id=pid_voice)
@@ -843,6 +1014,17 @@ def run_once(
                 raise RuntimeError("Pro mode requires a Video (motion) model on the Model tab (e.g. ZeroScope).")
             lowv = vid_slot.lower()
             pro_img2vid = "stable-video-diffusion" in lowv or "img2vid" in lowv
+            try:
+                vf_tip = str(getattr(app, "video_format", "news") or "news").strip().lower()
+                if vf_tip in ("cartoon", "unhinged", "creepypasta") and pro_img2vid:
+                    _pipe_progress(
+                        on_progress,
+                        64,
+                        -1,
+                        "Tip: img→vid models (e.g. SVD) can look like a ‘live photo’. For stronger motion, try Video model: ZeroScope (text→video).",
+                    )
+            except Exception:
+                pass
 
             T = float(getattr(video_settings, "pro_clip_seconds", 4.0))
             T = max(0.5, T)
@@ -853,6 +1035,34 @@ def run_once(
             )
             # Persist the exact prompts used for debugging.
             (assets_dir / "pro_prompt.txt").write_text("\n\n".join(pro_scenes), encoding="utf-8")
+            # Persist the full Pro configuration for reproducibility/debugging.
+            try:
+                pro_manifest = {
+                    "title": str(pkg.title or ""),
+                    "video_format": str(getattr(app, "video_format", "news") or "news"),
+                    "models": {
+                        "llm": str(llm_id or ""),
+                        "image": str(img_id or ""),
+                        "video": str(vid_slot or ""),
+                        "voice": str(voice_id or ""),
+                    },
+                    "video_settings": dict(vars(video_settings)),
+                    "pro": {
+                        "pro_mode": True,
+                        "pro_img2vid": bool(pro_img2vid),
+                        "pro_clip_seconds": float(T),
+                        "fps": int(getattr(video_settings, "fps", 30)),
+                        "seed_base": getattr(video_settings, "seed_base", None),
+                        "n_scenes": int(len(pro_scenes)),
+                        "scene_prompts": list(pro_scenes),
+                    },
+                }
+                (assets_dir / "pro_manifest.json").write_text(
+                    json.dumps(pro_manifest, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
 
             if pro_img2vid:
                 _pipe_progress(on_progress, 64, -1, "Pro: scene keyframes (image model)…")
@@ -864,6 +1074,7 @@ def run_once(
                     branding=getattr(app, "branding", None),
                     max_scenes=max(1, len(pro_scenes)),
                     character=active_character,
+                    video_format=str(getattr(app, "video_format", "news") or "news"),
                 )
                 ns = max(1, len(pro_storyboard.scenes))
                 pro_key_seeds = [
@@ -978,6 +1189,7 @@ def run_once(
                         branding=getattr(app, "branding", None),
                         max_scenes=len(storyboard_prompts_head),
                         character=active_character,
+                        video_format=str(getattr(app, "video_format", "news") or "news"),
                     )
                     try:
                         for i in range(min(len(storyboard.scenes), len(storyboard_prompts_head))):
@@ -1005,6 +1217,7 @@ def run_once(
                         branding=getattr(app, "branding", None),
                         max_scenes=len(storyboard_prompts),
                         character=active_character,
+                        video_format=str(getattr(app, "video_format", "news") or "news"),
                     )
                     try:
                         for i in range(min(len(storyboard.scenes), len(storyboard_prompts))):
@@ -1023,6 +1236,7 @@ def run_once(
                         branding=getattr(app, "branding", None),
                         max_scenes=sb_cap,
                         character=active_character,
+                        video_format=str(getattr(app, "video_format", "news") or "news"),
                     )
                     ns = max(1, len(storyboard.scenes))
                     storyboard_prompts = [storyboard.scenes[i % ns].prompt for i in range(n_pro)]
@@ -1034,6 +1248,7 @@ def run_once(
                         branding=getattr(app, "branding", None),
                         max_scenes=max(1, int(video_settings.images_per_video)),
                         character=active_character,
+                        video_format=str(getattr(app, "video_format", "news") or "news"),
                     )
                     storyboard_prompts = [s.prompt for s in storyboard.scenes]
                     storyboard_seeds = [s.seed for s in storyboard.scenes]
@@ -1271,6 +1486,7 @@ def run_once(
                 branding=getattr(app, "branding", None),
                 max_scenes=max(1, int(video_settings.clips_per_video)),
                 character=active_character,
+                video_format=str(getattr(app, "video_format", "news") or "news"),
             )
             storyboard_prompts = [s.prompt for s in storyboard.scenes]
             storyboard_seeds = [s.seed for s in storyboard.scenes]

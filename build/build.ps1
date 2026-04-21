@@ -94,6 +94,11 @@ $extra = @(
   "--hidden-import", "urllib3",
   "--hidden-import", "certifi",
   "--collect-all", "certifi",
+  "--collect-all", "psutil",
+  "--collect-all", "rich",
+  "--collect-all", "bs4",
+  "--collect-all", "lxml",
+  "--collect-all", "dotenv",
   "--hidden-import", "src.speech.elevenlabs_tts",
   "--hidden-import", "src.content.characters_store"
 )
@@ -124,6 +129,9 @@ if ($UI) {
     "--hidden-import", "UI.tabs.captions_tab",
     "--hidden-import", "UI.tabs.my_pc_tab",
     "--hidden-import", "UI.tabs.library_tab",
+    "--hidden-import", "UI.tabs.picture_tab",
+    "--hidden-import", "UI.title_bar_outline_button",
+    "--hidden-import", "UI.media_mode_toggle",
     "--hidden-import", "UI.library_fs",
     "--hidden-import", "UI.tab_sections",
     "--hidden-import", "UI.tutorial_dialog",
@@ -176,6 +184,9 @@ pyinstaller $mode `
   --copy-metadata "accelerate" `
   --copy-metadata "safetensors" `
   --copy-metadata "bitsandbytes" `
+  --copy-metadata "python-dotenv" `
+  --copy-metadata "psutil" `
+  --copy-metadata "rich" `
   --collect-all "moviepy" `
   --collect-all "imageio" `
   --collect-all "imageio_ffmpeg" `

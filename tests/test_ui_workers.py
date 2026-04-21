@@ -74,11 +74,20 @@ def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
         news_cache_dir=ada / "data" / "news_cache",
         runs_dir=ada / "runs",
         videos_dir=ada / "videos",
+        pictures_dir=ada / "pictures",
         models_dir=ada / "models",
         cache_dir=ada / ".cache",
         ffmpeg_dir=ada / ".cache" / "ffmpeg",
     )
-    for d in [paths.news_cache_dir, paths.runs_dir, paths.videos_dir, paths.models_dir, paths.cache_dir, paths.ffmpeg_dir]:
+    for d in [
+        paths.news_cache_dir,
+        paths.runs_dir,
+        paths.videos_dir,
+        paths.pictures_dir,
+        paths.models_dir,
+        paths.cache_dir,
+        paths.ffmpeg_dir,
+    ]:
         d.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(pipeline_main, "get_paths", lambda: paths)

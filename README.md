@@ -114,12 +114,16 @@ Same folder, optional: `. .\scripts\setup_terminal_env.ps1` after `cd` to activa
 - `videos/`: final per-video folders
 
 ## Outputs
-Outputs land in:
+Outputs land under **`.Aquaduct_data/`** (see [`get_paths()`](src/core/config.py)):
+
+**Video mode** (default; title bar **Video** selected):
 - `videos/<safe_video_title>/final.mp4`
 - `videos/<safe_video_title>/script.txt`
 - `videos/<safe_video_title>/hashtags.txt`
 - `videos/<safe_video_title>/meta.json`
 - `videos/<safe_video_title>/assets/` (voice, captions, images, intermediate scene MP4s when enabled, etc.)
+
+**Photo mode** (title bar **Photo** selected): still images and packs under **`pictures/<safe_project_title>/`** (see [Desktop UI](docs/ui.md)).
 
 Intermediate artifacts land in:
 - `runs/<run_id>/...`
@@ -131,15 +135,18 @@ Run:
 python -m UI
 ```
 
-Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** (same look as the main window); native **file/folder** pickers stay OS-standard.
+The title bar includes a **Photo \| Video** toggle (persists as `media_mode` in `ui_settings.json`) to switch between the picture pipeline and the video pipeline; **Library** and open-folder actions follow the active mode.
+
+Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** and **rounded outline** buttons drawn like the main window title bar (not legacy square Fusion borders); native **file/folder** pickers stay OS-standard.
 
 Tabs:
-- **Run**: set **Videos to generate** to queue **that many independent full runs** (each produces one video); **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
+- **Run**: in **Video** mode, set **Videos to generate** to queue **that many independent full runs** (each produces one video); **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl results (**Cartoon** / **Unhinged**: memes/jokes/story pages + saved pack under `data/topic_research/`; **News** / **Explainer**: headline-style). Approved picks are added to that format’s list ([UI](docs/ui.md), [Crawler](docs/crawler.md))
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
-- **Library**: browse **`videos/`** folders with **`final.mp4`** (open folder, **`assets/`**, play) and **`runs/`** workspaces (intermediate files); refresh or open the **`videos/`** / **`runs/`** roots
-- **Video**: **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
+- **Library**: browse finished **video** or **photo** projects under **`.Aquaduct_data/videos`** or **`.Aquaduct_data/pictures`** (depending on **Photo \| Video**), plus **`runs/`** workspaces; refresh or open the library roots
+- **Video** (shown in **Video** mode): **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
+- **Picture** (shown in **Photo** mode): image templates, layout/export options, and branding for still-image runs ([`docs/ui.md`](docs/ui.md))
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
 - **Model**: **Local \| API** toggle; **Model files location** (**Default** \| **External** folder for Hub snapshots); Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already present on disk under the active models folder

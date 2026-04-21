@@ -49,6 +49,7 @@ def main() -> None:
         f"  - {paths.cache_dir} (ffmpeg + other caches)",
         f"  - {paths.runs_dir}",
         f"  - {paths.videos_dir}",
+        f"  - {paths.pictures_dir}",
         "",
         "Then empty folders are recreated and default settings are saved.",
         "This cannot be undone.",
@@ -76,6 +77,7 @@ def main() -> None:
         paths.cache_dir,
         paths.runs_dir,
         paths.videos_dir,
+        paths.pictures_dir,
     ):
         rerr = rmtree_robust(folder)
         if rerr:
@@ -87,6 +89,7 @@ def main() -> None:
         paths.cache_dir.mkdir(parents=True, exist_ok=True)
         paths.runs_dir.mkdir(parents=True, exist_ok=True)
         paths.videos_dir.mkdir(parents=True, exist_ok=True)
+        paths.pictures_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         errors.append(f"Recreate folders: {e}")
 

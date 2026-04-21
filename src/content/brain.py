@@ -45,6 +45,11 @@ def _article_prompt_block(*, video_format: str, excerpt: str) -> str:
             "Optional article text (use for proper nouns, numbers, or extra context — do not turn the video into a dry news recap):\n"
             f"{ex}\n\n"
         )
+    if vf == "creepypasta":
+        return (
+            "Scraped story text (fiction — adapt freely into an original short script; do not claim real events or real people):\n"
+            f"{ex}\n\n"
+        )
     if vf == "explainer":
         return (
             "Article excerpt (ground truth for definitions, facts, numbers, names, and quotes — prefer these over guessing; "
@@ -94,6 +99,40 @@ _SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA = (
 )
 
 
+def _horror_visual_prompt_rules(*, video_format: str) -> str:
+    """Diffusion guidance for creepypasta — atmospheric dread, not gore porn or readable text walls."""
+    vf = (video_format or "news").strip().lower()
+    if vf != "creepypasta":
+        return ""
+    return (
+        "`visual_prompt` rules (still image per beat — mandatory):\n"
+        "- **Figurative horror scenes**: silhouettes, shadows, one focal threat or uncanny detail — "
+        "not splatter, not photoreal injury, not sexual violence.\n"
+        "- Prefer **implied dread**: fog, grain, wrong lighting, liminal hallways, empty rooms, moonlit windows, "
+        "vintage flash photo, analog glitch, candlelit faces (no readable signage or long text).\n"
+        "- Each `visual_prompt` must **match that segment's narration** mood — not a random sci-fi corridor.\n\n"
+    )
+
+
+def _meme_visual_prompt_rules(*, video_format: str) -> str:
+    """Extra diffusion guidance for cartoon/unhinged — reduces generic neon/abstract stills."""
+    vf = (video_format or "news").strip().lower()
+    if vf == "creepypasta":
+        return _horror_visual_prompt_rules(video_format=vf)
+    if vf not in ("cartoon", "unhinged"):
+        return ""
+    return (
+        "`visual_prompt` rules (still image per beat — mandatory):\n"
+        "- **Figurative scenes only**: named characters from the cast, concrete props, and one readable joke or reaction tableau — "
+        "not abstract neon car wheels, empty cyberpunk corridors, generic \"holographic UI\", or unrelated sci-fi spectacle "
+        "unless that beat's narration is literally about that object.\n"
+        "- For internet-meme / brainrot / shitpost topics: lean **chaotic Shorts meme** look — thick black outlines, flat loud colors, "
+        "wrong perspective on purpose, crowded backgrounds, surreal proportions (the \"Italian brainrot\" collage energy: absurd mashups, "
+        "expressive faces, meme objects).\n"
+        "- Each `visual_prompt` must **match that segment's narration**, not a random pretty background.\n\n"
+    )
+
+
 def _tts_block() -> str:
     return _TTS_SPOKEN_RULES
 
@@ -107,6 +146,11 @@ def _character_voice_block(character_context: str | None, *, video_format: str) 
                 "Character / cast (mandatory — all spoken lines are these voices):\n"
                 f"{cc}\n\n"
             )
+        if vf == "creepypasta":
+            return (
+                "Narrator (mandatory — the entire spoken script is this voice; first-person past tense unless the block says otherwise):\n"
+                f"{cc}\n\n"
+            )
         return (
             "Character / host (mandatory — the entire spoken script is this persona; not a generic anonymous announcer):\n"
             f"{cc}\n\n"
@@ -115,6 +159,11 @@ def _character_voice_block(character_context: str | None, *, video_format: str) 
         return (
             "Character / cast: none provided — invent 1–3 original characters (names + voices) that fit the topic_tags and "
             "headlines. Spoken fields = dialogue or in-character lines only.\n\n"
+        )
+    if vf == "creepypasta":
+        return (
+            "Narrator: none provided — invent one first-person campfire narrator (name + voice) aligned with the topic_tags and "
+            "sources; the hook must feel personally uneasy, not like a TV promo.\n\n"
         )
     if vf == "explainer":
         return (
@@ -157,6 +206,10 @@ def _personality_character_fusion_block(
             beat_note = (
                 "Meme/Vine beat density: match punchline frequency to this tone (playful tones: more gags; skeptical/analytical: fewer, sharper jokes).\n"
             )
+    elif vf == "creepypasta":
+        beat_note = (
+            "Horror pacing: favor concrete wrong details and callbacks over loud hype; let dread accumulate beat-to-beat.\n"
+        )
 
     return (
         "Tone + character together (mandatory):\n"
@@ -360,6 +413,7 @@ def _prompt_for_unhinged_items(
         "(deadpan or manic energy both work).\n"
         "Visual style: exaggerated 2D adult-animation look — flat color, rubber-hose or sharp TV-comedy staging, "
         "gross-out or surreal backgrounds when it sells the joke — NOT corporate cyberpunk unless the joke demands it.\n"
+        f"{_meme_visual_prompt_rules(video_format=video_format)}"
         "Enforce this arc (adapt timing across segments):\n"
         "- Hook: wrong-foot the viewer — fake-wholesome, deadpan doom, or sudden satire\n"
         "- Escalation: the premise spirals (sitcom argument, sci-fi nonsense, or moral panic)\n"
@@ -382,6 +436,82 @@ def _prompt_for_unhinged_items(
         f"{art}"
         f"Headlines (each has title, url, source, published_at when known — use several): "
         f"{json.dumps(headlines, ensure_ascii=False)}\n"
+    )
+
+
+def _prompt_for_creepypasta_items(
+    headlines: list[dict[str, str]],
+    topic_tags: list[str] | None,
+    personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
+    character_context: str | None = None,
+    *,
+    article_excerpt: str = "",
+    video_format: str = "creepypasta",
+) -> str:
+    """Preset: fictional horror shorts adapted from online creepypasta / short scary fiction pages."""
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_line = f"Topic tags (bias mood, setting, and hashtags): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
+    char_block = _character_voice_block(character_context, video_format=video_format)
+    fusion = _personality_character_fusion_block(
+        personality, character_context, video_format=video_format
+    )
+    art = _article_prompt_block(video_format=video_format, excerpt=article_excerpt)
+    return (
+        "You are a horror fiction writer for vertical creepypasta shorts (9:16). "
+        "Sources below are **titles + URLs + scraped text** from the open web (reddit threads, blogs, fiction sites). "
+        "Treat them as **inspiration for wholly original fiction** — paraphrase, rename, relocate; do not claim true events, "
+        "real missing persons, or real crimes. No slurs, hate, sexual violence, or glorification of self-harm. "
+        "Keep dread **atmospheric** (implied threat, wrong details, silence) — avoid graphic gore walkthroughs.\n"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
+        f"{_tts_block()}"
+        f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
+        "The `hook` must grab with unease tied to the real source titles or tags — not a generic “story time” opener.\n"
+        "Weave **at least 2–4** distinct source angles or motifs into one arc (echoes, false endings, callbacks).\n"
+        "Default voice: **first-person past-tense campfire narrator** (or tight third-person if character block demands) — "
+        "not a peppy news host.\n"
+        f"{_meme_visual_prompt_rules(video_format=video_format)}"
+        "Enforce this arc (adapt timing across segments):\n"
+        "- Hook: wrong detail, too-quiet setup, or a rule that should not exist\n"
+        "- Rising dread: escalate through clues, repetition, or uncanny behavior\n"
+        "- Twist / reveal: one clean fictional punch (not a documentary conclusion)\n"
+        "- Aftershock: one beat of lingering wrongness\n"
+        "- Close/CTA: low-key unsettling sign-off (still speakable)\n"
+        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+        "Constraints:\n"
+        f"- narration total {_SCRIPT_WORDS}\n"
+        "- title <= 80 chars\n"
+        "- hashtags: 15-30 items (horror fiction, creepypasta, scary shorts, urban legend — match the story)\n"
+        "- avoid markdown except optional ```json fence\n"
+        "\n"
+        f"{personality_block}"
+        f"{char_block}"
+        f"{fusion}"
+        f"{style_suffix}"
+        f"{tag_line}"
+        f"{art}"
+        f"Sources (title, url, source — use several): {json.dumps(headlines, ensure_ascii=False)}\n"
     )
 
 
@@ -439,6 +569,7 @@ def _prompt_for_cartoon_items(
         f"{_tts_block()}"
         f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats. Keep language family-friendly; no slurs or hate.\n"
         "Visual style: bright 2D cartoon, bold shapes, expressive faces, rubber-hose or modern toon energy — all visual jokes/staging go in `visual_prompt`.\n"
+        f"{_meme_visual_prompt_rules(video_format=video_format)}"
         "Enforce this arc (adapt timing across segments):\n"
         "- Hook: wrong-foot or playful chaos (instant premise)\n"
         "- Rising action: escalate, argue, chase the idea\n"
@@ -487,6 +618,16 @@ def _prompt_for_items(
         )
     if vf == "unhinged":
         return _prompt_for_unhinged_items(
+            headlines,
+            topic_tags,
+            personality,
+            branding=branding,
+            character_context=character_context,
+            article_excerpt=article_excerpt,
+            video_format=vf,
+        )
+    if vf == "creepypasta":
+        return _prompt_for_creepypasta_items(
             headlines,
             topic_tags,
             personality,
@@ -604,6 +745,11 @@ def _vf_hint(video_format: str) -> str:
             "adult-animation comedy satire from internet/viral material — absurdist, cynical banter, shock-cartoon punchlines; "
             "original characters; playful only"
         )
+    if f == "creepypasta":
+        return (
+            "fictional horror short for vertical video — campfire / urban-legend tone from online creepypasta sources; "
+            "single narrator or tight POV; atmospheric dread, no real-person harm claims"
+        )
     return "timely angle anchored to user topics and sources"
 
 
@@ -659,6 +805,7 @@ def _prompt_for_creative_brief(
             f"{_VINE_MEME_STRUCTURE}"
             "Narration must be in character voice throughout (dialogue or first-person), not a detached announcer.\n"
             "Default visual style: bright 2D cartoon, expressive acting — unless the brief says otherwise.\n"
+            f"{_meme_visual_prompt_rules(video_format=vf_key)}"
             f"{_SCRIPT_SUBSTANCE_RULES}"
             f"{_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA}"
             f"{_tts_block()}"
@@ -697,6 +844,7 @@ def _prompt_for_creative_brief(
             "Narration must be in character voice throughout — not a neutral news announcer.\n"
             "Default visual style: flat 2D adult-animation satire, exaggerated acting, gross-out or surreal sets — "
             "unless the brief says otherwise (not corporate cyberpunk by default).\n"
+            f"{_meme_visual_prompt_rules(video_format=vf_key)}"
             f"{_SCRIPT_SUBSTANCE_RULES}"
             f"{_SCRIPT_SUBSTANCE_RULES_COMEDY_EXTRA}"
             f"{_tts_block()}"
@@ -712,6 +860,42 @@ def _prompt_for_creative_brief(
             f"- narration total {_SCRIPT_WORDS}\n"
             "- title <= 80 chars\n"
             "- hashtags: 15-30 items matching the brief’s tone (satire, animation, comedy, viral)\n"
+            "- avoid markdown except optional ```json fence\n"
+            "\n"
+            f"{personality_block}"
+            f"{char_block}"
+            f"{fusion}"
+            f"{style_suffix}"
+            f"{tag_line}"
+            "Creative brief (primary — follow this):\n"
+            f"{expanded_brief.strip()}\n"
+            f"{art}"
+        )
+    if vf_key == "creepypasta":
+        return (
+            "You are a horror fiction writer for vertical creepypasta shorts (9:16).\n"
+            "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
+            "Turn it into a complete script package — you may interpret and tighten, but stay faithful to the user's intent.\n"
+            f"Video format mode: {video_format!r}. Aim for: {vf}\n"
+            f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats. "
+            "Original fiction only — no true-crime claims, no real missing persons, no graphic gore.\n"
+            "Narration: first-person past-tense campfire voice unless the brief specifies otherwise.\n"
+            "Default visuals: atmospheric dread, liminal spaces, implied threat — staging only in `visual_prompt`.\n"
+            f"{_meme_visual_prompt_rules(video_format=vf_key)}"
+            f"{_SCRIPT_SUBSTANCE_RULES}"
+            f"{_tts_block()}"
+            "Enforce this arc (adapt timing across segments):\n"
+            "- Hook: wrong detail or quiet wrongness\n"
+            "- Rising dread: clues, repetition, uncanny behavior\n"
+            "- Twist: one clean fictional reveal\n"
+            "- Aftershock: lingering unease\n"
+            "- Close/CTA: low-key unsettling sign-off\n"
+            "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+            "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+            "Constraints:\n"
+            f"- narration total {_SCRIPT_WORDS}\n"
+            "- title <= 80 chars\n"
+            "- hashtags: 15-30 items (horror fiction, creepypasta, scary shorts — match the brief)\n"
             "- avoid markdown except optional ```json fence\n"
             "\n"
             f"{personality_block}"
@@ -823,10 +1007,35 @@ def expand_custom_video_instructions(
             "3) Core angle / hook (deadpan, wrong-footing, or satirical)\n"
             f"4) Beat-by-beat outline ({_SCRIPT_SEGMENTS} beats for ~75–95 seconds total) — who says what (spoken lines only)\n"
             "5) Visual motifs (default: flat 2D adult-animation satire, exaggerated faces, grotesque-cute or liminal weirdness — "
-            "unless notes say otherwise; not corporate cyberpunk by default)\n"
+            "unless notes say otherwise; not corporate cyberpunk by default; for meme topics specify thick outlines, figurative gags, not abstract neon objects)\n"
             "6) Short on-screen text keywords per beat\n"
             "7) Hashtag theme words (no # prefixes)\n"
             "8) CTA idea (in-character)\n"
+            "Keep it tight and actionable.\n"
+        )
+    elif vf_key == "creepypasta":
+        prompt = (
+            "You are a creative director for vertical creepypasta / horror-fiction shorts (9:16).\n"
+            "The user wrote rough notes. Expand them into a structured creative brief. "
+            "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+            f"Video format mode: {video_format!r}. Target style: {vf}\n"
+            "Fiction only: no true-crime framing, no real missing persons, no graphic gore instructions.\n"
+            "Spoken lines are narrator voice only (no camera or stage directions in spoken beats).\n"
+            f"{fusion}"
+            f"Tone anchor — {personality.label}: {personality.description}\n"
+            "Style rules to respect:\n"
+            + "\n".join(f"- {r}" for r in personality.style_rules)
+            + "\n\nUser's raw notes:\n"
+            f"{raw_instructions.strip()}\n\n"
+            "Output sections (use headings):\n"
+            "1) Working title (one line)\n"
+            "2) Narrator persona (name + voice — first-person past tense default)\n"
+            "3) Core hook (one uneasy line)\n"
+            f"4) Beat-by-beat outline ({_SCRIPT_SEGMENTS} beats for ~75–95 seconds total) — spoken lines only per beat\n"
+            "5) Visual motifs (fog, liminal spaces, silhouettes, analog grain — implied dread; not splatter)\n"
+            "6) Short on-screen text keywords per beat\n"
+            "7) Hashtag theme words (no # prefixes)\n"
+            "8) CTA idea (low-key unsettling)\n"
             "Keep it tight and actionable.\n"
         )
     else:
@@ -941,10 +1150,10 @@ def enforce_arc(pkg: VideoPackage, video_format: str | None = None) -> VideoPack
     """
     Best-effort post-processor to ensure the script includes context + why-it-matters beats.
     We don't require the model to label beats; we inject minimal beats if missing.
-    Skipped for cartoon/unhinged — comedy pacing should not get generic "news explainer" inserts.
+    Skipped for cartoon/unhinged/creepypasta — comedy or horror pacing should not get generic "news explainer" inserts.
     """
     vf = (video_format or "news").strip().lower()
-    if vf in ("cartoon", "unhinged"):
+    if vf in ("cartoon", "unhinged", "creepypasta"):
         return pkg
     try:
         segs = list(pkg.segments or [])
@@ -1405,6 +1614,75 @@ def generate_script(
                             cta=pkg.cta,
                         )
                 dprint("brain", "generate_script ok (fallback unhinged)", f"title={pkg.title[:100]!r}")
+                return pkg
+            if vf_fallback == "creepypasta":
+                seed = (items[0].get("title") if items else "") or "The hallway"
+                title = seed[:80]
+                hook = "I found a thread online that should have stayed buried — let me tell you what it did to my head."
+                hashtags = [
+                    "#Creepypasta",
+                    "#HorrorShorts",
+                    "#ScaryStory",
+                    "#UrbanLegend",
+                    "#Spooky",
+                    "#HorrorTok",
+                    "#GhostStory",
+                    "#Liminal",
+                    "#Unsettling",
+                    "#Shorts",
+                    "#Fiction",
+                    "#Narrator",
+                    "#Dark",
+                    "#Paranormal",
+                    "#Haunted",
+                    "#Creepy",
+                    "#Storytime",
+                ]
+                pkg = VideoPackage(
+                    title=title,
+                    description=f"Original horror short riff inspired by online fiction titles: {seed}",
+                    hashtags=hashtags[:30],
+                    hook=hook,
+                    segments=[
+                        ScriptSegment(
+                            narration="It started as a joke — a link, a title too specific to be random.",
+                            visual_prompt="dim hallway, single flickering bulb, long shadows, grainy photo, 9:16",
+                            on_screen_text="SETUP",
+                        ),
+                        ScriptSegment(
+                            narration="The more I read, the more the house felt like it leaned closer — wrong angles, wrong silence.",
+                            visual_prompt="empty room at night, moonlight through blinds, silhouette in doorway, 9:16",
+                            on_screen_text="DREAD",
+                        ),
+                        ScriptSegment(
+                            narration="If you’re still listening — don’t go looking for the rest. Some doors are better left unclicked.",
+                            visual_prompt="close-up of a cracked phone screen glow on face, fog, 9:16",
+                            on_screen_text="OUTRO",
+                        ),
+                    ],
+                    cta="Follow for more creepypasta shorts — fiction only.",
+                )
+                if branding and bool(getattr(branding, "video_style_enabled", False)):
+                    suf = palette_prompt_suffix(branding)
+                    if suf:
+                        pkg = VideoPackage(
+                            title=pkg.title,
+                            description=pkg.description,
+                            hashtags=pkg.hashtags,
+                            hook=pkg.hook,
+                            segments=[
+                                ScriptSegment(
+                                    narration=s.narration,
+                                    visual_prompt=(
+                                        s.visual_prompt if "Palette:" in s.visual_prompt else f"{s.visual_prompt}, {suf}"
+                                    ),
+                                    on_screen_text=s.on_screen_text,
+                                )
+                                for s in pkg.segments
+                            ],
+                            cta=pkg.cta,
+                        )
+                dprint("brain", "generate_script ok (fallback creepypasta)", f"title={pkg.title[:100]!r}")
                 return pkg
             # Fallback: minimal structured script without the LLM (keeps pipeline running).
             story_title = (items[0].get("title") if items else "") or "this story"

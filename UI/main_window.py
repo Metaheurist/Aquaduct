@@ -38,6 +38,9 @@ from UI.frameless_dialog import (
     show_hf_token_dialog,
 )
 from UI.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
+from UI.media_mode_toggle import MediaModeToggle
+from UI.title_bar_outline_button import TitleBarOutlineButton
+from UI.theme import resolve_palette
 
 from src.core.config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
@@ -45,10 +48,12 @@ from src.core.config import (
     ApiRoleConfig,
     AppSettings,
     BrandingSettings,
+    PictureSettings,
     VideoSettings,
     VIDEO_FORMATS,
     default_api_models,
     get_paths,
+    media_output_root,
 )
 from src.core.models_dir import models_dir_for_app
 from src.models.model_integrity_cache import (
@@ -58,7 +63,7 @@ from src.models.model_integrity_cache import (
     save_integrity_cache,
 )
 from src.content.crawler import clear_news_seen_cache_files
-from src.content.topics import normalize_video_format
+from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
 from src.util.fs_delete import rmtree_robust, unlink_file
 from src.models.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
 from src.runtime.preflight import preflight_check
@@ -81,9 +86,12 @@ from UI.tabs import (
     attach_tasks_tab,
     attach_topics_tab,
     attach_video_tab,
+    attach_picture_tab,
     attach_effects_tab,
     attach_library_tab,
 )
+from UI.tabs.run_tab import refresh_run_tab_for_media_mode
+from UI.tabs.library_tab import refresh_library_tab_for_media_mode
 from UI.download_popup import DownloadPopup, ImportPopup
 from UI.workers import (
     FFmpegEnsureWorker,
@@ -139,10 +147,35 @@ class MainWindow(QMainWindow):
         title_row.setSpacing(8)
         title = QLabel("Aquaduct")
         title.setStyleSheet("font-size: 14px; font-weight: 800; color: #FFFFFF;")
-        title_row.addWidget(title, 1)
+        title_row.addWidget(title, 0)
 
-        save_btn = QPushButton("💾")
-        save_btn.setObjectName("saveBtn")
+        self.media_mode_toggle = MediaModeToggle()
+        try:
+            mm = str(getattr(self.settings, "media_mode", "video") or "video").strip().lower()
+            self.media_mode_toggle.setCurrentIndex(0 if mm == "photo" else 1)
+        except Exception:
+            self.media_mode_toggle.setCurrentIndex(1)
+
+        def _on_media_mode_changed(_: int) -> None:
+            try:
+                self.settings = replace(
+                    self.settings,
+                    media_mode=str(self.media_mode_toggle.currentData() or "video"),
+                )
+            except Exception:
+                pass
+            try:
+                self._apply_media_mode_ui()
+            except Exception:
+                pass
+
+        self.media_mode_toggle.currentIndexChanged.connect(_on_media_mode_changed)
+        # Center the toggle between the title (left) and window controls (right).
+        title_row.addStretch(1)
+        title_row.addWidget(self.media_mode_toggle, 0, Qt.AlignmentFlag.AlignCenter)
+        title_row.addStretch(1)
+
+        save_btn = TitleBarOutlineButton("💾", variant="accent_icon")
         save_btn.setFixedSize(44, 32)
         save_btn.setToolTip(
             help_tooltip_rich(
@@ -154,8 +187,7 @@ class MainWindow(QMainWindow):
         save_btn.clicked.connect(self._save_settings)
         title_row.addWidget(save_btn, 0, Qt.AlignmentFlag.AlignRight)
 
-        graph_btn = QPushButton("📈")
-        graph_btn.setObjectName("graphBtn")
+        graph_btn = TitleBarOutlineButton("📈", variant="accent_icon")
         graph_btn.setFixedSize(44, 32)
         graph_btn.setToolTip(
             help_tooltip_rich(
@@ -167,8 +199,7 @@ class MainWindow(QMainWindow):
         graph_btn.clicked.connect(self._show_resource_graph)
         title_row.addWidget(graph_btn, 0, Qt.AlignmentFlag.AlignRight)
 
-        help_btn = QPushButton("?")
-        help_btn.setObjectName("helpBtn")
+        help_btn = TitleBarOutlineButton("?", variant="muted_icon")
         help_btn.setFixedSize(44, 32)
         help_btn.setToolTip(
             help_tooltip_rich(
@@ -180,11 +211,12 @@ class MainWindow(QMainWindow):
         help_btn.clicked.connect(lambda: self._show_tutorial_dialog(first_run=False))
         title_row.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignRight)
 
-        close_btn = QPushButton("✕")
-        close_btn.setObjectName("closeBtn")
+        close_btn = TitleBarOutlineButton("✕", variant="danger")
         close_btn.setFixedSize(44, 32)
         close_btn.clicked.connect(self.close)
         title_row.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
+        self._title_outline_buttons = (save_btn, graph_btn, help_btn, close_btn)
+        self._sync_title_bar_outline_colors()
         root_lay.addWidget(self._title_bar, 0)
 
         self._internet_online: bool | None = None
@@ -211,6 +243,7 @@ class MainWindow(QMainWindow):
         attach_tasks_tab(self)
         attach_library_tab(self)
         attach_video_tab(self)
+        attach_picture_tab(self)
         attach_effects_tab(self)
         attach_captions_tab(self)
         attach_branding_tab(self)
@@ -219,6 +252,16 @@ class MainWindow(QMainWindow):
         attach_my_pc_tab(self)
 
         self._setup_generation_api_panel_hosting()
+        try:
+            self._apply_media_mode_ui()
+        except Exception:
+            pass
+        try:
+            self._wire_picture_format_sync()
+            self._apply_picture_settings_to_ui()
+            refresh_run_tab_for_media_mode(self)
+        except Exception:
+            pass
 
         # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -276,6 +319,20 @@ class MainWindow(QMainWindow):
             self._rich_help_tooltip_filter = RichHelpTooltipFilter(self._open_tutorial_topic, self)
             app.installEventFilter(self._rich_help_tooltip_filter)
 
+    def _sync_title_bar_outline_colors(self) -> None:
+        """Keep painted title-bar pill strokes/text in sync with the resolved theme palette."""
+        try:
+            pals = resolve_palette(getattr(self.settings, "branding", None))
+            accent = str(pals.get("accent", "#25F4EE"))
+            danger = str(pals.get("danger", "#FE2C55"))
+            muted = str(pals.get("muted", "#B7B7C2"))
+            text = str(pals.get("text", "#FFFFFF"))
+            for btn in getattr(self, "_title_outline_buttons", ()):
+                if hasattr(btn, "set_chrome_colors"):
+                    btn.set_chrome_colors(accent, danger, muted, text)
+        except Exception:
+            pass
+
     def _has_explicit_hf_env_token(self) -> bool:
         """Return True when HF token env vars are explicitly set with a non-empty value."""
         for key in ("HF_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
@@ -326,6 +383,168 @@ class MainWindow(QMainWindow):
             self._settings_hf_banner.setVisible(not hf_on)
         except Exception:
             pass
+
+    def _wire_picture_format_sync(self) -> None:
+        """Keep Picture tab and Run tab picture-format combos aligned."""
+        if not hasattr(self, "picture_format_combo") or not hasattr(self, "picture_format_run_combo"):
+            return
+
+        def _to_run() -> None:
+            self.picture_format_run_combo.blockSignals(True)
+            try:
+                ix = int(self.picture_format_combo.currentIndex())
+                if 0 <= ix < self.picture_format_run_combo.count():
+                    self.picture_format_run_combo.setCurrentIndex(ix)
+            finally:
+                self.picture_format_run_combo.blockSignals(False)
+
+        def _to_pic() -> None:
+            self.picture_format_combo.blockSignals(True)
+            try:
+                ix = int(self.picture_format_run_combo.currentIndex())
+                if 0 <= ix < self.picture_format_combo.count():
+                    self.picture_format_combo.setCurrentIndex(ix)
+            finally:
+                self.picture_format_combo.blockSignals(False)
+
+        self.picture_format_combo.currentIndexChanged.connect(lambda _i: _to_run())
+        self.picture_format_run_combo.currentIndexChanged.connect(lambda _i: _to_pic())
+
+    def _apply_picture_settings_to_ui(self) -> None:
+        """Load saved PictureSettings into Picture tab + Run picture-format row."""
+        pic = getattr(self.settings, "picture", PictureSettings())
+        if hasattr(self, "picture_template_combo"):
+            tid = str(getattr(pic, "template_id", "vertical_1080") or "vertical_1080")
+            found = False
+            for i in range(self.picture_template_combo.count()):
+                d = self.picture_template_combo.itemData(i)
+                if isinstance(d, tuple) and len(d) >= 1 and str(d[0]) == tid:
+                    self.picture_template_combo.setCurrentIndex(i)
+                    found = True
+                    break
+            if not found:
+                w, h = int(getattr(pic, "width", 1080)), int(getattr(pic, "height", 1920))
+                for i in range(self.picture_template_combo.count()):
+                    d = self.picture_template_combo.itemData(i)
+                    if isinstance(d, tuple) and len(d) == 3 and int(d[1]) == w and int(d[2]) == h:
+                        self.picture_template_combo.setCurrentIndex(i)
+                        found = True
+                        break
+        if hasattr(self, "picture_output_type_combo"):
+            ot = str(getattr(pic, "output_type", "single_image") or "single_image")
+            ix = self.picture_output_type_combo.findData(ot)
+            self.picture_output_type_combo.setCurrentIndex(ix if ix >= 0 else 0)
+        if hasattr(self, "picture_count_spin"):
+            self.picture_count_spin.setValue(max(1, int(getattr(pic, "image_count", 6) or 6)))
+        pf = str(getattr(pic, "picture_format", "poster") or "poster")
+        if hasattr(self, "picture_format_combo"):
+            ix = self.picture_format_combo.findData(pf)
+            self.picture_format_combo.setCurrentIndex(ix if ix >= 0 else 0)
+        if hasattr(self, "picture_format_run_combo"):
+            ix2 = self.picture_format_run_combo.findData(pf)
+            self.picture_format_run_combo.setCurrentIndex(ix2 if ix2 >= 0 else 0)
+
+    def _apply_media_mode_ui(self) -> None:
+        """
+        Apply Photo/Video mode UI changes (tab visibility, labels, etc).
+        """
+        mm = str(getattr(self.settings, "media_mode", "video") or "video").strip().lower()
+        is_photo = mm == "photo"
+
+        def _set_visible(tab_label: str, visible: bool) -> None:
+            try:
+                for i in range(self.tabs.count()):
+                    if str(self.tabs.tabText(i) or "") == tab_label:
+                        if hasattr(self.tabs, "setTabVisible"):
+                            self.tabs.setTabVisible(i, bool(visible))  # type: ignore[attr-defined]
+                        else:
+                            self.tabs.setTabEnabled(i, bool(visible))
+                        break
+            except Exception:
+                pass
+
+        _set_visible("Captions", not is_photo)
+        _set_visible("Effects", not is_photo)
+
+        _set_visible("Video", not is_photo)
+        _set_visible("Picture", is_photo)
+
+        # Run tab: picture format row only in photo mode; headline/topic mode always visible.
+        try:
+            if hasattr(self, "_picture_format_label"):
+                self._picture_format_label.setVisible(is_photo)
+            if hasattr(self, "picture_format_run_combo"):
+                self.picture_format_run_combo.setVisible(is_photo)
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "brand_video_style_section_header"):
+                self.brand_video_style_section_header.setVisible(not is_photo)
+            if hasattr(self, "brand_watermark_section_header"):
+                self.brand_watermark_section_header.setVisible(not is_photo)
+            if hasattr(self, "brand_photo_section_header"):
+                self.brand_photo_section_header.setVisible(is_photo)
+            for name in (
+                "brand_video_style_enable",
+                "brand_video_style_strength",
+                "brand_watermark_enable",
+                "brand_watermark_path",
+                "brand_watermark_pos",
+                "brand_watermark_opacity",
+                "brand_watermark_scale",
+            ):
+                if hasattr(self, name):
+                    getattr(self, name).setVisible(not is_photo)
+            for name in (
+                "brand_photo_style_enable",
+                "brand_photo_frame_enable",
+                "brand_photo_frame_width",
+                "brand_photo_paper_hex",
+            ):
+                if hasattr(self, name):
+                    getattr(self, name).setVisible(is_photo)
+        except Exception:
+            pass
+
+        if is_photo:
+            try:
+                self._apply_picture_settings_to_ui()
+            except Exception:
+                pass
+        try:
+            refresh_run_tab_for_media_mode(self)
+        except Exception:
+            pass
+        try:
+            refresh_library_tab_for_media_mode(self)
+        except Exception:
+            pass
+
+        try:
+            cur = self.tabs.currentIndex()
+            if cur >= 0 and hasattr(self.tabs, "setTabVisible") and not self.tabs.isTabVisible(cur):  # type: ignore[attr-defined]
+                for i in range(self.tabs.count()):
+                    if str(self.tabs.tabText(i) or "") == "Run":
+                        self.tabs.setCurrentIndex(i)
+                        break
+        except Exception:
+            pass
+        return
+
+    def _abort_if_custom_missing_instructions(self) -> bool:
+        """True when Custom mode is selected but the instructions box is empty (caller should return)."""
+        if str(getattr(self.settings, "run_content_mode", "preset")) != "custom":
+            return False
+        if str(getattr(self.settings, "custom_video_instructions", "") or "").strip():
+            return False
+        mm = str(getattr(self.settings, "media_mode", "video") or "video").strip().lower()
+        self._append_log(
+            "Custom mode: enter instructions in the Run tab first."
+            if mm == "photo"
+            else "Custom mode: enter video instructions in the Run tab first."
+        )
+        return True
 
     def _maybe_prompt_hf_token(self) -> None:
         """
@@ -514,6 +733,7 @@ class MainWindow(QMainWindow):
             self.paths.cache_dir,
             self.paths.runs_dir,
             self.paths.videos_dir,
+            self.paths.pictures_dir,
         ):
             rerr = rmtree_robust(folder)
             if rerr:
@@ -526,6 +746,7 @@ class MainWindow(QMainWindow):
             self.paths.cache_dir.mkdir(parents=True, exist_ok=True)
             self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
             self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
+            self.paths.pictures_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
 
@@ -825,7 +1046,7 @@ class MainWindow(QMainWindow):
             )
         else:
             tip = (
-                f'Discover: for Cartoon/Unhinged, Firecrawl searches the web for memes, jokes, stories, and art pages '
+                f'Discover: Firecrawl searches the open web for creative seeds '
                 f'(using your "{mode}" tags when set) and suggests topic phrases from page titles — '
                 "enable Firecrawl on the API tab with a key."
             )
@@ -937,7 +1158,7 @@ class MainWindow(QMainWindow):
         self._sync_tags_to_ui()
         self._save_settings()
         self._append_log(f"Added {added} topic tag(s) to {key}.")
-        if dm in ("cartoon", "unhinged"):
+        if video_format_is_creative_topics_mode(dm):
             pack_dir = self.paths.data_dir / "topic_research" / dm
             if (pack_dir / "manifest.json").exists():
                 self._append_log(f"Topic research folder (manifest + reference images): {pack_dir}")
@@ -984,8 +1205,9 @@ class MainWindow(QMainWindow):
             images_per_video=int(self.images_spin.value()),
             export_microclips=bool(self.export_microclips_chk.isChecked()),
             bitrate_preset=self.bitrate_combo.currentText(),  # type: ignore[arg-type]
-            use_image_slideshow=bool(self.use_slideshow_chk.isChecked()) if hasattr(self, "use_slideshow_chk") else True,
-            pro_mode=bool(self.pro_mode_chk.isChecked()) if hasattr(self, "pro_mode_chk") else False,
+            # Video mode is always Pro; slideshow is disabled.
+            use_image_slideshow=False,
+            pro_mode=True,
             pro_clip_seconds=float(self.pro_clip_seconds_spin.value()) if hasattr(self, "pro_clip_seconds_spin") else 4.0,
             clips_per_video=int(self.clips_spin.value()) if hasattr(self, "clips_spin") else 3,
             clip_seconds=float(self.clip_seconds_spin.value()) if hasattr(self, "clip_seconds_spin") else 4.0,
@@ -1074,6 +1296,18 @@ class MainWindow(QMainWindow):
                     video_style_strength=str(self.brand_video_style_strength.currentData() or "subtle")
                     if hasattr(self, "brand_video_style_strength")
                     else str(getattr(branding, "video_style_strength", "subtle")),
+                    photo_style_enabled=bool(self.brand_photo_style_enable.isChecked())
+                    if hasattr(self, "brand_photo_style_enable")
+                    else bool(getattr(branding, "photo_style_enabled", False)),
+                    photo_frame_enabled=bool(self.brand_photo_frame_enable.isChecked())
+                    if hasattr(self, "brand_photo_frame_enable")
+                    else bool(getattr(branding, "photo_frame_enabled", False)),
+                    photo_frame_width=int(self.brand_photo_frame_width.value())
+                    if hasattr(self, "brand_photo_frame_width")
+                    else int(getattr(branding, "photo_frame_width", 24)),
+                    photo_paper_hex=str(self.brand_photo_paper_hex.text()).strip()
+                    if hasattr(self, "brand_photo_paper_hex")
+                    else str(getattr(branding, "photo_paper_hex", "#F2F0E9") or "#F2F0E9"),
                 )
             except Exception:
                 branding = getattr(self.settings, "branding", BrandingSettings())
@@ -1210,8 +1444,32 @@ class MainWindow(QMainWindow):
         else:
             api_models = getattr(self.settings, "api_models", None) or default_api_models()
 
+        mm = (
+            str(self.media_mode_toggle.currentData() or "video").strip()
+            if hasattr(self, "media_mode_toggle")
+            else str(getattr(self.settings, "media_mode", "video") or "video").strip()
+        )
+        if mm not in ("video", "photo"):
+            mm = "video"
+
+        pic = getattr(self.settings, "picture", PictureSettings())
+        try:
+            if hasattr(self, "picture_template_combo"):
+                d = self.picture_template_combo.currentData()
+                if isinstance(d, tuple) and len(d) == 3:
+                    pic = replace(pic, template_id=str(d[0]), width=int(d[1]), height=int(d[2]))
+            if hasattr(self, "picture_output_type_combo"):
+                pic = replace(pic, output_type=str(self.picture_output_type_combo.currentData() or "single_image"))  # type: ignore[arg-type]
+            if hasattr(self, "picture_count_spin"):
+                pic = replace(pic, image_count=int(self.picture_count_spin.value()))
+            if hasattr(self, "picture_format_combo"):
+                pic = replace(pic, picture_format=str(self.picture_format_combo.currentData() or "poster"))  # type: ignore[arg-type]
+        except Exception:
+            pic = getattr(self.settings, "picture", PictureSettings())
+
         return AppSettings(
             topic_tags_by_mode=topic_map,
+            media_mode=mm,  # type: ignore[arg-type]
             video_format=vfmt,
             model_execution_mode=mex,  # type: ignore[arg-type]
             models_storage_mode=msm,  # type: ignore[arg-type]
@@ -1275,6 +1533,7 @@ class MainWindow(QMainWindow):
             voice_model_id=str(self.voice_combo.currentData()) if hasattr(self, "voice_combo") else self.settings.voice_model_id,
             allow_nsfw=bool(self.allow_nsfw_chk.isChecked()) if hasattr(self, "allow_nsfw_chk") else bool(getattr(self.settings, "allow_nsfw", False)),
             video=video,
+            picture=pic,
             branding=branding,
         )
 
@@ -1323,6 +1582,7 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         self.settings = self._collect_settings_from_ui()
         ok = save_settings(self.settings)
+        self._sync_title_bar_outline_colors()
         self._apply_hf_token_from_current_settings()
         self._update_hf_api_warnings()
         if ok:
@@ -1335,11 +1595,13 @@ class MainWindow(QMainWindow):
             )
 
     def _open_videos(self) -> None:
-        self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.videos_dir)))
+        root = media_output_root(self.paths, getattr(self.settings, "media_mode", "video"))
+        root.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(root)))
 
     def _library_refresh(self) -> None:
         self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
+        self.paths.pictures_dir.mkdir(parents=True, exist_ok=True)
         self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
         if hasattr(self, "_library_fill_tables"):
             try:
@@ -1348,8 +1610,9 @@ class MainWindow(QMainWindow):
                 pass
 
     def _library_open_videos_root(self) -> None:
-        self.paths.videos_dir.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.videos_dir)))
+        root = media_output_root(self.paths, getattr(self.settings, "media_mode", "video"))
+        root.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(root)))
 
     def _library_open_runs_root(self) -> None:
         self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
@@ -1404,7 +1667,8 @@ class MainWindow(QMainWindow):
         p = self._library_selected_video_path()
         if p is None:
             return
-        f = p / "final.mp4"
+        mm = str(getattr(self.settings, "media_mode", "video") or "video").strip().lower()
+        f = (p / "final.png") if mm == "photo" else (p / "final.mp4")
         if f.is_file():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(f)))
 
@@ -2268,10 +2532,7 @@ class MainWindow(QMainWindow):
                     self._append_log(f"- {e}")
                 return
 
-            if str(getattr(self.settings, "run_content_mode", "preset")) == "custom" and not str(
-                getattr(self.settings, "custom_video_instructions", "") or ""
-            ).strip():
-                self._append_log("Custom mode: enter video instructions in the Run tab first.")
+            if self._abort_if_custom_missing_instructions():
                 return
 
             qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
@@ -2290,10 +2551,7 @@ class MainWindow(QMainWindow):
 
         dprint("ui", "_on_preview")
         self._save_settings()
-        if str(getattr(self.settings, "run_content_mode", "preset")) == "custom" and not str(
-            getattr(self.settings, "custom_video_instructions", "") or ""
-        ).strip():
-            self._append_log("Custom mode: enter video instructions in the Run tab first.")
+        if self._abort_if_custom_missing_instructions():
             return
         self._maybe_log_offline_notice()
         pf = preflight_check(settings=self.settings, strict=False)
@@ -2427,10 +2685,7 @@ class MainWindow(QMainWindow):
         if self.storyboard_worker and self.storyboard_worker.isRunning():
             return
         self._save_settings()
-        if str(getattr(self.settings, "run_content_mode", "preset")) == "custom" and not str(
-            getattr(self.settings, "custom_video_instructions", "") or ""
-        ).strip():
-            self._append_log("Custom mode: enter video instructions in the Run tab first.")
+        if self._abort_if_custom_missing_instructions():
             return
         self._maybe_log_offline_notice()
         if hasattr(self, "storyboard_btn"):

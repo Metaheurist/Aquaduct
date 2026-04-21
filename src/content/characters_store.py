@@ -246,6 +246,15 @@ def _ephemeral_character_for_show(
         visual = (
             "Clean infographic-adjacent visuals, diagrams, soft gradients, readable text overlays, 9:16 vertical"
         )
+    elif vf == "creepypasta":
+        identity = (
+            f"Narrator {name}: calm first-person storyteller — measured, intimate, like a late-night campfire voice. "
+            f"Topic vibe: {tag_hint}. Stay in fiction; do not claim real crimes or real people."
+        )
+        visual = (
+            "Cinematic low-key horror stills: fog, silhouettes, liminal hallways, moonlight, grain, implied dread — "
+            "9:16 vertical, no splatter or photoreal injury"
+        )
     else:
         identity = (
             f"Host {name}: credible short-form host — fast, skeptical, plain language. "
