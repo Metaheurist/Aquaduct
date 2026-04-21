@@ -19,6 +19,8 @@ The app attempts to detect:
 If a field can’t be detected, the UI shows “(not detected)”.
 
 ### GPU policy (Auto vs single)
+The desktop UI uses a segmented **Auto** \| **Select GPU** control on the **My PC** tab (see [ui.md](ui.md)); behavior below is the same whether you use that control or edit **`ui_settings.json`** directly.
+
 Configured on the **My PC** tab and persisted in **`ui_settings.json`** (see [config.md](config.md)):
 - **Auto**: **VRAM-heavy** local work (**image** / **video** diffusion) targets the GPU with the **largest total VRAM** (ties: lower CUDA index wins). **Script (LLM)** targets a **heuristic “compute”** GPU (multiprocessor count × clock rate — not a benchmark; newer/faster cards rank higher when VRAM alone does not decide).
 - **Single GPU**: pin **all** local CUDA stages to the chosen device index (LLM + diffusion + fit heuristics for that pin).

@@ -66,8 +66,9 @@ def attach_branding_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     content_lay.addWidget(header)
 
-    sub = QLabel("All options are optional. Enable the checkbox to apply an override.")
+    sub = QLabel("Optional — enable a row to apply it.")
     sub.setStyleSheet("color: #B7B7C2;")
+    sub.setToolTip("Theme overrides, video/photo styling, and watermark are all optional.")
     content_lay.addWidget(sub)
 
     form = QFormLayout()

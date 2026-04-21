@@ -4,7 +4,6 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -17,7 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
-from UI.tab_sections import add_section_spacing
+from UI.tab_sections import add_section_spacing, section_card, section_title
 from UI.tutorial_links import help_tooltip_rich
 
 
@@ -63,16 +62,12 @@ def attach_library_tab(win) -> None:
     tool_row.addStretch(1)
     lay.addLayout(tool_row)
 
-    add_section_spacing(lay, px=8)
+    add_section_spacing(lay, px=10)
 
-    vg = QGroupBox()
-    win._library_media_group = vg
-    vg.setStyleSheet(
-        "QGroupBox { font-size: 12px; font-weight: 600; margin-top: 6px; } "
-        "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #B7B7C2; }"
-    )
-    vl = QVBoxLayout(vg)
-    vl.setContentsMargins(10, 14, 10, 10)
+    media_card, media_lay = section_card()
+    win._library_media_card = media_card
+    win._library_media_title = section_title("videos/ — projects with final.mp4", emphasis=True)
+    media_lay.addWidget(win._library_media_title)
 
     win.library_videos_table = QTableWidget(0, 4)
     win.library_videos_table.setHorizontalHeaderLabels(["Title", "Folder", "Modified", "final.mp4"])
@@ -85,7 +80,7 @@ def attach_library_tab(win) -> None:
     win.library_videos_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     win.library_videos_table.setMinimumHeight(200)
     win.library_videos_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_video_dir())
-    vl.addWidget(win.library_videos_table)
+    media_lay.addWidget(win.library_videos_table)
 
     vbtn = QHBoxLayout()
     vbtn.setSpacing(8)
@@ -106,18 +101,13 @@ def attach_library_tab(win) -> None:
     vbtn.addWidget(win.library_video_play_btn)
 
     vbtn.addStretch(1)
-    vl.addLayout(vbtn)
-    lay.addWidget(vg, 1)
+    media_lay.addLayout(vbtn)
+    lay.addWidget(media_card, 1)
 
-    add_section_spacing(lay, px=10)
+    add_section_spacing(lay, px=14)
 
-    rg = QGroupBox("runs/ — intermediate files per pipeline run")
-    rg.setStyleSheet(
-        "QGroupBox { font-size: 12px; font-weight: 600; margin-top: 6px; } "
-        "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #B7B7C2; }"
-    )
-    rl = QVBoxLayout(rg)
-    rl.setContentsMargins(10, 14, 10, 10)
+    runs_card, runs_lay = section_card()
+    runs_lay.addWidget(section_title("runs/ — intermediate workspaces", emphasis=True))
 
     win.library_runs_table = QTableWidget(0, 3)
     win.library_runs_table.setHorizontalHeaderLabels(["Run folder", "Modified", "assets/"])
@@ -129,7 +119,7 @@ def attach_library_tab(win) -> None:
     win.library_runs_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     win.library_runs_table.setMinimumHeight(180)
     win.library_runs_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_run_dir())
-    rl.addWidget(win.library_runs_table)
+    runs_lay.addWidget(win.library_runs_table)
 
     rbtn = QHBoxLayout()
     rbtn.setSpacing(8)
@@ -144,8 +134,8 @@ def attach_library_tab(win) -> None:
     rbtn.addWidget(win.library_run_assets_btn)
 
     rbtn.addStretch(1)
-    rl.addLayout(rbtn)
-    lay.addWidget(rg, 1)
+    runs_lay.addLayout(rbtn)
+    lay.addWidget(runs_card, 1)
 
     win._library_tab_widget = w
     win.tabs.addTab(w, "Library")
@@ -196,13 +186,11 @@ def refresh_library_tab_for_media_mode(win) -> None:
     if hasattr(win, "_library_intro_label"):
         if is_photo:
             win._library_intro_label.setText(
-                "Browse finished photo projects under pictures/ (final.png + assets/, including generated images). "
-                "Intermediate pipeline workspaces stay under runs/. Use Refresh after a render completes."
+                "Finished projects under pictures/; pipeline workspaces under runs/. Refresh after a render."
             )
         else:
             win._library_intro_label.setText(
-                "Browse finished video outputs under videos/ (final.mp4 + assets/) and intermediate run folders under runs/. "
-                "Use Refresh after a render completes."
+                "Finished outputs under videos/; workspaces under runs/. Refresh after a render."
             )
     if hasattr(win, "library_refresh_btn"):
         win.library_refresh_btn.setToolTip(
@@ -217,8 +205,8 @@ def refresh_library_tab_for_media_mode(win) -> None:
         win.library_open_videos_root_btn.setToolTip(
             "Open the pictures/ root (photo mode outputs)" if is_photo else "Open the videos/ root in the file manager"
         )
-    if hasattr(win, "_library_media_group") and win._library_media_group is not None:
-        win._library_media_group.setTitle(
+    if hasattr(win, "_library_media_title") and win._library_media_title is not None:
+        win._library_media_title.setText(
             "pictures/ — projects with final.png" if is_photo else "videos/ — projects with final.mp4"
         )
     if hasattr(win, "library_videos_table"):

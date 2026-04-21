@@ -988,10 +988,14 @@ class MainWindow(QMainWindow):
             return
         pid = str(self.personality_combo.currentData() or "auto")
         if pid == "auto":
+            self.personality_hint.setVisible(True)
             self.personality_hint.setText("Auto: will choose based on headlines + topic tags.")
+            self.personality_combo.setToolTip("")
         else:
+            self.personality_hint.setVisible(False)
             p = get_personality_by_id(pid)
-            self.personality_hint.setText(f"Selected: {p.label}")
+            tip = f"{p.description}\n\n" + "\n".join(p.style_rules[:5])
+            self.personality_combo.setToolTip(tip)
         self._resize_to_current_tab()
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
@@ -1502,10 +1506,11 @@ class MainWindow(QMainWindow):
         except Exception:
             pic = getattr(self.settings, "picture", PictureSettings())
 
-        _gpu_mode = (
-            str(self.gpu_policy_combo.currentData() if hasattr(self, "gpu_policy_combo") else getattr(self.settings, "gpu_selection_mode", "auto") or "auto")
-            or "auto"
-        ).strip().lower()
+        if hasattr(self, "gpu_policy_toggle"):
+            _gpu_mode = str(self.gpu_policy_toggle.currentData() or "auto")
+        else:
+            _gpu_mode = str(getattr(self.settings, "gpu_selection_mode", "auto") or "auto")
+        _gpu_mode = (_gpu_mode or "auto").strip().lower()
         if _gpu_mode not in ("auto", "single"):
             _gpu_mode = "auto"
         _gpu_dev_idx = (

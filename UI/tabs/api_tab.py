@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -19,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.tab_sections import add_section_spacing, section_card, section_title
 
 
 def attach_api_tab(win) -> None:
@@ -40,12 +40,10 @@ def attach_api_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     il.addWidget(header)
 
-    sub = QLabel(
-        "Tokens are stored in ui_settings.json on this machine. "
-        "You can also set HF_TOKEN / FIRECRAWL_API_KEY in the environment (env wins for Firecrawl when set)."
-    )
+    sub = QLabel("Keys are saved in ui_settings.json on this machine (env vars can override — see each section).")
     sub.setWordWrap(True)
     sub.setStyleSheet("color: #B7B7C2; font-size: 12px;")
+    sub.setToolTip("HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.")
     il.addWidget(sub)
 
     from UI.api_model_widgets import build_generation_api_panel
@@ -55,8 +53,8 @@ def attach_api_tab(win) -> None:
     win._api_gen_panel_parent_layout = il
 
     # ---- Hugging Face ----
-    hf_box = QGroupBox("Hugging Face")
-    hf_lay = QVBoxLayout(hf_box)
+    hf_card, hf_lay = section_card()
+    hf_lay.addWidget(section_title("Hugging Face", emphasis=True))
 
     win.api_hf_enabled_chk = QCheckBox("Use Hugging Face token for Hub (downloads + model checks)")
     win.api_hf_enabled_chk.setChecked(bool(getattr(win.settings, "hf_api_enabled", True)))
@@ -85,11 +83,12 @@ def attach_api_tab(win) -> None:
     form_hf.addRow("Token", win.api_hf_token_edit)
     hf_lay.addLayout(form_hf)
 
-    il.addWidget(hf_box)
+    il.addWidget(hf_card)
+    add_section_spacing(il)
 
     # ---- Firecrawl ----
-    fc_box = QGroupBox("Firecrawl (optional)")
-    fc_lay = QVBoxLayout(fc_box)
+    fc_card, fc_lay = section_card()
+    fc_lay.addWidget(section_title("Firecrawl (optional)", emphasis=True))
 
     win.api_fc_enabled_chk = QCheckBox("Use Firecrawl for headlines + article text (when a key is available)")
     win.api_fc_enabled_chk.setChecked(bool(getattr(win.settings, "firecrawl_enabled", False)))
@@ -123,11 +122,12 @@ def attach_api_tab(win) -> None:
     win.api_fc_key_hint.setStyleSheet("color: #E8A040; font-size: 12px;")
     fc_lay.addWidget(win.api_fc_key_hint)
 
-    il.addWidget(fc_box)
+    il.addWidget(fc_card)
+    add_section_spacing(il)
 
     # ---- ElevenLabs (optional cloud TTS) ----
-    el_box = QGroupBox("ElevenLabs (optional TTS)")
-    el_lay = QVBoxLayout(el_box)
+    el_card, el_lay = section_card()
+    el_lay.addWidget(section_title("ElevenLabs (optional TTS)", emphasis=True))
 
     win.api_el_enabled_chk = QCheckBox("Enable ElevenLabs voices for Character Builder + narration")
     win.api_el_enabled_chk.setChecked(bool(getattr(win.settings, "elevenlabs_enabled", False)))
@@ -157,11 +157,12 @@ def attach_api_tab(win) -> None:
     form_el.addRow("API key", win.api_el_key_edit)
     el_lay.addLayout(form_el)
 
-    il.addWidget(el_box)
+    il.addWidget(el_card)
+    add_section_spacing(il)
 
     # ---- TikTok (optional upload) ----
-    tt_box = QGroupBox("TikTok (Content Posting API)")
-    tt_lay = QVBoxLayout(tt_box)
+    tt_card, tt_lay = section_card()
+    tt_lay.addWidget(section_title("TikTok (Content Posting API)", emphasis=True))
 
     win.api_tt_enabled_chk = QCheckBox("Enable TikTok upload from the Tasks tab")
     win.api_tt_enabled_chk.setChecked(bool(getattr(win.settings, "tiktok_enabled", False)))
@@ -237,11 +238,12 @@ def attach_api_tab(win) -> None:
         win.api_tt_status_lbl.setText("Status: not connected")
     tt_lay.addWidget(win.api_tt_status_lbl)
 
-    il.addWidget(tt_box)
+    il.addWidget(tt_card)
+    add_section_spacing(il)
 
     # ---- YouTube (optional Shorts / uploads) ----
-    yt_box = QGroupBox("YouTube (Data API v3)")
-    yt_lay = QVBoxLayout(yt_box)
+    yt_card, yt_lay = section_card()
+    yt_lay.addWidget(section_title("YouTube (Data API v3)", emphasis=True))
 
     win.api_yt_enabled_chk = QCheckBox("Enable YouTube upload from the Tasks tab")
     win.api_yt_enabled_chk.setChecked(bool(getattr(win.settings, "youtube_enabled", False)))
@@ -323,7 +325,7 @@ def attach_api_tab(win) -> None:
         win.api_yt_status_lbl.setText("Status: not connected")
     yt_lay.addWidget(win.api_yt_status_lbl)
 
-    il.addWidget(yt_box)
+    il.addWidget(yt_card)
 
     il.addStretch(1)
 

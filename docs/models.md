@@ -16,7 +16,7 @@ In the UI **Model** tab (when **Local models** is selected) you can pick and dow
 
 **Auto-fit for this PC** sets all four from detected VRAM/RAM using `rank_models_for_auto_fit` in [`src/models/hardware.py`](../src/models/hardware.py) (same heuristics as **My PC** fit badges), using **effective VRAM per model kind** from the **GPU policy** on the **My PC** tab (Auto vs Single — not “first GPU only” when multiple cards exist). It saves settings after applying.
 
-For multi-GPU routing at runtime (which CUDA device loads the LLM vs diffusion) and fit legend markers, see [Hardware + model fit](hardware.md) and [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py).
+For multi-GPU routing at runtime (which CUDA device loads the LLM vs diffusion) and **My PC** / **Model** fit markers, see [Hardware + model fit](hardware.md) and [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py).
 
 **Script model and UI “brain” features** (🧠 expand, **Characters → Generate with LLM**) resolve the repo id from the **Script (LLM)** dropdown’s **current selection** first, then saved settings — so they load the same weights as the visible combo without requiring **Save** first (`resolve_llm_model_id` in [`UI/brain_expand.py`](../UI/brain_expand.py)).
 

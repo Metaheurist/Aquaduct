@@ -11,6 +11,8 @@ from src.core.config import BrandingSettings
 class Palette(TypedDict):
     bg: str
     panel: str
+    surface: str
+    card: str
     control_bg: str
     border: str
     text: str
@@ -27,6 +29,19 @@ QDialog#FramelessDialogShell {{
   border-radius: 14px;
 }}
 QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 8px; background: {panel}; }}
+QFrame#SettingsSectionCard {{
+  background: {card};
+  border: 1px solid {border};
+  border-radius: 12px;
+}}
+/* Slightly lift inputs inside cards so nested controls don’t read as a second heavy slab on {card}. */
+QFrame#SettingsSectionCard QComboBox,
+QFrame#SettingsSectionCard QLineEdit,
+QFrame#SettingsSectionCard QTextEdit,
+QFrame#SettingsSectionCard QPlainTextEdit,
+QFrame#SettingsSectionCard QAbstractSpinBox {{
+  background-color: rgba(255, 255, 255, 0.06);
+}}
 QTabBar::tab {{ background: {control_bg}; color: {muted}; padding: 10px 14px; margin: 6px 6px 0 0;
                border-top-left-radius: 14px; border-top-right-radius: 14px; border: 1px solid {border}; }}
 QTabBar::tab:selected {{ color: {text}; border-bottom: 3px solid {accent}; }}
@@ -98,6 +113,8 @@ PRESET_PALETTES: dict[str, Palette] = {
     "default": {
         "bg": "#0F0F10",
         "panel": "#0B0B0F",
+        "surface": "#1A1A22",
+        "card": "#1E1E28",
         "control_bg": "#15151B",
         "border": "#23232B",
         "text": "#FFFFFF",
@@ -109,6 +126,8 @@ PRESET_PALETTES: dict[str, Palette] = {
     "tiktok": {
         "bg": "#0F0F10",
         "panel": "#0B0B0F",
+        "surface": "#1A1A22",
+        "card": "#1E1E28",
         "control_bg": "#15151B",
         "border": "#23232B",
         "text": "#FFFFFF",
@@ -119,6 +138,8 @@ PRESET_PALETTES: dict[str, Palette] = {
     "ocean": {
         "bg": "#07161C",
         "panel": "#061016",
+        "surface": "#0F2832",
+        "card": "#12313D",
         "control_bg": "#0D2029",
         "border": "#143541",
         "text": "#EAFBFF",
@@ -129,6 +150,8 @@ PRESET_PALETTES: dict[str, Palette] = {
     "sunset": {
         "bg": "#140B10",
         "panel": "#10070C",
+        "surface": "#2A1420",
+        "card": "#311726",
         "control_bg": "#221018",
         "border": "#3A1A2A",
         "text": "#FFF0F3",
@@ -139,6 +162,8 @@ PRESET_PALETTES: dict[str, Palette] = {
     "mono": {
         "bg": "#0D0D0D",
         "panel": "#0A0A0A",
+        "surface": "#181818",
+        "card": "#1D1D1D",
         "control_bg": "#141414",
         "border": "#2A2A2A",
         "text": "#FFFFFF",

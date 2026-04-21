@@ -52,9 +52,9 @@ When **`model_execution_mode`** is **`local`**, long article text plus instructi
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:
-- **GPU policy** (desktop; persisted in `ui_settings.json`; see [hardware.md](hardware.md)):
+- **GPU policy** (desktop; persisted in `ui_settings.json`; see [hardware.md](hardware.md); **My PC** tab maps **Auto** \| **Select GPU** to these keys — see [ui.md](ui.md)):
   - `gpu_selection_mode`: **`auto`** (default) or **`single`** — Auto routes LLM vs diffusion per [`cuda_device_policy`](../src/util/cuda_device_policy.py); Single pins `gpu_device_index`.
-  - `gpu_device_index`: CUDA ordinal used when `gpu_selection_mode == "single"`.
+  - `gpu_device_index`: CUDA ordinal used when `gpu_selection_mode == "single"` (shown in the **Device** combo only when **Select GPU** is chosen and CUDA GPUs exist).
   - `resource_graph_monitor_gpu_index`: optional int — last **Resource graph** “Monitor GPU” selection (`None` = default to device **0** when opening the graph).
 - `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](ui.md))

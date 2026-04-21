@@ -59,7 +59,7 @@ Local **image** and **video** diffusion use a shared placement helper ([`src/uti
 
 The title-bar **Resource usage** graph ([`UI/resource_graph_dialog.py`](../UI/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry**; with multiple GPUs you can pick which device’s VRAM to chart. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
 
-**Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured in the **My PC** tab and implemented in [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py); see [hardware.md](hardware.md). This is separate from **CPU thread** tuning above.
+**Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured on the **My PC** tab (**Auto** \| **Select GPU** and optional **Device** when pinning one index) and implemented in [`src/util/cuda_device_policy.py`](../src/util/cuda_device_policy.py); see [hardware.md](hardware.md). This is separate from **CPU thread** tuning above.
 
 ## Related
 
