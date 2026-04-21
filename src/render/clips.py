@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -25,10 +26,38 @@ def _norm_repo_id(model_id: str) -> str:
     return (model_id or "").strip().lower()
 
 
+def _truncate_clip_text_encoder_77(text: str, *, low_id: str) -> str:
+    """
+    Many T2V / composite pipelines use OpenAI-style CLIP with **max 77 tokens** for the text branch.
+    CogVideoX (T5) and LTX (long context) are skipped — see model-specific branches in callers.
+    """
+    if "cogvideox" in low_id or "ltx-video" in low_id or "lightricks/ltx" in low_id:
+        return text
+    t = (text or "").strip()
+    if not t:
+        return t
+    try:
+        from transformers import CLIPTokenizerFast
+
+        tok = CLIPTokenizerFast.from_pretrained("openai/clip-vit-large-patch14", local_files_only=True)
+    except Exception:
+        try:
+            from transformers import CLIPTokenizerFast
+
+            tok = CLIPTokenizerFast.from_pretrained("openai/clip-vit-large-patch14")
+        except Exception:
+            return text
+    try:
+        ids = tok.encode(t, truncation=True, max_length=77)
+        return tok.decode(ids, skip_special_tokens=True).strip()
+    except Exception:
+        return text
+
+
 def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
     """
-    Text-to-video pipelines often use CLIP text encoders with small context (e.g. 77 tokens).
-    Strip our diffusion-conditioning artifacts and cap by words conservatively.
+    Text-to-video pipelines often use CLIP text encoders with a **77-token** limit (tokens ≠ words).
+    Strip diffusion-conditioning artifacts; cap words conservatively (~1.2–1.8 tokens/word for English).
     """
     s = " ".join((prompt or "").split()).strip()
     if "\nNEGATIVE:" in s:
@@ -38,19 +67,30 @@ def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
         s = s[: low.find(" negative :")].strip()
     if " negative:" in low:
         s = s[: low.find(" negative:")].strip()
-    # Conservative caps (word-based) to avoid CLIP overflow.
+    # Drop redundant aspect hints at the end (pipe sets resolution; CLIP budget is tiny).
+    s = re.sub(r",\s*vertical\s+9\s*:\s*16\s*$", "", s, flags=re.IGNORECASE)
+    s = re.sub(r",\s*9\s*:\s*16\s*$", "", s, flags=re.IGNORECASE)
+    s = " ".join(s.split()).strip().strip(",")
     low_id = _norm_repo_id(model_id)
+    # CLIP-77 families: stay ≤ ~40 words to land under 77 tokens with punctuation.
     if "zeroscope" in low_id or "text-to-video-ms" in low_id or "modelscope" in low_id:
-        cap = 55
-    elif "cogvideox" in low_id or "hunyuanvideo" in low_id:
+        cap = 36
+    elif "hunyuanvideo" in low_id:
+        cap = 42
+    elif "cogvideox" in low_id:
         cap = 200
     elif "ltx-video" in low_id or "lightricks/ltx" in low_id:
         cap = 120
     else:
-        cap = 90
+        cap = 42
     parts = [p for p in s.split() if p]
     if len(parts) > cap:
         s = " ".join(parts[:cap]).strip()
+    # Hard char ceiling for CLIP-like stacks (last resort).
+    if "cogvideox" not in low_id and len(s) > 320:
+        s = s[:320].rsplit(" ", 1)[0].strip()
+    # Exact OpenAI CLIP token cap (words ≠ tokens; punctuation/hyphens inflate token count).
+    s = _truncate_clip_text_encoder_77(s, low_id=low_id)
     return s
 
 
@@ -76,7 +116,7 @@ def _svd_cap_num_frames(requested: int) -> int:
     Stable Video Diffusion img2vid is trained for a small num_frames (typically ≤25).
 
     We also derive num_frames from fps×seconds; that must not exceed the model ceiling or VRAM explodes.
-    On ≤10 GB VRAM, use a tighter cap to reduce peak memory during temporal attention.
+    On ≤10 GB VRAM, use a tighter cap; on ≤12 GB, a moderate cap (Pro often leaves other models on-GPU).
     """
     nf = max(8, int(requested))
     cap = 25
@@ -86,9 +126,25 @@ def _svd_cap_num_frames(requested: int) -> int:
         v = get_hardware_info().vram_gb
         if v is not None and v <= 10:
             cap = 14
+        elif v is not None and v <= 12:
+            # 12 GB cards often run Pro with other models still resident; keep temporal batch smaller.
+            cap = min(cap, 18)
     except Exception:
         pass
     return min(nf, cap)
+
+
+def _svd_decode_chunk_size() -> int:
+    """Smaller VAE decode batches on 12 GB when other models may still be resident."""
+    try:
+        from src.models.hardware import get_hardware_info
+
+        v = get_hardware_info().vram_gb
+        if v is not None and v <= 12:
+            return 2
+    except Exception:
+        pass
+    return 4
 
 
 def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
@@ -135,7 +191,7 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "num_inference_steps": 25,
             "noise_aug_strength": 0.02,
             "motion_bucket_id": 127,
-            "decode_chunk_size": 4,
+            "decode_chunk_size": _svd_decode_chunk_size(),
         }
 
     if mid == "cerspense/zeroscope_v2_576w":
@@ -169,7 +225,7 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "num_inference_steps": 25,
             "noise_aug_strength": 0.02,
             "motion_bucket_id": 127,
-            "decode_chunk_size": 4,
+            "decode_chunk_size": _svd_decode_chunk_size(),
         }
     if "zeroscope" in mid:
         if "30x448" in mid or "448x256" in mid:
@@ -493,7 +549,7 @@ def generate_clips(
     out_dir.mkdir(parents=True, exist_ok=True)
     prompts = [_strip_negative_and_cap_for_clip(video_model_id, p) for p in prompts if (p or "").strip()]
     if not prompts:
-        prompts = ["vertical 9:16, one clear focal subject, bold readable composition, matches narration topic"]
+        prompts = ["vertical video, one clear subject, bold composition"]
     prompts = prompts[: max(1, int(max_clips))]
     init_images = (init_images or [])[: len(prompts)]
 

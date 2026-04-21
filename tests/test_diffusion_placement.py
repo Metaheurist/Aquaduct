@@ -36,6 +36,7 @@ def test_auto_high_vram_prefers_none(monkeypatch: pytest.MonkeyPatch, clear_offl
         lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=16.0),
     )
     monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
     assert dp.resolve_diffusion_offload_mode() == "none"
 
 
@@ -56,17 +57,31 @@ def test_auto_mid_vram_uses_model(monkeypatch: pytest.MonkeyPatch, clear_offload
         lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=10.0),
     )
     monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 8.0)
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
     assert dp.resolve_diffusion_offload_mode() == "model"
 
 
-def test_tight_host_ram_and_decent_vram_prefers_none(monkeypatch: pytest.MonkeyPatch, clear_offload_env: None) -> None:
-    """Avoid offload staging when host RAM is nearly full but GPU can hold the full pipe."""
+def test_tight_host_ram_12gb_vram_prefers_model(monkeypatch: pytest.MonkeyPatch, clear_offload_env: None) -> None:
+    """12 GB VRAM is not enough for full-GPU diffusion after LLM / image stages; use model offload."""
     monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
     monkeypatch.setattr(
         "src.models.hardware.get_hardware_info",
         lambda: HardwareInfo(os="t", cpu="c", ram_gb=64.0, gpu_name="g", vram_gb=12.0),
     )
     monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 2.0)
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
+    assert dp.resolve_diffusion_offload_mode() == "model"
+
+
+def test_tight_host_ram_16gb_vram_can_prefers_none(monkeypatch: pytest.MonkeyPatch, clear_offload_env: None) -> None:
+    """Avoid offload staging when host RAM is nearly full but the GPU can hold the full pipe."""
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=64.0, gpu_name="g", vram_gb=16.0),
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 2.0)
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
     assert dp.resolve_diffusion_offload_mode() == "none"
 
 
@@ -78,7 +93,20 @@ def test_tight_host_ram_8gb_vram_prefers_model_not_full_gpu(monkeypatch: pytest.
         lambda: HardwareInfo(os="t", cpu="c", ram_gb=64.0, gpu_name="g", vram_gb=8.0),
     )
     monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 2.0)
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
     assert dp.resolve_diffusion_offload_mode() == "model"
+
+
+def test_auto_multi_gpu_prefers_sequential(monkeypatch: pytest.MonkeyPatch, clear_offload_env: None) -> None:
+    """Two+ CUDA devices: auto defaults to sequential so diffusion stays low-peak on its GPU."""
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=24.0),
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 2)
+    assert dp.resolve_diffusion_offload_mode() == "sequential"
 
 
 def test_place_pipeline_cpu_when_no_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,3 +124,22 @@ def test_place_pipeline_cpu_when_no_cuda(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     dp.place_diffusion_pipeline(p)
     assert p.device == "cpu"
+
+
+def test_place_sequential_passes_gpu_id(monkeypatch: pytest.MonkeyPatch, clear_offload_env: None) -> None:
+    """``enable_sequential_cpu_offload`` must receive ``gpu_id`` for multi-GPU diffusion routing."""
+    import torch
+
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "sequential")
+
+    class P:
+        def __init__(self) -> None:
+            self.gpu_id: int | None = None
+
+        def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device=None) -> None:
+            self.gpu_id = gpu_id
+
+    p = P()
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    dp.place_diffusion_pipeline(p, cuda_device_index=1)
+    assert p.gpu_id == 1
