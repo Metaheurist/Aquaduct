@@ -904,9 +904,21 @@ class MainWindow(QMainWindow):
             if not p:
                 return False
             if uses_openai_chat_protocol_for_llm(p):
+                if p == "google_ai_studio":
+                    return ok_oai or bool(
+                        (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
+                    )
                 return ok_oai
             if p == "replicate":
                 return ok_rep
+            if p == "siliconflow":
+                return ok_oai or bool((os.environ.get("SILICONFLOW_API_KEY") or "").strip())
+            if p == "magic_hour":
+                return bool(
+                    (os.environ.get("MAGIC_HOUR_API_KEY") or os.environ.get("MAGICHOUR_API_KEY") or "").strip()
+                )
+            if p == "inworld":
+                return ok_oai or bool((os.environ.get("INWORLD_API_KEY") or "").strip())
             if p == "elevenlabs":
                 return el_en and el_ok
             return False

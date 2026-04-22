@@ -6,9 +6,10 @@ from typing import Any
 import requests
 
 from src.core.config import AppSettings
-from src.platform.openai_client import build_openai_client_from_settings
+from src.platform.magichour_client import MagicHourRequestError, text_to_video_mp4_bytes
+from src.platform.openai_client import build_image_generation_openai_client, build_openai_client_from_settings
 from src.platform.replicate_client import ReplicateClient, ReplicateRequestError
-from src.runtime.model_backend import effective_replicate_api_token
+from src.runtime.model_backend import effective_magic_hour_api_key, effective_replicate_api_token
 
 
 def download_url_to_file(url: str, dest: Path, *, timeout: float = 180.0) -> None:
@@ -30,6 +31,10 @@ def generate_still_png_bytes(*, settings: AppSettings, prompt: str) -> bytes:
         m = model or "dall-e-3"
         size = "1024x1792" if m.startswith("dall-e-3") else "1024x1024"
         return client.download_image_png(model=m, prompt=prompt, size=size)
+    if prov == "siliconflow":
+        client = build_image_generation_openai_client(settings)
+        m = (model or "").strip() or "black-forest-labs/FLUX.1-schnell"
+        return client.download_image_png(model=m, prompt=prompt, size="1024x1024")
     if prov == "replicate":
         tok = effective_replicate_api_token(settings)
         if not tok:
@@ -52,6 +57,37 @@ def generate_still_png_bytes(*, settings: AppSettings, prompt: str) -> bytes:
         r.raise_for_status()
         return r.content
     raise RuntimeError(f"Unsupported image API provider: {prov!r}")
+
+
+def cloud_video_mp4_paths(*, settings: AppSettings, prompts: list[str], out_dir: Path, pro_clip_seconds: float = 4.0) -> list[Path]:
+    """Pro-mode cloud clips: Replicate (version id) or Magic Hour (model id, REST)."""
+    vid = getattr(getattr(settings, "api_models", None), "video", None)
+    prov = str(getattr(vid, "provider", "") or "").strip().lower()
+    model = str(getattr(vid, "model", "") or "").strip()
+    if prov == "replicate":
+        return replicate_video_mp4_paths(settings=settings, prompts=prompts, out_dir=out_dir)
+    if prov == "magic_hour":
+        tok = effective_magic_hour_api_key(settings)
+        if not tok:
+            raise MagicHourRequestError("Magic Hour API key missing — set MAGIC_HOUR_API_KEY.")
+        m = (model or "").strip() or "default"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        paths: list[Path] = []
+        T = max(1.0, min(30.0, float(pro_clip_seconds or 4.0)))
+        for i, pr in enumerate(prompts):
+            if not (pr or "").strip():
+                continue
+            raw = text_to_video_mp4_bytes(
+                api_key=tok,
+                prompt=pr.strip(),
+                model=m,
+                end_seconds=T,
+            )
+            p = out_dir / f"clip_{i+1:03d}.mp4"
+            p.write_bytes(raw)
+            paths.append(p)
+        return paths
+    raise RuntimeError(f"Unsupported cloud video API provider: {prov!r}")
 
 
 def replicate_video_mp4_paths(*, settings: AppSettings, prompts: list[str], out_dir: Path) -> list[Path]:

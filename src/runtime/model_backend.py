@@ -46,6 +46,32 @@ def effective_replicate_api_token(settings: AppSettings | None) -> str:
     return str(getattr(settings, "api_replicate_token", "") or "").strip()
 
 
+def effective_siliconflow_api_key(settings: AppSettings | None) -> str:
+    v = (os.environ.get("SILICONFLOW_API_KEY") or "").strip()
+    if v:
+        return v
+    return effective_openai_api_key(settings)
+
+
+def effective_magic_hour_api_key(settings: AppSettings | None) -> str:
+    for k in ("MAGIC_HOUR_API_KEY", "MAGICHOUR_API_KEY"):
+        v = (os.environ.get(k) or "").strip()
+        if v:
+            return v
+    if settings is None:
+        return ""
+    return ""
+
+
+def effective_inworld_api_key(settings: AppSettings | None) -> str:
+    v = (os.environ.get("INWORLD_API_KEY") or "").strip()
+    if v:
+        return v
+    if settings is None:
+        return ""
+    return str(getattr(settings, "api_openai_key", "") or "").strip()
+
+
 def _role_cfg(settings: AppSettings, role: Role) -> ApiRoleConfig:
     am = getattr(settings, "api_models", None)
     if am is None:
@@ -61,6 +87,12 @@ def provider_has_key(settings: AppSettings, provider: str) -> bool:
         return bool(effective_llm_api_key(settings, p))
     if p == "replicate":
         return bool(effective_replicate_api_token(settings))
+    if p == "siliconflow":
+        return bool(effective_siliconflow_api_key(settings))
+    if p == "magic_hour":
+        return bool(effective_magic_hour_api_key(settings))
+    if p == "inworld":
+        return bool(effective_inworld_api_key(settings))
     if p == "elevenlabs":
         from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 
@@ -134,12 +166,15 @@ def api_preflight_errors(settings: AppSettings) -> list[str]:
             out.append(f"API mode: missing API key for {label} provider “{prov}”.")
     if pro_on:
         vcfg = _role_cfg(settings, "video")
+        vpr = str(vcfg.provider or "").strip().lower()
         if not role_filled(vcfg):
-            out.append("API mode + Pro: configure Video API (Replicate model version id + token).")
-        elif str(vcfg.provider or "").strip().lower() != "replicate":
-            out.append("API mode + Pro: Video provider must be Replicate for cloud text-to-video.")
-        elif not provider_has_key(settings, "replicate"):
+            out.append("API mode + Pro: configure Video API (provider + model / version id and token).")
+        elif vpr not in ("replicate", "magic_hour"):
+            out.append("API mode + Pro: Video provider must be Replicate (version id) or Magic Hour (model id).")
+        elif vpr == "replicate" and not provider_has_key(settings, "replicate"):
             out.append("API mode + Pro: set REPLICATE_API_TOKEN or saved Replicate token.")
+        elif vpr == "magic_hour" and not provider_has_key(settings, "magic_hour"):
+            out.append("API mode + Pro: set MAGIC_HOUR_API_KEY for Magic Hour video.")
     elif not slideshow:
         out.append("API mode: enable slideshow (image stills) or use Pro mode with Replicate video — motion mode without local models is not supported.")
     return out

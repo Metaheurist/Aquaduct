@@ -55,9 +55,9 @@ def test_generate_still_openai_uses_client(monkeypatch):
     fake.download_image_png.assert_called_once()
 
 
-def test_replicate_video_mp4_paths_requires_replicate_provider(tmp_path):
+def test_cloud_video_mp4_paths_requires_supported_provider(tmp_path):
     s = AppSettings(
         api_models=ApiModelRuntimeSettings(video=ApiRoleConfig(provider="openai", model="x")),
     )
-    with pytest.raises(ReplicateRequestError, match="Replicate video"):
-        ag.replicate_video_mp4_paths(settings=s, prompts=["a"], out_dir=tmp_path / "clips")
+    with pytest.raises(RuntimeError, match="Unsupported cloud video"):
+        ag.cloud_video_mp4_paths(settings=s, prompts=["a"], out_dir=tmp_path / "clips")

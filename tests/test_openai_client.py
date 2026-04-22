@@ -48,6 +48,21 @@ def test_build_openai_client_default_base_for_groq(monkeypatch):
     assert "groq.com" in c.base_url
 
 
+def test_build_client_gemini_base_no_double_v1(monkeypatch):
+    """Gemini OpenAI-compatible root must not get an extra /v1 suffix."""
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    s = AppSettings(
+        api_models=ApiModelRuntimeSettings(
+            llm=ApiRoleConfig(provider="google_ai_studio", model="gemini-2.0-flash")
+        )
+    )
+    c = oc.build_openai_client_from_settings(s)
+    assert "generativelanguage.googleapis.com" in c.base_url
+    assert "openai/v1/v1" not in c.base_url.replace("//", "/")
+    assert c.base_url.rstrip("/").endswith("openai") or c.base_url.rstrip("/").endswith("openai/")
+
+
 def test_build_client_requires_key():
     s = AppSettings(api_models=ApiModelRuntimeSettings(llm=ApiRoleConfig(provider="openai", model="gpt-4o-mini")))
     from src.platform import openai_client as oc
