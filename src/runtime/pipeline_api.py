@@ -31,7 +31,7 @@ from src.core.config import AppSettings, VideoSettings, get_models, get_paths, m
 from src.render.branding_video import apply_palette_to_prompts
 from src.render.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
-from src.runtime.api_generation import generate_still_png_bytes, replicate_video_mp4_paths
+from src.runtime.api_generation import cloud_video_mp4_paths, generate_still_png_bytes
 from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import assert_api_runtime_ready, is_api_mode
 from src.runtime.preflight import preflight_check
@@ -478,7 +478,9 @@ def run_once_api(
 
     use_el = bool(el_vid and el_key and ffmpeg_exe)
     char_forces_voice = active_character is not None and not getattr(active_character, "use_default_voice", True)
-    rotate_unhinged = vf_voice == "unhinged" and not use_el and not char_forces_voice and vprov != "openai"
+    rotate_unhinged = (
+        vf_voice == "unhinged" and not use_el and not char_forces_voice and vprov not in ("openai", "inworld")
+    )
     v_mid = (getattr(app, "voice_model_id", None) or "").strip() or models.kokoro_id
     char_moss: str | None = (
         (active_character.voice_instruction or "").strip() if active_character is not None else None
@@ -492,6 +494,27 @@ def run_once_api(
         client = build_openai_client_from_settings(app)
         vv = vid_voice or "alloy"
         client.speech_to_file(model=vmodel, text=narration, voice=vv, out_path=str(voice_wav))
+        try:
+            dur = float(duration_seconds(voice_wav))
+        except Exception:
+            dur = max(30.0, len(narration) / 14.0)
+        words = [w for w in narration.split() if w][:240]
+        step = dur / max(len(words), 1)
+        cap = [{"word": w, "start": i * step, "end": (i + 1) * step} for i, w in enumerate(words)]
+        captions_json.write_text(json.dumps(cap), encoding="utf-8")
+    elif vprov == "inworld" and vmodel:
+        from src.speech.inworld_tts import synthesize_inworld_to_wav
+
+        ffmpeg_bin = Path(ensure_ffmpeg(paths.ffmpeg_dir))
+        if not synthesize_inworld_to_wav(
+            settings=app,
+            text=narration,
+            model_id=vmodel,
+            voice_id=vid_voice or "Sarah",
+            out_wav=voice_wav,
+            ffmpeg_bin=ffmpeg_bin,
+        ):
+            raise RuntimeError("Inworld TTS failed — set INWORLD_API_KEY (or save a key) and a valid voice id.")
         try:
             dur = float(duration_seconds(voice_wav))
         except Exception:
@@ -585,9 +608,12 @@ def run_once_api(
             video_format=str(getattr(app, "video_format", "news") or "news"),
         )
         (assets_dir / "pro_prompt.txt").write_text("\n\n".join(pro_scenes), encoding="utf-8")
-        _pipe_progress(on_progress, 68, -1, "Text-to-video (API / Replicate)…")
+        _pipe_progress(on_progress, 68, -1, "Text-to-video (API)…")
         clip_dir = assets_dir / "pro_clips"
-        clip_paths = replicate_video_mp4_paths(settings=app, prompts=pro_scenes, out_dir=clip_dir)
+        pro_T = float(getattr(video_settings, "pro_clip_seconds", 4.0) or 4.0)
+        clip_paths = cloud_video_mp4_paths(
+            settings=app, prompts=pro_scenes, out_dir=clip_dir, pro_clip_seconds=pro_T
+        )
         if not clip_paths:
             raise RuntimeError("API Pro mode produced no video clips.")
         T = float(getattr(video_settings, "pro_clip_seconds", 4.0))

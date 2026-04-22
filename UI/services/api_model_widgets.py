@@ -58,9 +58,10 @@ def _refill_model_combo(model_combo: QComboBox, *, role: str, provider: str, sav
 def build_generation_api_panel(win) -> QWidget:
     root = QGroupBox("Generation APIs (API execution mode)")
     root.setToolTip(
-        "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GROQ_API_KEY, "
-        "TOGETHER_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, "
-        "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, REPLICATE_API_TOKEN, …"
+        "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GEMINI_API_KEY, "
+        "GROQ_API_KEY, TOGETHER_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, "
+        "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, SILICONFLOW_API_KEY, MAGIC_HOUR_API_KEY, "
+        "INWORLD_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY, …"
     )
     root.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     root.setMinimumWidth(420)
@@ -141,8 +142,8 @@ def build_generation_api_panel(win) -> QWidget:
     win.api_gen_voice_provider, win.api_gen_voice_model, _, _, win.api_gen_voice_id = _role_block("Voice API", "voice")
 
     hint = QLabel(
-        "Env overrides take precedence: OPENAI_API_KEY (and provider-specific keys such as GROQ_API_KEY), "
-        "REPLICATE_API_TOKEN, ELEVENLABS_API_KEY."
+        "Env overrides take precedence: OPENAI / GEMINI / GROQ / … keys, SILICONFLOW / MAGIC_HOUR / INWORLD "
+        "where used, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY."
     )
     hint.setWordWrap(True)
     hint.setStyleSheet("color:#9BB0C4;font-size:12px;")

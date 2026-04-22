@@ -18,7 +18,41 @@ class ApiProviderSpec:
 
 
 # Placeholder slugs — UI may also accept free-text model ids (Replicate version strings).
+# Order matters: the first match per role in this tuple is the top entry in the Model/API dropdowns.
 PROVIDERS: tuple[ApiProviderSpec, ...] = (
+    # --- Recommended defaults (API mode) — env keys: GEMINI_API_KEY, SILICONFLOW_API_KEY, MAGIC_HOUR_API_KEY, INWORLD_API_KEY ---
+    ApiProviderSpec(
+        id="google_ai_studio",
+        display_name="Google AI Studio (Gemini) — large context, ~1.5k req/day (free)",
+        roles=("llm",),
+        env_key_names=("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY"),
+        model_slugs=("gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash-preview-05-20"),
+        openai_compatible_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+    ),
+    ApiProviderSpec(
+        id="siliconflow",
+        display_name="SiliconFlow (Flux, SD3, …) — daily free credits",
+        roles=("image",),
+        env_key_names=("SILICONFLOW_API_KEY", "OPENAI_API_KEY"),
+        model_slugs=(
+            "black-forest-labs/FLUX.1-schnell",
+            "stabilityai/stable-diffusion-3-5-large",
+        ),
+    ),
+    ApiProviderSpec(
+        id="magic_hour",
+        display_name="Magic Hour — generative video API, ~100 credits/day (free)",
+        roles=("video",),
+        env_key_names=("MAGIC_HOUR_API_KEY", "MAGICHOUR_API_KEY"),
+        model_slugs=("default", "ltx-2", "wan-2.2", "seedance", "kling-3.0", "kling-1.6"),
+    ),
+    ApiProviderSpec(
+        id="inworld",
+        display_name="Inworld — low-latency TTS (free tier)",
+        roles=("voice",),
+        env_key_names=("INWORLD_API_KEY", "OPENAI_API_KEY"),
+        model_slugs=("inworld-tts-1.5-max", "inworld-tts-1.5-mini"),
+    ),
     ApiProviderSpec(
         id="openai",
         display_name="OpenAI",
@@ -146,14 +180,22 @@ def default_models_for_provider(provider_id: str, role: RoleId) -> list[str]:
     # Prefer role-appropriate defaults from shared slug list (best-effort).
     if role == "llm" and provider_id == "openai":
         return ["gpt-4o-mini", "gpt-4o"]
+    if role == "llm" and provider_id == "google_ai_studio":
+        return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash-preview-05-20"]
     if role == "llm" and p.openai_compatible_base_url:
         return list(p.model_slugs)
     if role == "image" and provider_id == "openai":
         return ["dall-e-3", "dall-e-2"]
+    if role == "image" and provider_id == "siliconflow":
+        return ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-3-5-large"]
+    if role == "video" and provider_id == "magic_hour":
+        return ["default", "ltx-2", "wan-2.2", "seedance", "kling-3.0", "kling-1.6"]
     if role == "voice" and provider_id == "openai":
         return ["tts-1", "tts-1-hd"]
     if role == "voice" and provider_id == "elevenlabs":
         return list(p.model_slugs)
+    if role == "voice" and provider_id == "inworld":
+        return ["inworld-tts-1.5-max", "inworld-tts-1.5-mini"]
     return list(p.model_slugs)
 
 

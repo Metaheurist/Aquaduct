@@ -132,10 +132,36 @@ class OpenAIClient:
             raise OpenAIRequestError(_map_http_error(r.status_code, r.text), status_code=r.status_code)
         try:
             data = r.json()
-            b64 = data["data"][0]["b64_json"]
-            return base64.b64decode(b64)
+            first = (data.get("data") or [{}])[0]
+            if not isinstance(first, dict):
+                raise OpenAIRequestError("OpenAI image response missing data[0].")
+            b64 = first.get("b64_json")
+            if b64 is not None:
+                return base64.b64decode(b64)
+            url = (first.get("url") or "").strip()
+            if url:
+                ir = requests.get(url, timeout=self.timeout * 2)
+                ir.raise_for_status()
+                raw = ir.content
+                if len(raw) >= 4 and raw[:4] == b"\x89PNG":
+                    return raw
+                try:
+                    from io import BytesIO
+
+                    from PIL import Image  # type: ignore[import-untyped]
+
+                    im = Image.open(BytesIO(raw))
+                    bbuf = BytesIO()
+                    if im.mode not in ("RGB", "RGBA"):
+                        im = im.convert("RGB")
+                    im.save(bbuf, format="PNG", optimize=True)
+                    return bbuf.getvalue()
+                except Exception as e2:
+                    raise OpenAIRequestError("Image host returned data that is not a decodable image.") from e2
+        except OpenAIRequestError:
+            raise
         except Exception as e:
-            raise OpenAIRequestError("OpenAI image response missing base64 payload.") from e
+            raise OpenAIRequestError("OpenAI image response missing base64 or URL payload.") from e
 
     def speech_to_file(self, *, model: str, text: str, voice: str, out_path: str) -> None:
         url = urljoin(self.base_url.rstrip("/") + "/", "audio/speech")
@@ -172,7 +198,37 @@ def build_openai_client_from_settings(settings: AppSettings) -> OpenAIClient:
             "No API key — set the provider’s env variable (e.g. OPENAI_API_KEY, GROQ_API_KEY) "
             "or save a key under Generation APIs (OpenAI / compatible LLM key field)."
         )
+    b = _normalize_openai_api_base_path(base)
+    return OpenAIClient(api_key=key, base_url=b + "/", organization=org or None)
+
+
+def _normalize_openai_api_base_path(base: str) -> str:
+    """OpenAI v1 default host gets ``/v1``; Gemini's OpenAI-compat base must stay ``…/v1beta/openai`` (no extra ``/v1``)."""
     b = base.rstrip("/")
+    if "generativelanguage.googleapis.com" in b and "openai" in b:
+        return b
     if not b.endswith("/v1"):
         b = f"{b}/v1"
-    return OpenAIClient(api_key=key, base_url=b + "/", organization=org or None)
+    return b
+
+
+def build_image_generation_openai_client(settings: AppSettings) -> OpenAIClient:
+    """Image stills: OpenAI DALL·E (same as LLM key routing) or SiliconFlow (OpenAI-shaped ``/v1/images/generations``)."""
+    from src.runtime.model_backend import effective_siliconflow_api_key
+
+    im = getattr(getattr(settings, "api_models", None), "image", None)
+    prov = str(getattr(im, "provider", "") or "").strip().lower() if im else "openai"
+    if prov == "openai":
+        return build_openai_client_from_settings(settings)
+    if prov == "siliconflow":
+        key = effective_siliconflow_api_key(settings)
+        if not key:
+            raise OpenAIRequestError("No SiliconFlow API key — set SILICONFLOW_API_KEY or save a bearer in Generation APIs.")
+        base = str(getattr(im, "base_url", "") or "").strip() if im else ""
+        if not base:
+            base = str(os.environ.get("SILICONFLOW_BASE_URL") or "https://api.siliconflow.com").strip()
+        b = _normalize_openai_api_base_path(base)
+        return OpenAIClient(api_key=key, base_url=b + "/")
+    raise OpenAIRequestError(
+        f"Image provider {prov!r} has no OpenAI-compatible image client. Choose OpenAI, SiliconFlow, or Replicate."
+    )
