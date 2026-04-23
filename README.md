@@ -1,6 +1,6 @@
 # Aquaduct (MVP)
 
-This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for cloud script (e.g. OpenAI, **Google Gemini**), stills (e.g. DALL·E, **SiliconFlow**, Replicate), Pro text-to-video (**Magic Hour** or Replicate), and voice (**Inworld**, OpenAI, ElevenLabs) — see [docs/integrations/api_generation.md](docs/integrations/api_generation.md)) that:
+This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for cloud script (e.g. OpenAI, **Google Gemini**), stills (e.g. DALL·E, **SiliconFlow**, Replicate), Pro *motion* / text-to-video (**Kling AI**, **Magic Hour**, or Replicate), and voice (**Inworld**, OpenAI, ElevenLabs) — see [docs/integrations/api_generation.md](docs/integrations/api_generation.md)) that:
 - scrapes AI tool news (no paid APIs)
 - writes a short vertical video script locally (LLM in 4-bit when possible)
 - generates images locally (curated **FLUX.1** + **SD3.5** options on the Model tab; other Hub ids work — see [Models + downloads](docs/reference/models.md))

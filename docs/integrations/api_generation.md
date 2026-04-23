@@ -2,7 +2,7 @@
 
 ## Overview
 
-When **Model execution** is set to **API** (Model tab or persisted in `ui_settings.json`), the desktop pipeline uses **HTTP providers** for script (LLM), image stills, optional **Pro** text-to-video (Replicate or Magic Hour), and voice (OpenAI TTS, **Inworld**, or **ElevenLabs** when enabled) — instead of loading local Hugging Face diffusion / causal LM weights for those roles.
+When **Model execution** is set to **API** (Model tab or persisted in `ui_settings.json`), the desktop pipeline uses **HTTP providers** for script (LLM), image stills, optional **Pro** text-to-video (**Kling AI** is the default *motion* option in the UI, with Magic Hour and Replicate as alternatives), and voice (OpenAI TTS, **Inworld**, or **ElevenLabs** when enabled) — instead of loading local Hugging Face diffusion / causal LM weights for those roles.
 
 **FFmpeg** and MoviePy assembly still run locally for mux, captions, and music/SFX where enabled.
 
@@ -14,10 +14,10 @@ The per-role **Provider** / **Model** dropdowns list optional “recommended” 
 |------|-----------------|-----------------------------|--------|
 | **LLM** | Google AI Studio (Gemini) | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (fallback: saved / `OPENAI_API_KEY`) | OpenAI-compatible chat at Google’s `…/v1beta/openai` — large context, generous free daily quota. |
 | **Image** | SiliconFlow | `SILICONFLOW_API_KEY` (fallback: saved bearer) | OpenAI-shaped `POST …/v1/images/generations` — Flux, SD3-class models (see catalog slugs). |
-| **Video (Pro)** | Magic Hour | `MAGIC_HOUR_API_KEY` (alias: `MAGICHOUR_API_KEY`) | REST `POST /v1/text-to-video` + poll `GET /v1/video-projects/{id}`; model id in UI (e.g. `default`, `ltx-2`). **Alternative:** Replicate (version id) + `REPLICATE_API_TOKEN`. |
+| **Video (Pro / motion)** | **Kling AI** (recommended) | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` (optional `KLING_API_BASE` — default `https://api-singapore.klingai.com`) | Official **Open Platform** text-to-video: HS256 **JWT** auth, `POST /v1/videos/text2video` + poll. Free tier is often on the order of **~66 credits / 24h** (resets on a daily window) — enough for roughly **six high-quality ~5s** clips per day; confirm in the [Kling developer console](https://kling.ai/dev). **Alternatives (UI):** **Pika** (Pika.art) is listed in product comparisons as **~30 credits / month** for lighter monthly use. **Magic Hour** and **Replicate** remain available in the same Video row. |
 | **Voice** | Inworld | `INWORLD_API_KEY` (fallback: saved bearer) | `POST https://api.inworld.ai/tts/v1/voice` — set **Voice / speaker id** in the UI (e.g. `Sarah`). **Alternatives:** OpenAI `tts-1` / `tts-1-hd`, or ElevenLabs (API tab) when enabled. |
 
-Implementation: [`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py) (metadata), [`src/platform/openai_client.py`](../../src/platform/openai_client.py) (LLM + DALL·E / SiliconFlow image client; Gemini base URL without an extra `/v1`), [`src/runtime/api_generation.py`](../../src/runtime/api_generation.py), [`src/platform/magichour_client.py`](../../src/platform/magichour_client.py), [`src/speech/inworld_tts.py`](../../src/speech/inworld_tts.py), [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py), [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py) (keys + preflight for Pro + Magic Hour or Replicate).
+Implementation: [`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py) (metadata), [`src/platform/openai_client.py`](../../src/platform/openai_client.py) (LLM + DALL·E / SiliconFlow image client; Gemini base URL without an extra `/v1`), [`src/runtime/api_generation.py`](../../src/runtime/api_generation.py), [`src/platform/kling_client.py`](../../src/platform/kling_client.py) (Kling JWT + text-to-video + poll), [`src/platform/magichour_client.py`](../../src/platform/magichour_client.py), [`src/speech/inworld_tts.py`](../../src/speech/inworld_tts.py), [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py), [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py) (keys + preflight for Pro + Kling, Magic Hour, or Replicate).
 
 ## Environment variables (env wins over saved keys)
 
@@ -27,12 +27,14 @@ Implementation: [`src/settings/api_model_catalog.py`](../../src/settings/api_mod
 | `OPENAI_BASE_URL` | Optional OpenAI-compatible API root when **LLM** base URL in the UI is empty (default host otherwise follows the selected LLM provider; see below) |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Google AI Studio / Gemini (OpenAI-compatible script LLM when **Provider** = Google AI Studio) |
 | `SILICONFLOW_API_KEY` | SiliconFlow image `images/generations` (when **Image** = SiliconFlow) |
+| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` (aliases: `KLINGAI_*`) | Kling text-to-video (JWT, both required) |
+| `KLING_API_BASE` | Optional Kling API origin override (default Singapore host above) |
 | `MAGIC_HOUR_API_KEY` (or `MAGICHOUR_API_KEY`) | Magic Hour Pro text-to-video |
 | `INWORLD_API_KEY` | Inworld TTS (when **Voice** = Inworld) |
 | `REPLICATE_API_TOKEN` or `REPLICATE_API_KEY` | Replicate image / video predictions |
 | `SILICONFLOW_BASE_URL` | Optional override; default `https://api.siliconflow.com` for SiliconFlow image |
 
-Saved keys live in **Generation APIs** on the API tab (`api_openai_key`, `api_replicate_token` in `AppSettings`). The **OpenAI / LLM API key** field is the saved bearer for OpenAI, SiliconFlow, Inworld, and other compatible script/image/voice fallbacks when a provider-specific env variable is not set. Magic Hour currently expects **`MAGIC_HOUR_API_KEY` in the environment** (or `MAGICHOUR_API_KEY`); there is no separate saved field.
+Saved keys live in **Generation APIs** on the API tab (`api_openai_key`, `api_replicate_token` in `AppSettings`). The **OpenAI / LLM API key** field is the saved bearer for OpenAI, SiliconFlow, Inworld, and other compatible script/image/voice fallbacks when a provider-specific env variable is not set. **Kling** and **Magic Hour** use **environment variables only** for API credentials (Kling: access + secret for JWT); there are no extra saved fields for those two.
 
 ### Script LLM providers (OpenAI Chat Completions–compatible)
 
@@ -61,7 +63,7 @@ Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../../src
 | Script | HF transformers | OpenAI-compatible chat → `VideoPackage` (OpenAI, **Gemini** via Google AI Studio, Groq, …) |
 | Stills / slideshow | Local diffusion | OpenAI DALL·E, **SiliconFlow** (OpenAI `images` API), or **Replicate** image model/version id |
 | Voice | Kokoro / pyttsx3 / ElevenLabs | **Inworld** TTS, OpenAI `tts-1` / `tts-1-hd`, or ElevenLabs (API tab) when enabled |
-| Pro text-to-video | Local T2V / ZeroScope, etc. | **Magic Hour** (`text-to-video` REST) or **Replicate** (prediction version id) — MP4 clips |
+| Pro text-to-video | Local T2V / ZeroScope, etc. | **Kling** (default in UI; JWT + official API), or **Magic Hour**, or **Replicate** (version id) — MP4 clips |
 | Motion (no slideshow) | Image + clip models | **Not supported** — use slideshow or Pro + Magic Hour or Replicate |
 
 ## Security
@@ -90,3 +92,7 @@ OpenAI, Replicate, Magic Hour, and other HTTP clients in this path use a small *
 
 - **Model** tab: Local | API toggle; local HF controls are hidden in API mode.
 - **API** tab: **Generation APIs** block (same fields gathered on Save as the Model tab routing).
+
+## See also
+
+- [API mode review checklist](../review/api_mode_checklist.md) — step-by-step QA runbook for verifying API-mode runs end to end.

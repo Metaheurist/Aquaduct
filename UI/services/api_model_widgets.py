@@ -60,8 +60,8 @@ def build_generation_api_panel(win) -> QWidget:
     root.setToolTip(
         "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GEMINI_API_KEY, "
         "GROQ_API_KEY, TOGETHER_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, "
-        "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, SILICONFLOW_API_KEY, MAGIC_HOUR_API_KEY, "
-        "INWORLD_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY, …"
+        "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, SILICONFLOW_API_KEY, KLING_ACCESS_KEY, KLING_SECRET_KEY, "
+        "MAGIC_HOUR_API_KEY, INWORLD_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY, …"
     )
     root.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     root.setMinimumWidth(420)
