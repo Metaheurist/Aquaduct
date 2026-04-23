@@ -52,7 +52,8 @@ def test_default_openai_compatible_base_url_for_llm():
 
 def test_providers_for_role_video_voice_order():
     vids = [p.id for p in providers_for_role("video")]
-    assert vids[0] == "magic_hour"
+    assert vids[0] == "kling"
+    assert "magic_hour" in vids
     assert "replicate" in vids
     oids = [p.id for p in providers_for_role("voice")]
     assert oids[0] == "inworld"

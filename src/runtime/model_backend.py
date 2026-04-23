@@ -72,6 +72,14 @@ def effective_inworld_api_key(settings: AppSettings | None) -> str:
     return str(getattr(settings, "api_openai_key", "") or "").strip()
 
 
+def effective_kling_access_key() -> str:
+    return (os.environ.get("KLING_ACCESS_KEY") or os.environ.get("KLINGAI_ACCESS_KEY") or "").strip()
+
+
+def effective_kling_secret_key() -> str:
+    return (os.environ.get("KLING_SECRET_KEY") or os.environ.get("KLINGAI_SECRET_KEY") or "").strip()
+
+
 def _role_cfg(settings: AppSettings, role: Role) -> ApiRoleConfig:
     am = getattr(settings, "api_models", None)
     if am is None:
@@ -93,6 +101,8 @@ def provider_has_key(settings: AppSettings, provider: str) -> bool:
         return bool(effective_magic_hour_api_key(settings))
     if p == "inworld":
         return bool(effective_inworld_api_key(settings))
+    if p == "kling":
+        return bool(effective_kling_access_key() and effective_kling_secret_key())
     if p == "elevenlabs":
         from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 
@@ -169,12 +179,14 @@ def api_preflight_errors(settings: AppSettings) -> list[str]:
         vpr = str(vcfg.provider or "").strip().lower()
         if not role_filled(vcfg):
             out.append("API mode + Pro: configure Video API (provider + model / version id and token).")
-        elif vpr not in ("replicate", "magic_hour"):
-            out.append("API mode + Pro: Video provider must be Replicate (version id) or Magic Hour (model id).")
+        elif vpr not in ("replicate", "magic_hour", "kling"):
+            out.append("API mode + Pro: Video provider must be Kling, Magic Hour, or Replicate (version id for Replicate).")
         elif vpr == "replicate" and not provider_has_key(settings, "replicate"):
             out.append("API mode + Pro: set REPLICATE_API_TOKEN or saved Replicate token.")
         elif vpr == "magic_hour" and not provider_has_key(settings, "magic_hour"):
             out.append("API mode + Pro: set MAGIC_HOUR_API_KEY for Magic Hour video.")
+        elif vpr == "kling" and not provider_has_key(settings, "kling"):
+            out.append("API mode + Pro: set KLING_ACCESS_KEY and KLING_SECRET_KEY for Kling (see Kling dev docs).")
     elif not slideshow:
         out.append("API mode: enable slideshow (image stills) or use Pro mode with Replicate video — motion mode without local models is not supported.")
     return out

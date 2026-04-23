@@ -913,6 +913,12 @@ class MainWindow(QMainWindow):
                 return ok_rep
             if p == "siliconflow":
                 return ok_oai or bool((os.environ.get("SILICONFLOW_API_KEY") or "").strip())
+            if p == "kling":
+                return bool(
+                    (os.environ.get("KLING_ACCESS_KEY") or os.environ.get("KLINGAI_ACCESS_KEY") or "").strip()
+                ) and bool(
+                    (os.environ.get("KLING_SECRET_KEY") or os.environ.get("KLINGAI_SECRET_KEY") or "").strip()
+                )
             if p == "magic_hour":
                 return bool(
                     (os.environ.get("MAGIC_HOUR_API_KEY") or os.environ.get("MAGICHOUR_API_KEY") or "").strip()

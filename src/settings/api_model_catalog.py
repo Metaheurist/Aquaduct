@@ -40,6 +40,13 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         ),
     ),
     ApiProviderSpec(
+        id="kling",
+        display_name="Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo",
+        roles=("video",),
+        env_key_names=("KLING_ACCESS_KEY", "KLING_SECRET_KEY"),
+        model_slugs=("kling-v2-master", "kling-v2-6", "kling-1-6"),
+    ),
+    ApiProviderSpec(
         id="magic_hour",
         display_name="Magic Hour — generative video API, ~100 credits/day (free)",
         roles=("video",),
@@ -188,6 +195,8 @@ def default_models_for_provider(provider_id: str, role: RoleId) -> list[str]:
         return ["dall-e-3", "dall-e-2"]
     if role == "image" and provider_id == "siliconflow":
         return ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-3-5-large"]
+    if role == "video" and provider_id == "kling":
+        return ["kling-v2-master", "kling-v2-6", "kling-1-6"]
     if role == "video" and provider_id == "magic_hour":
         return ["default", "ltx-2", "wan-2.2", "seedance", "kling-3.0", "kling-1.6"]
     if role == "voice" and provider_id == "openai":

@@ -6,10 +6,16 @@ from typing import Any
 import requests
 
 from src.core.config import AppSettings
+from src.platform.kling_client import KlingRequestError, kling_text_to_video_mp4_bytes
 from src.platform.magichour_client import MagicHourRequestError, text_to_video_mp4_bytes
 from src.platform.openai_client import build_image_generation_openai_client, build_openai_client_from_settings
 from src.platform.replicate_client import ReplicateClient, ReplicateRequestError
-from src.runtime.model_backend import effective_magic_hour_api_key, effective_replicate_api_token
+from src.runtime.model_backend import (
+    effective_kling_access_key,
+    effective_kling_secret_key,
+    effective_magic_hour_api_key,
+    effective_replicate_api_token,
+)
 
 
 def download_url_to_file(url: str, dest: Path, *, timeout: float = 180.0) -> None:
@@ -66,6 +72,29 @@ def cloud_video_mp4_paths(*, settings: AppSettings, prompts: list[str], out_dir:
     model = str(getattr(vid, "model", "") or "").strip()
     if prov == "replicate":
         return replicate_video_mp4_paths(settings=settings, prompts=prompts, out_dir=out_dir)
+    if prov == "kling":
+        access = effective_kling_access_key()
+        secret = effective_kling_secret_key()
+        if not access or not secret:
+            raise KlingRequestError("Kling: set KLING_ACCESS_KEY and KLING_SECRET_KEY (Kling dev console / JWT auth).")
+        m = (model or "").strip() or "kling-v2-master"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        paths: list[Path] = []
+        T = max(1.0, min(10.0, float(pro_clip_seconds or 4.0)))
+        for i, pr in enumerate(prompts):
+            if not (pr or "").strip():
+                continue
+            raw = kling_text_to_video_mp4_bytes(
+                access_key=access,
+                secret_key=secret,
+                prompt=pr.strip(),
+                model_name=m,
+                end_seconds=T,
+            )
+            p = out_dir / f"clip_{i+1:03d}.mp4"
+            p.write_bytes(raw)
+            paths.append(p)
+        return paths
     if prov == "magic_hour":
         tok = effective_magic_hour_api_key(settings)
         if not tok:
