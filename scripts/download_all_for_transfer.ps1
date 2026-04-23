@@ -121,6 +121,8 @@ MINIMAL_REPOS = [
 ALL_REPOS = [
     "Qwen/Qwen3-14B",
     "Sao10K/Fimbulvetr-11B-v2",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
     "sophosympatheia/Midnight-Miqu-70B-v1.5",
     "deepseek-ai/DeepSeek-V3",
     "black-forest-labs/FLUX.1.1-pro-ultra",
@@ -131,9 +133,9 @@ ALL_REPOS = [
     "stabilityai/stable-diffusion-3.5-large-turbo",
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
     "genmo/mochi-1.5-final",
-    "Lightricks/LTX-2",
     "THUDM/CogVideoX-5b",
     "Tencent/HunyuanVideo",
+    "Lightricks/LTX-2",
     "hexgrad/Kokoro-82M",
     "OpenMOSS-Team/MOSS-VoiceGenerator",
 ]

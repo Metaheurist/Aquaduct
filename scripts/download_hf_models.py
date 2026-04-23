@@ -51,6 +51,8 @@ ALL_REPOS = [
     # Script (LLM)
     "Qwen/Qwen3-14B",
     "Sao10K/Fimbulvetr-11B-v2",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
     "sophosympatheia/Midnight-Miqu-70B-v1.5",
     "deepseek-ai/DeepSeek-V3",
     # Image (T2I)
@@ -63,9 +65,9 @@ ALL_REPOS = [
     # Video / motion
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
     "genmo/mochi-1.5-final",
-    "Lightricks/LTX-2",
     "THUDM/CogVideoX-5b",
     "Tencent/HunyuanVideo",
+    "Lightricks/LTX-2",
     # Voice (TTS)
     "hexgrad/Kokoro-82M",
     "OpenMOSS-Team/MOSS-VoiceGenerator",

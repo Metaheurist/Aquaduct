@@ -26,7 +26,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="Google AI Studio (Gemini) — large context, ~1.5k req/day (free)",
         roles=("llm",),
         env_key_names=("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash-preview-05-20"),
+        model_slugs=("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"),
         openai_compatible_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
     ),
     ApiProviderSpec(
@@ -44,7 +44,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo",
         roles=("video",),
         env_key_names=("KLING_ACCESS_KEY", "KLING_SECRET_KEY"),
-        model_slugs=("kling-v2-master", "kling-v2-6", "kling-1-6"),
+        model_slugs=("kling-v3", "kling-v2-6", "kling-v2-master", "kling-v2-5-turbo"),
     ),
     ApiProviderSpec(
         id="magic_hour",
@@ -81,7 +81,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="Groq",
         roles=("llm",),
         env_key_names=("GROQ_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"),
+        model_slugs=("llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3-32b"),
         openai_compatible_base_url="https://api.groq.com/openai/v1",
     ),
     ApiProviderSpec(
@@ -89,7 +89,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="Together AI",
         roles=("llm",),
         env_key_names=("TOGETHER_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen2.5-72B-Instruct-Turbo"),
+        model_slugs=("meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen3-32B"),
         openai_compatible_base_url="https://api.together.xyz/v1",
     ),
     ApiProviderSpec(
@@ -105,7 +105,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="OpenRouter",
         roles=("llm",),
         env_key_names=("OPENROUTER_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-pro-1.5"),
+        model_slugs=("openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash"),
         openai_compatible_base_url="https://openrouter.ai/api/v1",
     ),
     ApiProviderSpec(
@@ -121,7 +121,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="xAI (Grok)",
         roles=("llm",),
         env_key_names=("XAI_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("grok-2-latest", "grok-2-vision-latest"),
+        model_slugs=("grok-3-latest", "grok-2-latest", "grok-2-vision-latest"),
         openai_compatible_base_url="https://api.x.ai/v1",
     ),
     ApiProviderSpec(
@@ -129,7 +129,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="Fireworks AI",
         roles=("llm",),
         env_key_names=("FIREWORKS_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("accounts/fireworks/models/llama-v3p3-70b-instruct", "accounts/fireworks/models/qwen2p5-72b-instruct"),
+        model_slugs=("accounts/fireworks/models/llama-v3p3-70b-instruct", "accounts/fireworks/models/qwen3-32b"),
         openai_compatible_base_url="https://api.fireworks.ai/inference/v1",
     ),
     ApiProviderSpec(
@@ -145,7 +145,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         display_name="Nebius AI Studio",
         roles=("llm",),
         env_key_names=("NEBIUS_API_KEY", "OPENAI_API_KEY"),
-        model_slugs=("meta-llama/Meta-Llama-3.1-70B-Instruct", "Qwen/Qwen2.5-72B-Instruct"),
+        model_slugs=("meta-llama/Meta-Llama-3.3-70B-Instruct", "Qwen/Qwen3-32B-Instruct"),
         openai_compatible_base_url="https://api.studio.nebius.ai/v1",
     ),
     ApiProviderSpec(
@@ -155,7 +155,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
         env_key_names=("REPLICATE_API_TOKEN", "REPLICATE_API_KEY"),
         model_slugs=(
             "black-forest-labs/flux-schnell",
-            "stability-ai/sdxl",
+            "black-forest-labs/flux-1.1-pro",
         ),
     ),
     ApiProviderSpec(
@@ -188,7 +188,7 @@ def default_models_for_provider(provider_id: str, role: RoleId) -> list[str]:
     if role == "llm" and provider_id == "openai":
         return ["gpt-4o-mini", "gpt-4o"]
     if role == "llm" and provider_id == "google_ai_studio":
-        return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash-preview-05-20"]
+        return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
     if role == "llm" and p.openai_compatible_base_url:
         return list(p.model_slugs)
     if role == "image" and provider_id == "openai":
@@ -196,7 +196,7 @@ def default_models_for_provider(provider_id: str, role: RoleId) -> list[str]:
     if role == "image" and provider_id == "siliconflow":
         return ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-3-5-large"]
     if role == "video" and provider_id == "kling":
-        return ["kling-v2-master", "kling-v2-6", "kling-1-6"]
+        return ["kling-v3", "kling-v2-6", "kling-v2-master", "kling-v2-5-turbo"]
     if role == "video" and provider_id == "magic_hour":
         return ["default", "ltx-2", "wan-2.2", "seedance", "kling-3.0", "kling-1.6"]
     if role == "voice" and provider_id == "openai":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.models.model_tiers import api_tier_for_model, tier_badge, tier_label, tier_sort_rank
 from src.settings.api_model_catalog import (
     default_models_for_provider,
     default_openai_compatible_base_url_for_llm,
@@ -38,21 +40,67 @@ def _provider_items(role: str) -> list[tuple[str, str]]:
 
 
 def _refill_model_combo(model_combo: QComboBox, *, role: str, provider: str, saved_model: str = "") -> None:
-    models = default_models_for_provider(provider, role)  # type: ignore[arg-type]
-    model_combo.blockSignals(True)
-    model_combo.clear()
-    model_combo.setEditable(True)
+    pid = str(provider or "").strip().lower()
+    models = list(default_models_for_provider(pid, role))  # type: ignore[arg-type]
+    sm = (saved_model or "").strip()
+    if sm and sm not in models:
+        models.append(sm)
+    models = sorted(models, key=lambda m: (tier_sort_rank(api_tier_for_model(pid, m)), m.lower()))
+
+    mdl = QStandardItemModel(model_combo)
+    last_rank = -1
+    per_rank: dict[int, int] = {}
     for m in models:
-        model_combo.addItem(m, m)
-    if saved_model and model_combo.findText(saved_model) < 0:
-        model_combo.insertItem(0, saved_model, saved_model)
-    if saved_model:
-        idx = model_combo.findData(saved_model)
+        tr = api_tier_for_model(pid, m)
+        rk = tier_sort_rank(tr)
+        if rk != last_rank:
+            last_rank = rk
+            h = QStandardItem(tier_label(tr))
+            h.setEnabled(False)
+            h.setSelectable(False)
+            hf = QFont()
+            hf.setBold(True)
+            h.setFont(hf)
+            mdl.appendRow(h)
+            per_rank[rk] = 0
+        per_rank[rk] = per_rank.get(rk, 0) + 1
+        n = per_rank[rk]
+        row = QStandardItem(f"{n:02d}. {m}")
+        row.setData(m, Qt.ItemDataRole.UserRole)
+        row.setToolTip(f"Tier: {tier_label(tr)}\nModel: {m}\nProvider: {pid or '(none)'}")
+        mdl.appendRow(row)
+
+    model_combo.blockSignals(True)
+    model_combo.setEditable(True)
+    model_combo.setModel(mdl)
+    if sm:
+        idx = model_combo.findData(sm, Qt.ItemDataRole.UserRole)
         if idx >= 0:
             model_combo.setCurrentIndex(idx)
         else:
-            model_combo.setEditText(saved_model)
+            model_combo.setEditText(sm)
     model_combo.blockSignals(False)
+    _sync_api_model_combo_tip(model_combo, pid)
+
+
+def _sync_api_model_combo_tip(model_combo: QComboBox, provider_id: str) -> None:
+    pid = str(provider_id or "").strip().lower()
+    idx = model_combo.currentIndex()
+    if idx < 0:
+        model_combo.setToolTip("Select a model or type a custom model / version id.")
+        return
+    tip = model_combo.itemData(idx, Qt.ItemDataRole.ToolTipRole)
+    if tip is not None and str(tip).strip():
+        model_combo.setToolTip(str(tip))
+        return
+    mid = str(model_combo.itemData(idx) or model_combo.currentText() or "").strip()
+    if not mid:
+        model_combo.setToolTip("API model (editable).")
+        return
+    tr = api_tier_for_model(pid, mid)
+    model_combo.setToolTip(
+        f"Tier: {tier_label(tr)} ({tier_badge(tr).strip('[]')})\nModel: {mid}\nProvider: {pid or '(none)'}"
+    )
 
 
 def build_generation_api_panel(win) -> QWidget:
@@ -131,6 +179,9 @@ def build_generation_api_panel(win) -> QWidget:
         prov.currentIndexChanged.connect(_on_prov_change)
         fl.addRow("Provider", prov)
         fl.addRow("Model", mod)
+        mod.currentIndexChanged.connect(
+            lambda _i, m=mod, p=prov: _sync_api_model_combo_tip(m, str(p.currentData() or ""))
+        )
         outer.addWidget(box)
         return prov, mod, base, org, voice
 

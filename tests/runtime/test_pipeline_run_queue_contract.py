@@ -1,7 +1,7 @@
 """
 Regression tests for pipeline run-queue payload shapes (no Qt).
 
-Full MainWindow behavior is covered by ``tests/test_ui_main_window.py`` (@pytest.mark.qt).
+Full MainWindow behavior is covered by ``tests/ui/test_ui_main_window.py`` (@pytest.mark.qt).
 """
 
 from __future__ import annotations

@@ -125,8 +125,10 @@ class MainWindow(QMainWindow):
 
         # Borderless + fixed size (non-resizable)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
-        # Fixed width, dynamic height (still non-resizable).
-        self.setFixedWidth(1000)
+        # Fixed width, dynamic height (still non-resizable). Model tab uses a wider layout (see _resize_to_current_tab).
+        self._default_window_width = 1000
+        self._model_tab_window_width = 1080
+        self.setFixedWidth(self._default_window_width)
         self._drag_pos: QPoint | None = None
 
         self.paths = get_paths()
@@ -844,7 +846,20 @@ class MainWindow(QMainWindow):
             min_h = max(min_h, 500)
         max_h = 980
         h = max(min_h, min(max_h, int(h)))
-        self.setFixedSize(self.width(), h)
+
+        base_w = int(getattr(self, "_default_window_width", 1000) or 1000)
+        model_w = int(getattr(self, "_model_tab_window_width", 1080) or 1080)
+        w = model_w if tab_txt == "Model" else base_w
+        try:
+            scr = QGuiApplication.primaryScreen()
+            if scr is not None:
+                aw = int(scr.availableGeometry().width()) - 48
+                if aw > 0:
+                    w = min(int(w), aw)
+        except Exception:
+            pass
+
+        self.setFixedSize(int(w), int(h))
 
     def _setup_generation_api_panel_hosting(self) -> None:
         self._offscreen_gen_host = QWidget(self)
