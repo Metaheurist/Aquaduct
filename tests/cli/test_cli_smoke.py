@@ -71,9 +71,17 @@ def test_cli_run_once_dry_run_mock_preflight(monkeypatch: pytest.MonkeyPatch, ca
     assert "Dry run" in err or "preflight OK" in err.lower()
 
 
+def _repo_root() -> Path:
+    p = Path(__file__).resolve()
+    for d in p.parents:
+        if (d / "main.py").is_file():
+            return d
+    raise RuntimeError("Could not locate repository root (main.py).")
+
+
 def test_main_cli_daemon_loop_loads_settings_from_disk() -> None:
     """Regression: --cli watch loop must call load_settings() (not bare AppSettings())."""
-    root = Path(__file__).resolve().parents[1]
+    root = _repo_root()
     text = (root / "main.py").read_text(encoding="utf-8")
     start = text.find("while True:")
     assert start != -1

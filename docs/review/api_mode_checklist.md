@@ -20,7 +20,7 @@ Runbook-style companion to [../integrations/api_generation.md](../integrations/a
 - Run the non-Qt API unit tests first (fast gate, no network):
 
 ```powershell
-pytest tests/test_model_backend.py tests/test_preflight.py tests/test_api_generation.py tests/test_api_model_catalog.py tests/test_kling_client.py tests/test_openai_client.py -q
+pytest tests/models/test_model_backend.py tests/runtime/test_preflight.py tests/runtime/test_api_generation.py tests/runtime/test_api_model_catalog.py tests/platform/test_kling_client.py tests/platform/test_openai_client.py -q
 ```
 
 All green → proceed. Any failure → fix before running phases below; most failures here will also break the live run.
@@ -49,7 +49,7 @@ All green → proceed. Any failure → fix before running phases below; most fai
 | # | Action | Pass criteria | If it fails, investigate |
 |---|--------|---------------|--------------------------|
 | C1 | Run a minimal script step with **LLM = OpenAI** (or any OpenAI-compatible provider you have a key for). | Returns a `VideoPackage`-shaped JSON; no local HF transformers imports appear in logs. | [`src/runtime/generation_facade.py`](../../src/runtime/generation_facade.py) (`get_generation_facade`), [`src/content/brain_api.py`](../../src/content/brain_api.py). |
-| C2 | Switch **LLM = Google AI Studio (Gemini)** and re-run. | Chat completes against `…/v1beta/openai` (no duplicated `/v1`). | `_normalize_openai_api_base_path` in [`src/platform/openai_client.py`](../../src/platform/openai_client.py); unit test `test_build_client_gemini_base_no_double_v1` in [`tests/test_openai_client.py`](../../tests/test_openai_client.py). |
+| C2 | Switch **LLM = Google AI Studio (Gemini)** and re-run. | Chat completes against `…/v1beta/openai` (no duplicated `/v1`). | `_normalize_openai_api_base_path` in [`src/platform/openai_client.py`](../../src/platform/openai_client.py); unit test `test_build_client_gemini_base_no_double_v1` in [`tests/platform/test_openai_client.py`](../../tests/platform/test_openai_client.py). |
 | C3 | Force a malformed JSON response (e.g. temperature + model id without JSON-mode). | The API path surfaces a parse error rather than producing a half-written run. | `generate_script_openai` in [`src/content/brain_api.py`](../../src/content/brain_api.py). |
 
 ## 6. Phase D — Image stills
@@ -58,7 +58,7 @@ All green → proceed. Any failure → fix before running phases below; most fai
 |---|--------|---------------|--------------------------|
 | D1 | With **Image = OpenAI**, trigger one still. | 1 PNG saved to the run's `images/` folder. | OpenAI image branch in [`src/runtime/api_generation.py`](../../src/runtime/api_generation.py) + [`src/platform/openai_client.py`](../../src/platform/openai_client.py) (`download_image_png`). |
 | D2 | With **Image = SiliconFlow** and `SILICONFLOW_API_KEY` set, trigger one still. | PNG saved; response may be a URL (downloaded) or base64 (decoded). | `build_image_generation_openai_client` in [`src/platform/openai_client.py`](../../src/platform/openai_client.py) — SiliconFlow routing; `download_image_png` URL fallback. |
-| D3 | With **Image = Replicate** + a known version id, trigger one still. | PNG saved; poll loop terminates on `succeeded`. | [`src/platform/replicate_client.py`](../../src/platform/replicate_client.py); unit test [`tests/test_replicate_client.py`](../../tests/test_replicate_client.py). |
+| D3 | With **Image = Replicate** + a known version id, trigger one still. | PNG saved; poll loop terminates on `succeeded`. | [`src/platform/replicate_client.py`](../../src/platform/replicate_client.py); unit test [`tests/platform/test_replicate_client.py`](../../tests/platform/test_replicate_client.py). |
 
 ## 7. Phase E — Voice
 
@@ -66,7 +66,7 @@ All green → proceed. Any failure → fix before running phases below; most fai
 |---|--------|---------------|--------------------------|
 | E1 | **Voice = OpenAI TTS** (`tts-1` / `tts-1-hd`) on a short script. | WAV file(s) produced; duration roughly matches text length. | [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py) OpenAI TTS branch; [`src/platform/openai_client.py`](../../src/platform/openai_client.py). |
 | E2 | **Voice = Inworld** (`INWORLD_API_KEY`), long narration spanning multiple chunks. | A single concatenated WAV; no gaps at chunk boundaries. | [`src/speech/inworld_tts.py`](../../src/speech/inworld_tts.py) (`synthesize_inworld_to_wav`, `_inworld_tts_bytes`, `_mp3_bytes_to_wav`, `_concat_wavs`). |
-| E3 | A character config selects **ElevenLabs** while the global Voice row is OpenAI / Inworld. | That character line uses the ElevenLabs path without breaking the rest of the run. | ElevenLabs branch in [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py) and [`tests/test_elevenlabs_tts.py`](../../tests/test_elevenlabs_tts.py). |
+| E3 | A character config selects **ElevenLabs** while the global Voice row is OpenAI / Inworld. | That character line uses the ElevenLabs path without breaking the rest of the run. | ElevenLabs branch in [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py) and [`tests/platform/test_elevenlabs_tts.py`](../../tests/platform/test_elevenlabs_tts.py). |
 
 ## 8. Phase F — Pro video
 
@@ -76,7 +76,7 @@ Run one case per available provider; each clip is typically ~5s at 9:16.
 |---|--------|---------------|--------------------------|
 | F1 | **Pro = Replicate** with a valid video version id. | MP4 written to the run folder; poll exits cleanly. | [`src/platform/replicate_client.py`](../../src/platform/replicate_client.py). |
 | F2 | **Pro = Magic Hour** (`MAGIC_HOUR_API_KEY`). | MP4 written; create → poll → download succeeds within the configured timeout. | [`src/platform/magichour_client.py`](../../src/platform/magichour_client.py) — `text_to_video_mp4_bytes`. |
-| F3 | **Pro = Kling** (`KLING_ACCESS_KEY` + `KLING_SECRET_KEY`). | MP4 written; JWT is fresh on each request; the nested-body path is used, with a graceful flat-body fallback on 400. | [`src/platform/kling_client.py`](../../src/platform/kling_client.py) — `kling_bearer_jwt`, `kling_text_to_video_mp4_bytes`, `_extract_video_url`; unit tests [`tests/test_kling_client.py`](../../tests/test_kling_client.py). |
+| F3 | **Pro = Kling** (`KLING_ACCESS_KEY` + `KLING_SECRET_KEY`). | MP4 written; JWT is fresh on each request; the nested-body path is used, with a graceful flat-body fallback on 400. | [`src/platform/kling_client.py`](../../src/platform/kling_client.py) — `kling_bearer_jwt`, `kling_text_to_video_mp4_bytes`, `_extract_video_url`; unit tests [`tests/platform/test_kling_client.py`](../../tests/platform/test_kling_client.py). |
 
 ## 9. Phase G — Full runs
 
@@ -93,7 +93,7 @@ Run one case per available provider; each clip is typically ~5s at 9:16.
 | Env vs saved keys | An env var beats the saved `api_openai_key` / `api_replicate_token`. Tooltips in the UI call this out. | `effective_*_api_key` in [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py); [`UI/services/api_model_widgets.py`](../../UI/services/api_model_widgets.py). |
 | 429 / 5xx retries + backoff | A synthetic rate-limit doesn't crash the run; the client retries with exponential backoff, then surfaces a clean error on exhaustion. | Retry helpers in [`src/platform/openai_client.py`](../../src/platform/openai_client.py), [`src/platform/replicate_client.py`](../../src/platform/replicate_client.py), [`src/platform/magichour_client.py`](../../src/platform/magichour_client.py), [`src/platform/kling_client.py`](../../src/platform/kling_client.py). |
 | Poll timeouts | Create-then-poll providers respect the configured timeout and fail fast instead of hanging. | `timeout=` parameter threads in the video clients above. |
-| PyInstaller EXE import smoke | A packaged EXE can import the API-mode code paths with no optional local-only imports. | [`tests/test_import_smoke_api.py`](../../tests/test_import_smoke_api.py). |
+| PyInstaller EXE import smoke | A packaged EXE can import the API-mode code paths with no optional local-only imports. | [`tests/runtime/test_import_smoke_api.py`](../../tests/runtime/test_import_smoke_api.py). |
 
 ## 11. Investigation decision tree
 

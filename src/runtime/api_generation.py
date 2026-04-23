@@ -77,7 +77,7 @@ def cloud_video_mp4_paths(*, settings: AppSettings, prompts: list[str], out_dir:
         secret = effective_kling_secret_key()
         if not access or not secret:
             raise KlingRequestError("Kling: set KLING_ACCESS_KEY and KLING_SECRET_KEY (Kling dev console / JWT auth).")
-        m = (model or "").strip() or "kling-v2-master"
+        m = (model or "").strip() or "kling-v3"
         out_dir.mkdir(parents=True, exist_ok=True)
         paths: list[Path] = []
         T = max(1.0, min(10.0, float(pro_clip_seconds or 4.0)))

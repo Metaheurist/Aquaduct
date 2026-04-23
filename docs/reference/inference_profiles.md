@@ -39,7 +39,7 @@ Rough buckets (from `vram_gb_to_band`):
 - **Model** tab → **Auto-fit for this PC** appends the same **inference profile** report to the app log after the auto-fit rank summary.
 
 ## Tests
-[`tests/test_inference_profiles.py`](../../tests/test_inference_profiles.py) — band mapping, T2I merge, LTX-2 frame rule, report smoke.
+[`tests/models/test_inference_profiles.py`](../../tests/models/test_inference_profiles.py) — band mapping, T2I merge, LTX-2 frame rule, report smoke.
 
 ## Related docs
 - [Config](config.md) — env overrides, GPU policy fields  

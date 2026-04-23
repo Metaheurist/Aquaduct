@@ -96,8 +96,8 @@ def attach_my_pc_tab(win) -> None:
 
     table = QTableWidget()
     opts = model_options()
-    table.setColumnCount(5)
-    table.setHorizontalHeaderLabels(["Kind", "Model", "Speed", "Fit", "Why"])
+    table.setColumnCount(4)
+    table.setHorizontalHeaderLabels(["Kind", "Model", "Fit", "Why"])
     table.setRowCount(len(opts))
     table.verticalHeader().setVisible(False)
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -125,12 +125,11 @@ def attach_my_pc_tab(win) -> None:
             bg, fg = _fit_colors(marker)
             table.setItem(r, 0, QTableWidgetItem(opt.kind))
             table.setItem(r, 1, QTableWidgetItem(opt.repo_id))
-            table.setItem(r, 2, QTableWidgetItem(opt.speed))
             fit_item = QTableWidgetItem(fit_marker_display(marker))
             fit_item.setBackground(bg)
             fit_item.setForeground(fg)
-            table.setItem(r, 3, fit_item)
-            table.setItem(r, 4, QTableWidgetItem(why))
+            table.setItem(r, 2, fit_item)
+            table.setItem(r, 3, QTableWidgetItem(why))
         table.resizeColumnsToContents()
 
     def _sync_gpu_combos_from_settings() -> None:

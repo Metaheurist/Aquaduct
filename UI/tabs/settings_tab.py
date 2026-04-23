@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction, QStandardItem, QStandardItemModel
+from PyQt6.QtGui import QAction, QFont, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
     QComboBox,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -33,6 +33,7 @@ from src.models.hardware import (
 )
 from src.util.cuda_device_policy import effective_vram_gb_for_kind
 from src.models.model_integrity_cache import worst_integrity_status
+from src.models.model_tiers import TIER_LITE, TIER_PRO, TIER_STANDARD, tier_label
 from src.models.model_manager import (
     best_model_size_label,
     load_hf_size_cache,
@@ -50,7 +51,7 @@ from UI.workers import ModelSizePingWorker
 
 
 def _vram_label_style() -> str:
-    return "color:#9BB0C4;font-size:12px;padding:0 10px;min-width:7.5em;"
+    return "color:#9BB0C4;font-size:12px;padding:4px 4px;"
 
 
 def _fit_badge_style(marker: str) -> str:
@@ -201,21 +202,16 @@ def attach_settings_tab(win) -> None:
     win._hf_remote_sizes = load_hf_size_cache(Path(win._hf_size_cache_path))
     win._hf_probe: dict[str, dict] = {}
 
-    form = QFormLayout()
-    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-    form.setVerticalSpacing(10)
-    form.setHorizontalSpacing(14)
     win.llm_combo = NoWheelComboBox()
     win.img_combo = NoWheelComboBox()
     win.vid_combo = NoWheelComboBox()
     win.voice_combo = NoWheelComboBox()
 
     def _prep_combo(combo: QComboBox) -> None:
-        combo.setSizePolicy(QSizePolicy.Policy.Preferred, combo.sizePolicy().verticalPolicy())
-        combo.setMinimumWidth(300)
-        combo.setMaximumWidth(700)
+        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        combo.setMinimumWidth(420)
         combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        combo.setMinimumContentsLength(28)
+        combo.setMinimumContentsLength(36)
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         combo.view().setMinimumWidth(480)
 
@@ -263,26 +259,51 @@ def attach_settings_tab(win) -> None:
             except Exception:
                 continue
 
+    def _tier_header_item(title: str) -> QStandardItem:
+        h = QStandardItem(title)
+        h.setEnabled(False)
+        h.setSelectable(False)
+        hf = QFont()
+        hf.setBold(True)
+        h.setFont(hf)
+        return h
+
     def fill_combo_model(combo: QComboBox, kind: str) -> None:
         model = QStandardItemModel(combo)
-        for opt in [o for o in win._model_opts if o.kind == kind]:
-            data = opt.repo_id
-            sz = best_model_size_label(
-                opt.repo_id,
-                models_dir=models_dir_for_app(win.settings),
-                remote_sizes=win._hf_remote_sizes,
-                size_hint=getattr(opt, "size_hint", ""),
-            )
-            en, tip = _option_row_enabled(opt, kind)
-            text = f"{opt.order:02d}. {opt.label}  [{sz} • {opt.speed}]"
-            item = QStandardItem(text)
-            item.setData(data, Qt.ItemDataRole.UserRole)
-            if en:
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-            else:
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-                item.setToolTip(tip)
-            model.appendRow(item)
+        opts_kind = [o for o in win._model_opts if o.kind == kind]
+        per_tier: dict[str, int] = {}
+        for tier_key in (TIER_LITE, TIER_STANDARD, TIER_PRO):
+            group = [o for o in opts_kind if getattr(o, "tier", TIER_STANDARD) == tier_key]
+            if not group:
+                continue
+            model.appendRow(_tier_header_item(tier_label(tier_key)))
+            for opt in sorted(group, key=lambda o: (o.order, o.label.lower())):
+                data = opt.repo_id
+                sz = best_model_size_label(
+                    opt.repo_id,
+                    models_dir=models_dir_for_app(win.settings),
+                    remote_sizes=win._hf_remote_sizes,
+                    size_hint=getattr(opt, "size_hint", ""),
+                )
+                en, tip = _option_row_enabled(opt, kind)
+                per_tier[tier_key] = per_tier.get(tier_key, 0) + 1
+                n = per_tier[tier_key]
+                text = f"{n:02d}. {opt.label}  [{sz}]"
+                item = QStandardItem(text)
+                item.setData(data, Qt.ItemDataRole.UserRole)
+                t_full = tier_label(getattr(opt, "tier", TIER_STANDARD))
+                tip_lines = [opt.label, str(data), f"Tier: {t_full}"]
+                if getattr(opt, "size_hint", ""):
+                    tip_lines.append(f"Size hint: {opt.size_hint}")
+                full_tip = "\n".join(tip_lines)
+                if not en and tip:
+                    full_tip = tip + "\n\n" + full_tip
+                item.setToolTip(full_tip)
+                if en:
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                model.appendRow(item)
         combo.setModel(model)
         _prep_combo(combo)
 
@@ -353,9 +374,15 @@ def attach_settings_tab(win) -> None:
     win.img_dl_badge = QLabel("")
     win.vid_dl_badge = QLabel("")
     win.voice_dl_badge = QLabel("")
+    # Wide enough for one-line "○ Not on disk"; left-aligned so text never paints left of the
+    # label rect (centered + narrow width was bleeding over the QComboBox).
+    _dl_badge_w = 128
     for _b in (win.llm_dl_badge, win.img_dl_badge, win.vid_dl_badge, win.voice_dl_badge):
-        _b.setStyleSheet("color:#5DFFB0;font-size:12px;font-weight:700;min-width:8.5em;")
-        _b.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        _b.setStyleSheet("color:#5DFFB0;font-size:11px;font-weight:700;padding:2px 2px;")
+        _b.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        _b.setWordWrap(True)
+        _b.setFixedWidth(_dl_badge_w)
+        _b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     if win.settings.llm_model_id:
         idx = _combo_index_for_data(win.llm_combo, win.settings.llm_model_id)
@@ -385,6 +412,8 @@ def attach_settings_tab(win) -> None:
         _lbl.setStyleSheet(_vram_label_style())
         _lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         _lbl.setWordWrap(False)
+        _lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        _lbl.setMaximumWidth(280)
         _lbl.setToolTip("Typical GPU VRAM for this model class (estimate only; CPU fallback may apply).")
 
     # Fit badges (based on detected hardware)
@@ -392,8 +421,35 @@ def attach_settings_tab(win) -> None:
     win.img_fit = QLabel("UNKNOWN")
     win.vid_fit = QLabel("UNKNOWN")
     win.voice_fit = QLabel("UNKNOWN")
+    _fit_badge_w = 92
+    for _f in (win.llm_fit, win.img_fit, win.vid_fit, win.voice_fit):
+        _f.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _f.setFixedWidth(_fit_badge_w)
+        _f.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def _combo_repo_id_from_selection(combo: QComboBox) -> str:
+        idx = combo.currentIndex()
+        if idx < 0:
+            return ""
+        try:
+            raw = combo.itemData(idx, Qt.ItemDataRole.UserRole)
+        except Exception:
+            raw = None
+        if raw is None:
+            return ""
+        s = str(raw).strip()
+        if not s or s.lower() == "none":
+            return ""
+        return s
+
+    def _ensure_model_combo_valid_selection(combo: QComboBox) -> None:
+        if _combo_repo_id_from_selection(combo):
+            return
+        _pick_first_enabled(combo)
 
     def _update_fit_badges() -> None:
+        for c in (win.llm_combo, win.img_combo, win.vid_combo, win.voice_combo):
+            _ensure_model_combo_valid_selection(c)
         try:
             gpus_fb = list_cuda_gpus()
             app_fb = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
@@ -409,7 +465,7 @@ def attach_settings_tab(win) -> None:
             return win._hw_info.vram_gb
 
         def _dl_badge_base_style() -> str:
-            return "font-size:12px;font-weight:700;min-width:8.5em;"
+            return "font-size:11px;font-weight:700;padding:2px 2px;"
 
         def set_dl_badge(lbl: QLabel, repos: list[str]) -> None:
             ms = models_dir_for_app(win.settings)
@@ -526,72 +582,114 @@ def attach_settings_tab(win) -> None:
             lbl.setStyleSheet(_fit_badge_style(marker))
             lbl.setToolTip(why)
 
-        llm_repo = str(win.llm_combo.currentData())
-        llm_opt = win._model_opt_by_repo.get(llm_repo)
+        llm_repo = _combo_repo_id_from_selection(win.llm_combo)
+        llm_opt = win._model_opt_by_repo.get(llm_repo) if llm_repo else None
         llm_spd = llm_opt.speed if llm_opt else "slow"
-        win.llm_vram_lbl.setText(vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd))
-        set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
-        set_dl_badge(win.llm_dl_badge, [llm_repo])
+        win.llm_vram_lbl.setText(
+            vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd) if llm_repo else "—"
+        )
+        if llm_repo:
+            set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
+            set_dl_badge(win.llm_dl_badge, [llm_repo])
+        else:
+            win.llm_fit.setText("—")
+            win.llm_dl_badge.setText("")
 
-        img_repo = str(win.img_combo.currentData())
-        img_opt = win._model_opt_by_repo.get(img_repo)
+        img_repo = _combo_repo_id_from_selection(win.img_combo)
+        img_opt = win._model_opt_by_repo.get(img_repo) if img_repo else None
         img_spd = img_opt.speed if img_opt else "slow"
-        win.img_vram_lbl.setText(vram_requirement_hint(kind="image", repo_id=img_repo, speed=img_spd))
-        set_badge(win.img_fit, kind="image", repo_id=img_repo)
-        set_dl_badge(win.img_dl_badge, [img_repo])
+        win.img_vram_lbl.setText(
+            vram_requirement_hint(kind="image", repo_id=img_repo, speed=img_spd) if img_repo else "—"
+        )
+        if img_repo:
+            set_badge(win.img_fit, kind="image", repo_id=img_repo)
+            set_dl_badge(win.img_dl_badge, [img_repo])
+        else:
+            win.img_fit.setText("—")
+            win.img_dl_badge.setText("")
 
-        vid_repo = str(win.vid_combo.currentData())
-        vid_opt = win._model_opt_by_repo.get(vid_repo)
+        vid_repo = _combo_repo_id_from_selection(win.vid_combo)
+        vid_opt = win._model_opt_by_repo.get(vid_repo) if vid_repo else None
         vid_spd = vid_opt.speed if vid_opt else "slow"
         pair_id = str(getattr(vid_opt, "pair_image_repo_id", "") or "").strip() if vid_opt else ""
         win.vid_vram_lbl.setText(
             vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
+            if vid_repo
+            else "—"
         )
-        set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
-        set_dl_badge(win.vid_dl_badge, [vid_repo])
+        if vid_repo:
+            set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
+            set_dl_badge(win.vid_dl_badge, [vid_repo])
+        else:
+            win.vid_fit.setText("—")
+            win.vid_dl_badge.setText("")
 
-        voice_repo = str(win.voice_combo.currentData())
-        voice_opt = win._model_opt_by_repo.get(voice_repo)
+        voice_repo = _combo_repo_id_from_selection(win.voice_combo)
+        voice_opt = win._model_opt_by_repo.get(voice_repo) if voice_repo else None
         voice_spd = voice_opt.speed if voice_opt else "slow"
-        win.voice_vram_lbl.setText(vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd))
-        set_badge(win.voice_fit, kind="voice", repo_id=voice_repo)
-        set_dl_badge(win.voice_dl_badge, [voice_repo])
+        win.voice_vram_lbl.setText(
+            vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd) if voice_repo else "—"
+        )
+        if voice_repo:
+            set_badge(win.voice_fit, kind="voice", repo_id=voice_repo)
+            set_dl_badge(win.voice_dl_badge, [voice_repo])
+        else:
+            win.voice_fit.setText("—")
+            win.voice_dl_badge.setText("")
+
+    def _sync_local_model_combo_tooltip(combo: QComboBox) -> None:
+        idx = combo.currentIndex()
+        if idx < 0:
+            combo.setToolTip(combo.currentText() or "")
+            return
+        midx = combo.model().index(idx, 0)
+        t = midx.data(Qt.ItemDataRole.ToolTipRole)
+        if t is not None and str(t).strip():
+            combo.setToolTip(str(t))
+        else:
+            combo.setToolTip(combo.currentText() or "")
 
     win.llm_combo.currentIndexChanged.connect(_update_fit_badges)
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
     win.vid_combo.currentIndexChanged.connect(_update_fit_badges)
     win.voice_combo.currentIndexChanged.connect(_update_fit_badges)
-    win.llm_combo.currentIndexChanged.connect(lambda: win.llm_combo.setToolTip(win.llm_combo.currentText()))
-    win.img_combo.currentIndexChanged.connect(lambda: win.img_combo.setToolTip(win.img_combo.currentText()))
-    win.vid_combo.currentIndexChanged.connect(lambda: win.vid_combo.setToolTip(win.vid_combo.currentText()))
-    win.voice_combo.currentIndexChanged.connect(lambda: win.voice_combo.setToolTip(win.voice_combo.currentText()))
+    win.llm_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.llm_combo))
+    win.img_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.img_combo))
+    win.vid_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.vid_combo))
+    win.voice_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.voice_combo))
 
-    llm_row = QHBoxLayout()
-    llm_row.addWidget(win.llm_combo, 1)
-    llm_row.addWidget(win.llm_dl_badge, 0)
-    llm_row.addWidget(win.llm_vram_lbl, 0)
-    llm_row.addWidget(win.llm_fit, 0)
-    img_row = QHBoxLayout()
-    img_row.addWidget(win.img_combo, 1)
-    img_row.addWidget(win.img_dl_badge, 0)
-    img_row.addWidget(win.img_vram_lbl, 0)
-    img_row.addWidget(win.img_fit, 0)
-    vid_row = QHBoxLayout()
-    vid_row.addWidget(win.vid_combo, 1)
-    vid_row.addWidget(win.vid_dl_badge, 0)
-    vid_row.addWidget(win.vid_vram_lbl, 0)
-    vid_row.addWidget(win.vid_fit, 0)
-    voice_row = QHBoxLayout()
-    voice_row.addWidget(win.voice_combo, 1)
-    voice_row.addWidget(win.voice_dl_badge, 0)
-    voice_row.addWidget(win.voice_vram_lbl, 0)
-    voice_row.addWidget(win.voice_fit, 0)
+    model_grid = QGridLayout()
+    # Separate columns for combo vs disk so row geometry never collapses (nested HBox + stretch
+    # could leave ~0 width for the combo on some rows when size hints fight). Disk stays left-aligned.
+    model_grid.setHorizontalSpacing(8)
+    model_grid.setVerticalSpacing(10)
+    model_grid.setColumnStretch(1, 1)
+    model_grid.setColumnMinimumWidth(0, 188)
+    model_grid.setColumnMinimumWidth(1, 420)
+    model_grid.setColumnMinimumWidth(2, int(_dl_badge_w))
+    model_grid.setColumnMinimumWidth(3, 200)
+    model_grid.setColumnMinimumWidth(4, _fit_badge_w)
 
-    form.addRow("Script model (LLM)", llm_row)
-    form.addRow("Image model (diffusion stills)", img_row)
-    form.addRow("Video model (motion / Pro / scenes)", vid_row)
-    form.addRow("Voice model (TTS)", voice_row)
-    ll.addLayout(form)
+    def _model_field_label(text: str) -> QLabel:
+        lb = QLabel(text)
+        lb.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lb.setWordWrap(False)
+        return lb
+
+    _model_rows: list[tuple[str, QComboBox, QLabel, QLabel, QLabel]] = [
+        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_vram_lbl, win.llm_fit),
+        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_vram_lbl, win.img_fit),
+        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_vram_lbl, win.vid_fit),
+        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_vram_lbl, win.voice_fit),
+    ]
+    for row, (_txt, combo, dl_b, vram_l, fit_l) in enumerate(_model_rows):
+        model_grid.addWidget(_model_field_label(_txt), row, 0)
+        model_grid.addWidget(combo, row, 1)
+        model_grid.addWidget(dl_b, row, 2)
+        model_grid.addWidget(vram_l, row, 3)
+        model_grid.addWidget(fit_l, row, 4)
+
+    ll.addLayout(model_grid)
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
@@ -746,10 +844,10 @@ def attach_settings_tab(win) -> None:
     _apply_models_storage_ui()
 
     _update_fit_badges()
-    win.llm_combo.setToolTip(win.llm_combo.currentText())
-    win.img_combo.setToolTip(win.img_combo.currentText())
-    win.vid_combo.setToolTip(win.vid_combo.currentText())
-    win.voice_combo.setToolTip(win.voice_combo.currentText())
+    _sync_local_model_combo_tooltip(win.llm_combo)
+    _sync_local_model_combo_tooltip(win.img_combo)
+    _sync_local_model_combo_tooltip(win.vid_combo)
+    _sync_local_model_combo_tooltip(win.voice_combo)
 
     # Ping HF for remote sizes on startup (auth via HF_TOKEN / cached login).
     # This runs in the background and refreshes labels when complete.

@@ -61,7 +61,7 @@ PyTorch-only (no `requirements.txt`) for both: add `-PyTorchOnly` to the `.ps1`,
 - **PyQt6**: only required when using the graphical control panel (`python -m UI`). The headless `main.py` pipeline does not need it.
 
 ## Development / tests + build
-- **`requirements-dev.txt`**: **pytest** stack plus **PyInstaller** (for `build/build.ps1`). **`pytest-qt`** is for `@pytest.mark.qt` tests that use the **`qtbot`** fixture (desktop UI). Some **`@pytest.mark.qt`** modules only need **PyQt6** and the shared **`qapplication`** fixture in [`tests/conftest.py`](tests/conftest.py) (e.g. [`tests/test_title_bar_outline_button.py`](tests/test_title_bar_outline_button.py)). Core tests run without PyQt; full UI test runs need PyQt6 and usually pytest-qt. Pipeline **run-queue** payload shapes: [`tests/test_pipeline_run_queue_contract.py`](tests/test_pipeline_run_queue_contract.py) (no Qt); main-window queue behavior: [`tests/test_ui_main_window.py`](tests/test_ui_main_window.py).
+- **`requirements-dev.txt`**: **pytest** stack plus **PyInstaller** (for `build/build.ps1`). **`pytest-qt`** is for `@pytest.mark.qt` tests that use the **`qtbot`** fixture (desktop UI). Some **`@pytest.mark.qt`** modules only need **PyQt6** and the shared **`qapplication`** fixture in [`tests/conftest.py`](tests/conftest.py) (e.g. [`tests/ui/test_title_bar_outline_button.py`](tests/ui/test_title_bar_outline_button.py)). Core tests run without PyQt; full UI test runs need PyQt6 and usually pytest-qt. Pipeline **run-queue** payload shapes: [`tests/runtime/test_pipeline_run_queue_contract.py`](tests/runtime/test_pipeline_run_queue_contract.py) (no Qt); main-window queue behavior: [`tests/ui/test_ui_main_window.py`](tests/ui/test_ui_main_window.py).
 
 ### Test tiers (pytest)
 
@@ -73,7 +73,7 @@ From the repo root (activate your venv first):
 | **Qt / UI** | `pytest -m qt` | Only UI tests (needs **PyQt6** and usually **pytest-qt**). |
 | **Full** | `pytest` | Entire suite (Qt tests skip or run depending on installed PyQt6). |
 
-Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@pytest.mark.slow`. Import smoke for the API stack: [`tests/test_import_smoke_api.py`](tests/test_import_smoke_api.py).
+Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@pytest.mark.slow`. Import smoke for the API stack: [`tests/runtime/test_import_smoke_api.py`](tests/runtime/test_import_smoke_api.py).
 
 ## Core runtime libraries
 - **requests / beautifulsoup4 / lxml**: scraping (Google News RSS + MarkTechPost fallback). Optional **Firecrawl** HTTP APIs when enabled in the app (API key via UI or `FIRECRAWL_API_KEY`). Optional **ElevenLabs** TTS when enabled (API key via UI or `ELEVENLABS_API_KEY`).

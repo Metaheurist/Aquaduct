@@ -97,12 +97,12 @@ def kling_text_to_video_mp4_bytes(
     """
     Create a text-to-video task, poll until complete, download MP4.
 
-    `model_name` is the Kling model id (e.g. ``kling-v2-6`` / ``kling-v2-master``) from the Kling dev console.
+    `model_name` is the Kling model id (e.g. ``kling-v3`` / ``kling-v2-6`` / ``kling-v2-master``) from the Kling dev console.
     """
     p = (prompt or "").strip()
     if not p:
         raise KlingRequestError("Empty Kling text-to-video prompt.")
-    m = (model_name or "").strip() or "kling-v2-master"
+    m = (model_name or "").strip() or "kling-v3"
     T = max(1.0, min(10.0, float(end_seconds or 5.0)))
     dur = "5" if T <= 7.0 else "10"
     base = _api_base()

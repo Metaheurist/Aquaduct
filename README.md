@@ -48,7 +48,7 @@ pytest -q -m "not qt"
 
 (`torch` / CUDA wheels: use `python scripts/install_pytorch.py --with-rest` before or as documented in `requirements.txt`.)
 
-`tests/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`). API / packaging import smoke: `tests/test_import_smoke_api.py`.
+`tests/runtime/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/ui/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`). API / packaging import smoke: `tests/runtime/test_import_smoke_api.py`.
 
 Run **Qt-only** UI tests:
 
@@ -62,7 +62,7 @@ Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt
 pytest -q
 ```
 
-If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set. For a short table of tiers, see **Test tiers** in [`DEPENDENCIES.md`](DEPENDENCIES.md).
+If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set. For a short table of tiers, see **Test tiers** in [`DEPENDENCIES.md`](DEPENDENCIES.md). The pytest tree is grouped under `tests/<area>/`; see [`tests/README.md`](tests/README.md).
 
 ### 2) Run once (recommended for first test)
 

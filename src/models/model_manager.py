@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import re
@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
+from src.models.model_tiers import local_tier_for_repo
 
 @dataclass(frozen=True)
 class ModelOption:
@@ -19,6 +20,7 @@ class ModelOption:
     pair_image_repo_id: str = ""  # for img->vid options, which image model to use for keyframes
     size_hint: str = ""  # e.g. "82M", "3B", or "~6-8GB"
     ui_sequence: int = 0  # if set (e.g. image stack), order within kind before label tie-break
+    tier: str = "standard"  # "pro" | "standard" | "lite" — see src.models.model_tiers
 
 
 def model_options() -> list[ModelOption]:
@@ -42,6 +44,20 @@ def model_options() -> list[ModelOption]:
             "faster",
             "script",
             size_hint="11B",
+        ),
+        ModelOption(
+            "Llama 3.1 8B Instruct (Meta)",
+            "meta-llama/Llama-3.1-8B-Instruct",
+            "fastest",
+            "script",
+            size_hint="8B",
+        ),
+        ModelOption(
+            "Qwen2.5 7B Instruct (fast & capable)",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "fastest",
+            "script",
+            size_hint="7B",
         ),
         ModelOption(
             "Midnight Miqu 70B v1.5 (heavyweight storytelling)",
@@ -183,6 +199,7 @@ def model_options() -> list[ModelOption]:
                 o.pair_image_repo_id,
                 o.size_hint,
                 o.ui_sequence,
+                local_tier_for_repo(o.repo_id),
             )
         )
     return out
