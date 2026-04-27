@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fix: Model tab — **On disk** status no longer paints over the Hub combo
+- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): the local snapshot / verify label sits in a **fixed-width framed panel** to the right of the model `QComboBox` inside a single row cell, so the grid cannot interleave or overlap the badge with the long Hub display text on narrow windows.
+
 ### Per-model **quantization controls** (Script / Image / Video / Voice)
 - **Policy module** ([`src/models/quantization.py`](src/models/quantization.py)): central definitions for `QuantMode` (`auto`, `bf16`, `fp16`, `int8`, `nf4_4bit`, `cpu_offload`) and `QuantRole` (`script | image | video | voice`); `supported_quant_modes()` enumerates per-role options for the UI (LLMs offer `nf4_4bit`, diffusion rows offer `cpu_offload` etc.); `predict_vram_gb()` applies per-mode multipliers on top of `vram_requirement_hint()` ranges; `pick_auto_mode()` and `resolve_quant_mode()` resolve `auto` against the **effective per-role VRAM** ([`src.util.cuda_device_policy.effective_vram_gb_for_kind`](src/util/cuda_device_policy.py) / [`resolve_effective_vram_gb`](src/models/inference_profiles.py)) so the user’s **GPU policy** (Auto vs Single-pinned) keeps `auto`, fit badges, and Auto-fit consistent.
 - **Settings & persistence** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): new `script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode` fields on `AppSettings` (default `auto`). The loader sanitizes unknown / alias strings and migrates legacy `try_llm_4bit=True` to `script_quant_mode="nf4_4bit"` when no explicit value is stored.
