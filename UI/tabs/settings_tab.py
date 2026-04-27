@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -413,9 +414,9 @@ def attach_settings_tab(win) -> None:
     # label rect (centered + narrow width was bleeding over the QComboBox).
     _dl_badge_w = 128
     for _b in (win.llm_dl_badge, win.img_dl_badge, win.vid_dl_badge, win.voice_dl_badge):
-        _b.setStyleSheet("color:#5DFFB0;font-size:11px;font-weight:700;padding:2px 2px;")
+        _b.setStyleSheet("color:#5DFFB0;font-size:11px;font-weight:700;padding:0px;")
         _b.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        _b.setWordWrap(True)
+        _b.setWordWrap(False)
         _b.setFixedWidth(_dl_badge_w)
         _b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -764,18 +765,45 @@ def attach_settings_tab(win) -> None:
     win.vid_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.vid_combo))
     win.voice_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.voice_combo))
 
+    def _model_combo_disk_row(combo: QComboBox, dl_b: QLabel) -> QWidget:
+        """Model Hub combo + local disk/verify status in a fixed panel (never paint over the combo)."""
+        wrap = QWidget()
+        row_l = QHBoxLayout(wrap)
+        row_l.setContentsMargins(0, 0, 0, 0)
+        row_l.setSpacing(8)
+        row_l.addWidget(combo, 1)
+        disk_frame = QFrame()
+        disk_frame.setObjectName("ModelDiskStatusPanel")
+        disk_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        fr = QHBoxLayout(disk_frame)
+        fr.setContentsMargins(6, 3, 6, 3)
+        fr.setSpacing(0)
+        fr.addWidget(dl_b, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        # Fixed panel width: label is _dl_badge_w + frame horizontal margins.
+        disk_frame.setFixedWidth(int(_dl_badge_w) + 12)
+        disk_frame.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        disk_frame.setStyleSheet(
+            "QFrame#ModelDiskStatusPanel {"
+            " background-color: rgba(60, 72, 86, 0.55);"
+            " border: 1px solid rgba(120, 135, 150, 0.65);"
+            " border-radius: 4px;"
+            "}"
+        )
+        row_l.addWidget(disk_frame, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return wrap
+
     model_grid = QGridLayout()
-    # Separate columns for combo vs disk so row geometry never collapses (nested HBox + stretch
-    # could leave ~0 width for the combo on some rows when size hints fight). Disk stays left-aligned.
+    # One column for [combo | disk panel] so the grid cannot interleave/overlay cells when
+    # horizontal space is tight (separate grid columns for combo vs disk was painting on the combo).
     model_grid.setHorizontalSpacing(8)
     model_grid.setVerticalSpacing(10)
     model_grid.setColumnStretch(1, 1)
     model_grid.setColumnMinimumWidth(0, 188)
-    model_grid.setColumnMinimumWidth(1, 420)
-    model_grid.setColumnMinimumWidth(2, int(_dl_badge_w))
-    model_grid.setColumnMinimumWidth(3, 150)
-    model_grid.setColumnMinimumWidth(4, 200)
-    model_grid.setColumnMinimumWidth(5, _fit_badge_w)
+    # combo min 420 (see _prep_combo) + 8 + disk panel (~140)
+    model_grid.setColumnMinimumWidth(1, 420 + 8 + int(_dl_badge_w) + 12)
+    model_grid.setColumnMinimumWidth(2, 150)
+    model_grid.setColumnMinimumWidth(3, 200)
+    model_grid.setColumnMinimumWidth(4, _fit_badge_w)
 
     def _model_field_label(text: str) -> QLabel:
         lb = QLabel(text)
@@ -791,11 +819,10 @@ def attach_settings_tab(win) -> None:
     ]
     for row, (_txt, combo, dl_b, qcombo, vram_l, fit_l) in enumerate(_model_rows):
         model_grid.addWidget(_model_field_label(_txt), row, 0)
-        model_grid.addWidget(combo, row, 1)
-        model_grid.addWidget(dl_b, row, 2)
-        model_grid.addWidget(qcombo, row, 3)
-        model_grid.addWidget(vram_l, row, 4)
-        model_grid.addWidget(fit_l, row, 5)
+        model_grid.addWidget(_model_combo_disk_row(combo, dl_b), row, 1)
+        model_grid.addWidget(qcombo, row, 2)
+        model_grid.addWidget(vram_l, row, 3)
+        model_grid.addWidget(fit_l, row, 4)
 
     ll.addLayout(model_grid)
 
