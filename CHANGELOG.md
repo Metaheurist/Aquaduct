@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Model tab — quantization **slider** + separate **Automatic**
+- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/main_window.py`](UI/main_window.py)): per-role **Automatic (fit this GPU)** checkbox (persists `auto`) and a discrete horizontal **NoWheelSlider** over enabled manual modes only, ordered **low VRAM → higher quality** via [`manual_quant_modes_low_to_high`](src/models/quantization.py). **Auto-fit** drives the same controls after ranked picks. Kokoro voice rows lock Automatic and hide the slider.
+- **Policy** ([`src/models/quantization.py`](src/models/quantization.py)): `manual_quant_modes_low_to_high`, `index_of_manual_mode`, `manual_mode_at_index`.
+- **Tests** ([`tests/models/test_quantization_manual_order.py`](tests/models/test_quantization_manual_order.py)); **Docs**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/quantization.md`](docs/reference/quantization.md).
+
 ### Fix: Model tab — responsive **row cards** for local model controls
 - **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): replaced the fragile five-column model grid with one **row card** per role. Each card now stacks title + fit badge, full-width Hub model dropdown, disk/VRAM metadata, and full-width quant dropdown, so long model names, **On disk** status, VRAM labels, and quant mode text no longer overlap or compete for a single horizontal row.
 - **Scroll / 1080p fit**: the Local Model content is now wrapped in a vertical `QScrollArea`, and model / quant combo minimum widths were lowered so cards keep readable natural height instead of being squeezed edge-to-edge at 1080p.
