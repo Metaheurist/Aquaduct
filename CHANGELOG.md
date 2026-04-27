@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fix: Model tab — **On disk** status no longer paints over the Hub combo
-- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): the local snapshot / verify label sits in a **fixed-width framed panel** to the right of the model `QComboBox` inside a single row cell, so the grid cannot interleave or overlap the badge with the long Hub display text on narrow windows.
+- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): the local snapshot / verify label sits in a **fixed-width framed panel** **below** the model `QComboBox` (vertical stack in one grid cell), so it cannot overlap the Hub text. The quant column gets **stretch** and a higher minimum width plus `AdjustToContents` so mode labels (e.g. **NF4 4-bit**) are not clipped.
 
 ### Fix: Model tab — **quantization** dropdown selection no longer snaps back
 - **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): `_update_fit_badges` repopulates the per-role quant combo; the selection is now restored from the **live** combo value when the same Hub id is still selected (otherwise from `AppSettings` after a model change). **Auto-fit** calls `_collect_settings_from_ui()` into `win.settings` before the badge refresh so ranked quant modes are not overwritten by stale settings.
