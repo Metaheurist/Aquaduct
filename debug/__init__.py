@@ -2,6 +2,7 @@
 
 from .debug_log import (
     DEBUG_CATEGORIES,
+    MODULE_DEBUG_FLAGS,
     active_categories,
     apply_cli_debug,
     debug_categories_line,
@@ -12,6 +13,7 @@ from .debug_log import (
 
 __all__ = [
     "DEBUG_CATEGORIES",
+    "MODULE_DEBUG_FLAGS",
     "active_categories",
     "apply_cli_debug",
     "debug_categories_line",

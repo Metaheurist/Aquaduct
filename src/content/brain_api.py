@@ -76,6 +76,13 @@ def generate_script_openai(
     if sup:
         prompt = prompt + _supplement_context_block(sup)
 
+    try:
+        from debug import dprint
+
+        dprint("brain", "generate_script backend", "openai", f"model={_llm_model(settings)!r}")
+    except Exception:
+        pass
+
     if on_llm_task:
         on_llm_task("llm_generate", 10, "Calling OpenAI (API mode)…")
     client = build_openai_client_from_settings(settings)

@@ -1,35 +1,51 @@
 """
 Categorized debug logging to stderr.
 
-Enable via **environment** (before or in ``.env``):
+Enable via **in-repo booleans** (``MODULE_DEBUG_FLAGS``), **environment**, or **CLI**:
 
-- ``AQUADUCT_DEBUG=all`` — every category below
+- ``MODULE_DEBUG_FLAGS`` — set any key to ``True`` in this file to enable that category
+  without setting env (union with env/CLI).
+- ``AQUADUCT_DEBUG=all`` — every category
 - ``AQUADUCT_DEBUG=pipeline,brain,models`` — comma-separated list
-- ``AQUADUCT_DEBUG_PIPELINE=1`` — per-category toggles (same name in UPPER)
+- ``AQUADUCT_DEBUG_PIPELINE=1`` — per-category toggles (name in UPPER)
+
+Boolean flags are **additive**: categories with ``MODULE_DEBUG_FLAGS[c]`` True are merged in
+after env/CLI resolution so they stay on unless you clear the flag in this file.
+
+If ``AQUADUCT_DEBUG`` is unset or empty, in-repo flags still apply (union). A future
+``AQUADUCT_DEBUG_ONLY_ENV=1``-style switch could restrict activation to env/CLI only; the default
+remains **simple OR** for developer experience.
 
 **Categories**
 
-- ``pipeline`` — ``main.run_once`` orchestration steps
+- ``pipeline`` — ``main.run_once`` orchestration
 - ``crawler`` — news fetch / item selection
 - ``brain`` — LLM script generation
 - ``voice`` — TTS / captions JSON
 - ``artist`` — image generation
 - ``editor`` — micro-clip assembly + final concat
-- ``clips`` — video clip generation (img→vid path)
+- ``clips`` — video clip generation
 - ``storyboard`` — storyboard + manifest
+- ``story_pipeline`` — multi-stage story review stages
 - ``audio`` — polish, music ducking, SFX mix
 - ``models`` — Hugging Face downloads / ``model_manager``
 - ``preflight`` — preflight checks
 - ``branding`` — palette / prompt styling
 - ``topics`` — topic discovery worker
-- ``workers`` — generic UI worker boundaries (pipeline / preview / batch)
-- ``ui`` — main window actions (runs, downloads, save)
-- ``config`` — settings load/save (light touch)
+- ``workers`` — UI worker boundaries (pipeline / preview / batch)
+- ``ui`` — main window shell actions
+- ``tasks`` — Tasks tab queue / removals / refresh
+- ``config`` — settings load/save
+- ``openai`` — OpenAI-compatible HTTP client (API mode / keys redacted)
+- ``inference_profile`` — VRAM band / profile report logging
+- ``story_context`` — Firecrawl / web context for scripts
 
 CLI (merged with env):
 
 - ``python main.py --once --debug brain,pipeline``
 - ``python -m UI --debug ui,workers``
+
+See ``debug/README.md`` and ``debug/<category>/README.md`` per section.
 
 """
 
@@ -40,7 +56,7 @@ import sys
 from datetime import datetime
 from typing import Final
 
-# Canonical flags (also used for AQUADUCT_DEBUG_<NAME> env suffix).
+# Canonical category names (order stable for docs / tests).
 DEBUG_CATEGORIES: Final[tuple[str, ...]] = (
     "pipeline",
     "crawler",
@@ -50,6 +66,7 @@ DEBUG_CATEGORIES: Final[tuple[str, ...]] = (
     "editor",
     "clips",
     "storyboard",
+    "story_pipeline",
     "audio",
     "models",
     "preflight",
@@ -57,8 +74,15 @@ DEBUG_CATEGORIES: Final[tuple[str, ...]] = (
     "topics",
     "workers",
     "ui",
+    "tasks",
     "config",
+    "openai",
+    "inference_profile",
+    "story_context",
 )
+
+# Flip to True to enable that category without AQUADUCT_DEBUG (union with env/CLI).
+MODULE_DEBUG_FLAGS: dict[str, bool] = {c: False for c in DEBUG_CATEGORIES}
 
 _ALIASES: Final[dict[str, str]] = {
     "run": "pipeline",
@@ -72,6 +96,9 @@ _ALIASES: Final[dict[str, str]] = {
     "assembly": "editor",
     "video": "clips",
     "sb": "storyboard",
+    "api": "openai",
+    "profile": "inference_profile",
+    "ctx": "story_context",
 }
 
 _CAT_SET: Final[frozenset[str]] = frozenset(DEBUG_CATEGORIES)
@@ -103,6 +130,10 @@ def _parse_csv(spec: str) -> set[str]:
     return out
 
 
+def _module_flag_enabled() -> set[str]:
+    return {c for c in DEBUG_CATEGORIES if MODULE_DEBUG_FLAGS.get(c, False)}
+
+
 def _recompute_active() -> frozenset[str]:
     merged: set[str] = set()
     main_spec = (os.environ.get("AQUADUCT_DEBUG") or "").strip()
@@ -122,6 +153,7 @@ def _recompute_active() -> frozenset[str]:
             merged.discard(c)
 
     merged.update(_parse_csv(_cli_extra))
+    merged.update(_module_flag_enabled())
     return frozenset(merged)
 
 
@@ -134,7 +166,7 @@ def active_categories() -> frozenset[str]:
 
 
 def invalidate_debug_cache() -> None:
-    """Call after changing CLI override or env in tests."""
+    """Call after changing CLI override, env, or ``MODULE_DEBUG_FLAGS`` in tests."""
     global _active_cache
     _active_cache = None
 
@@ -163,7 +195,7 @@ def dprint(category: str, *parts: object, ts: bool = True) -> None:
     if ts:
         prefix = f"{datetime.now().isoformat(timespec='seconds')} {prefix}"
     line = prefix + " " + " ".join(str(p) for p in parts)
-    print(prefix, *parts, file=sys.stderr, flush=True)
+    print(line, file=sys.stderr, flush=True)
     try:
         from src.util.repo_logs import append_debug_log
 

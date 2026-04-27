@@ -716,13 +716,17 @@ def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None
     max_workers = int(os.environ.get("HF_SNAPSHOT_MAX_WORKERS", "8"))
     max_workers = max(1, min(32, max_workers))
 
-    snapshot_download(
-        repo_id=repo_id,
-        local_dir=str(local_dir),
-        tqdm_class=tqdm_class,
-        token=token,
-        max_workers=max_workers,
-        etag_timeout=float(os.environ.get("HF_ETAG_TIMEOUT", "30")),
-    )
+    try:
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=str(local_dir),
+            tqdm_class=tqdm_class,
+            token=token,
+            max_workers=max_workers,
+            etag_timeout=float(os.environ.get("HF_ETAG_TIMEOUT", "30")),
+        )
+    except Exception as e:
+        dprint("models", "snapshot_download failed", f"repo={repo_id!r}", str(e)[:400])
+        raise
     return local_dir
 
