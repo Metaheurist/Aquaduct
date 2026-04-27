@@ -170,8 +170,21 @@ def attach_settings_tab(win) -> None:
     win._model_mode_stack = QStackedWidget()
     lay.addWidget(win._model_mode_stack, 1)
 
+    local_scroll = QScrollArea()
+    local_scroll.setObjectName("modelLocalScroll")
+    local_scroll.setWidgetResizable(True)
+    local_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    local_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    local_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    local_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    local_scroll.setStyleSheet(
+        "QScrollArea#modelLocalScroll { background: transparent; border: none; }"
+        "QScrollArea#modelLocalScroll > QWidget > QWidget { background: transparent; }"
+    )
     local_page = QWidget()
     ll = QVBoxLayout(local_page)
+    ll.setContentsMargins(0, 0, 10, 0)
+    ll.setSpacing(8)
     win._local_model_shell = local_page
 
     ll.addWidget(section_title("Models (select + download)", emphasis=True))
@@ -220,9 +233,9 @@ def attach_settings_tab(win) -> None:
 
     def _prep_combo(combo: QComboBox) -> None:
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        combo.setMinimumWidth(260)
+        combo.setMinimumWidth(220)
         combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        combo.setMinimumContentsLength(30)
+        combo.setMinimumContentsLength(26)
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         combo.view().setMinimumWidth(480)
 
@@ -245,8 +258,9 @@ def attach_settings_tab(win) -> None:
                         pass
                 if opt.tooltip:
                     combo.setItemData(i, opt.tooltip, Qt.ItemDataRole.ToolTipRole)
-            # Wide enough for full labels (e.g. ``NF4 4-bit (lowest VRAM)``); column also gets stretch.
-            combo.setMinimumWidth(200)
+            # Wide enough for full labels (e.g. ``NF4 4-bit (lowest VRAM)``), but not enough
+            # to force the card wider than a 1080p tab.
+            combo.setMinimumWidth(180)
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
             combo.setMinimumContentsLength(22)
         finally:
@@ -859,7 +873,7 @@ def attach_settings_tab(win) -> None:
         lay_card.addLayout(meta_row)
 
         qcombo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        qcombo.setMinimumWidth(220)
+        qcombo.setMinimumWidth(180)
         lay_card.addWidget(qcombo)
         return card
 
@@ -1141,7 +1155,9 @@ def attach_settings_tab(win) -> None:
     al.addWidget(scroll, 1)
     win._model_api_gen_scroll = scroll
 
-    win._model_mode_stack.addWidget(local_page)
+    local_scroll.setWidget(local_page)
+    win._model_local_scroll = local_scroll
+    win._model_mode_stack.addWidget(local_scroll)
     win._model_mode_stack.addWidget(api_page)
 
     def _apply_model_execution_ui() -> None:
