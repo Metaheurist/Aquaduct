@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PyQt6.QtGui import QWheelEvent
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QSpinBox
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QSlider, QSpinBox
 
 
 class NoWheelComboBox(QComboBox):
@@ -24,6 +24,14 @@ class NoWheelSpinBox(QSpinBox):
 
 class NoWheelDoubleSpinBox(QDoubleSpinBox):
     """QDoubleSpinBox that ignores wheel deltas."""
+
+    def wheelEvent(self, event: QWheelEvent | None) -> None:
+        if event is not None:
+            event.ignore()
+
+
+class NoWheelSlider(QSlider):
+    """QSlider that ignores wheel deltas (scroll the parent instead of stepping the slider)."""
 
     def wheelEvent(self, event: QWheelEvent | None) -> None:
         if event is not None:

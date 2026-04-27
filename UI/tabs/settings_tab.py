@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSlider,
     QStackedWidget,
     QStyle,
     QVBoxLayout,
@@ -32,6 +34,8 @@ from src.models.hardware import (
     vram_requirement_hint,
 )
 from src.models.quantization import (
+    index_of_manual_mode,
+    manual_quant_modes_low_to_high,
     mode_label,
     parse_vram_hint_gb,
     predict_vram_gb,
@@ -50,7 +54,7 @@ from src.models.model_manager import (
 from UI.dialogs.frameless_dialog import aquaduct_information
 from UI.widgets.model_execution_toggle import ModelExecutionModeToggle
 from UI.widgets.models_storage_toggle import ModelsStorageModeToggle
-from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSlider
 from UI.widgets.tab_sections import add_section_spacing, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.workers import ModelSizePingWorker
@@ -226,10 +230,26 @@ def attach_settings_tab(win) -> None:
     win.vid_combo = NoWheelComboBox()
     win.voice_combo = NoWheelComboBox()
 
-    win.llm_quant_combo = NoWheelComboBox()
-    win.img_quant_combo = NoWheelComboBox()
-    win.vid_quant_combo = NoWheelComboBox()
-    win.voice_quant_combo = NoWheelComboBox()
+    win._quant_manual_modes: dict[str, tuple[str, ...]] = {}
+
+    win.llm_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
+    win.img_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
+    win.vid_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
+    win.voice_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
+
+    win.llm_quant_slider = NoWheelSlider(Qt.Orientation.Horizontal)
+    win.img_quant_slider = NoWheelSlider(Qt.Orientation.Horizontal)
+    win.vid_quant_slider = NoWheelSlider(Qt.Orientation.Horizontal)
+    win.voice_quant_slider = NoWheelSlider(Qt.Orientation.Horizontal)
+
+    win.llm_quant_value_lbl = QLabel("")
+    win.img_quant_value_lbl = QLabel("")
+    win.vid_quant_value_lbl = QLabel("")
+    win.voice_quant_value_lbl = QLabel("")
+    for _ql in (win.llm_quant_value_lbl, win.img_quant_value_lbl, win.vid_quant_value_lbl, win.voice_quant_value_lbl):
+        _ql.setStyleSheet("color:#C8D4E0;font-size:12px;")
+        _ql.setMinimumWidth(200)
+        _ql.setWordWrap(False)
 
     def _prep_combo(combo: QComboBox) -> None:
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -238,33 +258,6 @@ def attach_settings_tab(win) -> None:
         combo.setMinimumContentsLength(26)
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         combo.view().setMinimumWidth(480)
-
-    def _fill_quant_combo(combo: QComboBox, *, role: str, repo_id: str) -> None:
-        # Block signals while repopulating to avoid re-entering ``_update_fit_badges``
-        # via ``currentIndexChanged`` (clear/addItem fire that signal).
-        was_blocked = combo.signalsBlocked()
-        combo.blockSignals(True)
-        try:
-            combo.clear()
-            for opt in supported_quant_modes(role=role, repo_id=repo_id):
-                combo.addItem(opt.label, opt.mode)
-                i = combo.count() - 1
-                if not opt.enabled:
-                    try:
-                        m = combo.model()
-                        midx = m.index(i, 0)
-                        m.setData(midx, 0, Qt.ItemDataRole.EnabledRole)
-                    except Exception:
-                        pass
-                if opt.tooltip:
-                    combo.setItemData(i, opt.tooltip, Qt.ItemDataRole.ToolTipRole)
-            # Wide enough for full labels (e.g. ``NF4 4-bit (lowest VRAM)``), but not enough
-            # to force the card wider than a 1080p tab.
-            combo.setMinimumWidth(180)
-            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-            combo.setMinimumContentsLength(22)
-        finally:
-            combo.blockSignals(was_blocked)
 
     def _required_repos_for_option(opt, kind: str) -> list[str]:
         if kind == "video" and getattr(opt, "pair_image_repo_id", ""):
@@ -493,6 +486,134 @@ def attach_settings_tab(win) -> None:
             return ""
         return s
 
+    def _quant_opts_by_mode(fill_role: str, repo: str) -> dict:
+        return {o.mode: o for o in supported_quant_modes(role=fill_role, repo_id=repo)}
+
+    def _refresh_quant_value_lbl(
+        rkey: str,
+        fill_role: str,
+        repo: str,
+        auto_chk: QCheckBox,
+        slider: NoWheelSlider,
+        value_lbl: QLabel,
+    ) -> None:
+        modes = getattr(win, "_quant_manual_modes", {}).get(rkey) or ()
+        opts = _quant_opts_by_mode(fill_role, repo)
+        if auto_chk.isChecked() or not modes:
+            value_lbl.setText("Automatic")
+            value_lbl.setToolTip(
+                "Resolves quantization from available GPU memory (same policy as fit badges)."
+            )
+            return
+        idx = max(0, min(int(slider.value()), len(modes) - 1))
+        m = modes[idx]
+        opt = opts.get(m)
+        value_lbl.setText(opt.label if opt else mode_label(m))
+        value_lbl.setToolTip((opt.tooltip if opt else "") or "")
+
+    def _current_effective_quant_mode(rkey: str, auto_chk: QCheckBox, slider: NoWheelSlider) -> str:
+        modes = getattr(win, "_quant_manual_modes", {}).get(rkey) or ()
+        if auto_chk.isChecked() or not modes:
+            return "auto"
+        i = max(0, min(int(slider.value()), len(modes) - 1))
+        return str(modes[i])
+
+    def _sync_quant_slider_range(
+        auto_chk: QCheckBox,
+        slider: NoWheelSlider,
+        value_lbl: QLabel,
+        rkey: str,
+        fill_role: str,
+        repo: str,
+    ) -> None:
+        modes = manual_quant_modes_low_to_high(role=fill_role, repo_id=repo)
+        win._quant_manual_modes[rkey] = modes
+        was_a = auto_chk.signalsBlocked()
+        was_s = slider.signalsBlocked()
+        auto_chk.blockSignals(True)
+        slider.blockSignals(True)
+        try:
+            if not modes:
+                slider.setMinimum(0)
+                slider.setMaximum(0)
+                slider.setEnabled(False)
+                slider.setVisible(False)
+                value_lbl.setVisible(False)
+                auto_chk.setChecked(True)
+                auto_chk.setEnabled(False)
+            else:
+                slider.setVisible(True)
+                value_lbl.setVisible(True)
+                auto_chk.setEnabled(True)
+                n = len(modes)
+                slider.setMinimum(0)
+                slider.setMaximum(max(0, n - 1))
+                slider.setSingleStep(1)
+                slider.setPageStep(1)
+                slider.setTickPosition(QSlider.TickPosition.NoTicks)
+                slider.setEnabled(not auto_chk.isChecked())
+        finally:
+            auto_chk.blockSignals(was_a)
+            slider.blockSignals(was_s)
+
+    def _apply_want_quant_ui(
+        rkey: str,
+        fill_role: str,
+        repo: str,
+        auto_chk: QCheckBox,
+        slider: NoWheelSlider,
+        value_lbl: QLabel,
+        want: str,
+    ) -> None:
+        modes = getattr(win, "_quant_manual_modes", {}).get(rkey) or ()
+        want_s = str(want or "auto").strip().lower()
+
+        if not modes:
+            auto_chk.blockSignals(True)
+            auto_chk.setChecked(True)
+            auto_chk.blockSignals(False)
+            _refresh_quant_value_lbl(rkey, fill_role, repo, auto_chk, slider, value_lbl)
+            return
+
+        if want_s == "auto":
+            auto_chk.blockSignals(True)
+            auto_chk.setChecked(True)
+            auto_chk.blockSignals(False)
+            slider.blockSignals(True)
+            slider.setEnabled(False)
+            slider.blockSignals(False)
+        else:
+            ix = index_of_manual_mode(modes, want_s)
+            auto_chk.blockSignals(True)
+            auto_chk.setChecked(False)
+            auto_chk.blockSignals(False)
+            slider.blockSignals(True)
+            slider.setEnabled(True)
+            slider.setValue(ix)
+            slider.blockSignals(False)
+        _refresh_quant_value_lbl(rkey, fill_role, repo, auto_chk, slider, value_lbl)
+
+    def _quant_controls_panel(auto_chk: QCheckBox, slider: NoWheelSlider, value_lbl: QLabel) -> QWidget:
+        panel = QWidget()
+        v = QVBoxLayout(panel)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(4)
+        v.addWidget(auto_chk)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        row.addWidget(slider, 1)
+        row.addWidget(value_lbl, 0)
+        v.addLayout(row)
+        return panel
+
+    win.llm_quant_panel = _quant_controls_panel(win.llm_quant_auto_chk, win.llm_quant_slider, win.llm_quant_value_lbl)
+    win.img_quant_panel = _quant_controls_panel(win.img_quant_auto_chk, win.img_quant_slider, win.img_quant_value_lbl)
+    win.vid_quant_panel = _quant_controls_panel(win.vid_quant_auto_chk, win.vid_quant_slider, win.vid_quant_value_lbl)
+    win.voice_quant_panel = _quant_controls_panel(
+        win.voice_quant_auto_chk, win.voice_quant_slider, win.voice_quant_value_lbl
+    )
+
     def _ensure_model_combo_valid_selection(combo: QComboBox) -> None:
         if _combo_repo_id_from_selection(combo):
             return
@@ -633,17 +754,17 @@ def attach_settings_tab(win) -> None:
             lbl.setStyleSheet(_fit_badge_style(marker))
             lbl.setToolTip(why)
 
-        # Repopulating the quant combo clears the widget; if we only restored from
-        # ``win.settings`` here, every ``currentIndexChanged`` (including the
-        # user's new pick) would snap back. Preserve live ``currentData()`` when
-        # the same Hub repo is still selected; use ``AppSettings`` when the model
-        # row changes. See win._quant_ui_last_model_repo.
+        # Rebuilding manual quant steps resets the slider; preserve the live UI
+        # selection when the same Hub repo is still selected; use ``AppSettings``
+        # when the model row changes. See ``win._quant_ui_last_model_repo``.
         _last_mrepo = getattr(win, "_quant_ui_last_model_repo", None)
         if not isinstance(_last_mrepo, dict):
             _last_mrepo = {"script": None, "image": None, "video": None, "voice": None}
 
         def _refill_and_restore_quant(
-            combo: QComboBox,
+            auto_chk: QCheckBox,
+            slider: NoWheelSlider,
+            value_lbl: QLabel,
             *,
             rkey: str,
             repo: str,
@@ -654,30 +775,30 @@ def attach_settings_tab(win) -> None:
             prev_s = (str(prev) if prev is not None else "").strip()
             r = (repo or "").strip()
             if prev_s == r and r:
-                preserve = str(combo.currentData() or "").strip()
+                preserve_eff = _current_effective_quant_mode(rkey, auto_chk, slider)
             else:
-                preserve = ""
-            _fill_quant_combo(combo, role=fill_role, repo_id=repo)
-            want = preserve
-            if not want or combo.findData(want) < 0:
+                preserve_eff = ""
+
+            _sync_quant_slider_range(auto_chk, slider, value_lbl, rkey, fill_role, r)
+
+            modes_after = getattr(win, "_quant_manual_modes", {}).get(rkey) or ()
+            want = preserve_eff if preserve_eff else ""
+            if not want:
                 want = str(getattr(win.settings, settings_attr, "auto") or "auto")
-            if combo.findData(want) < 0:
+            if modes_after:
+                if want != "auto" and want not in modes_after:
+                    want = modes_after[index_of_manual_mode(modes_after, want)]
+            else:
                 want = "auto"
-            ix = combo.findData(want)
-            if ix < 0 and combo.count() > 0:
-                ix = 0
-            was_blk = combo.signalsBlocked()
-            combo.blockSignals(True)
-            try:
-                if ix >= 0:
-                    combo.setCurrentIndex(ix)
-            finally:
-                combo.blockSignals(was_blk)
+
+            _apply_want_quant_ui(rkey, fill_role, r, auto_chk, slider, value_lbl, want)
             _last_mrepo[rkey] = repo
 
         llm_repo = _combo_repo_id_from_selection(win.llm_combo)
         _refill_and_restore_quant(
-            win.llm_quant_combo,
+            win.llm_quant_auto_chk,
+            win.llm_quant_slider,
+            win.llm_quant_value_lbl,
             rkey="script",
             repo=llm_repo,
             settings_attr="script_quant_mode",
@@ -688,7 +809,7 @@ def attach_settings_tab(win) -> None:
         if llm_repo:
             _vh = vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd)
             lo, hi = parse_vram_hint_gb(_vh)
-            qm = str(win.llm_quant_combo.currentData() or "auto")
+            qm = _current_effective_quant_mode("script", win.llm_quant_auto_chk, win.llm_quant_slider)
             pv = predict_vram_gb(role="script", repo_id=llm_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.llm_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.llm_vram_lbl.setToolTip(pv.rationale)
@@ -703,7 +824,9 @@ def attach_settings_tab(win) -> None:
 
         img_repo = _combo_repo_id_from_selection(win.img_combo)
         _refill_and_restore_quant(
-            win.img_quant_combo,
+            win.img_quant_auto_chk,
+            win.img_quant_slider,
+            win.img_quant_value_lbl,
             rkey="image",
             repo=img_repo,
             settings_attr="image_quant_mode",
@@ -714,7 +837,7 @@ def attach_settings_tab(win) -> None:
         if img_repo:
             _vh = vram_requirement_hint(kind="image", repo_id=img_repo, speed=img_spd)
             lo, hi = parse_vram_hint_gb(_vh)
-            qm = str(win.img_quant_combo.currentData() or "auto")
+            qm = _current_effective_quant_mode("image", win.img_quant_auto_chk, win.img_quant_slider)
             pv = predict_vram_gb(role="image", repo_id=img_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.img_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.img_vram_lbl.setToolTip(pv.rationale)
@@ -729,7 +852,9 @@ def attach_settings_tab(win) -> None:
 
         vid_repo = _combo_repo_id_from_selection(win.vid_combo)
         _refill_and_restore_quant(
-            win.vid_quant_combo,
+            win.vid_quant_auto_chk,
+            win.vid_quant_slider,
+            win.vid_quant_value_lbl,
             rkey="video",
             repo=vid_repo,
             settings_attr="video_quant_mode",
@@ -741,7 +866,7 @@ def attach_settings_tab(win) -> None:
         if vid_repo:
             _vh = vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
             lo, hi = parse_vram_hint_gb(_vh)
-            qm = str(win.vid_quant_combo.currentData() or "auto")
+            qm = _current_effective_quant_mode("video", win.vid_quant_auto_chk, win.vid_quant_slider)
             pv = predict_vram_gb(role="video", repo_id=vid_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.vid_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.vid_vram_lbl.setToolTip(pv.rationale)
@@ -756,7 +881,9 @@ def attach_settings_tab(win) -> None:
 
         voice_repo = _combo_repo_id_from_selection(win.voice_combo)
         _refill_and_restore_quant(
-            win.voice_quant_combo,
+            win.voice_quant_auto_chk,
+            win.voice_quant_slider,
+            win.voice_quant_value_lbl,
             rkey="voice",
             repo=voice_repo,
             settings_attr="voice_quant_mode",
@@ -768,7 +895,7 @@ def attach_settings_tab(win) -> None:
         if voice_repo:
             _vh = vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd)
             lo, hi = parse_vram_hint_gb(_vh)
-            qm = str(win.voice_quant_combo.currentData() or "auto")
+            qm = _current_effective_quant_mode("voice", win.voice_quant_auto_chk, win.voice_quant_slider)
             pv = predict_vram_gb(role="voice", repo_id=voice_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.voice_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.voice_vram_lbl.setToolTip(pv.rationale)
@@ -797,10 +924,14 @@ def attach_settings_tab(win) -> None:
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
     win.vid_combo.currentIndexChanged.connect(_update_fit_badges)
     win.voice_combo.currentIndexChanged.connect(_update_fit_badges)
-    win.llm_quant_combo.currentIndexChanged.connect(_update_fit_badges)
-    win.img_quant_combo.currentIndexChanged.connect(_update_fit_badges)
-    win.vid_quant_combo.currentIndexChanged.connect(_update_fit_badges)
-    win.voice_quant_combo.currentIndexChanged.connect(_update_fit_badges)
+    win.llm_quant_auto_chk.toggled.connect(lambda _checked=False: _update_fit_badges())
+    win.img_quant_auto_chk.toggled.connect(lambda _checked=False: _update_fit_badges())
+    win.vid_quant_auto_chk.toggled.connect(lambda _checked=False: _update_fit_badges())
+    win.voice_quant_auto_chk.toggled.connect(lambda _checked=False: _update_fit_badges())
+    win.llm_quant_slider.valueChanged.connect(lambda _v=0: _update_fit_badges())
+    win.img_quant_slider.valueChanged.connect(lambda _v=0: _update_fit_badges())
+    win.vid_quant_slider.valueChanged.connect(lambda _v=0: _update_fit_badges())
+    win.voice_quant_slider.valueChanged.connect(lambda _v=0: _update_fit_badges())
     win.llm_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.llm_combo))
     win.img_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.img_combo))
     win.vid_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.vid_combo))
@@ -831,11 +962,11 @@ def attach_settings_tab(win) -> None:
         title: str,
         combo: QComboBox,
         dl_b: QLabel,
-        qcombo: QComboBox,
+        quant_panel: QWidget,
         vram_l: QLabel,
         fit_l: QLabel,
     ) -> QFrame:
-        """Responsive role block: title/fit, full-width model, metadata, full-width quant."""
+        """Responsive role block: title/fit, full-width model, metadata, quantization (auto + slider)."""
         card = QFrame()
         card.setObjectName("ModelRoleCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
@@ -872,19 +1003,18 @@ def attach_settings_tab(win) -> None:
         meta_row.addWidget(vram_l, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         lay_card.addLayout(meta_row)
 
-        qcombo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        qcombo.setMinimumWidth(180)
-        lay_card.addWidget(qcombo)
+        quant_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        lay_card.addWidget(quant_panel)
         return card
 
-    _model_rows: list[tuple[str, QComboBox, QLabel, QComboBox, QLabel, QLabel]] = [
-        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_quant_combo, win.llm_vram_lbl, win.llm_fit),
-        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_quant_combo, win.img_vram_lbl, win.img_fit),
-        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_quant_combo, win.vid_vram_lbl, win.vid_fit),
-        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_quant_combo, win.voice_vram_lbl, win.voice_fit),
+    _model_rows: list[tuple[str, QComboBox, QLabel, QWidget, QLabel, QLabel]] = [
+        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_quant_panel, win.llm_vram_lbl, win.llm_fit),
+        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_quant_panel, win.img_vram_lbl, win.img_fit),
+        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_quant_panel, win.vid_vram_lbl, win.vid_fit),
+        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_quant_panel, win.voice_vram_lbl, win.voice_fit),
     ]
-    for _txt, combo, dl_b, qcombo, vram_l, fit_l in _model_rows:
-        ll.addWidget(_model_role_card(_txt, combo, dl_b, qcombo, vram_l, fit_l))
+    for _txt, combo, dl_b, quant_panel, vram_l, fit_l in _model_rows:
+        ll.addWidget(_model_role_card(_txt, combo, dl_b, quant_panel, vram_l, fit_l))
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
@@ -936,24 +1066,84 @@ def attach_settings_tab(win) -> None:
         try:
             if ranked.script_quant_modes:
                 q = ranked.script_quant_modes[win.llm_combo.currentIndex()] if win.llm_combo.currentIndex() >= 0 else ""
-                ix = win.llm_quant_combo.findData(q, role)
-                if ix >= 0:
-                    win.llm_quant_combo.setCurrentIndex(ix)
+                rr = _combo_repo_id_from_selection(win.llm_combo)
+                _sync_quant_slider_range(
+                    win.llm_quant_auto_chk,
+                    win.llm_quant_slider,
+                    win.llm_quant_value_lbl,
+                    "script",
+                    "script",
+                    rr,
+                )
+                _apply_want_quant_ui(
+                    "script",
+                    "script",
+                    rr,
+                    win.llm_quant_auto_chk,
+                    win.llm_quant_slider,
+                    win.llm_quant_value_lbl,
+                    str(q or "auto"),
+                )
             if ranked.image_quant_modes:
                 q = ranked.image_quant_modes[win.img_combo.currentIndex()] if win.img_combo.currentIndex() >= 0 else ""
-                ix = win.img_quant_combo.findData(q, role)
-                if ix >= 0:
-                    win.img_quant_combo.setCurrentIndex(ix)
+                rr = _combo_repo_id_from_selection(win.img_combo)
+                _sync_quant_slider_range(
+                    win.img_quant_auto_chk,
+                    win.img_quant_slider,
+                    win.img_quant_value_lbl,
+                    "image",
+                    "image",
+                    rr,
+                )
+                _apply_want_quant_ui(
+                    "image",
+                    "image",
+                    rr,
+                    win.img_quant_auto_chk,
+                    win.img_quant_slider,
+                    win.img_quant_value_lbl,
+                    str(q or "auto"),
+                )
             if ranked.video_quant_modes:
                 q = ranked.video_quant_modes[win.vid_combo.currentIndex()] if win.vid_combo.currentIndex() >= 0 else ""
-                ix = win.vid_quant_combo.findData(q, role)
-                if ix >= 0:
-                    win.vid_quant_combo.setCurrentIndex(ix)
+                rr = _combo_repo_id_from_selection(win.vid_combo)
+                _sync_quant_slider_range(
+                    win.vid_quant_auto_chk,
+                    win.vid_quant_slider,
+                    win.vid_quant_value_lbl,
+                    "video",
+                    "video",
+                    rr,
+                )
+                _apply_want_quant_ui(
+                    "video",
+                    "video",
+                    rr,
+                    win.vid_quant_auto_chk,
+                    win.vid_quant_slider,
+                    win.vid_quant_value_lbl,
+                    str(q or "auto"),
+                )
             if ranked.voice_quant_modes:
                 q = ranked.voice_quant_modes[win.voice_combo.currentIndex()] if win.voice_combo.currentIndex() >= 0 else ""
-                ix = win.voice_quant_combo.findData(q, role)
-                if ix >= 0:
-                    win.voice_quant_combo.setCurrentIndex(ix)
+                rr = _combo_repo_id_from_selection(win.voice_combo)
+                _sync_quant_slider_range(
+                    win.voice_quant_auto_chk,
+                    win.voice_quant_slider,
+                    win.voice_quant_value_lbl,
+                    "voice",
+                    "voice",
+                    rr,
+                )
+                _apply_want_quant_ui(
+                    "voice",
+                    "voice",
+                    rr,
+                    win.voice_quant_auto_chk,
+                    win.voice_quant_slider,
+                    win.voice_quant_value_lbl,
+                    str(q or "auto"),
+                )
         except Exception:
             pass
         # Match ``win.settings`` to the combo rows we just set so ``_update_fit_badges`` does

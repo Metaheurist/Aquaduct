@@ -93,6 +93,51 @@ def supported_quant_modes(*, role: QuantRole, repo_id: str = "") -> tuple[ModeOp
     )
 
 
+def manual_quant_modes_low_to_high(*, role: QuantRole, repo_id: str = "") -> tuple[QuantMode, ...]:
+    """
+    Enabled manual modes only (no ``auto``), ordered **low VRAM → higher quality** for the Model tab slider.
+
+    Kokoro voice rows typically return an empty tuple because every manual option is disabled there.
+    """
+    opts = supported_quant_modes(role=role, repo_id=repo_id)
+    by_mode: dict[QuantMode, ModeOption] = {o.mode: o for o in opts}
+    r = (role or "script").strip().lower()
+    rid = (repo_id or "").strip().lower()
+
+    if r in ("image", "video"):
+        order: tuple[QuantMode, ...] = ("cpu_offload", "int8", "fp16", "bf16")
+    elif r == "voice" and "kokoro" in rid:
+        return ()
+    else:
+        # script, or non-Kokoro voice (MOSS, etc.)
+        order = ("nf4_4bit", "int8", "fp16", "bf16")
+
+    out: list[QuantMode] = []
+    for m in order:
+        o = by_mode.get(m)
+        if o is not None and o.enabled and m != "auto":
+            out.append(m)
+    return tuple(out)
+
+
+def index_of_manual_mode(modes: tuple[QuantMode, ...], mode: QuantMode | str) -> int:
+    """Index of ``mode`` in ``modes``, or ``0`` if unknown / auto / missing."""
+    m = _norm_mode(mode)
+    if m == "auto" or not modes:
+        return 0
+    try:
+        return modes.index(m)  # type: ignore[arg-type]
+    except ValueError:
+        return 0
+
+
+def manual_mode_at_index(modes: tuple[QuantMode, ...], index: int) -> QuantMode:
+    if not modes:
+        return "auto"
+    i = max(0, min(int(index), len(modes) - 1))
+    return modes[i]
+
+
 def normalize_settings_quant_modes(settings: AppSettings) -> AppSettings:
     """
     Normalize quant mode strings in AppSettings. Callers can use this to sanitize

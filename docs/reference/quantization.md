@@ -1,7 +1,7 @@
 # Per-model quantization controls
 
 ## Purpose
-Aquaduct exposes a per-row **quantization** dropdown on the **Settings → Model** tab so the user can pick how each local model is loaded:
+Aquaduct exposes per-row **quantization** controls on the **Settings → Model** tab (a separate **Automatic (fit this GPU)** checkbox plus a discrete **manual** slider over enabled modes, low VRAM → higher quality) so the user can pick how each local model is loaded:
 
 - **Script** (LLM)
 - **Image** (T2I diffusion)
@@ -20,7 +20,9 @@ The selection is persisted in [`AppSettings`](config.md#local-llm-inference-vram
 | `nf4_4bit` | 4-bit NF4 (`BitsAndBytesConfig`) — LLM rows only |
 | `cpu_offload` | route the pipeline to **CPU** / model-CPU-offload — diffusion rows and voice (MOSS) |
 
-`supported_quant_modes(role, repo_id)` enumerates the modes available per row (LLMs include `nf4_4bit`; diffusion / voice rows include `cpu_offload`). Unsupported modes are listed disabled with a tooltip explaining the limitation (e.g. Kokoro accepts `auto` only).
+`supported_quant_modes(role, repo_id)` enumerates the modes available per row (LLMs include `nf4_4bit`; diffusion / voice rows include `cpu_offload`). `manual_quant_modes_low_to_high(role, repo_id)` lists **enabled** manual modes (excluding `auto`) in slider order for the UI. Unsupported modes remain policy-disabled (e.g. Kokoro accepts **Automatic** only—the slider is hidden).
+
+When the user checks **Automatic**, `*_quant_mode` is stored as `auto`. Otherwise the slider index maps to the corresponding entry in `manual_quant_modes_low_to_high`.
 
 ## GPU policy aware
 `auto` resolution and the VRAM label both use the **effective VRAM per role** that the rest of the app uses for fit badges and inference profiles:
@@ -33,7 +35,7 @@ This respects [`AppSettings.gpu_selection_mode`](config.md):
 - **`auto`**: LLM and diffusion can land on different GPUs (compute-preferred vs max-VRAM).
 - **`single`**: every role uses the pinned `gpu_device_index`.
 
-When the user switches GPU policy, the **quant dropdown’s `Auto`**, the predicted VRAM range, the **fit** badge, and **Auto-fit** all update consistently.
+When the user switches GPU policy, **Automatic** quantization, the predicted VRAM range, the **fit** badge, and **Auto-fit** all update consistently.
 
 ## VRAM prediction
 `predict_vram_gb(role, repo_id, base_low_gb, base_high_gb, mode)` applies a coarse multiplier to the base hint produced by [`vram_requirement_hint`](../../src/models/hardware.py):
@@ -49,7 +51,7 @@ The Settings UI shows the result as e.g. `~7-9 GB · NF4 4-bit` with a tooltip n
 
 - low-VRAM hosts pick memory-saving modes (`nf4_4bit`, `cpu_offload`),
 - high-VRAM hosts prefer `bf16` / `fp16`,
-- the dropdowns in **Auto-fit for this PC** are populated **alongside** the picked repo.
+- **Auto-fit for this PC** applies the ranked mode to the **Automatic** checkbox and manual slider **alongside** the picked repo.
 
 ## Runtime loaders and fallbacks
 All loaders accept the resolved mode and **fall back gracefully** with a status message if the selected stack doesn’t support it:
@@ -76,6 +78,7 @@ CLI partial settings ([`src/cli/settings_merge.py`](../../src/cli/settings_merge
 - [`tests/models/test_quant_loader_chain.py`](../../tests/models/test_quant_loader_chain.py) — mocked LLM `BitsAndBytesConfig` selection per `quant_mode`, CPU fallback.
 - [`tests/models/test_auto_fit.py`](../../tests/models/test_auto_fit.py) — Auto-fit picks both repo and quant for low / high VRAM hosts.
 - [`tests/ui/test_ui_settings_quantization.py`](../../tests/ui/test_ui_settings_quantization.py) — save / load roundtrip, `try_llm_4bit` migration, alias / unknown-mode handling.
+- [`tests/models/test_quantization_manual_order.py`](../../tests/models/test_quantization_manual_order.py) — `manual_quant_modes_low_to_high` ordering (script / image / video / Kokoro vs MOSS voice).
 
 ## Risk controls
 Experimental quantization is **opt-in and capability-checked**. `optimum-quanto`, `torchao`, and other backend-specific quant packages are **not** required. If a chosen mode is unsupported for a model / backend, Aquaduct logs a warning and falls back to the nearest stable mode rather than failing the run.

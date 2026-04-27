@@ -1569,26 +1569,24 @@ class MainWindow(QMainWindow):
         )
         _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
 
-        script_q = (
-            str(self.llm_quant_combo.currentData() or "auto")
-            if hasattr(self, "llm_quant_combo")
-            else str(getattr(self.settings, "script_quant_mode", "auto") or "auto")
-        )
-        image_q = (
-            str(self.img_quant_combo.currentData() or "auto")
-            if hasattr(self, "img_quant_combo")
-            else str(getattr(self.settings, "image_quant_mode", "auto") or "auto")
-        )
-        video_q = (
-            str(self.vid_quant_combo.currentData() or "auto")
-            if hasattr(self, "vid_quant_combo")
-            else str(getattr(self.settings, "video_quant_mode", "auto") or "auto")
-        )
-        voice_q = (
-            str(self.voice_quant_combo.currentData() or "auto")
-            if hasattr(self, "voice_quant_combo")
-            else str(getattr(self.settings, "voice_quant_mode", "auto") or "auto")
-        )
+        def _quant_mode_from_ui(role_key: str, prefix: str, settings_attr: str) -> str:
+            auto_chk = getattr(self, f"{prefix}_quant_auto_chk", None)
+            slider = getattr(self, f"{prefix}_quant_slider", None)
+            if auto_chk is None or slider is None:
+                return str(getattr(self.settings, settings_attr, "auto") or "auto")
+            modes = (getattr(self, "_quant_manual_modes", {}) or {}).get(role_key) or ()
+            try:
+                if auto_chk.isChecked() or not modes:
+                    return "auto"
+                i = max(0, min(int(slider.value()), len(modes) - 1))
+                return str(modes[i])
+            except Exception:
+                return str(getattr(self.settings, settings_attr, "auto") or "auto")
+
+        script_q = _quant_mode_from_ui("script", "llm", "script_quant_mode")
+        image_q = _quant_mode_from_ui("image", "img", "image_quant_mode")
+        video_q = _quant_mode_from_ui("video", "vid", "video_quant_mode")
+        voice_q = _quant_mode_from_ui("voice", "voice", "voice_quant_mode")
 
         return AppSettings(
             topic_tags_by_mode=topic_map,
