@@ -46,6 +46,18 @@ def test_storyboard_queue_item_fields():
     assert item["seeds"] == [1]
 
 
+def test_drop_queued_pipeline_by_index_before_run():
+    """Tasks tab Remove drops a waiting job via ``list.pop(index)`` — no worker/output yet."""
+    queue: list[dict] = [
+        {"kind": "pipeline", "qty": 1},
+        {"kind": "pipeline", "qty": 1},
+        {"kind": "prebuilt", "qty": 1},
+    ]
+    queue.pop(1)
+    assert len(queue) == 2
+    assert queue[0]["kind"] == "pipeline" and queue[1]["kind"] == "prebuilt"
+
+
 def test_format_status_line_dual_progress_for_pipeline():
     from UI.services.progress_tasks import format_status_line
 

@@ -3388,12 +3388,48 @@ class MainWindow(QMainWindow):
         self._tasks_refresh()
 
     def _tasks_remove_selected(self) -> None:
-        tid = self._tasks_selected_id()
+        if not hasattr(self, "tasks_table"):
+            return
+        items = self.tasks_table.selectedItems()
+        if not items:
+            return
+        row = items[0].row()
+        it0 = self.tasks_table.item(row, 0)
+        if it0 is None:
+            return
+        token = it0.data(Qt.ItemDataRole.UserRole)
+
+        # In-progress row: Stop cancels the run; Remove is for finished uploads or queued snapshots only.
+        if token == _TASKS_ACTIVE_JOB_TOKEN:
+            self._append_log(
+                "Cannot remove the in-progress run from the list — use **Stop** to cancel it "
+                "(queued jobs can be removed without waiting)."
+            )
+            return
+
+        # Queued pipeline / preview / storyboard: drop from FIFO — instant, no interaction with the running worker.
+        if token == _TASKS_QUEUED_PIPELINE_TOKEN:
+            qix = it0.data(Qt.ItemDataRole.UserRole + 1)
+            if not isinstance(qix, int):
+                self._tasks_refresh()
+                return
+            q = getattr(self, "_pipeline_run_queue", None)
+            if not isinstance(q, list):
+                self._tasks_refresh()
+                return
+            if 0 <= qix < len(q):
+                q.pop(qix)
+                self._append_log("Removed a queued run that had not started yet.")
+            self._tasks_refresh()
+            self._update_tasks_tab_badge()
+            return
+
+        tid = it0.data(Qt.ItemDataRole.UserRole)
         if not tid:
             return
         from src.platform.upload_tasks import remove_task
 
-        remove_task(tid)
+        remove_task(str(tid))
         self._tasks_refresh()
 
     def _tasks_upload_tiktok(self) -> None:

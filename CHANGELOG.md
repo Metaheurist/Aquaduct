@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Tasks tab — remove **queued** pipeline runs without waiting on the active job
+- **UI** ([`UI/main_window.py`](UI/main_window.py)): **Remove** on a **Waiting in queue…** row drops that FIFO snapshot immediately (no disk output yet). The in-progress row uses **Stop** to cancel instead.
+
 ### Model tab — quantization **slider** + separate **Automatic**
 - **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/main_window.py`](UI/main_window.py)): per-role **Automatic (fit this GPU)** checkbox (persists `auto`) and a discrete horizontal **NoWheelSlider** over enabled manual modes only, ordered **low VRAM → higher quality** via [`manual_quant_modes_low_to_high`](src/models/quantization.py). **Auto-fit** drives the same controls after ranked picks. Kokoro voice rows lock Automatic and hide the slider.
 - **Policy** ([`src/models/quantization.py`](src/models/quantization.py)): `manual_quant_modes_low_to_high`, `index_of_manual_mode`, `manual_mode_at_index`.
