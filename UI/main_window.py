@@ -1710,6 +1710,13 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         self.settings = self._collect_settings_from_ui()
         ok = save_settings(self.settings)
+        dprint(
+            "ui",
+            "_save_settings",
+            f"ok={ok}",
+            f"media_mode={getattr(self.settings, 'media_mode', '')!r}",
+            f"execution={getattr(self.settings, 'execution_mode', '')!r}",
+        )
         self._sync_title_bar_outline_colors()
         self._apply_hf_token_from_current_settings()
         self._update_hf_api_warnings()
@@ -2381,12 +2388,15 @@ class MainWindow(QMainWindow):
         def on_done(_msg: str) -> None:
             msg = str(_msg or "").strip().lower()
             if "pause" in msg:
+                dprint("ui", "download_worker done", "paused")
                 popup.status.setText("Paused. You can close this window and resume later.")
                 # Don't force bar to 0; leave last visible state.
             elif "cancel" in msg:
+                dprint("ui", "download_worker done", "cancelled")
                 popup.status.setText("Cancelled. You can resume later.")
                 # Don't force bar to 0; leave last visible state.
             else:
+                dprint("ui", "download_worker done", "success")
                 popup.status.setText("Done.")
                 popup.bar.setValue(100)
                 self._paused_download_repo_ids = None
@@ -2399,6 +2409,7 @@ class MainWindow(QMainWindow):
             popup.accept()
 
         def on_failed(err: str) -> None:
+            dprint("ui", "download_worker failed", str(err)[:400])
             popup.status.setText("Download failed.")
             popup.bar.setValue(0)
             popup.reject()
@@ -2585,6 +2596,12 @@ class MainWindow(QMainWindow):
 
         item = self._pipeline_run_queue.pop(0)
         remaining = len(self._pipeline_run_queue)
+        dprint(
+            "tasks",
+            "dequeue pipeline",
+            f"kind={item.get('kind')!r}",
+            f"remaining={remaining}",
+        )
         self._append_log(f"Starting next queued job ({remaining} still waiting)…")
 
         def _continue() -> None:
@@ -2646,6 +2663,7 @@ class MainWindow(QMainWindow):
             for _ in range(qty):
                 self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
             n = len(self._pipeline_run_queue)
+            dprint("tasks", "pipeline queued (waiting)", f"depth={n} batch_qty={qty}")
             self._append_log(f"Run queued ({n} job(s) waiting after the current one).")
             self._tasks_refresh()
             try:
@@ -2674,6 +2692,7 @@ class MainWindow(QMainWindow):
             if qty > 1:
                 for _ in range(qty - 1):
                     self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
+                dprint("tasks", "pipeline queued (with immediate start)", f"depth={len(self._pipeline_run_queue)} run_batch={qty}")
                 self._append_log(f"Starting {qty} pipeline runs (1 now, {qty - 1} queued).")
                 self._tasks_refresh()
             self._attach_and_start_pipeline_worker(self.settings)
@@ -2953,11 +2972,13 @@ class MainWindow(QMainWindow):
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
         if not out_dir:
+            dprint("tasks", "pipeline run completed", "empty out_dir")
             self._append_log("No new items found.")
             self._try_start_next_queued_pipeline()
             self._library_refresh()
             return
         self._append_log(f"Completed: {out_dir}")
+        dprint("tasks", "pipeline run completed", str(out_dir)[:240])
         try:
             from pathlib import Path
 
@@ -3105,15 +3126,25 @@ class MainWindow(QMainWindow):
         if rc is None:
             return
         if rc.is_paused():
+            dprint("ui", "_on_tasks_pause_toggle", "resume")
             rc.request_resume()
             self._sync_tasks_pause_button_appearance()
             self._append_log("Resumed.")
         else:
+            dprint("ui", "_on_tasks_pause_toggle", "pause requested")
             rc.request_pause()
             self._sync_tasks_pause_button_appearance()
             self._append_log("Pause requested — takes effect after the current step finishes.")
 
     def _on_tasks_stop(self) -> None:
+        dprint(
+            "ui",
+            "_on_tasks_stop",
+            f"pipeline_ctrl={self._pipeline_control is not None}",
+            f"worker={self.worker is not None and self.worker.isRunning()}",
+            f"preview={self.preview_worker is not None and self.preview_worker.isRunning()}",
+            f"storyboard={self.storyboard_worker is not None and self.storyboard_worker.isRunning()}",
+        )
         if self._pipeline_control is not None:
             self._pipeline_control.request_cancel()
         if self.worker is not None and self.worker.isRunning():
@@ -3419,6 +3450,7 @@ class MainWindow(QMainWindow):
                 return
             if 0 <= qix < len(q):
                 q.pop(qix)
+                dprint("tasks", "removed queued pipeline row", f"index_was={qix} remaining={len(q)}")
                 self._append_log("Removed a queued run that had not started yet.")
             self._tasks_refresh()
             self._update_tasks_tab_badge()
@@ -3687,6 +3719,7 @@ class MainWindow(QMainWindow):
         self._release_run_control()
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
+        dprint("tasks", "pipeline run failed", str(err)[:400])
         self._append_log("Run failed:")
         self._append_log(err)
         self._try_start_next_queued_pipeline()

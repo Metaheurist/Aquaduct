@@ -188,8 +188,11 @@ def run_once_api(
                 )
             item = pick_one_item(items)
             if not item:
+                dprint("topics", "run_once_api headlines", "none picked")
                 _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
                 return None
+            _ttl = str(getattr(item, "title", "") or "")[:120]
+            dprint("topics", "run_once_api headlines", f"n_items={len(items)} title={_ttl!r}")
             sources = [news_item_to_script_source(it) for it in items]
     else:
         sources = list(prebuilt_sources or [])
@@ -369,6 +372,7 @@ def run_once_api(
 
     # Photo mode: still images (+ optional layout) only — no voice, no MP4 / clips.
     mm_api = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+    dprint("pipeline", "run_once_api branch", f"media_mode={mm_api}")
     if mm_api == "photo":
         pic = getattr(app, "picture", None)
         pic_out = str(getattr(pic, "output_type", "single_image") or "single_image") if pic is not None else "single_image"
@@ -443,6 +447,7 @@ def run_once_api(
 
         _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts_img, preview=preview_blob)
         _pipe_progress(on_progress, 100, 100, "Done (API photo)")
+        dprint("pipeline", "run_once_api complete", "photo", str(out_final_png))
         return out_final_png
 
     voice_wav = assets_dir / "voice.wav"
@@ -604,6 +609,7 @@ def run_once_api(
     music = Path(app.background_music_path).resolve() if app.background_music_path else None
 
     if bool(getattr(video_settings, "pro_mode", False)):
+        dprint("pipeline", "run_once_api branch", "pro_mode=t2v")
         from main import _split_into_pro_scenes_from_script
 
         pro_scenes = _split_into_pro_scenes_from_script(
@@ -649,9 +655,13 @@ def run_once_api(
         )
         _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
         _pipe_progress(on_progress, 100, 100, "Done (API)")
+        dprint("pipeline", "run_once_api complete", "pro", str(video_dir))
         return video_dir
 
-    if not bool(getattr(video_settings, "use_image_slideshow", True)):
+    _slideshow = bool(getattr(video_settings, "use_image_slideshow", True))
+    dprint("pipeline", "run_once_api branch", f"use_image_slideshow={_slideshow}")
+    if not _slideshow:
+        dprint("pipeline", "run_once_api motion pipeline unavailable in API mode")
         raise RuntimeError("API mode motion pipeline is not implemented — enable slideshow mode or use Pro + Replicate video.")
 
     img_dir = assets_dir / "images"
@@ -725,4 +735,5 @@ def run_once_api(
 
     _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
     _pipe_progress(on_progress, 100, 100, "Done (API)")
+    dprint("pipeline", "run_once_api complete", "slideshow", str(video_dir))
     return video_dir

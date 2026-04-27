@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Developer debug: `MODULE_DEBUG_FLAGS`, category registry, and `debug/` tools
+- **Debug core** ([`debug/debug_log.py`](debug/debug_log.py), [`debug/__init__.py`](debug/__init__.py)): in-repo boolean `MODULE_DEBUG_FLAGS` (union with `AQUADUCT_DEBUG`, per-category env, and `--debug`); expanded `DEBUG_CATEGORIES` / aliases; stderr `dprint` uses the same timestamped line as file append; module docstring documents empty env + file flags and a possible future “env only” escape hatch.
+- **Docs** ([`debug/README.md`](debug/README.md), [`debug/<category>/README.md`](debug/)): index and one README per category; helpers [`debug/tools/print_active.py`](debug/tools/print_active.py), [`debug/tools/smoke_categories.py`](debug/tools/smoke_categories.py), shim [`debug/print_active.py`](debug/print_active.py); [`docs/README.md`](docs/README.md) links the `debug/` tree; [`tests/README.md`](tests/README.md) lists [`tests/debug/`](tests/debug/).
+- **Observability**: bounded `dprint` at pipeline API / worker / OpenAI / crawler boundaries; UI shell (save settings, queue, tasks stop/pause, downloads); quantization + hardware fit when `models` / `ui` debug is on; download failure logging in [`src/models/model_manager.py`](src/models/model_manager.py); API script path in [`src/content/brain_api.py`](src/content/brain_api.py); diffusion **placement** (CUDA / quant / offload) in [`src/render/artist.py`](src/render/artist.py) and [`src/render/clips.py`](src/render/clips.py) when `artist` / `clips` is on.
+- **Tests** ([`tests/debug/test_debug_registry.py`](tests/debug/test_debug_registry.py)): flag merge, `AQUADUCT_DEBUG=all` with file flags off, `resolve_quant_mode` smoke, `invalidate_debug_cache`, and AST check that every `dprint` category in `src`/`UI`/`debug` matches `DEBUG_CATEGORIES`.
+
 ### Tasks tab — remove **queued** pipeline runs without waiting on the active job
 - **UI** ([`UI/main_window.py`](UI/main_window.py)): **Remove** on a **Waiting in queue…** row drops that FIFO snapshot immediately (no disk output yet). The in-progress row uses **Stop** to cancel instead.
 

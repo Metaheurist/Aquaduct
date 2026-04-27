@@ -623,6 +623,18 @@ def attach_settings_tab(win) -> None:
         for c in (win.llm_combo, win.img_combo, win.vid_combo, win.voice_combo):
             _ensure_model_combo_valid_selection(c)
         try:
+            from debug import debug_enabled, dprint
+
+            if debug_enabled("ui"):
+                dprint(
+                    "ui",
+                    "settings fit badges refresh",
+                    f"llm={(_combo_repo_id_from_selection(win.llm_combo) or '')[:64]!r}",
+                    f"img={(_combo_repo_id_from_selection(win.img_combo) or '')[:64]!r}",
+                )
+        except Exception:
+            pass
+        try:
             gpus_fb = list_cuda_gpus()
             app_fb = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
         except Exception:

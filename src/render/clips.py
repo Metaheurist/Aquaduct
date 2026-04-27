@@ -517,6 +517,18 @@ def _try_text_to_video(
         cuda_device_index=cuda_device_index,
         force_offload="model" if qm == "cpu_offload" else None,
     )
+    try:
+        from debug import debug_enabled, dprint
+
+        if debug_enabled("clips"):
+            dprint(
+                "clips",
+                "t2v placement",
+                f"cuda={cuda_device_index!r}",
+                f"quant={qm!r}",
+            )
+    except Exception:
+        pass
     _maybe_enable_slice_inference(pipe)
     mid_run = _norm_repo_id(model_id)
     if mid_run == "lightricks/ltx-2" and getattr(pipe, "vae", None) is not None:
@@ -621,6 +633,18 @@ def _try_image_to_video(
         cuda_device_index=cuda_device_index,
         force_offload="model" if qm == "cpu_offload" else None,
     )
+    try:
+        from debug import debug_enabled, dprint
+
+        if debug_enabled("clips"):
+            dprint(
+                "clips",
+                "i2v placement",
+                f"cuda={cuda_device_index!r}",
+                f"quant={qm!r}",
+            )
+    except Exception:
+        pass
     _maybe_enable_slice_inference(pipe)
 
     results: list[GeneratedClip] = []

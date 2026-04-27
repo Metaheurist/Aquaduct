@@ -408,6 +408,19 @@ def rate_model_fit_for_repo(
     Like `rate_model_fit`, but can take the actual repo_id (and optional paired image repo)
     to estimate fit more accurately for video/image models.
     """
+    try:
+        from debug import debug_enabled, dprint
+
+        if debug_enabled("models"):
+            dprint(
+                "models",
+                "rate_model_fit_for_repo",
+                f"kind={kind!r}",
+                f"repo={(repo_id or '')[:80]!r}",
+                f"vram_gb={vram_gb}",
+            )
+    except Exception:
+        pass
     if vram_gb is None:
         return "UNKNOWN", "GPU VRAM not detected (will fall back to CPU / placeholders where possible)."
 

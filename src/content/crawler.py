@@ -505,6 +505,16 @@ def fetch_latest_items(
         out.append(it)
         if len(out) >= limit:
             break
+    try:
+        from debug import dprint
+
+        dprint(
+            "crawler",
+            "fetch_latest_items",
+            f"n={len(out)} mode={topic_mode!r} discover_only={topic_discover_only}",
+        )
+    except Exception:
+        pass
     return out
 
 

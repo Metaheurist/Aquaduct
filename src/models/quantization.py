@@ -271,6 +271,12 @@ def resolve_quant_mode(*, role: QuantRole, settings: AppSettings) -> QuantMode:
     raw = getattr(settings, attr, "auto")
     mode = _norm_mode(raw)
     if mode != "auto":
+        try:
+            from debug import dprint
+
+            dprint("models", "resolve_quant_mode", f"role={role!r}", f"mode={mode!r}", "explicit")
+        except Exception:
+            pass
         return mode
     try:  # Best-effort: pull the same per-role VRAM the rest of the app uses.
         from src.models.inference_profiles import resolve_effective_vram_gb
@@ -278,5 +284,12 @@ def resolve_quant_mode(*, role: QuantRole, settings: AppSettings) -> QuantMode:
         v = resolve_effective_vram_gb(kind=role, settings=settings)
     except Exception:
         v = None
-    return pick_auto_mode(role=role, repo_id="", vram_gb=v, cuda_ok=v is not None and v > 0)
+    resolved = pick_auto_mode(role=role, repo_id="", vram_gb=v, cuda_ok=v is not None and v > 0)
+    try:
+        from debug import dprint
+
+        dprint("models", "resolve_quant_mode", f"role={role!r}", f"mode={resolved!r}", "auto")
+    except Exception:
+        pass
+    return resolved
 

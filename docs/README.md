@@ -9,5 +9,6 @@
 | [review](review/) | QA / review checklists (e.g. [API mode](review/api_mode_checklist.md)) |
 | [build](build/) | Windows EXE build, model + YouTube demos |
 | [tests/](../tests/) (repo root) | Pytest tree: [`tests/README.md`](../tests/README.md) describes `tests/<area>/` subfolders (`cli`, `ui`, `models`, …) |
+| [`debug/`](../debug/) | Categorized stderr debug (`dprint`), `MODULE_DEBUG_FLAGS`, env `AQUADUCT_DEBUG`, index at [`debug/README.md`](../debug/README.md) |
 
 Start from the project [README.md](../README.md) for a full map of links.

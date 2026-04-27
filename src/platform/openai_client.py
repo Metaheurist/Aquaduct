@@ -101,6 +101,13 @@ class OpenAIClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         r = self._post_json(url, payload, err_prefix="")
+        try:
+            from debug import dprint
+
+            if int(r.status_code) < 400:
+                dprint("openai", "chat ok", str(model), f"status={int(r.status_code)}")
+        except Exception:
+            pass
         if r.status_code >= 400:
             try:
                 from debug import dprint

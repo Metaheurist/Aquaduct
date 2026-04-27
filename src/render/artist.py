@@ -124,6 +124,19 @@ def _place_pipe_on_device(
         place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index, force_offload="model")
     else:
         place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
+    try:
+        from debug import debug_enabled, dprint
+
+        if debug_enabled("artist"):
+            dprint(
+                "artist",
+                "diffusion placement",
+                f"cuda={cuda_device_index!r}",
+                f"quant={qm!r}",
+                f"offload={('model' if qm == 'cpu_offload' else None)!r}",
+            )
+    except Exception:
+        pass
 
 
 def _image_quant_mode_from_settings(app_settings: AppSettings | None) -> str:

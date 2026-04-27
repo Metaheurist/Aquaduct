@@ -204,11 +204,15 @@ class PipelineWorker(QThread):
             )
             if out is None:
                 self.done.emit("")
+                dprint("workers", "PipelineWorker done", "empty path")
             else:
                 self.done.emit(str(out))
+                dprint("workers", "PipelineWorker done", str(out)[:240])
         except PipelineCancelled:
+            dprint("workers", "PipelineWorker cancelled")
             self.cancelled.emit()
         except Exception as e:
+            dprint("workers", "PipelineWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -1089,10 +1093,13 @@ class PreviewWorker(QThread):
             self.progress.emit("preview", 100, -1, "Preview ready.")
             # Minimal confidence signal: more sources = better; tag match tends to correlate with relevance.
             confidence = "High" if len(sources) >= 5 else ("Medium" if len(sources) >= 2 else "Low")
+            dprint("workers", "PreviewWorker done", f"confidence={confidence}")
             self.done.emit(pkg, sources, prompts, picked.preset.id, confidence)
         except PipelineCancelled:
+            dprint("workers", "PreviewWorker cancelled")
             self.cancelled.emit()
         except Exception as e:
+            dprint("workers", "PreviewWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -1559,9 +1566,12 @@ class StoryboardWorker(QThread):
             self.progress.emit("storyboard_grid", 100, -1, "Grid ready")
 
             self.progress.emit("storyboard", 100, -1, "Storyboard preview ready.")
+            dprint("workers", "StoryboardWorker done", str(manifest))
             self.done.emit(manifest, grid)
         except PipelineCancelled:
+            dprint("workers", "StoryboardWorker cancelled")
             self.cancelled.emit()
         except Exception as e:
+            dprint("workers", "StoryboardWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
