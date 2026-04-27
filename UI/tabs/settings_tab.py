@@ -246,8 +246,10 @@ def attach_settings_tab(win) -> None:
                         pass
                 if opt.tooltip:
                     combo.setItemData(i, opt.tooltip, Qt.ItemDataRole.ToolTipRole)
-            combo.setMinimumWidth(140)
-            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            # Wide enough for full labels (e.g. ``NF4 4-bit (lowest VRAM)``); column also gets stretch.
+            combo.setMinimumWidth(200)
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            combo.setMinimumContentsLength(22)
         finally:
             combo.blockSignals(was_blocked)
 
@@ -792,12 +794,12 @@ def attach_settings_tab(win) -> None:
     win.voice_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.voice_combo))
 
     def _model_combo_disk_row(combo: QComboBox, dl_b: QLabel) -> QWidget:
-        """Model Hub combo + local disk/verify status in a fixed panel (never paint over the combo)."""
+        """Model Hub combo with disk/verify status on its own row below (no horizontal overlap)."""
         wrap = QWidget()
-        row_l = QHBoxLayout(wrap)
-        row_l.setContentsMargins(0, 0, 0, 0)
-        row_l.setSpacing(8)
-        row_l.addWidget(combo, 1)
+        col = QVBoxLayout(wrap)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(6)
+        col.addWidget(combo, 0)
         disk_frame = QFrame()
         disk_frame.setObjectName("ModelDiskStatusPanel")
         disk_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -805,9 +807,10 @@ def attach_settings_tab(win) -> None:
         fr.setContentsMargins(6, 3, 6, 3)
         fr.setSpacing(0)
         fr.addWidget(dl_b, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        # Fixed panel width: label is _dl_badge_w + frame horizontal margins.
-        disk_frame.setFixedWidth(int(_dl_badge_w) + 12)
-        disk_frame.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        fr.addStretch(1)
+        disk_frame.setMinimumWidth(int(_dl_badge_w) + 12)
+        disk_frame.setMaximumWidth(int(_dl_badge_w) + 12)
+        disk_frame.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         disk_frame.setStyleSheet(
             "QFrame#ModelDiskStatusPanel {"
             " background-color: rgba(60, 72, 86, 0.55);"
@@ -815,19 +818,19 @@ def attach_settings_tab(win) -> None:
             " border-radius: 4px;"
             "}"
         )
-        row_l.addWidget(disk_frame, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        col.addWidget(disk_frame, 0, Qt.AlignmentFlag.AlignLeft)
+        wrap.setMinimumWidth(420)
         return wrap
 
     model_grid = QGridLayout()
-    # One column for [combo | disk panel] so the grid cannot interleave/overlay cells when
-    # horizontal space is tight (separate grid columns for combo vs disk was painting on the combo).
     model_grid.setHorizontalSpacing(8)
     model_grid.setVerticalSpacing(10)
-    model_grid.setColumnStretch(1, 1)
+    # Model + disk stack grows; quant column also grows so long mode labels are not clipped.
+    model_grid.setColumnStretch(1, 2)
+    model_grid.setColumnStretch(2, 1)
     model_grid.setColumnMinimumWidth(0, 188)
-    # combo min 420 (see _prep_combo) + 8 + disk panel (~140)
-    model_grid.setColumnMinimumWidth(1, 420 + 8 + int(_dl_badge_w) + 12)
-    model_grid.setColumnMinimumWidth(2, 150)
+    model_grid.setColumnMinimumWidth(1, 420)
+    model_grid.setColumnMinimumWidth(2, 220)
     model_grid.setColumnMinimumWidth(3, 200)
     model_grid.setColumnMinimumWidth(4, _fit_badge_w)
 
@@ -844,7 +847,7 @@ def attach_settings_tab(win) -> None:
         ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_quant_combo, win.voice_vram_lbl, win.voice_fit),
     ]
     for row, (_txt, combo, dl_b, qcombo, vram_l, fit_l) in enumerate(_model_rows):
-        model_grid.addWidget(_model_field_label(_txt), row, 0)
+        model_grid.addWidget(_model_field_label(_txt), row, 0, Qt.AlignmentFlag.AlignTop)
         model_grid.addWidget(_model_combo_disk_row(combo, dl_b), row, 1)
         model_grid.addWidget(qcombo, row, 2)
         model_grid.addWidget(vram_l, row, 3)
