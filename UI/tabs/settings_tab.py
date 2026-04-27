@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -221,9 +220,9 @@ def attach_settings_tab(win) -> None:
 
     def _prep_combo(combo: QComboBox) -> None:
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        combo.setMinimumWidth(420)
+        combo.setMinimumWidth(260)
         combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        combo.setMinimumContentsLength(36)
+        combo.setMinimumContentsLength(30)
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         combo.view().setMinimumWidth(480)
 
@@ -793,13 +792,7 @@ def attach_settings_tab(win) -> None:
     win.vid_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.vid_combo))
     win.voice_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.voice_combo))
 
-    def _model_combo_disk_row(combo: QComboBox, dl_b: QLabel) -> QWidget:
-        """Model Hub combo with disk/verify status on its own row below (no horizontal overlap)."""
-        wrap = QWidget()
-        col = QVBoxLayout(wrap)
-        col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(6)
-        col.addWidget(combo, 0)
+    def _disk_status_panel(dl_b: QLabel) -> QFrame:
         disk_frame = QFrame()
         disk_frame.setObjectName("ModelDiskStatusPanel")
         disk_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -818,27 +811,57 @@ def attach_settings_tab(win) -> None:
             " border-radius: 4px;"
             "}"
         )
-        col.addWidget(disk_frame, 0, Qt.AlignmentFlag.AlignLeft)
-        wrap.setMinimumWidth(420)
-        return wrap
+        return disk_frame
 
-    model_grid = QGridLayout()
-    model_grid.setHorizontalSpacing(8)
-    model_grid.setVerticalSpacing(10)
-    # Model + disk stack grows; quant column also grows so long mode labels are not clipped.
-    model_grid.setColumnStretch(1, 2)
-    model_grid.setColumnStretch(2, 1)
-    model_grid.setColumnMinimumWidth(0, 188)
-    model_grid.setColumnMinimumWidth(1, 420)
-    model_grid.setColumnMinimumWidth(2, 220)
-    model_grid.setColumnMinimumWidth(3, 200)
-    model_grid.setColumnMinimumWidth(4, _fit_badge_w)
+    def _model_role_card(
+        title: str,
+        combo: QComboBox,
+        dl_b: QLabel,
+        qcombo: QComboBox,
+        vram_l: QLabel,
+        fit_l: QLabel,
+    ) -> QFrame:
+        """Responsive role block: title/fit, full-width model, metadata, full-width quant."""
+        card = QFrame()
+        card.setObjectName("ModelRoleCard")
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setStyleSheet(
+            "QFrame#ModelRoleCard {"
+            " background-color: rgba(255, 255, 255, 0.025);"
+            " border: 1px solid rgba(120, 135, 150, 0.32);"
+            " border-radius: 10px;"
+            "}"
+        )
+        lay_card = QVBoxLayout(card)
+        lay_card.setContentsMargins(10, 8, 10, 8)
+        lay_card.setSpacing(6)
 
-    def _model_field_label(text: str) -> QLabel:
-        lb = QLabel(text)
-        lb.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        lb.setWordWrap(False)
-        return lb
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
+        title_l = QLabel(title)
+        title_l.setStyleSheet("font-weight:700;color:#E8E8EE;")
+        title_l.setWordWrap(False)
+        title_row.addWidget(title_l, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_row.addWidget(fit_l, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lay_card.addLayout(title_row)
+
+        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        lay_card.addWidget(combo)
+
+        meta_row = QHBoxLayout()
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        meta_row.setSpacing(8)
+        meta_row.addWidget(_disk_status_panel(dl_b), 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        meta_row.addStretch(1)
+        vram_l.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        meta_row.addWidget(vram_l, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lay_card.addLayout(meta_row)
+
+        qcombo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        qcombo.setMinimumWidth(220)
+        lay_card.addWidget(qcombo)
+        return card
 
     _model_rows: list[tuple[str, QComboBox, QLabel, QComboBox, QLabel, QLabel]] = [
         ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_quant_combo, win.llm_vram_lbl, win.llm_fit),
@@ -846,14 +869,8 @@ def attach_settings_tab(win) -> None:
         ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_quant_combo, win.vid_vram_lbl, win.vid_fit),
         ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_quant_combo, win.voice_vram_lbl, win.voice_fit),
     ]
-    for row, (_txt, combo, dl_b, qcombo, vram_l, fit_l) in enumerate(_model_rows):
-        model_grid.addWidget(_model_field_label(_txt), row, 0, Qt.AlignmentFlag.AlignTop)
-        model_grid.addWidget(_model_combo_disk_row(combo, dl_b), row, 1)
-        model_grid.addWidget(qcombo, row, 2)
-        model_grid.addWidget(vram_l, row, 3)
-        model_grid.addWidget(fit_l, row, 4)
-
-    ll.addLayout(model_grid)
+    for _txt, combo, dl_b, qcombo, vram_l, fit_l in _model_rows:
+        ll.addWidget(_model_role_card(_txt, combo, dl_b, qcombo, vram_l, fit_l))
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
