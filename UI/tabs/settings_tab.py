@@ -618,22 +618,56 @@ def attach_settings_tab(win) -> None:
             lbl.setStyleSheet(_fit_badge_style(marker))
             lbl.setToolTip(why)
 
+        # Repopulating the quant combo clears the widget; if we only restored from
+        # ``win.settings`` here, every ``currentIndexChanged`` (including the
+        # user's new pick) would snap back. Preserve live ``currentData()`` when
+        # the same Hub repo is still selected; use ``AppSettings`` when the model
+        # row changes. See win._quant_ui_last_model_repo.
+        _last_mrepo = getattr(win, "_quant_ui_last_model_repo", None)
+        if not isinstance(_last_mrepo, dict):
+            _last_mrepo = {"script": None, "image": None, "video": None, "voice": None}
+
+        def _refill_and_restore_quant(
+            combo: QComboBox,
+            *,
+            rkey: str,
+            repo: str,
+            settings_attr: str,
+            fill_role: str,
+        ) -> None:
+            prev = _last_mrepo.get(rkey)
+            prev_s = (str(prev) if prev is not None else "").strip()
+            r = (repo or "").strip()
+            if prev_s == r and r:
+                preserve = str(combo.currentData() or "").strip()
+            else:
+                preserve = ""
+            _fill_quant_combo(combo, role=fill_role, repo_id=repo)
+            want = preserve
+            if not want or combo.findData(want) < 0:
+                want = str(getattr(win.settings, settings_attr, "auto") or "auto")
+            if combo.findData(want) < 0:
+                want = "auto"
+            ix = combo.findData(want)
+            if ix < 0 and combo.count() > 0:
+                ix = 0
+            was_blk = combo.signalsBlocked()
+            combo.blockSignals(True)
+            try:
+                if ix >= 0:
+                    combo.setCurrentIndex(ix)
+            finally:
+                combo.blockSignals(was_blk)
+            _last_mrepo[rkey] = repo
+
         llm_repo = _combo_repo_id_from_selection(win.llm_combo)
-        _fill_quant_combo(
+        _refill_and_restore_quant(
             win.llm_quant_combo,
-            role="script",
-            repo_id=llm_repo,
+            rkey="script",
+            repo=llm_repo,
+            settings_attr="script_quant_mode",
+            fill_role="script",
         )
-        _cur_llm_q = str(getattr(win.settings, "script_quant_mode", "auto") or "auto")
-        if win.llm_quant_combo.currentIndex() >= 0:
-            ix = win.llm_quant_combo.findData(_cur_llm_q)
-            if ix >= 0:
-                _was = win.llm_quant_combo.signalsBlocked()
-                win.llm_quant_combo.blockSignals(True)
-                try:
-                    win.llm_quant_combo.setCurrentIndex(ix)
-                finally:
-                    win.llm_quant_combo.blockSignals(_was)
         llm_opt = win._model_opt_by_repo.get(llm_repo) if llm_repo else None
         llm_spd = llm_opt.speed if llm_opt else "slow"
         if llm_repo:
@@ -653,16 +687,13 @@ def attach_settings_tab(win) -> None:
             win.llm_dl_badge.setText("")
 
         img_repo = _combo_repo_id_from_selection(win.img_combo)
-        _fill_quant_combo(win.img_quant_combo, role="image", repo_id=img_repo)
-        _cur_img_q = str(getattr(win.settings, "image_quant_mode", "auto") or "auto")
-        ix = win.img_quant_combo.findData(_cur_img_q)
-        if ix >= 0:
-            _was = win.img_quant_combo.signalsBlocked()
-            win.img_quant_combo.blockSignals(True)
-            try:
-                win.img_quant_combo.setCurrentIndex(ix)
-            finally:
-                win.img_quant_combo.blockSignals(_was)
+        _refill_and_restore_quant(
+            win.img_quant_combo,
+            rkey="image",
+            repo=img_repo,
+            settings_attr="image_quant_mode",
+            fill_role="image",
+        )
         img_opt = win._model_opt_by_repo.get(img_repo) if img_repo else None
         img_spd = img_opt.speed if img_opt else "slow"
         if img_repo:
@@ -682,16 +713,13 @@ def attach_settings_tab(win) -> None:
             win.img_dl_badge.setText("")
 
         vid_repo = _combo_repo_id_from_selection(win.vid_combo)
-        _fill_quant_combo(win.vid_quant_combo, role="video", repo_id=vid_repo)
-        _cur_vid_q = str(getattr(win.settings, "video_quant_mode", "auto") or "auto")
-        ix = win.vid_quant_combo.findData(_cur_vid_q)
-        if ix >= 0:
-            _was = win.vid_quant_combo.signalsBlocked()
-            win.vid_quant_combo.blockSignals(True)
-            try:
-                win.vid_quant_combo.setCurrentIndex(ix)
-            finally:
-                win.vid_quant_combo.blockSignals(_was)
+        _refill_and_restore_quant(
+            win.vid_quant_combo,
+            rkey="video",
+            repo=vid_repo,
+            settings_attr="video_quant_mode",
+            fill_role="video",
+        )
         vid_opt = win._model_opt_by_repo.get(vid_repo) if vid_repo else None
         vid_spd = vid_opt.speed if vid_opt else "slow"
         pair_id = str(getattr(vid_opt, "pair_image_repo_id", "") or "").strip() if vid_opt else ""
@@ -712,16 +740,14 @@ def attach_settings_tab(win) -> None:
             win.vid_dl_badge.setText("")
 
         voice_repo = _combo_repo_id_from_selection(win.voice_combo)
-        _fill_quant_combo(win.voice_quant_combo, role="voice", repo_id=voice_repo)
-        _cur_voice_q = str(getattr(win.settings, "voice_quant_mode", "auto") or "auto")
-        ix = win.voice_quant_combo.findData(_cur_voice_q)
-        if ix >= 0:
-            _was = win.voice_quant_combo.signalsBlocked()
-            win.voice_quant_combo.blockSignals(True)
-            try:
-                win.voice_quant_combo.setCurrentIndex(ix)
-            finally:
-                win.voice_quant_combo.blockSignals(_was)
+        _refill_and_restore_quant(
+            win.voice_quant_combo,
+            rkey="voice",
+            repo=voice_repo,
+            settings_attr="voice_quant_mode",
+            fill_role="voice",
+        )
+        win._quant_ui_last_model_repo = _last_mrepo
         voice_opt = win._model_opt_by_repo.get(voice_repo) if voice_repo else None
         voice_spd = voice_opt.speed if voice_opt else "slow"
         if voice_repo:
@@ -894,6 +920,13 @@ def attach_settings_tab(win) -> None:
                 ix = win.voice_quant_combo.findData(q, role)
                 if ix >= 0:
                     win.voice_quant_combo.setCurrentIndex(ix)
+        except Exception:
+            pass
+        # Match ``win.settings`` to the combo rows we just set so ``_update_fit_badges`` does
+        # not re-apply stale quant modes from before Auto-fit (``AppSettings`` is immutable).
+        try:
+            if hasattr(win, "_collect_settings_from_ui"):
+                win.settings = win._collect_settings_from_ui()
         except Exception:
             pass
         _update_fit_badges()
