@@ -87,6 +87,7 @@ def rewrite_with_uncertainty(
     sources: list[dict[str, str]],
     model_id: str,
     try_llm_4bit: bool = True,
+    quant_mode: str | None = None,
 ) -> VideoPackage:
     """
     LLM-assisted safety rewrite: attribute numeric/strong claims when article text is thin,
@@ -114,7 +115,12 @@ def rewrite_with_uncertainty(
 
         load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
         tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
-        model = load_causal_lm_from_pretrained(load_path, try_4bit=bool(try_llm_4bit), on_status=None)
+        model = load_causal_lm_from_pretrained(
+            load_path,
+            try_4bit=bool(try_llm_4bit),
+            on_status=None,
+            quant_mode=quant_mode,
+        )
 
         src_line = json.dumps(sources[:3], ensure_ascii=False)
         article_snip = (article_text or "")[:2400]

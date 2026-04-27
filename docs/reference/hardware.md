@@ -70,3 +70,6 @@ These rules are meant to be conservative and easy to understand, not perfect ben
 
 ### LLM on multiple GPUs (limits)
 Stage routing picks **one** CUDA index for the local script model (see GPU policy above). **Model-parallel** splitting of a single LLM across two cards via Accelerate `max_memory` / multi-device `device_map` is **not** turned on automatically. **4-bit (bitsandbytes)** loading typically requires a **single** GPU; if you need multi-GPU LLM sharding, prefer FP16 and expect manual tuning outside this app.
+
+## Quant-aware fit & VRAM prediction
+The **Settings → Model** tab adds a per-row **quant** dropdown beside each repo combo. The VRAM label and `rate_model_fit_for_repo` then reflect the **predicted** memory at the chosen mode (e.g. `~7-9 GB · NF4 4-bit`) using `predict_vram_gb` in [`src/models/quantization.py`](../../src/models/quantization.py). `Auto` resolves through `pick_auto_mode` against the **effective per-role VRAM** (so it tracks the same GPU policy as the fit badges). **Auto-fit for this PC** now selects both the repo and the quant mode per row — see [quantization](quantization.md).

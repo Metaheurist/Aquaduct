@@ -109,9 +109,27 @@ def _maybe_disable_safety_checker(pipe, *, allow_nsfw: bool) -> None:
         pass
 
 
-def _place_pipe_on_device(pipe, cuda_device_index: int | None = None) -> None:
-    """Move pipeline to GPU/CPU using shared heuristics (VRAM, RAM, optional offload)."""
-    place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
+def _place_pipe_on_device(
+    pipe,
+    cuda_device_index: int | None = None,
+    *,
+    quant_mode: str | None = None,
+) -> None:
+    """Move pipeline to GPU/CPU using shared heuristics (VRAM, RAM, optional offload).
+
+    ``quant_mode='cpu_offload'`` forces ``model``-level CPU offload regardless of env policy.
+    """
+    qm = (quant_mode or "").strip().lower()
+    if qm == "cpu_offload":
+        place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index, force_offload="model")
+    else:
+        place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
+
+
+def _image_quant_mode_from_settings(app_settings: AppSettings | None) -> str:
+    if app_settings is None:
+        return "auto"
+    return str(getattr(app_settings, "image_quant_mode", "auto") or "auto")
 
 
 def _fallback_image(prompt: str, out_path: Path, *, size: int = 1024) -> None:
@@ -143,13 +161,79 @@ def _is_frontier_t2i_repo(mid: str) -> bool:
     return False
 
 
-def _load_auto_t2i_pipeline(model_id: str, load_path: str, _fp16):
+def _diffusion_dtype_for_quant(quant_mode: str | None, _fp16):
+    """Pick a torch dtype for a diffusion pipeline given the requested quant mode."""
+    import torch
+
+    qm = (quant_mode or "").strip().lower()
+    if qm == "bf16":
+        try:
+            return torch.bfloat16
+        except Exception:
+            return _fp16
+    if qm in ("fp16", "int8", "nf4_4bit", "cpu_offload"):
+        return _fp16
+    return None  # "auto" / unknown -> let caller choose model-aware default
+
+
+def _try_diffusers_quant_config(quant_mode: str | None):
+    """Best-effort: build a diffusers ``BitsAndBytesConfig`` for ``int8``/``nf4_4bit``.
+
+    Returns ``None`` when the installed ``diffusers`` build does not expose quantization
+    integration, or when ``bitsandbytes`` is unavailable. Callers must always provide a
+    safe dtype-only fallback path.
+    """
+    qm = (quant_mode or "").strip().lower()
+    if qm not in ("int8", "nf4_4bit"):
+        return None
+    try:  # diffusers >=0.30 exposes BitsAndBytesConfig under diffusers.quantizers
+        from diffusers import BitsAndBytesConfig as _BnB  # type: ignore
+
+        if qm == "nf4_4bit":
+            return _BnB(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True)
+        return _BnB(load_in_8bit=True)
+    except Exception:
+        return None
+
+
+def _load_auto_t2i_pipeline(
+    model_id: str,
+    load_path: str,
+    _fp16,
+    *,
+    quant_mode: str | None = None,
+    on_status: Callable[[str], None] | None = None,
+):
     import torch
     from diffusers import AutoPipelineForText2Image
 
+    def _status(msg: str) -> None:
+        if on_status:
+            try:
+                on_status(msg)
+            except Exception:
+                pass
+
     mid = _norm_repo_id(model_id)
-    if _is_frontier_t2i_repo(mid):
-        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+    is_frontier = _is_frontier_t2i_repo(mid)
+
+    # Resolve dtype: explicit quant_mode takes priority; else legacy frontier/non-frontier defaults.
+    qdt = _diffusion_dtype_for_quant(quant_mode, _fp16)
+    default_dt = (torch.bfloat16 if torch.cuda.is_available() else _fp16) if is_frontier else _fp16
+    dt = qdt if qdt is not None else default_dt
+
+    # Attempt experimental quant only when explicitly requested AND diffusers supports it.
+    quant_cfg = _try_diffusers_quant_config(quant_mode)
+    if quant_cfg is not None:
+        _status(f"Loading image pipeline ({(quant_mode or '').upper()}, experimental)…")
+        try:
+            return AutoPipelineForText2Image.from_pretrained(
+                load_path, torch_dtype=dt, low_cpu_mem_usage=True, quantization_config=quant_cfg
+            )
+        except Exception as e:
+            _status(f"Experimental {quant_mode} failed for image ({type(e).__name__}); falling back to dtype path…")
+
+    if is_frontier:
         try:
             return AutoPipelineForText2Image.from_pretrained(
                 load_path, torch_dtype=dt, low_cpu_mem_usage=True
@@ -159,28 +243,57 @@ def _load_auto_t2i_pipeline(model_id: str, load_path: str, _fp16):
     try:
         return AutoPipelineForText2Image.from_pretrained(
             load_path,
-            torch_dtype=_fp16,
+            torch_dtype=dt,
             variant="fp16",
             low_cpu_mem_usage=True,
         )
     except OSError:
         try:
             return AutoPipelineForText2Image.from_pretrained(
-                load_path, torch_dtype=_fp16, low_cpu_mem_usage=True
+                load_path, torch_dtype=dt, low_cpu_mem_usage=True
             )
         except TypeError:
-            return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=_fp16)
+            return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=dt)
     except TypeError:
-        return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=_fp16)
+        return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=dt)
 
 
-def _load_auto_i2i_pipeline(model_id: str, load_path: str, _fp16):
+def _load_auto_i2i_pipeline(
+    model_id: str,
+    load_path: str,
+    _fp16,
+    *,
+    quant_mode: str | None = None,
+    on_status: Callable[[str], None] | None = None,
+):
     import torch
     from diffusers import AutoPipelineForImage2Image
 
+    def _status(msg: str) -> None:
+        if on_status:
+            try:
+                on_status(msg)
+            except Exception:
+                pass
+
     mid = _norm_repo_id(model_id)
-    if _is_frontier_t2i_repo(mid):
-        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+    is_frontier = _is_frontier_t2i_repo(mid)
+
+    qdt = _diffusion_dtype_for_quant(quant_mode, _fp16)
+    default_dt = (torch.bfloat16 if torch.cuda.is_available() else _fp16) if is_frontier else _fp16
+    dt = qdt if qdt is not None else default_dt
+
+    quant_cfg = _try_diffusers_quant_config(quant_mode)
+    if quant_cfg is not None:
+        _status(f"Loading image pipeline ({(quant_mode or '').upper()}, experimental)…")
+        try:
+            return AutoPipelineForImage2Image.from_pretrained(
+                load_path, torch_dtype=dt, low_cpu_mem_usage=True, quantization_config=quant_cfg
+            )
+        except Exception as e:
+            _status(f"Experimental {quant_mode} failed for image ({type(e).__name__}); falling back to dtype path…")
+
+    if is_frontier:
         try:
             return AutoPipelineForImage2Image.from_pretrained(
                 load_path, torch_dtype=dt, low_cpu_mem_usage=True
@@ -190,19 +303,19 @@ def _load_auto_i2i_pipeline(model_id: str, load_path: str, _fp16):
     try:
         return AutoPipelineForImage2Image.from_pretrained(
             load_path,
-            torch_dtype=_fp16,
+            torch_dtype=dt,
             variant="fp16",
             low_cpu_mem_usage=True,
         )
     except OSError:
         try:
             return AutoPipelineForImage2Image.from_pretrained(
-                load_path, torch_dtype=_fp16, low_cpu_mem_usage=True
+                load_path, torch_dtype=dt, low_cpu_mem_usage=True
             )
         except TypeError:
-            return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=_fp16)
+            return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=dt)
     except TypeError:
-        return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=_fp16)
+        return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=dt)
 
 
 def _apply_flux_negative_cfg(model_id: str, call_kw: dict) -> None:
@@ -400,9 +513,10 @@ def _try_sdxl_turbo(
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
-    pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16)
+    qm = _image_quant_mode_from_settings(app_settings)
+    pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
+    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
 
     n = len(prompts)
     results: list[GeneratedImage] = []
@@ -444,9 +558,10 @@ def _try_sdxl_turbo_seeded(
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
-    pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16)
+    qm = _image_quant_mode_from_settings(app_settings)
+    pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
+    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
 
     n = len(prompts)
     results: list[GeneratedImage] = []
@@ -498,9 +613,10 @@ def _try_sdxl_reference_chain(
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
-    pipe = _load_auto_i2i_pipeline(model_id, load_path, _fp16)
+    qm = _image_quant_mode_from_settings(app_settings)
+    pipe = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index)
+    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
 
     kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
@@ -570,9 +686,10 @@ def _try_external_ref_then_txt2img(
     stg = float(external_strength)
     stg = max(0.15, min(0.95, stg))
 
-    pipe_i2i = _load_auto_i2i_pipeline(model_id, load_path, _fp16)
+    qm = _image_quant_mode_from_settings(app_settings)
+    pipe_i2i = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index)
+    _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index, quant_mode=qm)
     kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
     h = int(kw_base.get("height", 1024))
@@ -613,9 +730,9 @@ def _try_external_ref_then_txt2img(
             on_image_progress(100, "Image 1/1 saved")
         return results
 
-    pipe_txt = _load_auto_t2i_pipeline(model_id, load_path, _fp16)
+    pipe_txt = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe_txt, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe_txt, cuda_device_index=cuda_device_index)
+    _place_pipe_on_device(pipe_txt, cuda_device_index=cuda_device_index, quant_mode=qm)
     dev = "cuda" if str(pipe_txt.device).startswith("cuda") else "cpu"
 
     for i in range(2, n + 1):

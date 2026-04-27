@@ -668,6 +668,10 @@ class AutoFitRanked:
     video_repo_ids: tuple[str, ...]
     voice_repo_ids: tuple[str, ...]
     log_summary: str
+    script_quant_modes: tuple[str, ...] = ()
+    image_quant_modes: tuple[str, ...] = ()
+    video_quant_modes: tuple[str, ...] = ()
+    voice_quant_modes: tuple[str, ...] = ()
 
 
 def rank_models_for_auto_fit(
@@ -761,6 +765,21 @@ def rank_models_for_auto_fit(
     video_ids = tuple(o.repo_id for o in video_sorted)
     voice_ids = tuple(o.repo_id for o in voice_sorted)
 
+    def _auto_q(kind: str, rid: str, vram: float | None) -> str:
+        try:
+            from src.models.quantization import pick_auto_mode
+
+            # best-effort: hardware list implies CUDA exists; if VRAM unknown, treat as not OK.
+            cuda_ok = vram is not None and vram > 0
+            return str(pick_auto_mode(role=kind, repo_id=rid, vram_gb=vram, cuda_ok=cuda_ok))
+        except Exception:
+            return "auto"
+
+    script_q = tuple(_auto_q("script", rid, vram_script) for rid in script_ids)
+    image_q = tuple(_auto_q("image", rid, vram_image) for rid in image_ids)
+    video_q = tuple(_auto_q("video", rid, vram_video) for rid in video_ids)
+    voice_q = tuple(_auto_q("voice", rid, vram_voice) for rid in voice_ids)
+
     by_repo = {o.repo_id: o for o in model_options}
     gpu_lbl = (hw.gpu_names_all or hw.gpu_name) or "GPU unknown"
     v_lbl = f"{hw.vram_gb:.1f} GB" if hw.vram_gb is not None else "VRAM n/a"
@@ -785,6 +804,10 @@ def rank_models_for_auto_fit(
         image_repo_ids=image_ids,
         video_repo_ids=video_ids,
         voice_repo_ids=voice_ids,
+        script_quant_modes=script_q,
+        image_quant_modes=image_q,
+        video_quant_modes=video_q,
+        voice_quant_modes=voice_q,
         log_summary=log_summary,
     )
 

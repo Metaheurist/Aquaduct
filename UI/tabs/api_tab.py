@@ -348,4 +348,17 @@ def attach_api_tab(win) -> None:
     if hasattr(win, "_update_hf_api_warnings"):
         win.api_hf_enabled_chk.toggled.connect(lambda _checked: win._update_hf_api_warnings())
 
+    def _sync_tasks_upload_visibility() -> None:
+        if hasattr(win, "_sync_tasks_upload_buttons"):
+            win._sync_tasks_upload_buttons()
+
+    win.api_tt_enabled_chk.toggled.connect(lambda _v: _sync_tasks_upload_visibility())
+    win.api_tt_client_key.textChanged.connect(_sync_tasks_upload_visibility)
+    win.api_tt_client_secret.textChanged.connect(_sync_tasks_upload_visibility)
+    win.api_tt_pub_mode.currentIndexChanged.connect(lambda _i: _sync_tasks_upload_visibility())
+    win.api_yt_enabled_chk.toggled.connect(lambda _v: _sync_tasks_upload_visibility())
+    win.api_yt_client_id.textChanged.connect(_sync_tasks_upload_visibility)
+    win.api_yt_client_secret.textChanged.connect(_sync_tasks_upload_visibility)
+    _sync_tasks_upload_visibility()
+
     win.tabs.addTab(w, "API")

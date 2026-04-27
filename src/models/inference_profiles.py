@@ -411,6 +411,20 @@ def format_inference_profile_report(settings: AppSettings) -> str:
             f"device_plan: script→cuda:{plan.llm_device_index} | "
             f"image/video→cuda:{plan.diffusion_device_index} | voice→cuda:{plan.voice_device_index}"
         )
+    def _qmode(kind: str) -> str:
+        try:
+            from src.models.quantization import resolve_quant_mode
+
+            return str(resolve_quant_mode(role=kind, settings=settings) or "auto")
+        except Exception:
+            attr = {
+                "script": "script_quant_mode",
+                "image": "image_quant_mode",
+                "video": "video_quant_mode",
+                "voice": "voice_quant_mode",
+            }.get(kind, "")
+            return str(getattr(settings, attr, "auto") or "auto") if attr else "auto"
+
     for role, kind, get_id in (
         ("Script (LLM)", "script", lambda: (settings.llm_model_id or "").strip() or _fallback_llm()),
         ("Image (T2I)", "image", lambda: (settings.image_model_id or "").strip() or _fallback_img()),
@@ -422,29 +436,30 @@ def format_inference_profile_report(settings: AppSettings) -> str:
         b = vram_gb_to_band(v)
         bname = band_display_name(b)
         vlab = f"{v:.1f} GiB" if v is not None else "n/a"
+        qm = _qmode(kind)
         if kind == "script":
             sp = pick_script_profile(rid, v)
             lines.append(
-                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | profile={sp.label!r} | "
+                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | quant={qm!r} | profile={sp.label!r} | "
                 f"max_input_tokens={sp.max_input_tokens} | max_new_tokens={sp.max_new_tokens}"
             )
         elif kind == "image":
             ip = pick_image_profile(rid, v)
             lines.append(
-                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | profile={ip.label!r} | "
+                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | quant={qm!r} | profile={ip.label!r} | "
                 f"{ip.width}x{ip.height} | steps={ip.num_inference_steps} | guidance={ip.guidance_scale}"
             )
         elif kind == "video":
             vp = pick_video_profile(rid, v)
             d = {k: vp.as_merge_dict().get(k) for k in ("num_frames", "height", "width", "num_inference_steps", "frame_rate", "guidance_scale")}
             lines.append(
-                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | profile={vp.label!r} | "
+                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | quant={qm!r} | profile={vp.label!r} | "
                 f"{json.dumps({k: v2 for k, v2 in d.items() if v2 is not None}, sort_keys=True)}"
             )
         else:
             voi = pick_voice_profile(rid, v)
             lines.append(
-                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | profile={voi.label!r}"
+                f"{role}: repo={rid!r} | effective VRAM≈{vlab} (band {b} — {bname}) | quant={qm!r} | profile={voi.label!r}"
             )
     lines.append(
         "Autofit algorithm: per-role VRAM = GPU chosen by policy (auto=max-VRAM card for image/video, "

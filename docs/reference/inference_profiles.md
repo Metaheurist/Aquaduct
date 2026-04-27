@@ -35,8 +35,11 @@ Rough buckets (from `vram_gb_to_band`):
 - **Voice**: profile placeholders for Kokoro / MOSS (reserved for future kwargs).
 
 ## Console and UI
-- At the start of a local **`run_once`** (after preflight), the pipeline prints a multi-line report with prefix **`[Aquaduct][inference_profile]`** via `log_inference_profiles_for_run` (effective VRAM, band, profile id, and key numbers per role).
+- At the start of a local **`run_once`** (after preflight), the pipeline prints a multi-line report with prefix **`[Aquaduct][inference_profile]`** via `log_inference_profiles_for_run` (effective VRAM, band, profile id, **resolved quant mode**, and key numbers per role).
 - **Model** tab → **Auto-fit for this PC** appends the same **inference profile** report to the app log after the auto-fit rank summary.
+
+## Quant aware
+Each per-role profile runs alongside the resolved **quantization mode** from [Quantization](quantization.md) (`script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode`). The report now includes `quant=<mode>` so the log shows both the band-level profile and the actual dtype / 4-bit / cpu_offload path used for that role.
 
 ## Tests
 [`tests/models/test_inference_profiles.py`](../../tests/models/test_inference_profiles.py) — band mapping, T2I merge, LTX-2 frame rule, report smoke.
@@ -46,3 +49,4 @@ Rough buckets (from `vram_gb_to_band`):
 - [Models + downloads](models.md) — **Auto-fit** and curated ids  
 - [Hardware + model fit](hardware.md) — `rate_model_fit_for_repo`  
 - [Brain](../pipeline/brain.md) — local LLM path  
+- [Quantization](quantization.md) — per-model quant modes, VRAM multipliers, fallbacks  

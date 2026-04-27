@@ -253,6 +253,12 @@ class MainWindow(QMainWindow):
         attach_settings_tab(self)
         attach_my_pc_tab(self)
 
+        # Tasks tab builds before the API tab; upload buttons need API widgets + current keys for visibility.
+        try:
+            self._sync_tasks_upload_buttons()
+        except Exception:
+            pass
+
         self._setup_generation_api_panel_hosting()
         try:
             self._apply_media_mode_ui()
@@ -1563,6 +1569,27 @@ class MainWindow(QMainWindow):
         )
         _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
 
+        script_q = (
+            str(self.llm_quant_combo.currentData() or "auto")
+            if hasattr(self, "llm_quant_combo")
+            else str(getattr(self.settings, "script_quant_mode", "auto") or "auto")
+        )
+        image_q = (
+            str(self.img_quant_combo.currentData() or "auto")
+            if hasattr(self, "img_quant_combo")
+            else str(getattr(self.settings, "image_quant_mode", "auto") or "auto")
+        )
+        video_q = (
+            str(self.vid_quant_combo.currentData() or "auto")
+            if hasattr(self, "vid_quant_combo")
+            else str(getattr(self.settings, "video_quant_mode", "auto") or "auto")
+        )
+        voice_q = (
+            str(self.voice_quant_combo.currentData() or "auto")
+            if hasattr(self, "voice_quant_combo")
+            else str(getattr(self.settings, "voice_quant_mode", "auto") or "auto")
+        )
+
         return AppSettings(
             topic_tags_by_mode=topic_map,
             media_mode=mm,  # type: ignore[arg-type]
@@ -1576,6 +1603,10 @@ class MainWindow(QMainWindow):
             prefer_gpu=bool(self.prefer_gpu_chk.isChecked()) if hasattr(self, "prefer_gpu_chk") else bool(getattr(self.settings, "prefer_gpu", True)),
             try_llm_4bit=bool(getattr(self.settings, "try_llm_4bit", True)),
             try_sdxl_turbo=bool(getattr(self.settings, "try_sdxl_turbo", True)),
+            script_quant_mode=script_q,  # type: ignore[arg-type]
+            image_quant_mode=image_q,  # type: ignore[arg-type]
+            video_quant_mode=video_q,  # type: ignore[arg-type]
+            voice_quant_mode=voice_q,  # type: ignore[arg-type]
             background_music_path=str(self.music_path.text()).strip(),
             hf_token=hf_tok,
             hf_api_enabled=hf_en,
@@ -1684,6 +1715,7 @@ class MainWindow(QMainWindow):
         self._sync_title_bar_outline_colors()
         self._apply_hf_token_from_current_settings()
         self._update_hf_api_warnings()
+        self._sync_tasks_upload_buttons(self.settings)
         if ok:
             self._append_log("Saved settings.")
         else:
@@ -3223,6 +3255,69 @@ class MainWindow(QMainWindow):
             self.tasks_table.setItem(row, 4, QTableWidgetItem(vd))
             row += 1
         self._update_tasks_tab_badge()
+        self._sync_tasks_upload_buttons()
+
+    @staticmethod
+    def _tiktok_upload_ui_ready(settings: AppSettings) -> bool:
+        """
+        Show Tasks-tab upload when TikTok is enabled, developer credentials are set, and publishing mode
+        matches the inbox-style upload flow. OAuth tokens are not required for visibility.
+        """
+        if not bool(getattr(settings, "tiktok_enabled", False)):
+            return False
+        if not str(getattr(settings, "tiktok_client_key", "") or "").strip():
+            return False
+        if not str(getattr(settings, "tiktok_client_secret", "") or "").strip():
+            return False
+        return str(getattr(settings, "tiktok_publishing_mode", "inbox") or "inbox") == "inbox"
+
+    @staticmethod
+    def _youtube_upload_ui_ready(settings: AppSettings) -> bool:
+        """Show Tasks-tab upload when YouTube is enabled and OAuth client id/secret are set."""
+        return (
+            bool(getattr(settings, "youtube_enabled", False))
+            and bool(str(getattr(settings, "youtube_client_id", "") or "").strip())
+            and bool(str(getattr(settings, "youtube_client_secret", "") or "").strip())
+        )
+
+    @staticmethod
+    def _tiktok_upload_configured(settings: AppSettings) -> bool:
+        return (
+            MainWindow._tiktok_upload_ui_ready(settings)
+            and (
+                bool(str(getattr(settings, "tiktok_refresh_token", "") or "").strip())
+                or bool(str(getattr(settings, "tiktok_access_token", "") or "").strip())
+            )
+        )
+
+    @staticmethod
+    def _youtube_upload_configured(settings: AppSettings) -> bool:
+        return (
+            MainWindow._youtube_upload_ui_ready(settings)
+            and (
+                bool(str(getattr(settings, "youtube_refresh_token", "") or "").strip())
+                or bool(str(getattr(settings, "youtube_access_token", "") or "").strip())
+            )
+        )
+
+    def _current_upload_settings(self) -> AppSettings:
+        try:
+            return self._collect_settings_from_ui()
+        except Exception:
+            return self.settings
+
+    def _sync_tasks_upload_buttons(self, settings: AppSettings | None = None) -> None:
+        if not (hasattr(self, "tasks_tiktok_btn") or hasattr(self, "tasks_youtube_btn")):
+            return
+        s = settings if settings is not None else self._current_upload_settings()
+        if hasattr(self, "tasks_tiktok_btn"):
+            show_tiktok = self._tiktok_upload_ui_ready(s)
+            self.tasks_tiktok_btn.setVisible(show_tiktok)
+            self.tasks_tiktok_btn.setEnabled(show_tiktok)
+        if hasattr(self, "tasks_youtube_btn"):
+            show_youtube = self._youtube_upload_ui_ready(s)
+            self.tasks_youtube_btn.setVisible(show_youtube)
+            self.tasks_youtube_btn.setEnabled(show_youtube)
 
     def _tasks_selected_id(self) -> str | None:
         if not hasattr(self, "tasks_table"):
@@ -3309,8 +3404,12 @@ class MainWindow(QMainWindow):
             aquaduct_information(self, "Tasks", "Select a task row first.")
             return
         self.settings = self._collect_settings_from_ui()
-        if not bool(getattr(self.settings, "tiktok_enabled", False)):
-            aquaduct_information(self, "TikTok", "Enable TikTok in the API tab and connect your account.")
+        if not self._tiktok_upload_configured(self.settings):
+            aquaduct_information(
+                self,
+                "TikTok",
+                "Enable TikTok in the API tab, fill the client key/secret, connect your account, and use Inbox mode.",
+            )
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
             return
@@ -3322,8 +3421,12 @@ class MainWindow(QMainWindow):
             aquaduct_information(self, "Tasks", "Select a task row first.")
             return
         self.settings = self._collect_settings_from_ui()
-        if not bool(getattr(self.settings, "youtube_enabled", False)):
-            aquaduct_information(self, "YouTube", "Enable YouTube in the API tab and connect your account.")
+        if not self._youtube_upload_configured(self.settings):
+            aquaduct_information(
+                self,
+                "YouTube",
+                "Enable YouTube in the API tab, fill the client ID/secret, and connect your account.",
+            )
             return
         if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():
             return

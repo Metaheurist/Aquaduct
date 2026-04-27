@@ -26,6 +26,9 @@ If the local model fails to load (common on some Windows setups), it returns a d
 ## Inference profiles (local)
 When the desktop app or `run_once` passes **`inference_settings`** (`AppSettings`), [`_generate_with_transformers`](../../src/content/brain.py) tightens **`max_new_tokens`** and the tokenizer **input** cap using [`pick_script_profile`](../../src/models/inference_profiles.py) and the same **effective script VRAM** as the GPU policy fit badges. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still overrides the input cap when set. See [Inference profiles](../reference/inference_profiles.md).
 
+## Quantization
+[`load_causal_lm_from_pretrained`](../../src/content/brain.py) accepts an explicit **`quant_mode`** (`auto | bf16 | fp16 | int8 | nf4_4bit`) sourced from `AppSettings.script_quant_mode`. The loader resolves `auto` against the **effective script VRAM**, attempts the corresponding `BitsAndBytesConfig` (4-bit NF4 / 8-bit) or fp16 / bf16 dtype, and falls back to fp16 / CPU on failure with a status message. The legacy `try_llm_4bit=True` continues to work and is migrated to `script_quant_mode="nf4_4bit"` on first save. See [Quantization](../reference/quantization.md).
+
 ## Main entrypoint
 - `generate_script(..., items: list[dict[str,str]], topic_tags: list[str] | None, creative_brief: str | None = None, video_format: str = "news", inference_settings: AppSettings | None = None, ...) -> VideoPackage`
   - **Preset runs**: `items` are scraped headlines; prompt is built from `items` + tags + personality.

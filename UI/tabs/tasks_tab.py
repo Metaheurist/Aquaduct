@@ -151,6 +151,9 @@ def attach_tasks_tab(win) -> None:
     win.tasks_youtube_btn.clicked.connect(win._tasks_upload_youtube)
     btn_row.addWidget(win.tasks_youtube_btn)
 
+    if hasattr(win, "_sync_tasks_upload_buttons"):
+        win._sync_tasks_upload_buttons()
+
     win.tasks_remove_btn = QPushButton("Remove")
     win.tasks_remove_btn.setObjectName("danger")
     win.tasks_remove_btn.clicked.connect(win._tasks_remove_selected)

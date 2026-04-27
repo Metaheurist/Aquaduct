@@ -114,13 +114,20 @@ def _resolve_auto_offload_mode() -> OffloadMode:
     return "sequential"
 
 
-def place_diffusion_pipeline(pipe, cuda_device_index: int | None = None) -> None:
+def place_diffusion_pipeline(
+    pipe,
+    cuda_device_index: int | None = None,
+    *,
+    force_offload: OffloadMode | None = None,
+) -> None:
     """
     Move a diffusers ``pipe`` to CPU, or CUDA with none/model/sequential offload per
     ``resolve_diffusion_offload_mode()``.
 
     When ``cuda_device_index`` is set, full-GPU mode uses ``cuda:{index}``; offload modes
     pass ``gpu_id`` when the installed diffusers build supports it.
+
+    ``force_offload`` overrides the env-driven decision (used by quant-mode ``cpu_offload``).
     """
     import torch
 
@@ -130,7 +137,7 @@ def place_diffusion_pipeline(pipe, cuda_device_index: int | None = None) -> None
 
     dev = f"cuda:{int(cuda_device_index)}" if cuda_device_index is not None else "cuda"
 
-    mode = resolve_diffusion_offload_mode()
+    mode = force_offload if force_offload is not None else resolve_diffusion_offload_mode()
     if mode == "none":
         pipe.to(dev)
         return

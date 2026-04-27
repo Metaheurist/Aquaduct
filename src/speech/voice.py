@@ -105,6 +105,7 @@ def _synthesize_tts_to_wav(
     elevenlabs_api_key: str | None = None,
     ffmpeg_executable: Path | None = None,
     only_pyttsx3: bool = False,
+    voice_quant_mode: str | None = None,
 ) -> None:
     """
     Write speech-only WAV using the same backend order as ``synthesize`` (ElevenLabs → Kokoro → pyttsx3).
@@ -139,13 +140,21 @@ def _synthesize_tts_to_wav(
                 if is_moss_vg_repo(vid):
                     inst = (voice_instruction or "").strip() or DEFAULT_MOSS_INSTRUCTION
                     if not try_moss_voicegenerator_tts(
-                        model_id=vid, text=text, instruction=inst, out_wav=out_wav_path
+                        model_id=vid,
+                        text=text,
+                        instruction=inst,
+                        out_wav=out_wav_path,
+                        quant_mode=voice_quant_mode,
                     ):
                         _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
                 elif is_kokoro_repo(vid):
                     sp = pick_kokoro_speaker(kokoro_speaker)
                     if not try_kokoro_tts(
-                        model_id=vid, text=text, out_wav=out_wav_path, speaker=sp
+                        model_id=vid,
+                        text=text,
+                        out_wav=out_wav_path,
+                        speaker=sp,
+                        quant_mode=voice_quant_mode,
                     ):
                         _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
                 else:
@@ -202,6 +211,7 @@ def synthesize(
     elevenlabs_voice_id: str | None = None,
     elevenlabs_api_key: str | None = None,
     ffmpeg_executable: Path | None = None,
+    voice_quant_mode: str | None = None,
 ) -> list[WordTimestamp]:
     """
     Generates `out_wav_path` and `out_captions_json` (word-level timestamps).
@@ -222,6 +232,7 @@ def synthesize(
         elevenlabs_api_key=elevenlabs_api_key,
         ffmpeg_executable=ffmpeg_executable,
         only_pyttsx3=False,
+        voice_quant_mode=voice_quant_mode,
     )
 
     dur_s = _duration_seconds(out_wav_path)
@@ -364,6 +375,7 @@ def synthesize_unhinged_rotating_kokoro(
     out_wav_path: Path,
     out_captions_json: Path,
     kokoro_speaker: str | None = None,
+    voice_quant_mode: str | None = None,
 ) -> list[WordTimestamp]:
     """
     Unhinged format: one segment per non-empty part, rotating **af_bella → af_nicole → am_adam**
@@ -393,6 +405,7 @@ def synthesize_unhinged_rotating_kokoro(
                     text=t,
                     out_wav=tmp,
                     speaker=sp,
+                    quant_mode=voice_quant_mode,
                 )
                 if not ok:
                     _pyttsx3_tts(t, tmp, None)
@@ -406,7 +419,11 @@ def synthesize_unhinged_rotating_kokoro(
             sp0 = pick_kokoro_speaker(kokoro_speaker)
             with vram_guard():
                 ok0 = try_kokoro_tts(
-                    model_id=kokoro_model_id, text=" ", out_wav=out_wav_path, speaker=sp0
+                    model_id=kokoro_model_id,
+                    text=" ",
+                    out_wav=out_wav_path,
+                    speaker=sp0,
+                    quant_mode=voice_quant_mode,
                 )
                 if not ok0:
                     _pyttsx3_tts(" ", out_wav_path, None)
@@ -434,6 +451,7 @@ def synthesize_unhinged_moss(
     segment_texts: list[str],
     out_wav_path: Path,
     out_captions_json: Path,
+    voice_quant_mode: str | None = None,
 ) -> list[WordTimestamp]:
     """Unhinged: synthesize each segment with the same MOSS *instruction* + segment text, then concat."""
     from debug import dprint
@@ -454,7 +472,11 @@ def synthesize_unhinged_moss(
             seg_i += 1
             with vram_guard():
                 ok = try_moss_voicegenerator_tts(
-                    model_id=kokoro_model_id, text=t, instruction=inst, out_wav=tmp
+                    model_id=kokoro_model_id,
+                    text=t,
+                    instruction=inst,
+                    out_wav=tmp,
+                    quant_mode=voice_quant_mode,
                 )
                 if not ok:
                     _pyttsx3_tts(t, tmp, None)
@@ -467,7 +489,11 @@ def synthesize_unhinged_moss(
         if not temp_paths:
             with vram_guard():
                 if not try_moss_voicegenerator_tts(
-                    model_id=kokoro_model_id, text=" ", instruction=inst, out_wav=out_wav_path
+                    model_id=kokoro_model_id,
+                    text=" ",
+                    instruction=inst,
+                    out_wav=out_wav_path,
+                    quant_mode=voice_quant_mode,
                 ):
                     _pyttsx3_tts(" ", out_wav_path, None)
             combined = _simple_word_timestamps(text=" ", total_s=_duration_seconds(out_wav_path))
