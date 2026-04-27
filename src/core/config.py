@@ -6,6 +6,7 @@ from typing import Literal
 
 ModelExecutionMode = Literal["local", "api"]
 ModelsStorageMode = Literal["default", "external"]
+QuantMode = Literal["auto", "bf16", "fp16", "int8", "nf4_4bit", "cpu_offload"]
 
 from .app_dirs import application_data_dir, installation_dir
 
@@ -257,6 +258,11 @@ class AppSettings:
     prefer_gpu: bool = True
     try_llm_4bit: bool = True
     try_sdxl_turbo: bool = True
+    #: Quantization / precision policy for local models (per role). ``auto`` uses effective VRAM per role.
+    script_quant_mode: QuantMode = "auto"
+    image_quant_mode: QuantMode = "auto"
+    video_quant_mode: QuantMode = "auto"
+    voice_quant_mode: QuantMode = "auto"
     background_music_path: str = ""
     hf_token: str = ""  # optional: Hugging Face access token for gated repos / API calls
     hf_api_enabled: bool = True  # when False, saved token is not applied to HF_TOKEN (soft opt-out)

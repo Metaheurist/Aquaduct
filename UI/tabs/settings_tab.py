@@ -31,6 +31,12 @@ from src.models.hardware import (
     rank_models_for_auto_fit,
     vram_requirement_hint,
 )
+from src.models.quantization import (
+    mode_label,
+    parse_vram_hint_gb,
+    predict_vram_gb,
+    supported_quant_modes,
+)
 from src.util.cuda_device_policy import effective_vram_gb_for_kind
 from src.models.model_integrity_cache import worst_integrity_status
 from src.models.model_tiers import TIER_LITE, TIER_PRO, TIER_STANDARD, tier_label
@@ -207,6 +213,11 @@ def attach_settings_tab(win) -> None:
     win.vid_combo = NoWheelComboBox()
     win.voice_combo = NoWheelComboBox()
 
+    win.llm_quant_combo = NoWheelComboBox()
+    win.img_quant_combo = NoWheelComboBox()
+    win.vid_quant_combo = NoWheelComboBox()
+    win.voice_quant_combo = NoWheelComboBox()
+
     def _prep_combo(combo: QComboBox) -> None:
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         combo.setMinimumWidth(420)
@@ -214,6 +225,30 @@ def attach_settings_tab(win) -> None:
         combo.setMinimumContentsLength(36)
         combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         combo.view().setMinimumWidth(480)
+
+    def _fill_quant_combo(combo: QComboBox, *, role: str, repo_id: str) -> None:
+        # Block signals while repopulating to avoid re-entering ``_update_fit_badges``
+        # via ``currentIndexChanged`` (clear/addItem fire that signal).
+        was_blocked = combo.signalsBlocked()
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            for opt in supported_quant_modes(role=role, repo_id=repo_id):
+                combo.addItem(opt.label, opt.mode)
+                i = combo.count() - 1
+                if not opt.enabled:
+                    try:
+                        m = combo.model()
+                        midx = m.index(i, 0)
+                        m.setData(midx, 0, Qt.ItemDataRole.EnabledRole)
+                    except Exception:
+                        pass
+                if opt.tooltip:
+                    combo.setItemData(i, opt.tooltip, Qt.ItemDataRole.ToolTipRole)
+            combo.setMinimumWidth(140)
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        finally:
+            combo.blockSignals(was_blocked)
 
     def _required_repos_for_option(opt, kind: str) -> list[str]:
         if kind == "video" and getattr(opt, "pair_image_repo_id", ""):
@@ -583,11 +618,32 @@ def attach_settings_tab(win) -> None:
             lbl.setToolTip(why)
 
         llm_repo = _combo_repo_id_from_selection(win.llm_combo)
+        _fill_quant_combo(
+            win.llm_quant_combo,
+            role="script",
+            repo_id=llm_repo,
+        )
+        _cur_llm_q = str(getattr(win.settings, "script_quant_mode", "auto") or "auto")
+        if win.llm_quant_combo.currentIndex() >= 0:
+            ix = win.llm_quant_combo.findData(_cur_llm_q)
+            if ix >= 0:
+                _was = win.llm_quant_combo.signalsBlocked()
+                win.llm_quant_combo.blockSignals(True)
+                try:
+                    win.llm_quant_combo.setCurrentIndex(ix)
+                finally:
+                    win.llm_quant_combo.blockSignals(_was)
         llm_opt = win._model_opt_by_repo.get(llm_repo) if llm_repo else None
         llm_spd = llm_opt.speed if llm_opt else "slow"
-        win.llm_vram_lbl.setText(
-            vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd) if llm_repo else "—"
-        )
+        if llm_repo:
+            _vh = vram_requirement_hint(kind="script", repo_id=llm_repo, speed=llm_spd)
+            lo, hi = parse_vram_hint_gb(_vh)
+            qm = str(win.llm_quant_combo.currentData() or "auto")
+            pv = predict_vram_gb(role="script", repo_id=llm_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
+            win.llm_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
+            win.llm_vram_lbl.setToolTip(pv.rationale)
+        else:
+            win.llm_vram_lbl.setText("—")
         if llm_repo:
             set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
             set_dl_badge(win.llm_dl_badge, [llm_repo])
@@ -596,11 +652,27 @@ def attach_settings_tab(win) -> None:
             win.llm_dl_badge.setText("")
 
         img_repo = _combo_repo_id_from_selection(win.img_combo)
+        _fill_quant_combo(win.img_quant_combo, role="image", repo_id=img_repo)
+        _cur_img_q = str(getattr(win.settings, "image_quant_mode", "auto") or "auto")
+        ix = win.img_quant_combo.findData(_cur_img_q)
+        if ix >= 0:
+            _was = win.img_quant_combo.signalsBlocked()
+            win.img_quant_combo.blockSignals(True)
+            try:
+                win.img_quant_combo.setCurrentIndex(ix)
+            finally:
+                win.img_quant_combo.blockSignals(_was)
         img_opt = win._model_opt_by_repo.get(img_repo) if img_repo else None
         img_spd = img_opt.speed if img_opt else "slow"
-        win.img_vram_lbl.setText(
-            vram_requirement_hint(kind="image", repo_id=img_repo, speed=img_spd) if img_repo else "—"
-        )
+        if img_repo:
+            _vh = vram_requirement_hint(kind="image", repo_id=img_repo, speed=img_spd)
+            lo, hi = parse_vram_hint_gb(_vh)
+            qm = str(win.img_quant_combo.currentData() or "auto")
+            pv = predict_vram_gb(role="image", repo_id=img_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
+            win.img_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
+            win.img_vram_lbl.setToolTip(pv.rationale)
+        else:
+            win.img_vram_lbl.setText("—")
         if img_repo:
             set_badge(win.img_fit, kind="image", repo_id=img_repo)
             set_dl_badge(win.img_dl_badge, [img_repo])
@@ -609,14 +681,28 @@ def attach_settings_tab(win) -> None:
             win.img_dl_badge.setText("")
 
         vid_repo = _combo_repo_id_from_selection(win.vid_combo)
+        _fill_quant_combo(win.vid_quant_combo, role="video", repo_id=vid_repo)
+        _cur_vid_q = str(getattr(win.settings, "video_quant_mode", "auto") or "auto")
+        ix = win.vid_quant_combo.findData(_cur_vid_q)
+        if ix >= 0:
+            _was = win.vid_quant_combo.signalsBlocked()
+            win.vid_quant_combo.blockSignals(True)
+            try:
+                win.vid_quant_combo.setCurrentIndex(ix)
+            finally:
+                win.vid_quant_combo.blockSignals(_was)
         vid_opt = win._model_opt_by_repo.get(vid_repo) if vid_repo else None
         vid_spd = vid_opt.speed if vid_opt else "slow"
         pair_id = str(getattr(vid_opt, "pair_image_repo_id", "") or "").strip() if vid_opt else ""
-        win.vid_vram_lbl.setText(
-            vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
-            if vid_repo
-            else "—"
-        )
+        if vid_repo:
+            _vh = vram_requirement_hint(kind="video", repo_id=vid_repo, speed=vid_spd, pair_image_repo_id=pair_id)
+            lo, hi = parse_vram_hint_gb(_vh)
+            qm = str(win.vid_quant_combo.currentData() or "auto")
+            pv = predict_vram_gb(role="video", repo_id=vid_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
+            win.vid_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
+            win.vid_vram_lbl.setToolTip(pv.rationale)
+        else:
+            win.vid_vram_lbl.setText("—")
         if vid_repo:
             set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
             set_dl_badge(win.vid_dl_badge, [vid_repo])
@@ -625,11 +711,27 @@ def attach_settings_tab(win) -> None:
             win.vid_dl_badge.setText("")
 
         voice_repo = _combo_repo_id_from_selection(win.voice_combo)
+        _fill_quant_combo(win.voice_quant_combo, role="voice", repo_id=voice_repo)
+        _cur_voice_q = str(getattr(win.settings, "voice_quant_mode", "auto") or "auto")
+        ix = win.voice_quant_combo.findData(_cur_voice_q)
+        if ix >= 0:
+            _was = win.voice_quant_combo.signalsBlocked()
+            win.voice_quant_combo.blockSignals(True)
+            try:
+                win.voice_quant_combo.setCurrentIndex(ix)
+            finally:
+                win.voice_quant_combo.blockSignals(_was)
         voice_opt = win._model_opt_by_repo.get(voice_repo) if voice_repo else None
         voice_spd = voice_opt.speed if voice_opt else "slow"
-        win.voice_vram_lbl.setText(
-            vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd) if voice_repo else "—"
-        )
+        if voice_repo:
+            _vh = vram_requirement_hint(kind="voice", repo_id=voice_repo, speed=voice_spd)
+            lo, hi = parse_vram_hint_gb(_vh)
+            qm = str(win.voice_quant_combo.currentData() or "auto")
+            pv = predict_vram_gb(role="voice", repo_id=voice_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
+            win.voice_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
+            win.voice_vram_lbl.setToolTip(pv.rationale)
+        else:
+            win.voice_vram_lbl.setText("—")
         if voice_repo:
             set_badge(win.voice_fit, kind="voice", repo_id=voice_repo)
             set_dl_badge(win.voice_dl_badge, [voice_repo])
@@ -653,6 +755,10 @@ def attach_settings_tab(win) -> None:
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
     win.vid_combo.currentIndexChanged.connect(_update_fit_badges)
     win.voice_combo.currentIndexChanged.connect(_update_fit_badges)
+    win.llm_quant_combo.currentIndexChanged.connect(_update_fit_badges)
+    win.img_quant_combo.currentIndexChanged.connect(_update_fit_badges)
+    win.vid_quant_combo.currentIndexChanged.connect(_update_fit_badges)
+    win.voice_quant_combo.currentIndexChanged.connect(_update_fit_badges)
     win.llm_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.llm_combo))
     win.img_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.img_combo))
     win.vid_combo.currentIndexChanged.connect(lambda: _sync_local_model_combo_tooltip(win.vid_combo))
@@ -667,8 +773,9 @@ def attach_settings_tab(win) -> None:
     model_grid.setColumnMinimumWidth(0, 188)
     model_grid.setColumnMinimumWidth(1, 420)
     model_grid.setColumnMinimumWidth(2, int(_dl_badge_w))
-    model_grid.setColumnMinimumWidth(3, 200)
-    model_grid.setColumnMinimumWidth(4, _fit_badge_w)
+    model_grid.setColumnMinimumWidth(3, 150)
+    model_grid.setColumnMinimumWidth(4, 200)
+    model_grid.setColumnMinimumWidth(5, _fit_badge_w)
 
     def _model_field_label(text: str) -> QLabel:
         lb = QLabel(text)
@@ -676,18 +783,19 @@ def attach_settings_tab(win) -> None:
         lb.setWordWrap(False)
         return lb
 
-    _model_rows: list[tuple[str, QComboBox, QLabel, QLabel, QLabel]] = [
-        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_vram_lbl, win.llm_fit),
-        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_vram_lbl, win.img_fit),
-        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_vram_lbl, win.vid_fit),
-        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_vram_lbl, win.voice_fit),
+    _model_rows: list[tuple[str, QComboBox, QLabel, QComboBox, QLabel, QLabel]] = [
+        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_quant_combo, win.llm_vram_lbl, win.llm_fit),
+        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_quant_combo, win.img_vram_lbl, win.img_fit),
+        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_quant_combo, win.vid_vram_lbl, win.vid_fit),
+        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_quant_combo, win.voice_vram_lbl, win.voice_fit),
     ]
-    for row, (_txt, combo, dl_b, vram_l, fit_l) in enumerate(_model_rows):
+    for row, (_txt, combo, dl_b, qcombo, vram_l, fit_l) in enumerate(_model_rows):
         model_grid.addWidget(_model_field_label(_txt), row, 0)
         model_grid.addWidget(combo, row, 1)
         model_grid.addWidget(dl_b, row, 2)
-        model_grid.addWidget(vram_l, row, 3)
-        model_grid.addWidget(fit_l, row, 4)
+        model_grid.addWidget(qcombo, row, 3)
+        model_grid.addWidget(vram_l, row, 4)
+        model_grid.addWidget(fit_l, row, 5)
 
     ll.addLayout(model_grid)
 
@@ -736,6 +844,31 @@ def attach_settings_tab(win) -> None:
         ok_i = _combo_set_best(win.img_combo, ranked.image_repo_ids)
         ok_v = _combo_set_best(win.vid_combo, ranked.video_repo_ids)
         ok_c = _combo_set_best(win.voice_combo, ranked.voice_repo_ids)
+
+        # Apply matching quant mode defaults (best effort).
+        try:
+            if ranked.script_quant_modes:
+                q = ranked.script_quant_modes[win.llm_combo.currentIndex()] if win.llm_combo.currentIndex() >= 0 else ""
+                ix = win.llm_quant_combo.findData(q, role)
+                if ix >= 0:
+                    win.llm_quant_combo.setCurrentIndex(ix)
+            if ranked.image_quant_modes:
+                q = ranked.image_quant_modes[win.img_combo.currentIndex()] if win.img_combo.currentIndex() >= 0 else ""
+                ix = win.img_quant_combo.findData(q, role)
+                if ix >= 0:
+                    win.img_quant_combo.setCurrentIndex(ix)
+            if ranked.video_quant_modes:
+                q = ranked.video_quant_modes[win.vid_combo.currentIndex()] if win.vid_combo.currentIndex() >= 0 else ""
+                ix = win.vid_quant_combo.findData(q, role)
+                if ix >= 0:
+                    win.vid_quant_combo.setCurrentIndex(ix)
+            if ranked.voice_quant_modes:
+                q = ranked.voice_quant_modes[win.voice_combo.currentIndex()] if win.voice_combo.currentIndex() >= 0 else ""
+                ix = win.voice_quant_combo.findData(q, role)
+                if ix >= 0:
+                    win.voice_quant_combo.setCurrentIndex(ix)
+        except Exception:
+            pass
         _update_fit_badges()
         if hasattr(win, "_append_log"):
             win._append_log(ranked.log_summary)

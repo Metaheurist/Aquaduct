@@ -76,6 +76,19 @@ def _norm_gpu_selection_mode(s: Any) -> GpuSelectionMode:
     return t if t in ("auto", "single") else "auto"
 
 
+def _norm_quant_mode(s: Any) -> str:
+    t = str(s or "auto").strip().lower()
+    if t in ("auto", "bf16", "fp16", "int8", "nf4_4bit", "cpu_offload"):
+        return t
+    if t in ("4bit", "nf4", "bnb4"):
+        return "nf4_4bit"
+    if t in ("8bit", "bnb8", "int-8"):
+        return "int8"
+    if t in ("offload", "cpu", "cpu-offload"):
+        return "cpu_offload"
+    return "auto"
+
+
 def _parse_api_role(raw: Any) -> ApiRoleConfig:
     if not isinstance(raw, dict):
         return ApiRoleConfig()
@@ -255,6 +268,15 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         picture_format=pic_fmt,  # type: ignore[arg-type]
     )
 
+    # Quant modes (per role). Migration: if script mode absent, map legacy try_llm_4bit.
+    _script_raw = data.get("script_quant_mode", None)
+    if _script_raw is None:
+        _script_raw = "nf4_4bit" if bool(data.get("try_llm_4bit", True)) else "fp16"
+    script_q = _norm_quant_mode(_script_raw)
+    image_q = _norm_quant_mode(data.get("image_quant_mode", "auto"))
+    video_q = _norm_quant_mode(data.get("video_quant_mode", "auto"))
+    voice_q = _norm_quant_mode(data.get("voice_quant_mode", "auto"))
+
     return AppSettings(
         topic_tags_by_mode=topic_map,
         media_mode=media_mode,  # type: ignore[arg-type]
@@ -268,6 +290,10 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         prefer_gpu=bool(data.get("prefer_gpu", True)) if isinstance(data, dict) else True,
         try_llm_4bit=bool(data.get("try_llm_4bit", True)) if isinstance(data, dict) else True,
         try_sdxl_turbo=bool(data.get("try_sdxl_turbo", True)) if isinstance(data, dict) else True,
+        script_quant_mode=script_q,  # type: ignore[arg-type]
+        image_quant_mode=image_q,  # type: ignore[arg-type]
+        video_quant_mode=video_q,  # type: ignore[arg-type]
+        voice_quant_mode=voice_q,  # type: ignore[arg-type]
         background_music_path=str(data.get("background_music_path", "")) if isinstance(data, dict) else "",
         hf_token=str(data.get("hf_token", "")) if isinstance(data, dict) else "",
         hf_api_enabled=bool(data.get("hf_api_enabled", True)) if isinstance(data, dict) else True,

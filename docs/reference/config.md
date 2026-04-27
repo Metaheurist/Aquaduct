@@ -35,6 +35,15 @@ When **`model_execution_mode`** is **`local`**, long article text plus instructi
 ## VRAM inference profiles (local image / video / script)
 For **local** runs, **image** and **video** diffusion call paths merge **per-repo profiles** (resolution, steps, frame counts, etc.) from [`src/models/inference_profiles.py`](../../src/models/inference_profiles.py) using **`effective_vram_gb_for_kind`** in [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py) — consistent with **Auto** / **Single** GPU policy on the **My PC** tab. See [inference profiles](inference_profiles.md) for bands, console logging (`[Aquaduct][inference_profile]`), and **Auto-fit** log append.
 
+## Per-model quantization (local)
+`AppSettings` exposes per-row **quantization** modes that the **Settings → Model** tab dropdowns persist:
+
+- **`script_quant_mode`** (LLM): `auto | bf16 | fp16 | int8 | nf4_4bit`
+- **`image_quant_mode`** / **`video_quant_mode`** (diffusion): `auto | bf16 | fp16 | int8 | cpu_offload`
+- **`voice_quant_mode`** (TTS): `auto | bf16 | fp16 | int8 | nf4_4bit | cpu_offload` (MOSS); Kokoro accepts `auto` only
+
+Defaults are **`auto`**, which resolves to the highest-quality mode that fits the **effective per-role VRAM** ([`effective_vram_gb_for_kind`](../../src/util/cuda_device_policy.py)). The legacy boolean **`try_llm_4bit`** continues to migrate into `script_quant_mode="nf4_4bit"` when no explicit value is stored. See [quantization](quantization.md) for the policy module, VRAM multipliers, runtime fallbacks, and tests.
+
 ## Paths
 `get_paths()` defines:
 - `data/news_cache/` — per-format dedupe files `seen_<mode>.json` and `seen_titles_<mode>.json` (plus optional legacy `seen.json` / `seen_titles.json` for migration); local-only, not committed

@@ -1326,17 +1326,15 @@ def load_causal_lm_from_pretrained(
     try_4bit: bool = True,
     on_status: Callable[[str], None] | None = None,
     cuda_device_index: int | None = None,
+    quant_mode: str | None = None,
 ) -> Any:
     """
-    Load ``AutoModelForCausalLM`` from disk or Hub id.
+    Load ``AutoModelForCausalLM`` from disk or Hub id with an explicit quantization mode.
 
-    Tries bitsandbytes 4-bit first when ``try_4bit`` and CUDA works (saves VRAM).
-    If 4-bit raises, falls back to fp16 with ``device_map="auto"``.
+    ``quant_mode`` (preferred): ``auto`` | ``bf16`` | ``fp16`` | ``int8`` | ``nf4_4bit`` | ``cpu_offload``.
+    When unset, falls back to legacy ``try_4bit`` boolean (``nf4_4bit`` if True else ``fp16``).
 
-    If this PyTorch build has **no usable CUDA kernels** for the installed GPU
-    (``cuda.is_available()`` true but ops fail with "no kernel image"), loads on
-    **CPU** in fp16 — slower but runs on unsupported/new GPUs until you install a
-    matching PyTorch build.
+    Each mode falls back to fp16 / CPU on failure with a status message.
     """
     from src.models.hf_transformers_imports import causal_lm_stack
     from src.models.torch_dtypes import torch_float16
@@ -1349,6 +1347,13 @@ def load_causal_lm_from_pretrained(
         if on_status:
             on_status(msg)
 
+    # Resolve effective mode from explicit quant_mode (preferred) or legacy try_4bit.
+    qm = (quant_mode or "").strip().lower()
+    if not qm:
+        qm = "nf4_4bit" if bool(try_4bit) else "fp16"
+    if qm not in ("auto", "bf16", "fp16", "int8", "nf4_4bit", "cpu_offload"):
+        qm = "auto"
+
     def _device_map_for_load() -> Any:
         if cuda_device_index is not None and cuda_ok:
             try:
@@ -1358,16 +1363,20 @@ def load_causal_lm_from_pretrained(
             return {"": int(cuda_device_index)}
         return "auto"
 
-    def _from_pretrained_with_optional_bnb(
-        *, quantization_config: Any | None, device_map: Any
-    ) -> Any:
+    def _bf16_dtype() -> Any:
+        try:
+            return torch.bfloat16
+        except Exception:
+            return _fp16
+
+    def _from_pretrained(*, quantization_config: Any | None, device_map: Any, dtype: Any) -> Any:
         if quantization_config is not None:
             try:
                 return AutoModelForCausalLM.from_pretrained(
                     load_path,
                     quantization_config=quantization_config,
                     device_map=device_map,
-                    dtype=_fp16,
+                    dtype=dtype,
                     low_cpu_mem_usage=True,
                     trust_remote_code=True,
                 )
@@ -1377,7 +1386,7 @@ def load_causal_lm_from_pretrained(
                         load_path,
                         quantization_config=quantization_config,
                         device_map=device_map,
-                        torch_dtype=_fp16,
+                        torch_dtype=dtype,
                         low_cpu_mem_usage=True,
                         trust_remote_code=True,
                     )
@@ -1386,14 +1395,14 @@ def load_causal_lm_from_pretrained(
                         load_path,
                         quantization_config=quantization_config,
                         device_map=device_map,
-                        torch_dtype=_fp16,
+                        torch_dtype=dtype,
                         trust_remote_code=True,
                     )
         try:
             return AutoModelForCausalLM.from_pretrained(
                 load_path,
                 device_map=device_map,
-                dtype=_fp16,
+                dtype=dtype,
                 low_cpu_mem_usage=True,
                 trust_remote_code=True,
             )
@@ -1402,7 +1411,7 @@ def load_causal_lm_from_pretrained(
                 return AutoModelForCausalLM.from_pretrained(
                     load_path,
                     device_map=device_map,
-                    torch_dtype=_fp16,
+                    torch_dtype=dtype,
                     low_cpu_mem_usage=True,
                     trust_remote_code=True,
                 )
@@ -1410,32 +1419,84 @@ def load_causal_lm_from_pretrained(
                 return AutoModelForCausalLM.from_pretrained(
                     load_path,
                     device_map=device_map,
-                    torch_dtype=_fp16,
+                    torch_dtype=dtype,
                     trust_remote_code=True,
                 )
 
     if not cuda_ok:
         _status("CUDA unusable for this GPU/driver build; loading LLM on CPU (slower)…")
-        return _from_pretrained_with_optional_bnb(quantization_config=None, device_map="cpu")
+        return _from_pretrained(quantization_config=None, device_map="cpu", dtype=_fp16)
 
     dm = _device_map_for_load()
 
-    if try_4bit:
+    # Map "auto" using effective VRAM heuristic (best-effort; no settings here means default policy).
+    if qm == "auto":
+        try:
+            from src.models.hardware import list_cuda_gpus
+            from src.models.quantization import pick_auto_mode
+
+            gpus = list_cuda_gpus()
+            v = None
+            if gpus and cuda_device_index is not None:
+                for g in gpus:
+                    if g.index == int(cuda_device_index):
+                        v = g.total_vram_gb
+                        break
+            elif gpus:
+                v = gpus[0].total_vram_gb
+            qm = str(pick_auto_mode(role="script", repo_id="", vram_gb=v, cuda_ok=True))
+        except Exception:
+            qm = "nf4_4bit"
+
+    def _try_bnb_4bit() -> Any:
         bnb = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=_fp16,
         )
-        try:
-            _status("Loading model (4-bit)…")
-            return _from_pretrained_with_optional_bnb(quantization_config=bnb, device_map=dm)
-        except Exception as e:
-            _status(f"4-bit load failed ({type(e).__name__}); loading in fp16 instead…")
-            return _from_pretrained_with_optional_bnb(quantization_config=None, device_map=dm)
+        _status("Loading model (NF4 4-bit)…")
+        return _from_pretrained(quantization_config=bnb, device_map=dm, dtype=_fp16)
 
-    _status("Loading model (fp16)…")
-    return _from_pretrained_with_optional_bnb(quantization_config=None, device_map=dm)
+    def _try_bnb_8bit() -> Any:
+        bnb = BitsAndBytesConfig(load_in_8bit=True)
+        _status("Loading model (INT8 / 8-bit)…")
+        return _from_pretrained(quantization_config=bnb, device_map=dm, dtype=_fp16)
+
+    def _try_bf16() -> Any:
+        _status("Loading model (BF16)…")
+        return _from_pretrained(quantization_config=None, device_map=dm, dtype=_bf16_dtype())
+
+    def _try_fp16() -> Any:
+        _status("Loading model (FP16)…")
+        return _from_pretrained(quantization_config=None, device_map=dm, dtype=_fp16)
+
+    def _try_cpu() -> Any:
+        _status("Loading model on CPU offload (FP16)…")
+        return _from_pretrained(quantization_config=None, device_map="cpu", dtype=_fp16)
+
+    chain: list[tuple[str, Any]] = []
+    if qm == "nf4_4bit":
+        chain = [("NF4 4-bit", _try_bnb_4bit), ("INT8", _try_bnb_8bit), ("FP16", _try_fp16), ("CPU FP16", _try_cpu)]
+    elif qm == "int8":
+        chain = [("INT8", _try_bnb_8bit), ("NF4 4-bit", _try_bnb_4bit), ("FP16", _try_fp16), ("CPU FP16", _try_cpu)]
+    elif qm == "bf16":
+        chain = [("BF16", _try_bf16), ("FP16", _try_fp16), ("INT8", _try_bnb_8bit), ("CPU FP16", _try_cpu)]
+    elif qm == "cpu_offload":
+        chain = [("CPU FP16", _try_cpu), ("FP16", _try_fp16)]
+    else:  # fp16 / fallback
+        chain = [("FP16", _try_fp16), ("INT8", _try_bnb_8bit), ("NF4 4-bit", _try_bnb_4bit), ("CPU FP16", _try_cpu)]
+
+    last_err: Exception | None = None
+    for label, fn in chain:
+        try:
+            return fn()
+        except Exception as e:
+            last_err = e
+            _status(f"{label} load failed ({type(e).__name__}); falling back…")
+    if last_err is not None:
+        raise last_err
+    return _try_fp16()
 
 
 def _generate_with_transformers(
@@ -1447,6 +1508,7 @@ def _generate_with_transformers(
     try_llm_4bit: bool = True,
     llm_cuda_device_index: int | None = None,
     inference_settings: AppSettings | None = None,
+    quant_mode: str | None = None,
 ) -> str:
     import torch
 
@@ -1482,11 +1544,16 @@ def _generate_with_transformers(
     _emit_llm(on_llm_task, "llm_load", 25, "Tokenizer ready")
 
     _emit_llm(on_llm_task, "llm_load", 30, "Loading model weights…")
+    # Prefer explicit quant_mode; else inference_settings.script_quant_mode; else legacy try_llm_4bit.
+    _qmode = quant_mode
+    if not _qmode and inference_settings is not None:
+        _qmode = str(getattr(inference_settings, "script_quant_mode", "") or "") or None
     model = load_causal_lm_from_pretrained(
         load_path,
         try_4bit=bool(try_llm_4bit),
         on_status=_load_status,
         cuda_device_index=llm_cuda_device_index,
+        quant_mode=_qmode,
     )
     _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")
 

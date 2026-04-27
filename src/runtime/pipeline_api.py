@@ -539,6 +539,7 @@ def run_once_api(
         if not texts_uh:
             st_full = shape_tts_text(narration, personality_id=pid_voice)
             texts_uh = [st_full if st_full else narration]
+        _voice_qm = str(getattr(app, "voice_quant_mode", "auto") or "auto")
         if is_moss_vg_repo(v_mid):
             synthesize_unhinged_moss(
                 kokoro_model_id=v_mid,
@@ -546,6 +547,7 @@ def run_once_api(
                 segment_texts=texts_uh,
                 out_wav_path=voice_wav,
                 out_captions_json=captions_json,
+                voice_quant_mode=_voice_qm,
             )
         elif is_kokoro_repo(v_mid):
             synthesize_unhinged_rotating_kokoro(
@@ -554,6 +556,7 @@ def run_once_api(
                 out_wav_path=voice_wav,
                 out_captions_json=captions_json,
                 kokoro_speaker=kokoro_sp,
+                voice_quant_mode=_voice_qm,
             )
         else:
             synthesize_unhinged_rotating_pyttsx3(
@@ -577,6 +580,7 @@ def run_once_api(
             elevenlabs_voice_id=el_vid,
             elevenlabs_api_key=el_key,
             ffmpeg_executable=ffmpeg_exe,
+            voice_quant_mode=str(getattr(app, "voice_quant_mode", "auto") or "auto"),
         )
 
     _pipe_progress(on_progress, 58, -1, "Voice track ready")

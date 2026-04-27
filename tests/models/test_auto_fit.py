@@ -55,3 +55,28 @@ def test_voice_fit_marker_ok_for_kokoro() -> None:
 def test_fit_marker_display_maps_no_gpu_to_vram_limit() -> None:
     assert fit_marker_display("NO_GPU") == "VRAM Limit"
     assert fit_marker_display("OK") == "OK"
+
+
+def test_auto_fit_picks_quant_modes_per_role_low_vram() -> None:
+    opts = model_options()
+    hw = HardwareInfo(os="t", cpu="t", ram_gb=32.0, gpu_name="G", vram_gb=8.0)
+    r = rank_models_for_auto_fit(opts, hw)
+    # New fields exist and have a quant mode for every ranked id.
+    assert len(r.script_quant_modes) == len(r.script_repo_ids)
+    assert len(r.image_quant_modes) == len(r.image_repo_ids)
+    assert len(r.video_quant_modes) == len(r.video_repo_ids)
+    assert len(r.voice_quant_modes) == len(r.voice_repo_ids)
+    # Low-VRAM (8 GB) should pick a memory-saving script quant mode.
+    assert r.script_quant_modes[0] in ("nf4_4bit", "int8")
+    # Diffusion roles should fall back to memory savers (cpu_offload / fp16) on tight VRAM.
+    assert r.image_quant_modes[0] in ("cpu_offload", "fp16", "auto")
+    assert r.video_quant_modes[0] in ("cpu_offload", "fp16", "auto")
+
+
+def test_auto_fit_picks_quality_quant_modes_high_vram() -> None:
+    opts = model_options()
+    hw = HardwareInfo(os="t", cpu="t", ram_gb=64.0, gpu_name="G", vram_gb=48.0)
+    r = rank_models_for_auto_fit(opts, hw)
+    assert r.script_quant_modes[0] in ("bf16", "fp16")
+    assert r.image_quant_modes[0] in ("bf16", "fp16")
+    assert r.video_quant_modes[0] in ("bf16", "fp16")

@@ -73,6 +73,7 @@ def try_kokoro_tts(
     text: str,
     out_wav: Path,
     speaker: str,
+    quant_mode: str | None = None,  # accepted for API symmetry; Kokoro library has no quant controls
 ) -> bool:
     """
     Synthesize with ``kokoro`` KPipeline (``pip install kokoro``) when the selected voice model is Kokoro-82M.
@@ -111,10 +112,15 @@ def try_moss_voicegenerator_tts(
     text: str,
     instruction: str,
     out_wav: Path,
+    quant_mode: str | None = None,
 ) -> bool:
     """
     MOSS-VoiceGenerator: free-form *instruction* (voice design) + *text* (words to speak).
     Requires recent ``transformers`` with ``trust_remote_code`` and a capable GPU/CPU; often several GB VRAM.
+
+    ``quant_mode`` overrides the dtype: ``bf16``/``fp16`` chooses dtype on CUDA;
+    ``int8``/``nf4_4bit`` are experimental — falls back to fp16 on failure;
+    ``cpu_offload`` forces CPU execution.
     """
     if not is_moss_vg_repo(model_id) or not (text or "").strip():
         return False
@@ -133,8 +139,18 @@ def try_moss_voicegenerator_tts(
 
     path = MOSS_VG_HUB
     try:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.bfloat16 if device == "cuda" else torch.float32
+        qm = (quant_mode or "auto").strip().lower()
+        if qm == "cpu_offload":
+            device = "cpu"
+        else:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        if qm == "fp16":
+            dtype = torch.float16 if device == "cuda" else torch.float32
+        elif qm == "bf16":
+            dtype = torch.bfloat16 if device == "cuda" else torch.float32
+        else:
+            dtype = torch.bfloat16 if device == "cuda" else torch.float32
 
         def _attn_impl() -> str:
             if device == "cuda":
@@ -157,12 +173,42 @@ def try_moss_voicegenerator_tts(
             normalize_inputs=True,
         )
         processor.audio_tokenizer = processor.audio_tokenizer.to(device)  # type: ignore[union-attr]
-        model = AutoModel.from_pretrained(
-            path,
-            trust_remote_code=True,
-            attn_implementation=_attn_impl(),
-            torch_dtype=dtype,
-        ).to(device)
+
+        # Experimental: try bnb quant config on CUDA when explicitly requested.
+        bnb_cfg = None
+        if device == "cuda" and qm in ("int8", "nf4_4bit"):
+            try:
+                from transformers import BitsAndBytesConfig as _BnB
+
+                if qm == "nf4_4bit":
+                    bnb_cfg = _BnB(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True)
+                else:
+                    bnb_cfg = _BnB(load_in_8bit=True)
+            except Exception:
+                bnb_cfg = None
+
+        try:
+            if bnb_cfg is not None:
+                model = AutoModel.from_pretrained(
+                    path,
+                    trust_remote_code=True,
+                    attn_implementation=_attn_impl(),
+                    torch_dtype=dtype,
+                    quantization_config=bnb_cfg,
+                )
+            else:
+                raise TypeError("no_bnb")
+        except Exception:
+            model = AutoModel.from_pretrained(
+                path,
+                trust_remote_code=True,
+                attn_implementation=_attn_impl(),
+                torch_dtype=dtype,
+            )
+        try:
+            model = model.to(device)
+        except Exception:
+            pass
         model.eval()
 
         umsg = processor.build_user_message(text=text, instruction=inst)

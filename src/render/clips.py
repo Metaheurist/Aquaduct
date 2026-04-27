@@ -334,12 +334,36 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
     return {"num_frames": nf, "num_inference_steps": 25}
 
 
-def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
+def _video_quant_dtype(quant_mode: str | None, default_dt, _fp16):
+    """Pick a torch dtype for a video pipeline given an explicit quant mode (else ``default_dt``)."""
+    import torch
+
+    qm = (quant_mode or "").strip().lower()
+    if qm == "bf16":
+        try:
+            return torch.bfloat16
+        except Exception:
+            return _fp16
+    if qm in ("fp16", "int8", "nf4_4bit", "cpu_offload"):
+        return _fp16
+    return default_dt
+
+
+def _load_text_to_video_pipeline(
+    model_id: str,
+    load_path: str,
+    _fp16,
+    *,
+    quant_mode: str | None = None,
+):
     """
     Load the appropriate diffusers pipeline for ``model_id``.
 
     Wan / Mochi / CogVideoX / LTX / HunyuanVideo use concrete pipeline classes; generic
     ``DiffusionPipeline`` works for ZeroScope, ModelScope, and many community repos.
+
+    ``quant_mode`` can override dtype (``bf16``/``fp16``) and triggers ``cpu_offload`` placement
+    via the loader's caller. Experimental ``int8``/``nf4_4bit`` falls back to fp16 for video.
     """
     import torch
 
@@ -348,7 +372,8 @@ def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
         from diffusers import AutoencoderKLWan, WanPipeline
 
         vae = AutoencoderKLWan.from_pretrained(load_path, subfolder="vae", torch_dtype=torch.float32)
-        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         try:
             pipe = WanPipeline.from_pretrained(
                 load_path, vae=vae, torch_dtype=dt, low_cpu_mem_usage=True
@@ -367,21 +392,24 @@ def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
     if "mochi" in mid:
         from diffusers import MochiPipeline
 
+        dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
         try:
-            return MochiPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+            return MochiPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
         except TypeError:
-            return MochiPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+            return MochiPipeline.from_pretrained(load_path, torch_dtype=dt)
     if "cogvideox" in mid and "i2v" not in mid:
         from diffusers import CogVideoXPipeline
 
+        dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
         try:
-            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
         except TypeError:
-            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=dt)
     if "ltx-2" in mid:
         from diffusers import LTX2Pipeline
 
-        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         try:
             return LTX2Pipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
         except TypeError:
@@ -389,7 +417,8 @@ def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
     if "ltx-video" in mid or mid.startswith("lightricks/ltx"):
         from diffusers import LTXPipeline
 
-        dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         try:
             return LTXPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
         except TypeError:
@@ -397,17 +426,19 @@ def _load_text_to_video_pipeline(model_id: str, load_path: str, _fp16):
     if "hunyuanvideo" in mid:
         from diffusers import HunyuanVideoPipeline
 
+        dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
         try:
-            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
         except TypeError:
-            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=dt)
 
     from diffusers import DiffusionPipeline
 
+    dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
     try:
-        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
     except TypeError:
-        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
+        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt)
 
 
 def _img2vid_accepts_text_prompt(model_id: str) -> bool:
@@ -475,8 +506,17 @@ def _try_text_to_video(
 
         vkw = merge_t2v_from_settings(model_id, vkw, inference_settings)
 
-    pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16)
-    place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
+    qm = (
+        str(getattr(inference_settings, "video_quant_mode", "auto") or "auto")
+        if inference_settings is not None
+        else "auto"
+    )
+    pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16, quant_mode=qm)
+    place_diffusion_pipeline(
+        pipe,
+        cuda_device_index=cuda_device_index,
+        force_offload="model" if qm == "cpu_offload" else None,
+    )
     _maybe_enable_slice_inference(pipe)
     mid_run = _norm_repo_id(model_id)
     if mid_run == "lightricks/ltx-2" and getattr(pipe, "vae", None) is not None:
@@ -566,11 +606,21 @@ def _try_image_to_video(
 
         vkw = merge_t2v_from_settings(model_id, vkw, inference_settings)
 
+    qm = (
+        str(getattr(inference_settings, "video_quant_mode", "auto") or "auto")
+        if inference_settings is not None
+        else "auto"
+    )
+    dt = _video_quant_dtype(qm, _fp16, _fp16)
     try:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16, low_cpu_mem_usage=True)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
     except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=_fp16)
-    place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
+        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt)
+    place_diffusion_pipeline(
+        pipe,
+        cuda_device_index=cuda_device_index,
+        force_offload="model" if qm == "cpu_offload" else None,
+    )
     _maybe_enable_slice_inference(pipe)
 
     results: list[GeneratedClip] = []
