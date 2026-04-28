@@ -15,6 +15,7 @@ class GenerationFacade(Protocol):
         self,
         *,
         settings: AppSettings,
+        llm_cuda_device_index: int | None = None,
         model_id: str = "",
         items: list[dict[str, str]] | None = None,
         topic_tags: list[str] | None = None,
@@ -35,6 +36,7 @@ class _LocalGenerationFacade:
         self,
         *,
         settings: AppSettings,
+        llm_cuda_device_index: int | None = None,
         model_id: str = "",
         items: list[dict[str, str]] | None = None,
         topic_tags: list[str] | None = None,
@@ -55,6 +57,7 @@ class _LocalGenerationFacade:
         mid = str(model_id or "").strip()
         if not mid:
             raise RuntimeError("Local script generation requires a script (LLM) model id.")
+        llm_idx = llm_cuda_device_index if llm_cuda_device_index is not None else resolve_llm_cuda_device_index(settings)
         return generate_script(
             model_id=mid,
             items=list(items or []),
@@ -68,7 +71,7 @@ class _LocalGenerationFacade:
             try_llm_4bit=try_llm_4bit,
             article_excerpt=article_excerpt,
             supplement_context=supplement_context,
-            llm_cuda_device_index=resolve_llm_cuda_device_index(settings),
+            llm_cuda_device_index=llm_idx,
             inference_settings=settings,
         )
 
@@ -78,6 +81,7 @@ class _ApiGenerationFacade:
         self,
         *,
         settings: AppSettings,
+        llm_cuda_device_index: int | None = None,
         model_id: str = "",
         items: list[dict[str, str]] | None = None,
         topic_tags: list[str] | None = None,
@@ -94,6 +98,7 @@ class _ApiGenerationFacade:
         from src.content.brain_api import generate_script_openai
 
         assert isinstance(settings, AppSettings)
+        _ = llm_cuda_device_index  # API mode runs remotely; CUDA index not applicable.
         _ = model_id, try_llm_4bit  # API routing uses settings.api_models, not local HF ids.
         return generate_script_openai(
             settings=settings,

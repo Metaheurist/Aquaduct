@@ -85,7 +85,9 @@ from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.runtime.preflight import preflight_check
 from src.models.inference_profiles import log_inference_profiles_for_run
 from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index, resolve_llm_cuda_device_index
-from src.settings.ui_settings import load_settings
+from src.settings.ui_settings import load_settings, save_settings
+from src.models.hardware import list_cuda_gpus
+from src.runtime.oom_retry import retry_stage
 from src.speech.audio_fx import (
     AudioPolishConfig,
     MusicMixConfig,
@@ -119,6 +121,36 @@ except Exception:  # optional dependency
 
 
 _CLI_SUBCOMMANDS = frozenset({"run", "preflight", "config", "models", "tasks", "version"})
+
+
+def _clear_after_oom() -> None:
+    """
+    Best-effort: clear VRAM between retries (diffusers/transformers load can fragment VRAM).
+    """
+    try:
+        prepare_for_next_model()
+    except Exception:
+        pass
+    try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            try:
+                torch.cuda.ipc_collect()
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def _apply_hf_token_from_saved_settings(saved_settings: AppSettings | None) -> None:
@@ -394,7 +426,8 @@ def run_once(
 ) -> Path | None:
     paths = get_paths()
     models = get_models()
-    app = settings or AppSettings()
+    app_in = settings or AppSettings()
+    app = app_in
     if is_api_mode(app):
         from src.runtime.pipeline_api import run_once_api
 
@@ -430,7 +463,9 @@ def run_once(
         img_id = app.image_model_id.strip() or models.sdxl_turbo_id
         clip_id = getattr(app, "video_model_id", "").strip()
         voice_id = app.voice_model_id.strip() or models.kokoro_id
+        gpus = list_cuda_gpus()
         _diffusion_cuda_idx = resolve_diffusion_cuda_device_index(app)
+        _llm_cuda_idx = resolve_llm_cuda_device_index(app)
 
         # Ensure base dirs exist
         paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -668,23 +703,36 @@ def run_once(
                     character_context=char_ctx,
                     on_llm_task=_expand_llm,
                     try_llm_4bit=try_llm_4bit,
-                    llm_cuda_device_index=resolve_llm_cuda_device_index(app),
+                    llm_cuda_device_index=_llm_cuda_idx,
                     inference_settings=app,
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
-                pkg = get_generation_facade(app).generate_script_package(
+                def _run_script(s: AppSettings, idx: int | None) -> VideoPackage:
+                    return get_generation_facade(s).generate_script_package(
+                        settings=s,
+                        llm_cuda_device_index=idx,
+                        model_id=llm_id,
+                        items=sources,
+                        topic_tags=tags,
+                        personality_id=picked.preset.id,
+                        branding=getattr(s, "branding", None),
+                        character_context=char_ctx,
+                        creative_brief=expanded,
+                        video_format=vf,
+                        try_llm_4bit=try_llm_4bit,
+                        article_excerpt=clip_article_excerpt(article_text),
+                        supplement_context=script_digest,
+                    )
+
+                pkg, app, _llm_cuda_idx = retry_stage(
+                    stage_name="script_custom",
+                    role="script",
+                    repo_id=str(llm_id),
                     settings=app,
-                    model_id=llm_id,
-                    items=sources,
-                    topic_tags=tags,
-                    personality_id=picked.preset.id,
-                    branding=getattr(app, "branding", None),
-                    character_context=char_ctx,
-                    creative_brief=expanded,
-                    video_format=vf,
-                    try_llm_4bit=try_llm_4bit,
-                    article_excerpt=clip_article_excerpt(article_text),
-                    supplement_context=script_digest,
+                    cuda_device_index=_llm_cuda_idx,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run_script,
                 )
                 pkg = enforce_arc(pkg, video_format=vf)
                 pkg = _maybe_multistage(pkg)
@@ -700,18 +748,31 @@ def run_once(
                     extra_scoring_text="",
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
-                pkg = get_generation_facade(app).generate_script_package(
+                def _run_script2(s: AppSettings, idx: int | None) -> VideoPackage:
+                    return get_generation_facade(s).generate_script_package(
+                        settings=s,
+                        llm_cuda_device_index=idx,
+                        model_id=llm_id,
+                        items=sources,
+                        topic_tags=tags,
+                        personality_id=picked.preset.id,
+                        branding=getattr(s, "branding", None),
+                        character_context=char_ctx,
+                        video_format=vf,
+                        try_llm_4bit=try_llm_4bit,
+                        article_excerpt=clip_article_excerpt(article_text),
+                        supplement_context=script_digest,
+                    )
+
+                pkg, app, _llm_cuda_idx = retry_stage(
+                    stage_name="script",
+                    role="script",
+                    repo_id=str(llm_id),
                     settings=app,
-                    model_id=llm_id,
-                    items=sources,
-                    topic_tags=tags,
-                    personality_id=picked.preset.id,
-                    branding=getattr(app, "branding", None),
-                    character_context=char_ctx,
-                    video_format=vf,
-                    try_llm_4bit=try_llm_4bit,
-                    article_excerpt=clip_article_excerpt(article_text),
-                    supplement_context=script_digest,
+                    cuda_device_index=_llm_cuda_idx,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run_script2,
                 )
                 pkg = enforce_arc(pkg, video_format=vf)
                 pkg = _maybe_multistage(pkg)
@@ -841,17 +902,29 @@ def run_once(
                 pass
 
             img_dir = assets_dir / "images"
-            gen = generate_images(
-                sdxl_turbo_model_id=img_id,
-                prompts=prompts_img,
-                out_dir=img_dir,
-                max_images=n_img,
-                seeds=seeds_img,
-                allow_nsfw=bool(getattr(app, "allow_nsfw", False)),
-                art_style_preset_id=str(getattr(app, "art_style_preset_id", "balanced") or "balanced"),
-                use_style_continuity=True,
+            def _run_images(s: AppSettings, idx: int | None):
+                return generate_images(
+                    sdxl_turbo_model_id=img_id,
+                    prompts=prompts_img,
+                    out_dir=img_dir,
+                    max_images=n_img,
+                    seeds=seeds_img,
+                    allow_nsfw=bool(getattr(s, "allow_nsfw", False)),
+                    art_style_preset_id=str(getattr(s, "art_style_preset_id", "balanced") or "balanced"),
+                    use_style_continuity=True,
+                    cuda_device_index=idx,
+                    inference_settings=s,
+                )
+
+            gen, app, _diffusion_cuda_idx = retry_stage(
+                stage_name="photo_images",
+                role="image",
+                repo_id=str(img_id),
+                settings=app,
                 cuda_device_index=_diffusion_cuda_idx,
-                inference_settings=app,
+                gpus=gpus,
+                clear_cb=_clear_after_oom,
+                run_cb=_run_images,
             )
             img_paths = [g.path for g in gen if getattr(g, "path", None) is not None]
             if not img_paths:
@@ -889,6 +962,12 @@ def run_once(
                         pass
 
             _pipe_progress(on_progress, 93, -1, "Photo export complete")
+            # Persist quant adjustments if we auto-downgraded during retries.
+            try:
+                if app != app_in:
+                    save_settings(app)
+            except Exception:
+                pass
             return out_final_png
     
         # Voice
@@ -1126,49 +1205,85 @@ def run_once(
                 pro_key_seeds = [
                     int(pro_storyboard.scenes[i % ns].seed) + (i // ns) * 7919 for i in range(len(pro_scenes))
                 ]
-                key_gen = generate_images(
-                    sdxl_turbo_model_id=img_id,
-                    prompts=pro_scenes,
-                    out_dir=key_dir,
-                    max_images=len(pro_scenes),
-                    seeds=pro_key_seeds,
-                    allow_nsfw=_allow_nsfw,
-                    art_style_preset_id=_art_style_id,
-                    use_style_continuity=True,
+                def _run_pro_keyframes(s: AppSettings, idx: int | None):
+                    return generate_images(
+                        sdxl_turbo_model_id=img_id,
+                        prompts=pro_scenes,
+                        out_dir=key_dir,
+                        max_images=len(pro_scenes),
+                        seeds=pro_key_seeds,
+                        allow_nsfw=_allow_nsfw,
+                        art_style_preset_id=_art_style_id,
+                        use_style_continuity=True,
+                        cuda_device_index=idx,
+                        inference_settings=s,
+                        **_diffusion_ref_kw,
+                    )
+
+                key_gen, app, _diffusion_cuda_idx = retry_stage(
+                    stage_name="pro_keyframes",
+                    role="image",
+                    repo_id=str(img_id),
+                    settings=app,
                     cuda_device_index=_diffusion_cuda_idx,
-                    inference_settings=app,
-                    **_diffusion_ref_kw,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run_pro_keyframes,
                 )
                 keyframes = [g.path for g in key_gen]
                 prepare_for_next_model()
                 _pipe_progress(on_progress, 68, -1, "Pro: image-to-video (motion model)…")
                 _rc(run_control)
                 clip_dir = assets_dir / "pro_clips"
-                gen_clips = generate_clips(
-                    video_model_id=vid_slot,
-                    prompts=pro_scenes,
-                    init_images=keyframes,
-                    out_dir=clip_dir,
-                    max_clips=len(pro_scenes),
-                    fps=int(video_settings.fps),
-                    seconds_per_clip=T,
+                def _run_pro_i2v(s: AppSettings, idx: int | None):
+                    return generate_clips(
+                        video_model_id=vid_slot,
+                        prompts=pro_scenes,
+                        init_images=keyframes,
+                        out_dir=clip_dir,
+                        max_clips=len(pro_scenes),
+                        fps=int(video_settings.fps),
+                        seconds_per_clip=T,
+                        cuda_device_index=idx,
+                        inference_settings=s,
+                    )
+
+                gen_clips, app, _diffusion_cuda_idx = retry_stage(
+                    stage_name="pro_i2v",
+                    role="video",
+                    repo_id=str(vid_slot),
+                    settings=app,
                     cuda_device_index=_diffusion_cuda_idx,
-                    inference_settings=app,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run_pro_i2v,
                 )
             else:
                 _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
                 _rc(run_control)
                 clip_dir = assets_dir / "pro_clips"
-                gen_clips = generate_clips(
-                    video_model_id=vid_slot,
-                    prompts=pro_scenes,
-                    init_images=None,
-                    out_dir=clip_dir,
-                    max_clips=len(pro_scenes),
-                    fps=int(video_settings.fps),
-                    seconds_per_clip=T,
+                def _run_pro_t2v(s: AppSettings, idx: int | None):
+                    return generate_clips(
+                        video_model_id=vid_slot,
+                        prompts=pro_scenes,
+                        init_images=None,
+                        out_dir=clip_dir,
+                        max_clips=len(pro_scenes),
+                        fps=int(video_settings.fps),
+                        seconds_per_clip=T,
+                        cuda_device_index=idx,
+                        inference_settings=s,
+                    )
+
+                gen_clips, app, _diffusion_cuda_idx = retry_stage(
+                    stage_name="pro_t2v",
+                    role="video",
+                    repo_id=str(vid_slot),
+                    settings=app,
                     cuda_device_index=_diffusion_cuda_idx,
-                    inference_settings=app,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run_pro_t2v,
                 )
             clip_paths = [c.path for c in gen_clips]
             if not clip_paths:
@@ -1204,6 +1319,11 @@ def run_once(
                 video_format=str(getattr(app, "video_format", "news") or "news"),
             )
             _pipe_progress(on_progress, 93, -1, "Encode complete")
+            try:
+                if app != app_in:
+                    save_settings(app)
+            except Exception:
+                pass
             return out_final
     
         if video_settings.use_image_slideshow:
@@ -1314,6 +1434,89 @@ def run_once(
                 },
             )
             _pipe_progress(on_progress, 68, -1, "Generating images (diffusion)…")
+
+            def _gen_images_retry(
+                *,
+                model_id: str,
+                prompts: list[str],
+                out_dir: Path,
+                max_images: int,
+                seeds: list[int] | None,
+                use_style_continuity: bool,
+                allow_nsfw: bool,
+                art_style_preset_id: str,
+                extra_kw: dict,
+            ):
+                nonlocal app, _diffusion_cuda_idx
+
+                def _run(s: AppSettings, idx: int | None):
+                    return generate_images(
+                        sdxl_turbo_model_id=model_id,
+                        prompts=prompts,
+                        out_dir=out_dir,
+                        max_images=max_images,
+                        seeds=seeds,
+                        allow_nsfw=allow_nsfw,
+                        art_style_preset_id=art_style_preset_id,
+                        use_style_continuity=use_style_continuity,
+                        cuda_device_index=idx,
+                        inference_settings=s,
+                        **(extra_kw or {}),
+                    )
+
+                out, app2, idx2 = retry_stage(
+                    stage_name="images",
+                    role="image",
+                    repo_id=str(model_id),
+                    settings=app,
+                    cuda_device_index=_diffusion_cuda_idx,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run,
+                )
+                app = app2
+                _diffusion_cuda_idx = idx2
+                return out
+
+            def _gen_clips_retry(
+                *,
+                video_model_id: str,
+                prompts: list[str],
+                init_images: list[Path] | None,
+                out_dir: Path,
+                max_clips: int,
+                fps: int,
+                seconds_per_clip: float,
+            ):
+                nonlocal app, _diffusion_cuda_idx
+
+                def _run(s: AppSettings, idx: int | None):
+                    return generate_clips(
+                        video_model_id=video_model_id,
+                        prompts=prompts,
+                        init_images=init_images,
+                        out_dir=out_dir,
+                        max_clips=max_clips,
+                        fps=fps,
+                        seconds_per_clip=seconds_per_clip,
+                        cuda_device_index=idx,
+                        inference_settings=s,
+                    )
+
+                out, app2, idx2 = retry_stage(
+                    stage_name="clips",
+                    role="video",
+                    repo_id=str(video_model_id),
+                    settings=app,
+                    cuda_device_index=_diffusion_cuda_idx,
+                    gpus=gpus,
+                    clear_cb=_clear_after_oom,
+                    run_cb=_run,
+                )
+                app = app2
+                _diffusion_cuda_idx = idx2
+                return out
+
             gen_max = n_pro if _pro else max(1, int(video_settings.images_per_video))
             vid_slot = (clip_id or "").strip()
             if _pro:
@@ -1324,8 +1527,8 @@ def run_once(
                     )
                 lowv = vid_slot.lower()
                 if is_curated_text2image_repo(vid_slot):
-                    gen = generate_images(
-                        sdxl_turbo_model_id=vid_slot,
+                    gen = _gen_images_retry(
+                        model_id=vid_slot,
                         prompts=storyboard_prompts,
                         out_dir=img_dir,
                         max_images=gen_max,
@@ -1333,9 +1536,7 @@ def run_once(
                         allow_nsfw=_allow_nsfw,
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
-                        cuda_device_index=_diffusion_cuda_idx,
-                        inference_settings=app,
-                        **_diffusion_ref_kw,
+                        extra_kw=_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
                 elif "zeroscope" in lowv:
@@ -1345,7 +1546,7 @@ def run_once(
                     tmp_clip = assets_dir / "pro_zeroscope"
                     tmp_clip.mkdir(parents=True, exist_ok=True)
                     _pipe_progress(on_progress, 70, -1, "Text-to-video (Pro)…")
-                    zc = generate_clips(
+                    zc = _gen_clips_retry(
                         video_model_id=vid_slot,
                         prompts=[merged],
                         init_images=None,
@@ -1353,8 +1554,6 @@ def run_once(
                         max_clips=1,
                         fps=int(video_settings.fps),
                         seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
-                        cuda_device_index=_diffusion_cuda_idx,
-                        inference_settings=app,
                     )
                     if not zc:
                         raise RuntimeError("Pro mode produced no video segments (ZeroScope path).")
@@ -1372,8 +1571,8 @@ def run_once(
                     )
                 elif "stable-video-diffusion" in lowv or "img2vid" in lowv:
                     # Slideshow Pro expects still frames; SVD cannot fill that slot — use the Image model for stills.
-                    gen = generate_images(
-                        sdxl_turbo_model_id=img_id,
+                    gen = _gen_images_retry(
+                        model_id=img_id,
                         prompts=storyboard_prompts,
                         out_dir=img_dir,
                         max_images=gen_max,
@@ -1381,14 +1580,12 @@ def run_once(
                         allow_nsfw=_allow_nsfw,
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
-                        cuda_device_index=_diffusion_cuda_idx,
-                        inference_settings=app,
-                        **_diffusion_ref_kw,
+                        extra_kw=_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
                 else:
-                    gen = generate_images(
-                        sdxl_turbo_model_id=vid_slot,
+                    gen = _gen_images_retry(
+                        model_id=vid_slot,
                         prompts=storyboard_prompts,
                         out_dir=img_dir,
                         max_images=gen_max,
@@ -1396,14 +1593,12 @@ def run_once(
                         allow_nsfw=_allow_nsfw,
                         art_style_preset_id=_art_style_id,
                         use_style_continuity=False,
-                        cuda_device_index=_diffusion_cuda_idx,
-                        inference_settings=app,
-                        **_diffusion_ref_kw,
+                        extra_kw=_diffusion_ref_kw,
                     )
                     image_paths = [g.path for g in gen]
             else:
-                gen = generate_images(
-                    sdxl_turbo_model_id=img_id,
+                gen = _gen_images_retry(
+                    model_id=img_id,
                     prompts=storyboard_prompts,
                     out_dir=img_dir,
                     max_images=gen_max,
@@ -1411,9 +1606,7 @@ def run_once(
                     allow_nsfw=_allow_nsfw,
                     art_style_preset_id=_art_style_id,
                     use_style_continuity=True,
-                    cuda_device_index=_diffusion_cuda_idx,
-                    inference_settings=app,
-                    **_diffusion_ref_kw,
+                    extra_kw=_diffusion_ref_kw,
                 )
                 image_paths = [g.path for g in gen]
             _pipe_progress(on_progress, 80, -1, "Images ready")
@@ -1561,17 +1754,29 @@ def run_once(
                 settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "clip": (clip_id or img_id), "voice": voice_id}},
             )
             _pipe_progress(on_progress, 68, -1, "Generating keyframe images…")
-            key_gen = generate_images(
-                sdxl_turbo_model_id=img_id,
-                prompts=storyboard_prompts,
-                out_dir=key_dir,
-                max_images=max(1, int(video_settings.clips_per_video)),
-                seeds=storyboard_seeds,
-                allow_nsfw=_allow_nsfw,
-                art_style_preset_id=_art_style_id,
+            def _run_keyframes(s: AppSettings, idx: int | None):
+                return generate_images(
+                    sdxl_turbo_model_id=img_id,
+                    prompts=storyboard_prompts,
+                    out_dir=key_dir,
+                    max_images=max(1, int(video_settings.clips_per_video)),
+                    seeds=storyboard_seeds,
+                    allow_nsfw=_allow_nsfw,
+                    art_style_preset_id=_art_style_id,
+                    cuda_device_index=idx,
+                    inference_settings=s,
+                    **_diffusion_ref_kw,
+                )
+
+            key_gen, app, _diffusion_cuda_idx = retry_stage(
+                stage_name="keyframes",
+                role="image",
+                repo_id=str(img_id),
+                settings=app,
                 cuda_device_index=_diffusion_cuda_idx,
-                inference_settings=app,
-                **_diffusion_ref_kw,
+                gpus=gpus,
+                clear_cb=_clear_after_oom,
+                run_cb=_run_keyframes,
             )
             keyframes = [g.path for g in key_gen]
             _pipe_progress(on_progress, 76, -1, "Keyframes ready")
@@ -1589,17 +1794,29 @@ def run_once(
                             break
                         attempt += 1
                         with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
-                            regen = generate_images(
-                                sdxl_turbo_model_id=img_id,
-                                prompts=[p],
-                                out_dir=Path(_td),
-                                max_images=1,
-                                seeds=[int(base_seed) + attempt],
-                                allow_nsfw=_allow_nsfw,
-                                art_style_preset_id=_art_style_id,
-                                use_style_continuity=False,
+                            def _run_regen(s: AppSettings, idx: int | None):
+                                return generate_images(
+                                    sdxl_turbo_model_id=img_id,
+                                    prompts=[p],
+                                    out_dir=Path(_td),
+                                    max_images=1,
+                                    seeds=[int(base_seed) + attempt],
+                                    allow_nsfw=_allow_nsfw,
+                                    art_style_preset_id=_art_style_id,
+                                    use_style_continuity=False,
+                                    cuda_device_index=idx,
+                                    inference_settings=s,
+                                )
+
+                            regen, app, _diffusion_cuda_idx = retry_stage(
+                                stage_name="keyframe_regen",
+                                role="image",
+                                repo_id=str(img_id),
+                                settings=app,
                                 cuda_device_index=_diffusion_cuda_idx,
-                                inference_settings=app,
+                                gpus=gpus,
+                                clear_cb=_clear_after_oom,
+                                run_cb=_run_regen,
                             )
                             if regen:
                                 apply_regenerated_image(regen, out_path)
@@ -1626,16 +1843,30 @@ def run_once(
     
             clip_dir = assets_dir / "clips"
             _pipe_progress(on_progress, 82, -1, "Video diffusion (animate scenes)…")
-            gen_clips = generate_clips(
-                video_model_id=(clip_id or img_id),
-                prompts=prompts,
-                init_images=keyframes,
-                out_dir=clip_dir,
-                max_clips=max(1, int(video_settings.clips_per_video)),
-                fps=int(video_settings.fps),
-                seconds_per_clip=float(video_settings.clip_seconds),
+            _vid_id = (clip_id or img_id)
+
+            def _run_scene_clips(s: AppSettings, idx: int | None):
+                return generate_clips(
+                    video_model_id=_vid_id,
+                    prompts=prompts,
+                    init_images=keyframes,
+                    out_dir=clip_dir,
+                    max_clips=max(1, int(video_settings.clips_per_video)),
+                    fps=int(video_settings.fps),
+                    seconds_per_clip=float(video_settings.clip_seconds),
+                    cuda_device_index=idx,
+                    inference_settings=s,
+                )
+
+            gen_clips, app, _diffusion_cuda_idx = retry_stage(
+                stage_name="scene_clips",
+                role="video",
+                repo_id=str(_vid_id),
+                settings=app,
                 cuda_device_index=_diffusion_cuda_idx,
-                inference_settings=app,
+                gpus=gpus,
+                clear_cb=_clear_after_oom,
+                run_cb=_run_scene_clips,
             )
             clip_paths = [c.path for c in gen_clips]
             _pipe_progress(on_progress, 88, -1, "Scenes ready")
@@ -1687,6 +1918,11 @@ def run_once(
         _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
         _pipe_progress(on_progress, 100, 100, "Done")
         dprint("pipeline", "run_once done", f"video_dir={video_dir}")
+        try:
+            if app != app_in:
+                save_settings(app)
+        except Exception:
+            pass
         return video_dir
     finally:
         clear_pipeline_models_dir()

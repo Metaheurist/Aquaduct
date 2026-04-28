@@ -273,6 +273,7 @@ def run_once_api(
             )
             pkg = get_generation_facade(app).generate_script_package(
                 settings=app,
+                llm_cuda_device_index=None,
                 model_id=llm_id,
                 items=sources,
                 topic_tags=tags,
@@ -315,6 +316,7 @@ def run_once_api(
 
             pkg = get_generation_facade(app).generate_script_package(
                 settings=app,
+                llm_cuda_device_index=None,
                 model_id=llm_id,
                 items=sources,
                 topic_tags=tags,

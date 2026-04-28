@@ -44,6 +44,20 @@ Each per-role profile runs alongside the resolved **quantization mode** from [Qu
 ## Tests
 [`tests/models/test_inference_profiles.py`](../../tests/models/test_inference_profiles.py) — band mapping, T2I merge, LTX-2 frame rule, report smoke.
 
+## Troubleshooting: run stops during “Loading weights”
+Frontier **text-to-video** checkpoints (for example **Wan 2.2 14B**) allocate a large contiguous GPU block during `diffusers` load. If the **video** row shows **`quant='bf16'`** (or **`fp16`**) and your **effective VRAM for video** is in the **8–12 GiB** range, loading can hit **CUDA out of memory**, or in rare cases the driver/process may exit without a clean Python traceback.
+
+Automatic mitigation (new): during local runs, Aquaduct may retry a failing stage by first switching to a **higher‑VRAM GPU** (if available) and then stepping the role’s **quant mode** down one notch at a time (e.g. `bf16 → fp16 → int8 → cpu_offload` for video). When a retry succeeds, the updated per‑role quant mode is saved into `ui_settings.json` so the next run starts from the working level.
+
+Mitigations:
+
+1. **Model** tab → **Video** → set quantization to **`cpu_offload`** (or another memory-saving mode your build supports), then Save — see [Quantization](quantization.md).
+2. Choose a **lighter T2V repo** from the curated list, or switch **execution** to API mode if you use a hosted video provider.
+3. On **multi-GPU** setups, confirm **My PC** → GPU policy assigns **video** to the card with the **most VRAM** (effective VRAM per role appears in the `[Aquaduct][inference_profile]` lines).
+4. Avoid starting a second heavy download/load (e.g. HF **Loading weights**) at the same time as a run — competing loads reduce headroom.
+
+Partial outputs for a dated folder under **`.Aquaduct_data`** (for example `runs/<timestamp>/` or project folders under `videos/`) may exist without **`final.mp4`** if the pipeline stopped before the editor stage.
+
 ## Related docs
 - [Config](config.md) — env overrides, GPU policy fields  
 - [Models + downloads](models.md) — **Auto-fit** and curated ids  
