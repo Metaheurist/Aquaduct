@@ -75,6 +75,19 @@ from src.util.utils_vram import prepare_for_next_model
 from debug import dprint
 
 
+def _failure_text_with_cuda_hints(exc: BaseException, tb: str) -> str:
+    """Append VRAM/load hints when the traceback looks like CUDA OOM or related allocation failure."""
+    msg = f"{exc}\n\n{tb}"
+    el = f"{exc}".lower()
+    if "out of memory" in el or ("cuda" in el and "memory" in el):
+        msg += (
+            "\n\n---\nTip (VRAM): Large local T2V models (e.g. Wan 2.2 14B) often need "
+            "**CPU offload** on ~12 GiB GPUs — Model tab → Video → quantization → CPU offload — "
+            "or pick a lighter video repo. See docs/reference/inference_profiles.md (Troubleshooting).\n"
+        )
+    return msg
+
+
 def _expand_brief_unified(
     *,
     app: AppSettings,
@@ -214,7 +227,7 @@ class PipelineWorker(QThread):
         except Exception as e:
             dprint("workers", "PipelineWorker failed", str(e)[:300])
             tb = traceback.format_exc()
-            self.failed.emit(f"{e}\n\n{tb}")
+            self.failed.emit(_failure_text_with_cuda_hints(e, tb))
 
 
 class TopicDiscoverWorker(QThread):
@@ -1101,7 +1114,7 @@ class PreviewWorker(QThread):
         except Exception as e:
             dprint("workers", "PreviewWorker failed", str(e)[:300])
             tb = traceback.format_exc()
-            self.failed.emit(f"{e}\n\n{tb}")
+            self.failed.emit(_failure_text_with_cuda_hints(e, tb))
 
 
 class StoryboardWorker(QThread):
@@ -1574,4 +1587,4 @@ class StoryboardWorker(QThread):
         except Exception as e:
             dprint("workers", "StoryboardWorker failed", str(e)[:300])
             tb = traceback.format_exc()
-            self.failed.emit(f"{e}\n\n{tb}")
+            self.failed.emit(_failure_text_with_cuda_hints(e, tb))

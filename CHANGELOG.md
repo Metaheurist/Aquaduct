@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Docs / UI: local T2V stalls during **Loading weights**
+- **Docs** ([`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md)): troubleshooting when loading frontier T2V checkpoints fails or the process exits mid-load (VRAM, **CPU offload**, lighter model, GPU policy).
+- **UI** ([`UI/workers/impl.py`](UI/workers/impl.py)): CUDA OOM–style errors from pipeline/preview/storyboard workers append a short recovery hint.
+
 ### Developer debug: `MODULE_DEBUG_FLAGS`, category registry, and `debug/` tools
 - **Debug core** ([`debug/debug_log.py`](debug/debug_log.py), [`debug/__init__.py`](debug/__init__.py)): in-repo boolean `MODULE_DEBUG_FLAGS` (union with `AQUADUCT_DEBUG`, per-category env, and `--debug`); expanded `DEBUG_CATEGORIES` / aliases; stderr `dprint` uses the same timestamped line as file append; module docstring documents empty env + file flags and a possible future “env only” escape hatch.
 - **Docs** ([`debug/README.md`](debug/README.md), [`debug/<category>/README.md`](debug/)): index and one README per category; helpers [`debug/tools/print_active.py`](debug/tools/print_active.py), [`debug/tools/smoke_categories.py`](debug/tools/smoke_categories.py), shim [`debug/print_active.py`](debug/print_active.py); [`docs/README.md`](docs/README.md) links the `debug/` tree; [`tests/README.md`](tests/README.md) lists [`tests/debug/`](tests/debug/).
