@@ -6,6 +6,7 @@ import pytest
 
 from src.core.config import AppSettings
 from src.models.hardware import GpuDevice
+from src.runtime import oom_retry
 from src.runtime.oom_retry import (
     higher_vram_gpu_index,
     is_oom_error,
@@ -127,6 +128,67 @@ def test_retry_stage_equal_vram_tries_peer_gpu_before_quant() -> None:
     assert calls == [0, 1]
     assert idx1 == 1
     assert str(getattr(s1, "video_quant_mode")) == "bf16"
+
+
+def test_retry_stage_preempt_high_vram_switches_gpu_without_oom(monkeypatch: pytest.MonkeyPatch) -> None:
+    s0 = replace(AppSettings(), video_quant_mode="bf16")
+    g0 = GpuDevice(index=0, name="A", total_vram_bytes=8 * (1024**3))
+    g1 = GpuDevice(index=1, name="B", total_vram_bytes=24 * (1024**3))
+    calls: list[int | None] = []
+
+    def _fake_frac(idx: int | None) -> float:
+        # After relief move to cuda:1, pretend that card has headroom (real hardware would differ).
+        if idx == 1:
+            return 0.05
+        return 0.995
+
+    monkeypatch.setattr(oom_retry, "gpu_mem_used_fraction", _fake_frac)
+
+    def run_once(settings: AppSettings, idx: int | None) -> str:
+        calls.append(idx)
+        return "ok"
+
+    out, s1, idx1 = retry_stage(
+        stage_name="t2v",
+        role="video",
+        repo_id="Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        settings=s0,
+        cuda_device_index=0,
+        gpus=[g0, g1],
+        clear_cb=lambda: None,
+        run_cb=run_once,
+        max_quant_downgrades=5,
+        preempt_high_vram=True,
+    )
+    assert out == "ok"
+    assert idx1 == 1
+    assert calls == [1]
+    assert str(getattr(s1, "video_quant_mode")) == "bf16"
+
+
+def test_retry_stage_preempt_disabled_runs_on_busy_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With preempt off, near-full VRAM does not switch GPU before run_cb."""
+    s0 = replace(AppSettings(), video_quant_mode="bf16")
+    g0 = GpuDevice(index=0, name="A", total_vram_bytes=8 * (1024**3))
+    g1 = GpuDevice(index=1, name="B", total_vram_bytes=24 * (1024**3))
+
+    monkeypatch.setattr(oom_retry, "gpu_mem_used_fraction", lambda _idx: 0.995)
+
+    def run_once(settings: AppSettings, idx: int | None) -> str:
+        return "ok"
+
+    _out, _s1, idx1 = retry_stage(
+        stage_name="t2v",
+        role="video",
+        repo_id="Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        settings=s0,
+        cuda_device_index=0,
+        gpus=[g0, g1],
+        clear_cb=lambda: None,
+        run_cb=run_once,
+        preempt_high_vram=False,
+    )
+    assert idx1 == 0
 
 
 def test_retry_stage_stops_when_no_more_downgrades() -> None:
