@@ -18,7 +18,7 @@ remains **simple OR** for developer experience.
 
 **Categories**
 
-- ``pipeline`` — ``main.run_once`` orchestration
+- ``pipeline`` — ``main.run_once`` orchestration (see also :func:`pipeline_console` / :func:`log_pipeline_exception` for always-on stderr)
 - ``crawler`` — news fetch / item selection
 - ``brain`` — LLM script generation
 - ``voice`` — TTS / captions JSON
@@ -180,6 +180,49 @@ def apply_cli_debug(spec: str) -> None:
 
 def debug_enabled(category: str) -> bool:
     return category.lower().strip() in active_categories()
+
+
+def pipeline_console(message: str, *, stage: str = "") -> None:
+    """
+    Always print one line to stderr (and append to ``logs/debug.log`` when possible).
+
+    Use for coarse pipeline progress so operators see where time is spent **without**
+    setting ``AQUADUCT_DEBUG``. Prefer :func:`dprint` for verbose category-scoped logs.
+    """
+    stag = f" [{stage}]" if stage else ""
+    line = f"{datetime.now().isoformat(timespec='seconds')} [Aquaduct][run]{stag} {message}"
+    print(line, file=sys.stderr, flush=True)
+    try:
+        from src.util.repo_logs import append_debug_log
+
+        append_debug_log(line)
+    except Exception:
+        pass
+
+
+def log_pipeline_exception(stage: str, exc: BaseException, *, extra: str = "") -> None:
+    """
+    Print failure context and a full traceback to stderr (and a one-line head to ``debug.log``).
+
+    Does **not** swallow the exception — call from an ``except`` before ``raise``.
+    """
+    import traceback
+
+    ts = datetime.now().isoformat(timespec="seconds")
+    head = f"{ts} [Aquaduct][run] [{stage}] FAILED: {type(exc).__name__}: {exc}"
+    print(head, file=sys.stderr, flush=True)
+    if extra:
+        print(f"{ts} [Aquaduct][run] [{stage}] {extra}", file=sys.stderr, flush=True)
+    try:
+        traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+    try:
+        from src.util.repo_logs import append_debug_log
+
+        append_debug_log(head)
+    except Exception:
+        pass
 
 
 def dprint(category: str, *parts: object, ts: bool = True) -> None:

@@ -19,7 +19,7 @@ try:
 except Exception:
     pass
 
-from debug import apply_cli_debug, dprint
+from debug import apply_cli_debug, dprint, log_pipeline_exception, pipeline_console
 from src.content.brain import (
     VideoPackage,
     clip_article_excerpt,
@@ -142,6 +142,10 @@ def _clear_after_oom() -> None:
 
         if torch.cuda.is_available():
             try:
+                torch.cuda.synchronize()
+            except Exception:
+                pass
+            try:
                 torch.cuda.empty_cache()
             except Exception:
                 pass
@@ -187,6 +191,16 @@ def _pipe_progress(
         on_progress("pipeline_run", o, t, message)
     except Exception:
         pass
+
+
+# Last coarse stage label for failure reporting (``run_once`` only).
+_PIPELINE_RUN_STAGE: list[str] = ["(before_run)"]
+
+
+def _run_stage(stage: str, detail: str = "") -> None:
+    """Record and echo the current pipeline phase to stderr (always on)."""
+    _PIPELINE_RUN_STAGE[0] = stage
+    pipeline_console(detail if detail else stage, stage=stage)
 
 
 def _firecrawl_kwargs(app: AppSettings) -> dict:
@@ -459,6 +473,7 @@ def run_once(
             f"slideshow={bool(video_settings.use_image_slideshow)}",
         )
         _pipe_progress(on_progress, 2, -1, "Starting…")
+        _run_stage("starting", "Pipeline started (this log is always on; use --debug for fine-grained categories)")
         llm_id = app.llm_model_id.strip() or models.llm_id
         img_id = app.image_model_id.strip() or models.sdxl_turbo_id
         clip_id = getattr(app, "video_model_id", "").strip()
@@ -487,6 +502,7 @@ def run_once(
     
         _rc(run_control)
         _pipe_progress(on_progress, 6, -1, "Preflight OK")
+        _run_stage("preflight", "Preflight OK — continuing to sources / script")
         try:
             log_inference_profiles_for_run(app)
         except Exception:
@@ -586,9 +602,11 @@ def run_once(
         run_dir = paths.runs_dir / run_id
         run_assets = run_dir / "assets"
         run_assets.mkdir(parents=True, exist_ok=True)
-    
+        _run_stage("workspace", f"Run workspace: {run_dir} (intermediate assets under assets/)")
+
         article_text = ""
         if prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
+            _run_stage("article", "Fetching full article text (Firecrawl/crawl; may be empty on failure)")
             try:
                 article_text = fetch_article_text(
                     str(getattr(item, "url", "") or ""),
@@ -629,6 +647,10 @@ def run_once(
             if bool(getattr(video_settings, "story_web_context", False)) or bool(
                 getattr(video_settings, "story_reference_images", False)
             ):
+                _run_stage(
+                    "story_web_context",
+                    "Building script web context (Firecrawl digest + optional reference downloads)…",
+                )
                 titles_ctx = [str(s.get("title", "")) for s in sources if isinstance(s, dict)]
                 tr_block = topic_research_digest_for_script(paths.data_dir, vf)
                 art_block = (article_text or "")[:12000]
@@ -651,6 +673,7 @@ def run_once(
                 )
                 if (script_digest or "").strip():
                     _pipe_progress(on_progress, 16, -1, "Script web context gathered…")
+                _run_stage("story_web_context", "Web digest / references materialized under assets/script_context/")
 
             if str(vf).strip().lower() == "health_advice":
                 vid = getattr(app, "video", None)
@@ -718,6 +741,7 @@ def run_once(
                     inference_settings=app,
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
+                _run_stage("script_llm", f"Custom run: LLM generating script ({llm_id!r})…")
                 def _run_script(s: AppSettings, idx: int | None) -> VideoPackage:
                     return get_generation_facade(s).generate_script_package(
                         settings=s,
@@ -749,6 +773,7 @@ def run_once(
                 pkg = _maybe_multistage(pkg)
                 personality_pick = picked
                 dprint("pipeline", "script ready (custom)", f"title={pkg.title[:100]!r}")
+                _run_stage("script_llm", "Script package ready (custom mode)")
             else:
                 titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
                 picked = auto_pick_personality(
@@ -759,6 +784,7 @@ def run_once(
                     extra_scoring_text="",
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
+                _run_stage("script_llm", f"Preset run: LLM generating script ({llm_id!r})…")
                 def _run_script2(s: AppSettings, idx: int | None) -> VideoPackage:
                     return get_generation_facade(s).generate_script_package(
                         settings=s,
@@ -798,6 +824,7 @@ def run_once(
                         quant_mode=str(getattr(app, "script_quant_mode", "auto") or "auto"),
                     )
                 dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
+                _run_stage("script_llm", "Script package ready (preset mode)")
                 personality_pick = picked
         else:
             pkg = prebuilt_pkg
@@ -819,6 +846,7 @@ def run_once(
             vf_cast2 = str(getattr(app, "video_format", "news") or "news")
             storyline = pkg.narration_text()
             cast: list[dict] | None = None
+            _run_stage("cast_llm", "No fixed character: generating ephemeral cast via LLM (or fallback)")
             try:
     
                 def _cast_llm(task: str, pct: int, msg: str) -> None:
@@ -888,6 +916,7 @@ def run_once(
             n_img = max(1, min(32, n_img))
 
             _pipe_progress(on_progress, 50, -1, "Photo mode: generating images…")
+            _run_stage("photo_diffusion", f"Photo mode: generating {n_img} still(s) with {img_id!r}")
             _rc(run_control)
 
             sb = build_storyboard(
@@ -983,6 +1012,7 @@ def run_once(
     
         # Voice
         _pipe_progress(on_progress, 50, -1, "Generating voice / captions…")
+        _run_stage("voice_tts", f"Synthesizing narration ({voice_id!r}); writing voice.wav + captions.json")
         voice_wav = assets_dir / "voice.wav"
         captions_json = assets_dir / "captions.json"
         vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
@@ -1083,6 +1113,7 @@ def run_once(
             )
     
         _pipe_progress(on_progress, 58, -1, "Voice track ready")
+        _run_stage("voice_tts", "Voice track + captions ready")
         _rc(run_control)
     
         prepare_for_next_model()
@@ -1090,6 +1121,7 @@ def run_once(
         # Audio polish + mixing (FFmpeg best-effort)
         final_voice_wav = voice_wav
         try:
+            _run_stage("audio_polish", f"FFmpeg voice polish ({getattr(video_settings, 'audio_polish', 'basic')!r})")
             ap_mode = str(getattr(video_settings, "audio_polish", "basic") or "basic")
             cfg = AudioPolishConfig(mode=ap_mode)
             processed = assets_dir / "voice_processed.wav"
@@ -1097,6 +1129,7 @@ def run_once(
             dprint("audio", f"voice polish mode={ap_mode!r}")
         except Exception:
             final_voice_wav = voice_wav
+            pipeline_console("Voice polish skipped (using raw voice.wav)", stage="audio_polish")
     
         # Images
         prompts = list(prebuilt_prompts or []) if prebuilt_prompts is not None else [s.visual_prompt for s in pkg.segments][:10]
@@ -1202,6 +1235,7 @@ def run_once(
 
             if pro_img2vid:
                 _pipe_progress(on_progress, 64, -1, "Pro: scene keyframes (image model)…")
+                _run_stage("diffusion_image", f"Pro img2vid: still keyframes with image model {img_id!r}")
                 _rc(run_control)
                 key_dir = assets_dir / "pro_keyframes"
                 pro_storyboard = build_storyboard(
@@ -1244,6 +1278,7 @@ def run_once(
                 keyframes = [g.path for g in key_gen]
                 prepare_for_next_model()
                 _pipe_progress(on_progress, 68, -1, "Pro: image-to-video (motion model)…")
+                _run_stage("video_motion", f"Pro img2vid: motion model {vid_slot!r} (load + encode per scene)")
                 _rc(run_control)
                 clip_dir = assets_dir / "pro_clips"
                 def _run_pro_i2v(s: AppSettings, idx: int | None):
@@ -1268,9 +1303,14 @@ def run_once(
                     gpus=gpus,
                     clear_cb=_clear_after_oom,
                     run_cb=_run_pro_i2v,
+                    max_quant_downgrades=8,
                 )
             else:
                 _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
+                _run_stage(
+                    "video_t2v",
+                    f"Pro text-to-video: {vid_slot!r} — loading diffusers pipeline (first load can take many minutes)",
+                )
                 _rc(run_control)
                 clip_dir = assets_dir / "pro_clips"
                 def _run_pro_t2v(s: AppSettings, idx: int | None):
@@ -1295,6 +1335,7 @@ def run_once(
                     gpus=gpus,
                     clear_cb=_clear_after_oom,
                     run_cb=_run_pro_t2v,
+                    max_quant_downgrades=8,
                 )
             clip_paths = [c.path for c in gen_clips]
             if not clip_paths:
@@ -1314,6 +1355,7 @@ def run_once(
                 mix_wav = final_voice_wav
     
             _pipe_progress(on_progress, 91, -1, "Rendering Pro video & final MP4…")
+            _run_stage("encode", "FFmpeg/MoviePy: mux clips + captions + audio → final.mp4")
             _rc(run_control)
             assemble_generated_clips_then_concat(
                 ffmpeg_dir=paths.ffmpeg_dir,
@@ -1445,6 +1487,7 @@ def run_once(
                 },
             )
             _pipe_progress(on_progress, 68, -1, "Generating images (diffusion)…")
+            _run_stage("diffusion_image", f"Slideshow / Pro stills: image model {img_id!r}")
 
             def _gen_images_retry(
                 *,
@@ -1523,6 +1566,7 @@ def run_once(
                     gpus=gpus,
                     clear_cb=_clear_after_oom,
                     run_cb=_run,
+                    max_quant_downgrades=8,
                 )
                 app = app2
                 _diffusion_cuda_idx = idx2
@@ -1765,6 +1809,7 @@ def run_once(
                 settings={"video": dict(vars(video_settings)), "models": {"llm": llm_id, "img": img_id, "clip": (clip_id or img_id), "voice": voice_id}},
             )
             _pipe_progress(on_progress, 68, -1, "Generating keyframe images…")
+            _run_stage("diffusion_image", f"Motion mode: keyframe stills with {img_id!r}")
             def _run_keyframes(s: AppSettings, idx: int | None):
                 return generate_images(
                     sdxl_turbo_model_id=img_id,
@@ -1855,6 +1900,7 @@ def run_once(
             clip_dir = assets_dir / "clips"
             _pipe_progress(on_progress, 82, -1, "Video diffusion (animate scenes)…")
             _vid_id = (clip_id or img_id)
+            _run_stage("video_motion", f"Motion mode: img2vid / scene clips with {_vid_id!r}")
 
             def _run_scene_clips(s: AppSettings, idx: int | None):
                 return generate_clips(
@@ -1878,6 +1924,7 @@ def run_once(
                 gpus=gpus,
                 clear_cb=_clear_after_oom,
                 run_cb=_run_scene_clips,
+                max_quant_downgrades=8,
             )
             clip_paths = [c.path for c in gen_clips]
             _pipe_progress(on_progress, 88, -1, "Scenes ready")
@@ -1897,6 +1944,7 @@ def run_once(
                 mix_wav = final_voice_wav
     
             _pipe_progress(on_progress, 91, -1, "Rendering micro-scenes & final MP4…")
+            _run_stage("encode", "Motion mode: assembling clips + captions → final.mp4")
             _rc(run_control)
     
             assemble_generated_clips_then_concat(
@@ -1926,15 +1974,27 @@ def run_once(
                     pass
     
         _pipe_progress(on_progress, 97, -1, "Saving project folder…")
+        _run_stage("export", f"Writing meta.json, script.txt, hashtags → {video_dir}")
         _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
         _pipe_progress(on_progress, 100, 100, "Done")
         dprint("pipeline", "run_once done", f"video_dir={video_dir}")
+        _run_stage("done", f"Run finished successfully → {video_dir}")
         try:
             if app != app_in:
                 save_settings(app)
         except Exception:
             pass
         return video_dir
+    except BaseException as e:
+        try:
+            log_pipeline_exception(
+                _PIPELINE_RUN_STAGE[0],
+                e,
+                extra="If this is CUDA OOM, try a lighter Video model profile or lower quant on the Model tab.",
+            )
+        except Exception:
+            pass
+        raise
     finally:
         clear_pipeline_models_dir()
 

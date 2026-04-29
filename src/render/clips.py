@@ -371,15 +371,23 @@ def _load_text_to_video_pipeline(
     if "wan-ai" in mid and "wan2" in mid:
         from diffusers import AutoencoderKLWan, WanPipeline
 
+        from debug import pipeline_console
+
+        pipeline_console(f"Wan T2V: loading VAE submodule from {load_path!r}", stage="video_t2v_load")
         vae = AutoencoderKLWan.from_pretrained(load_path, subfolder="vae", torch_dtype=torch.float32)
         default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
+        pipeline_console(
+            "Wan T2V: loading main pipeline (diffusers 'Loading pipeline components…' may take several minutes)",
+            stage="video_t2v_load",
+        )
         try:
             pipe = WanPipeline.from_pretrained(
                 load_path, vae=vae, torch_dtype=dt, low_cpu_mem_usage=True
             )
         except TypeError:
             pipe = WanPipeline.from_pretrained(load_path, vae=vae, torch_dtype=dt)
+        pipeline_console("Wan T2V: pipeline weights loaded", stage="video_t2v_load")
         try:
             from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 
@@ -392,6 +400,9 @@ def _load_text_to_video_pipeline(
     if "mochi" in mid:
         from diffusers import MochiPipeline
 
+        from debug import pipeline_console
+
+        pipeline_console(f"Mochi T2V: loading from {load_path!r}", stage="video_t2v_load")
         dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
         try:
             return MochiPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
@@ -434,6 +445,12 @@ def _load_text_to_video_pipeline(
 
     from diffusers import DiffusionPipeline
 
+    from debug import pipeline_console
+
+    pipeline_console(
+        f"Generic T2V: DiffusionPipeline.from_pretrained({load_path!r}) — watch Hub / disk I/O",
+        stage="video_t2v_load",
+    )
     dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
     try:
         return DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
@@ -511,7 +528,21 @@ def _try_text_to_video(
         if inference_settings is not None
         else "auto"
     )
-    pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16, quant_mode=qm)
+    from debug import pipeline_console
+
+    pipeline_console(
+        f"T2V resolve: model_id={model_id!r} load_path={load_path!r} quant={qm!r}",
+        stage="video_t2v_load",
+    )
+    try:
+        pipe = _load_text_to_video_pipeline(model_id, load_path, _fp16, quant_mode=qm)
+    except BaseException as e:
+        pipeline_console(
+            f"T2V load FAILED before inference: {type(e).__name__}: {e} (model_id={model_id!r})",
+            stage="video_t2v_load",
+        )
+        raise
+    pipeline_console("T2V pipeline loaded; placing modules on CUDA / applying offload…", stage="video_t2v_load")
     place_diffusion_pipeline(
         pipe,
         cuda_device_index=cuda_device_index,
@@ -539,6 +570,10 @@ def _try_text_to_video(
 
     results: list[GeneratedClip] = []
     for i, p in enumerate(prompts, start=1):
+        pipeline_console(
+            f"T2V inference clip {i}/{len(prompts)} (num_frames≈{vkw.get('num_frames', '?')})",
+            stage="video_t2v_infer",
+        )
         out = pipe(prompt=p, **vkw)
         out_path = out_dir / f"clip_{i:03d}.mp4"
 

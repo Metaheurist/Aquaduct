@@ -88,6 +88,12 @@ def _failure_text_with_cuda_hints(exc: BaseException, tb: str) -> str:
     return msg
 
 
+def _reraise_system_interrupt(exc: BaseException) -> None:
+    """Let Ctrl+C / sys.exit propagate from worker threads; handle everything else via failed.emit."""
+    if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+        raise exc
+
+
 def _expand_brief_unified(
     *,
     app: AppSettings,
@@ -224,7 +230,8 @@ class PipelineWorker(QThread):
         except PipelineCancelled:
             dprint("workers", "PipelineWorker cancelled")
             self.cancelled.emit()
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             dprint("workers", "PipelineWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(_failure_text_with_cuda_hints(e, tb))
@@ -264,7 +271,8 @@ class TopicDiscoverWorker(QThread):
                 except Exception:
                     pass
             self.done.emit(topics)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -291,7 +299,8 @@ class FFmpegEnsureWorker(QThread):
                 return
             ensure_ffmpeg(self.ffmpeg_dir)
             self.finished_ok.emit()
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -334,7 +343,8 @@ class TikTokUploadWorker(QThread):
             _pid, msg = upload_local_video_to_inbox(access, vid)
             set_task_status(self.task_id, "posted", "")
             self.finished_ok.emit(msg, access, refresh, exp)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             try:
                 from src.platform.upload_tasks import set_task_status
@@ -406,7 +416,8 @@ class YouTubeUploadWorker(QThread):
                 refresh,
                 exp,
             )
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             try:
                 from src.platform.upload_tasks import set_youtube_upload_result
@@ -561,7 +572,8 @@ class ModelDownloadWorker(QThread):
                 self.progress.emit("download", min(100, done_ov), 100, f"Downloaded: {repo_id}")
 
             self.done.emit("Done")
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -615,7 +627,8 @@ class TextExpandWorker(QThread):
                 try_llm_4bit=self.try_llm_4bit,
             )
             self.done.emit(out)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             friendly = humanize_hf_hub_error(e)
             if friendly:
                 self.failed.emit(friendly)
@@ -671,7 +684,8 @@ class CharacterGenerateWorker(QThread):
                 )
             assert isinstance(out, GeneratedCharacterFields)
             self.done.emit(out)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             friendly = humanize_hf_hub_error(e)
             if friendly:
                 self.failed.emit(friendly)
@@ -757,7 +771,8 @@ class CharacterPortraitWorker(QThread):
             shutil.rmtree(tmp, ignore_errors=True)
             rel = f"characters/{self.character_id}/portrait.png"
             self.done.emit(rel)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             friendly = humanize_hf_hub_error(e)
             if friendly:
                 self.failed.emit(friendly)
@@ -851,7 +866,8 @@ class ModelIntegrityVerifyWorker(QThread):
 
             lines.append(f"Summary: {ok_n} ok, {bad_n} failed, {n} total.")
             self.done.emit("\n".join(lines), status_by_repo)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -913,7 +929,8 @@ class ModelSizePingWorker(QThread):
             except Exception:
                 pass
             self.done.emit(probe)
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             tb = traceback.format_exc()
             self.failed.emit(f"{e}\n\n{tb}")
 
@@ -1111,7 +1128,8 @@ class PreviewWorker(QThread):
         except PipelineCancelled:
             dprint("workers", "PreviewWorker cancelled")
             self.cancelled.emit()
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             dprint("workers", "PreviewWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(_failure_text_with_cuda_hints(e, tb))
@@ -1604,7 +1622,8 @@ class StoryboardWorker(QThread):
         except PipelineCancelled:
             dprint("workers", "StoryboardWorker cancelled")
             self.cancelled.emit()
-        except Exception as e:
+        except BaseException as e:
+            _reraise_system_interrupt(e)
             dprint("workers", "StoryboardWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(_failure_text_with_cuda_hints(e, tb))

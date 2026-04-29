@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Pipeline observability + VRAM OOM recovery
+- **Always-on run logging** ([`debug/debug_log.py`](debug/debug_log.py), [`debug/__init__.py`](debug/__init__.py)): [`pipeline_console`](debug/debug_log.py) / [`log_pipeline_exception`](debug/debug_log.py) — stderr lines `[Aquaduct][run] [stage] …`, failure traceback from [`main.py`](main.py) `run_once`; append to [`logs/debug.log`](src/util/repo_logs.py) when writable.
+- **`main.py`**: `_run_stage(...)` milestones across the desktop pipeline; [`_clear_after_oom`](main.py) runs **`torch.cuda.synchronize()`** before CUDA cache flush; **`retry_stage`** calls for **video** diffusion pass **`max_quant_downgrades=8`** ([`pro_i2v`](main.py), [`pro_t2v`](main.py), [`clips`](main.py), [`scene_clips`](main.py)).
+- **`src/runtime/oom_retry.py`**: broader [`is_oom_error`](src/runtime/oom_retry.py); [`pick_next_gpu_index_after_oom`](src/runtime/oom_retry.py) — prefer larger VRAM, then equal‑VRAM peer, never switch down to a smaller card as recovery; [`retry_stage`](src/runtime/oom_retry.py) default quant retries **5**; OOM recovery logging.
+- **`src/render/clips.py`**: Wan / generic T2V load breadcrumbs (**`video_t2v_load`**, **`video_t2v_infer`**).
+- **`UI/workers/impl.py`**: **`PreviewWorker`**, **`StoryboardWorker`**, **`PipelineWorker`**, FFmpeg/downloads/uploads/text expand/character/model workers — [`_reraise_system_interrupt`](UI/workers/impl.py); top-level **`except BaseException`** so e.g. **`torch.cuda.OutOfMemoryError`** reaches **`failed.emit`** with CUDA hints ([`_failure_text_with_cuda_hints`](UI/workers/impl.py)).
+- **Tests**: [`tests/runtime/test_oom_retry_fit.py`](tests/runtime/test_oom_retry_fit.py).
+- **Docs**: [`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md), [`debug/README.md`](debug/README.md).
+
 ### Health advice video format + **Realism** art style
 - **Pipeline format** [`health_advice`](src/core/config.py): clinician-voiced wellness education scripts ([`src/content/brain.py`](src/content/brain.py) `_prompt_for_health_advice_items`, safety blocks, `_article_prompt_block` / `_vf_hint`); ephemeral / fallback **doctor or nurse** cast ([`src/content/characters_store.py`](src/content/characters_store.py)); multi-stage refinement ([`src/content/story_pipeline.py`](src/content/story_pipeline.py)); **Key facts** card enabled like news/explainer ([`video_format_supports_facts_card`](src/core/config.py)); diffusion cues ([`src/content/prompt_conditioning.py`](src/content/prompt_conditioning.py)).
 - **Discover & crawl**: Firecrawl-first for `health_advice` (no Google News for Topics-only Discover); health-biased queries in [`src/content/crawler.py`](src/content/crawler.py); phrase ranking in [`src/content/topic_discovery.py`](src/content/topic_discovery.py); [`video_format_writes_topic_research_pack()`](src/content/topics.py) gates **`data/topic_research/<mode>/`** writes and digest ([`src/content/topic_research_assets.py`](src/content/topic_research_assets.py)); [`TopicDiscoverWorker`](UI/workers/impl.py).
