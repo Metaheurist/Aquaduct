@@ -16,15 +16,20 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
+from src.content.topics import discover_uses_headline_sources, normalize_video_format
 from src.core.config import VIDEO_FORMATS
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 
 
-def _is_creative_topics_mode(topic_mode: str | None) -> bool:
-    return video_format_is_creative_topics_mode(str(topic_mode or "news"))
+def _is_health_topics_mode(topic_mode: str | None) -> bool:
+    return normalize_video_format(str(topic_mode or "news")) == "health_advice"
+
+
+def _is_web_firecrawl_discover_mode(topic_mode: str | None) -> bool:
+    """Headline RSS discover vs Firecrawl-first (creative + health_advice)."""
+    return not discover_uses_headline_sources(str(topic_mode or "news"))
 
 
 def _pick_topics_dialog(
@@ -34,20 +39,39 @@ def _pick_topics_dialog(
     topic_mode: str = "news",
     firecrawl_ready: bool = True,
 ) -> list[str]:
-    creative = _is_creative_topics_mode(topic_mode)
+    web_fc = _is_web_firecrawl_discover_mode(topic_mode)
+    health = _is_health_topics_mode(topic_mode)
     win_title = (
-        "Discover: approve creative seeds"
-        if creative
+        "Discover: approve wellness topic ideas"
+        if health
+        else "Discover: approve creative seeds"
+        if web_fc
         else "Discover: approve topic ideas (news)"
     )
     d = FramelessDialog(parent, title=win_title)
     d.setMinimumSize(720, 520)
 
-    header = QLabel("Creative seeds from the web" if creative else "Topic ideas from headlines")
+    header = QLabel(
+        "Wellness topics from the web"
+        if health
+        else "Creative seeds from the web"
+        if web_fc
+        else "Topic ideas from headlines"
+    )
     header.setStyleSheet("font-size: 14px; font-weight: 700;")
     d.body_layout.addWidget(header)
 
-    if creative:
+    if health:
+        sub = QLabel(
+            "Phrases are parsed from page titles Firecrawl found while searching for wellness tips, healthy habits, "
+            "and general health-education pages (not Google News headlines). "
+            + (
+                "Enable Firecrawl on the API tab with a key for reliable results."
+                if not firecrawl_ready
+                else "Nothing is added until you click Add selected."
+            )
+        )
+    elif web_fc:
         sub = QLabel(
             "Phrases are parsed from page titles Firecrawl found while searching for jokes, memes, short stories, "
             "horror fiction, art, and fandom threads (not Google News headlines). "
@@ -112,11 +136,34 @@ def _no_topics_dialog(
     topic_mode: str = "news",
     firecrawl_ready: bool = True,
 ) -> None:
-    creative = _is_creative_topics_mode(topic_mode)
-    win_title = "Discover: creative seeds" if creative else "Discover: topic ideas"
+    web_fc = _is_web_firecrawl_discover_mode(topic_mode)
+    health = _is_health_topics_mode(topic_mode)
+    win_title = (
+        "Discover: wellness topics"
+        if health
+        else "Discover: creative seeds"
+        if web_fc
+        else "Discover: topic ideas"
+    )
     d = FramelessDialog(parent, title=win_title)
     d.setMinimumSize(520, 260)
-    if creative:
+    if health:
+        header = QLabel("No wellness topics yet")
+        header.setStyleSheet("font-size: 14px; font-weight: 700;")
+        d.body_layout.addWidget(header)
+        if not firecrawl_ready:
+            sub = QLabel(
+                "Health advice mode uses Firecrawl to search the open web for wellness and health-education pages, "
+                "then suggests topic phrases from titles.\n\n"
+                "Turn on Firecrawl on the API tab and add your API key (or set the FIRECRAWL_API_KEY "
+                "environment variable), then try Discover again."
+            )
+        else:
+            sub = QLabel(
+                "Firecrawl did not return enough pages to extract phrases from. "
+                "Add a few topic tags above to steer the search, try again in a minute, or check your API quota."
+            )
+    elif web_fc:
         header = QLabel("No creative seeds yet")
         header.setStyleSheet("font-size: 14px; font-weight: 700;")
         d.body_layout.addWidget(header)
@@ -178,6 +225,7 @@ def attach_topics_tab(win) -> None:
     win.topics_mode_combo.addItem("Explainer", "explainer")
     win.topics_mode_combo.addItem("Cartoon (unhinged)", "unhinged")
     win.topics_mode_combo.addItem("Creepypasta", "creepypasta")
+    win.topics_mode_combo.addItem("Health advice", "health_advice")
     tm = str(getattr(win.settings, "video_format", "news") or "news")
     if tm not in VIDEO_FORMATS:
         tm = "news"
@@ -189,7 +237,7 @@ def attach_topics_tab(win) -> None:
     win.topics_mode_combo.setToolTip(
         help_tooltip_rich(
             "Separate lists per source mode (same as Run). Photo mode: tags still steer prompts. "
-            "News/Explainer Discover: headline ideas. Cartoon / Unhinged / Creepypasta: Firecrawl web pages. "
+            "News/Explainer Discover: headline ideas. Cartoon / Unhinged / Creepypasta / Health advice: Firecrawl web pages. "
             "Approved lines are added to this list.",
             "topics_chars",
             slide=1,
@@ -214,8 +262,8 @@ def attach_topics_tab(win) -> None:
     win.discover_btn = QPushButton("Discover")
     win.discover_btn.setToolTip(
         help_tooltip_rich(
-            "News/Explainer: headline ideas from your tags. Cartoon/Unhinged: Firecrawl searches for memes, jokes, "
-            "stories, and image-heavy pages, then suggests tags from titles. Requires Firecrawl on the API tab.",
+            "News/Explainer: headline ideas from your tags. Cartoon/Unhinged/Creepypasta: memes and stories from the web. "
+            "Health advice: wellness and health-education pages. All web modes need Firecrawl on the API tab.",
             "topics_chars",
             slide=1,
         )

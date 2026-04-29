@@ -63,6 +63,7 @@ def attach_run_tab(win) -> None:
     win.video_format_combo.addItem("Explainer", "explainer")
     win.video_format_combo.addItem("Cartoon (unhinged)", "unhinged")
     win.video_format_combo.addItem("Creepypasta (web horror)", "creepypasta")
+    win.video_format_combo.addItem("Health advice (wellness tips)", "health_advice")
     cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
     if cur_vf not in VIDEO_FORMATS:
         cur_vf = "news"

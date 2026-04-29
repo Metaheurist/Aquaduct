@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Health advice video format + **Realism** art style
+- **Pipeline format** [`health_advice`](src/core/config.py): clinician-voiced wellness education scripts ([`src/content/brain.py`](src/content/brain.py) `_prompt_for_health_advice_items`, safety blocks, `_article_prompt_block` / `_vf_hint`); ephemeral / fallback **doctor or nurse** cast ([`src/content/characters_store.py`](src/content/characters_store.py)); multi-stage refinement ([`src/content/story_pipeline.py`](src/content/story_pipeline.py)); **Key facts** card enabled like news/explainer ([`video_format_supports_facts_card`](src/core/config.py)); diffusion cues ([`src/content/prompt_conditioning.py`](src/content/prompt_conditioning.py)).
+- **Discover & crawl**: Firecrawl-first for `health_advice` (no Google News for Topics-only Discover); health-biased queries in [`src/content/crawler.py`](src/content/crawler.py); phrase ranking in [`src/content/topic_discovery.py`](src/content/topic_discovery.py); [`video_format_writes_topic_research_pack()`](src/content/topics.py) gates **`data/topic_research/<mode>/`** writes and digest ([`src/content/topic_research_assets.py`](src/content/topic_research_assets.py)); [`TopicDiscoverWorker`](UI/workers/impl.py).
+- **Story web context** ([`src/content/story_context.py`](src/content/story_context.py)): `health_advice` uses richer scrape budget + wellness supplement searches like creative modes.
+- **Resolution in script LLM context**: [`main.py`](main.py) and [`UI/workers/impl.py`](UI/workers/impl.py) prepend **width×height** (and portrait/landscape hint) into the script supplement for `health_advice`.
+- **UI**: Run tab **Health advice (wellness tips)**; Topics mode + Discover copy for health ([`UI/tabs/run_tab.py`](UI/tabs/run_tab.py), [`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py), [`UI/main_window.py`](UI/main_window.py)). Pro img→vid tip includes `health_advice` ([`main.py`](main.py)).
+- **Art style**: **Realism mode** preset `realism` ([`src/settings/art_style_presets.py`](src/settings/art_style_presets.py)) — photoreal / editorial stills bias, distinct from **Documentary real** (`docu_real`).
+- **Tests**: [`tests/cli/test_config_and_settings.py`](tests/cli/test_config_and_settings.py), [`tests/content/test_story_context.py`](tests/content/test_story_context.py), [`tests/content/test_crawler_health_queries.py`](tests/content/test_crawler_health_queries.py).
+- **Docs**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/pipeline/editor.md`](docs/pipeline/editor.md), [`docs/integrations/crawler.md`](docs/integrations/crawler.md), [`README.md`](README.md).
+
 ### Docs / UI: local T2V stalls during **Loading weights**
 - **Docs** ([`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md)): troubleshooting when loading frontier T2V checkpoints fails or the process exits mid-load (VRAM, **CPU offload**, lighter model, GPU policy).
 - **UI** ([`UI/workers/impl.py`](UI/workers/impl.py)): CUDA OOM–style errors from pipeline/preview/storyboard workers append a short recovery hint.

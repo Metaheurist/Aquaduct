@@ -154,6 +154,13 @@ def _default_headline_query(mode: str | None) -> str:
             "\"two sentence horror\" OR \"horror fiction\" OR \"ghost story\" OR liminal OR paranormal OR unsettling) "
             "(reddit OR creepypasta OR wattpad OR quotev OR tumblr OR blog OR forum OR story)"
         )
+    if m == "health_advice":
+        return (
+            "(\"wellness tips\" OR \"healthy habits\" OR \"sleep hygiene\" OR nutrition OR exercise OR "
+            "\"mental health\" OR mindfulness OR hydration OR stretching OR \"heart health\" OR diabetes OR "
+            "\"blood pressure\" OR \"immune system\" OR \"public health\" OR \"health education\") "
+            "(tips OR guide OR overview OR explained OR \"what to know\" OR evidence OR research)"
+        )
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
 
@@ -199,21 +206,38 @@ def _effective_query(
                 f"(creepypasta OR horror OR scary OR paranormal OR unsettling OR liminal OR \"short story\" OR nosleep OR "
                 f"\"urban legend\" OR \"ghost story\")"
             )
+        if mode == "health_advice":
+            return (
+                f"({tag_expr}) "
+                f"(wellness OR health OR nutrition OR sleep OR exercise OR mental OR symptoms OR prevention OR "
+                f"\"healthy lifestyle\" OR \"what is\" OR explained OR tips OR overview)"
+            )
         return f"({tag_expr}) {_default_headline_query(mode)}"
     return _default_headline_query(mode)
 
 
 def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[str] | None) -> list[str]:
-    """Alternate search strings when the primary creative query under-fills (cartoon / unhinged / creepypasta)."""
+    """Alternate search strings when the primary query under-fills (creative modes + health_advice)."""
     m = _cache_mode_key(topic_mode)
-    if m not in ("cartoon", "unhinged", "creepypasta"):
+    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice"):
         return []
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     tag_prefix = ""
     if tags:
         tag_expr = " OR ".join(f'"{t}"' for t in tags[:8])
         tag_prefix = f"({tag_expr}) "
-    if m == "cartoon":
+    if m == "health_advice":
+        rest = [
+            "(\"evidence based\" OR \"peer reviewed\" OR \"healthline\" OR \"mayo clinic\" OR nih OR cdc OR who) "
+            "(wellness OR nutrition OR sleep OR exercise OR prevention OR overview OR explained)",
+            "(\"healthy eating\" OR mediterranean OR fiber OR protein OR hydration OR vitamins OR minerals) "
+            "(tips OR benefits OR guide OR science)",
+            "(stress OR anxiety OR mindfulness OR meditation OR \"mental wellness\" OR burnout) "
+            "(coping OR strategies OR self-care OR overview OR tips)",
+            "(\"heart disease\" OR diabetes OR hypertension OR cholesterol OR \"public health\") "
+            "(prevention OR risk OR lifestyle OR explained OR overview)",
+        ]
+    elif m == "cartoon":
         rest = [
             "(webcomic OR tapas OR webtoon OR newgrounds OR artstation) (cartoon OR animation OR comedy OR funny OR meme)",
             "(\"animated short\" OR animatic OR \"2D cartoon\" OR \"cartoon clip\") (comedy OR parody OR meme OR absurdist)",

@@ -63,7 +63,7 @@ from src.models.model_integrity_cache import (
     save_integrity_cache,
 )
 from src.content.crawler import clear_news_seen_cache_files
-from src.content.topics import normalize_video_format, video_format_is_creative_topics_mode
+from src.content.topics import normalize_video_format, video_format_writes_topic_research_pack
 from src.util.fs_delete import rmtree_robust, unlink_file
 from src.models.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
 from src.runtime.preflight import PreflightResult, preflight_check
@@ -1132,6 +1132,12 @@ class MainWindow(QMainWindow):
                 f'Discover: fetch headline-style ideas using your "{mode}" tag list; '
                 "approved phrases are added to this list."
             )
+        elif mode == "health_advice":
+            tip = (
+                'Discover: Firecrawl searches for wellness and health-education pages '
+                '(using your "health_advice" tags when set) and suggests topic phrases from titles — '
+                "enable Firecrawl on the API tab with a key."
+            )
         else:
             tip = (
                 f'Discover: Firecrawl searches the open web for creative seeds '
@@ -1246,7 +1252,7 @@ class MainWindow(QMainWindow):
         self._sync_tags_to_ui()
         self._save_settings()
         self._append_log(f"Added {added} topic tag(s) to {key}.")
-        if video_format_is_creative_topics_mode(dm):
+        if video_format_writes_topic_research_pack(dm):
             pack_dir = self.paths.data_dir / "topic_research" / dm
             if (pack_dir / "manifest.json").exists():
                 self._append_log(f"Topic research folder (manifest + reference images): {pack_dir}")

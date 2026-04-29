@@ -41,6 +41,16 @@ def test_meme_supplement_only_creative_formats():
     cp = _meme_supplement_searches(video_format="creepypasta", topic_tags=[], source_titles=[])
     assert len(cp) == 2
     assert any("liminal" in x.lower() or "horror" in x.lower() or "fog" in x.lower() for x in cp)
+    ha = _meme_supplement_searches(video_format="health_advice", topic_tags=["sleep"], source_titles=[])
+    assert len(ha) == 2
+    assert any("wellness" in x.lower() or "stress" in x.lower() or "healthy" in x.lower() for x in ha)
+
+
+def test_search_query_health_advice_biases_wellness():
+    q = _search_query(["hydration"], ["Daily water goal"], video_format="health_advice")
+    ql = q.lower()
+    assert "hydration" in ql
+    assert "wellness" in ql or "nutrition" in ql or "sleep" in ql or "exercise" in ql or "mental" in ql
 
 
 def test_build_script_context_cartoon_calls_extra_searches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -96,6 +106,33 @@ def test_build_script_context_creepypasta_calls_extra_searches(monkeypatch: pyte
         video_format="creepypasta",
     )
     assert "Horror / atmosphere supplement" in digest
+    assert len(calls) >= 3
+
+
+def test_build_script_context_health_calls_extra_searches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    calls: list[str] = []
+
+    def fake_search(q: str, *, limit: int, api_key: str):
+        calls.append(q)
+        return [{"title": "W", "url": f"https://ex.com/{len(calls)}", "source": "x"}]
+
+    def fake_scrape(url: str, *, api_key: str, timeout_s: int = 60):
+        return "body\n"
+
+    monkeypatch.setattr("src.content.story_context.firecrawl_search_news", fake_search)
+    monkeypatch.setattr("src.content.story_context.firecrawl_scrape_markdown", fake_scrape)
+
+    digest, _paths, _primary, _notes = build_script_context(
+        topic_tags=["fiber"],
+        source_titles=["seed"],
+        stored_firecrawl_key="k",
+        firecrawl_enabled=True,
+        want_web=True,
+        want_refs=False,
+        out_dir=tmp_path,
+        video_format="health_advice",
+    )
+    assert "Wellness / education supplement" in digest
     assert len(calls) >= 3
 
 

@@ -6,7 +6,7 @@ Assemble a final vertical (9:16) MP4 by:
 - **Pro mode (slideshow + Pro, legacy)**: concatenating **one generated still per output frame** at **`VideoSettings.fps`** for a fixed **`pro_clip_seconds`** timeline, then the same caption / watermark / music composite ([`assemble_pro_frame_sequence_then_concat`](../../src/render/editor.py) in [`src/render/editor.py`](../../src/render/editor.py)).
 - **Motion mode** (`use_image_slideshow=False`): generated **scene** segments from keyframe images + the selected **Video** model ([`assemble_generated_clips_then_concat`](../../src/render/editor.py)). **Pro** with slideshow off uses the same assembly after **text-to-video** segments are produced in [`main.py`](../../main.py).
 
-Key facts card: only when **Video format** is **News** or **Explainer**; Cartoon / Unhinged skip it even if enabled in Captions settings.
+Key facts card: when **Video format** is **News**, **Explainer**, or **Health advice**; Cartoon, Unhinged, and Creepypasta skip it even if enabled in Captions settings.
 
 ## FFmpeg
 MoviePy requires FFmpeg for encoding. The project auto-downloads a Windows build to:

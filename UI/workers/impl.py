@@ -29,7 +29,7 @@ from src.content.topics import (
     effective_topic_tags,
     news_cache_mode_for_run,
     topic_tags_for_mode,
-    video_format_is_creative_topics_mode,
+    video_format_writes_topic_research_pack,
     video_format_skips_seen_url_disk_cache,
 )
 from src.content.topic_discovery import discover_topics_from_items
@@ -252,7 +252,7 @@ class TopicDiscoverWorker(QThread):
                 **_firecrawl_kwargs(app),
             )
             topics = discover_topics_from_items(items, limit=40, topic_mode=self.topic_mode)
-            if video_format_is_creative_topics_mode(self.topic_mode) and items:
+            if video_format_writes_topic_research_pack(self.topic_mode) and items:
                 try:
                     pack = write_topic_research_pack(
                         items=items,
@@ -1207,6 +1207,16 @@ class StoryboardWorker(QThread):
                         extra_markdown=extra_md,
                         video_format=vf,
                     )
+                if str(vf).strip().lower() == "health_advice":
+                    vid = getattr(app, "video", None)
+                    w = int(getattr(vid, "width", 1080) or 1080) if vid is not None else 1080
+                    h = int(getattr(vid, "height", 1920) or 1920) if vid is not None else 1920
+                    orient = "portrait (9:16 typical)" if h >= w else "landscape (16:9 typical)"
+                    res_block = (
+                        f"## Video export target\nFrame size: **{w}×{h}** pixels ({orient}). "
+                        "Compose each `visual_prompt` for this output frame shape.\n\n"
+                    )
+                    script_digest = res_block + (script_digest or "").strip()
 
                 expanded = _expand_brief_unified(
                     app=app,
@@ -1384,6 +1394,16 @@ class StoryboardWorker(QThread):
                         extra_markdown=extra_md,
                         video_format=vf,
                     )
+                if str(vf).strip().lower() == "health_advice":
+                    vid = getattr(app, "video", None)
+                    w = int(getattr(vid, "width", 1080) or 1080) if vid is not None else 1080
+                    h = int(getattr(vid, "height", 1920) or 1920) if vid is not None else 1920
+                    orient = "portrait (9:16 typical)" if h >= w else "landscape (16:9 typical)"
+                    res_block = (
+                        f"## Video export target\nFrame size: **{w}×{h}** pixels ({orient}). "
+                        "Compose each `visual_prompt` for this output frame shape.\n\n"
+                    )
+                    script_digest = res_block + (script_digest or "").strip()
 
                 pkg = _generate_script_unified(
                     app=app,

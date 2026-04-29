@@ -61,7 +61,7 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
 - Voice: `hexgrad/Kokoro-82M`
 
 ## Video format vs facts card
-[`video_format_supports_facts_card()`](../../src/core/config.py) is **True** only for `news` and `explainer`. The **Key facts** overlay uses the article fetch path; **Cartoon** / **Unhinged** runs do not show the card even if `facts_card_enabled` is on.
+[`video_format_supports_facts_card()`](../../src/core/config.py) is **True** for **`news`**, **`explainer`**, and **`health_advice`**. The **Key facts** overlay uses the article fetch path; **Cartoon**, **Unhinged**, and **Creepypasta** runs do not show the card even if `facts_card_enabled` is on.
 
 ## Video settings
 `VideoSettings` defaults:
@@ -82,7 +82,7 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
   - `resource_graph_monitor_gpu_index`: optional int — last **Resource graph** “Monitor GPU” selection (`None` = default to device **0** when opening the graph).
 - `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](../ui/ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](../ui/ui.md))
-- `video_format`: `news` | `cartoon` | `explainer` (drives which tag list applies to a run)
+- `video_format`: `news` | `cartoon` | `explainer` | `unhinged` | `creepypasta` | `health_advice` (drives which tag list applies to a run; see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
 - `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in [`src/core/config.py`](../../src/core/config.py))
 - `topic_tags_by_mode`: per-format tag lists (bias crawling + scripting for the active format); use [`src/content/topics.py`](../../src/content/topics.py) `effective_topic_tags()` for the current format

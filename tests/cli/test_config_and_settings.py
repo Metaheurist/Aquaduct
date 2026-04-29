@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from src.core.config import AppSettings, VideoSettings
+from src.core.config import AppSettings, VideoSettings, video_format_supports_facts_card
 from src.content.topics import (
+    discover_uses_headline_sources,
     effective_topic_tags,
     news_cache_mode_for_run,
     normalize_video_format,
     video_format_is_creative_topics_mode,
     video_format_skips_seen_url_disk_cache,
     video_format_uses_news_style_sourcing,
+    video_format_writes_topic_research_pack,
 )
 from src.settings.ui_settings import load_settings, save_settings
 
@@ -174,6 +176,21 @@ def test_video_format_uses_news_style_sourcing_only_news_and_explainer():
     assert video_format_uses_news_style_sourcing("cartoon") is False
     assert video_format_uses_news_style_sourcing("unhinged") is False
     assert video_format_uses_news_style_sourcing("creepypasta") is False
+    assert video_format_uses_news_style_sourcing("health_advice") is False
+
+
+def test_discover_uses_headline_sources_health_is_firecrawl_first():
+    assert discover_uses_headline_sources("health_advice") is False
+
+
+def test_video_format_writes_topic_research_pack_includes_health():
+    assert video_format_writes_topic_research_pack("health_advice") is True
+    assert video_format_writes_topic_research_pack("news") is False
+
+
+def test_video_format_supports_facts_card_health():
+    assert video_format_supports_facts_card("health_advice") is True
+    assert video_format_supports_facts_card("cartoon") is False
 
 
 def test_news_cache_mode_for_run_matches_video_format():
@@ -182,6 +199,7 @@ def test_news_cache_mode_for_run_matches_video_format():
     assert news_cache_mode_for_run(AppSettings(video_format="explainer")) == "explainer"
     assert news_cache_mode_for_run(AppSettings(video_format="unhinged")) == "unhinged"
     assert news_cache_mode_for_run(AppSettings(video_format="creepypasta")) == "creepypasta"
+    assert news_cache_mode_for_run(AppSettings(video_format="health_advice")) == "health_advice"
 
 
 def test_news_cache_mode_for_run_unknown_defaults_to_news():
@@ -200,11 +218,18 @@ def test_normalize_video_format_creepypasta():
     assert normalize_video_format("creepypasta") == "creepypasta"
 
 
+def test_normalize_video_format_health_advice():
+    assert normalize_video_format("HEALTH_ADVICE") == "health_advice"
+    assert normalize_video_format("health_advice") == "health_advice"
+
+
 def test_video_format_pipeline_helpers_creepypasta():
     assert video_format_skips_seen_url_disk_cache("creepypasta") is True
     assert video_format_skips_seen_url_disk_cache("unhinged") is True
     assert video_format_skips_seen_url_disk_cache("news") is False
+    assert video_format_skips_seen_url_disk_cache("health_advice") is False
     assert video_format_is_creative_topics_mode("creepypasta") is True
+    assert video_format_is_creative_topics_mode("health_advice") is False
 
 
 def test_save_settings_calls_mark_hidden(tmp_repo_root, monkeypatch):

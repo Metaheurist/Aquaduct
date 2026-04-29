@@ -111,12 +111,61 @@ _CREEPYPASTA_BOOST_TERMS = (
     "eerie",
 )
 
+_HEALTH_BOOST_TERMS = (
+    "wellness",
+    "health",
+    "nutrition",
+    "sleep",
+    "exercise",
+    "mental",
+    "heart",
+    "diabetes",
+    "blood",
+    "stress",
+    "anxiety",
+    "meditation",
+    "hydration",
+    "immune",
+    "vitamin",
+    "protein",
+    "yoga",
+    "stretch",
+    "walking",
+    "diet",
+    "prevention",
+    "symptom",
+    "therapy",
+    "burnout",
+    "mindfulness",
+)
+
+_HEALTH_SINGLE_JUNK = frozenset(
+    {
+        "youtube",
+        "tiktok",
+        "instagram",
+        "facebook",
+        "twitter",
+        "reddit",
+        "watch",
+        "channel",
+        "video",
+        "blog",
+        "news",
+    }
+)
+
+_WEB_TOPIC_MODES = frozenset({"cartoon", "unhinged", "creepypasta", "health_advice"})
+
 
 def _creative_topic_boost(s: str, topic_mode: str | None) -> int:
     m = normalize_video_format(topic_mode or "news")
     if m == "creepypasta":
         sl = s.lower()
         return sum(2 for w in _CREEPYPASTA_BOOST_TERMS if w in sl)
+    if m == "health_advice":
+        sl = s.lower()
+        return sum(2 for w in _HEALTH_BOOST_TERMS if w in sl)
     if m not in ("cartoon", "unhinged"):
         return 0
     sl = s.lower()
@@ -125,19 +174,55 @@ def _creative_topic_boost(s: str, topic_mode: str | None) -> int:
 
 def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
     m = normalize_video_format(topic_mode or "news")
-    if m not in ("cartoon", "unhinged", "creepypasta"):
+    if m not in _WEB_TOPIC_MODES:
         return False
     t = " ".join(s.split()).strip()
     if not t:
         return True
     sl = t.lower()
-    if _LISTICLE_OR_CLICKBAIT.search(sl):
+    if m == "health_advice":
+        if re.search(
+            r"\b(casino|poker|viagra|cialis|forex|crypto airdrop|nft|slots|jackpot)\b",
+            sl,
+        ):
+            return True
+        if _LISTICLE_OR_CLICKBAIT.search(sl) and not any(
+            k in sl
+            for k in (
+                "health",
+                "wellness",
+                "sleep",
+                "diet",
+                "nutrition",
+                "exercise",
+                "mental",
+                "heart",
+                "diabetes",
+                "stress",
+                "weight",
+                "skin",
+                "gut",
+            )
+        ):
+            return True
+    elif _LISTICLE_OR_CLICKBAIT.search(sl):
         return True
     if "photos and videos" in sl or "instagram photos" in sl:
         return True
     words = t.split()
-    if len(words) == 1 and words[0].lower() in _CREATIVE_SINGLE_JUNK:
-        return True
+    if len(words) == 1:
+        w0 = words[0].lower()
+        if m == "health_advice" and w0 in _HEALTH_SINGLE_JUNK:
+            return True
+        if m != "health_advice" and w0 in _CREATIVE_SINGLE_JUNK:
+            return True
+    if m == "health_advice":
+        health_ok = any(k in sl for k in _HEALTH_BOOST_TERMS) or any(
+            k in sl for k in ("doctor", "nurse", "clinic", "hospital", "patient", "medical", "study", "research")
+        )
+        if re.search(r"\b(youtube|tiktok|instagram|facebook)\b", sl) and not health_ok:
+            return True
+        return False
     if m == "creepypasta":
         horror_ok = any(
             k in sl
@@ -170,10 +255,30 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
 
 def _title_too_generic_for_creative(title: str, topic_mode: str | None) -> bool:
     m = normalize_video_format(topic_mode or "news")
-    if m not in ("cartoon", "unhinged", "creepypasta"):
+    if m not in _WEB_TOPIC_MODES:
         return False
     sl = (title or "").lower()
-    if _LISTICLE_OR_CLICKBAIT.search(sl):
+    if m == "health_advice":
+        if _LISTICLE_OR_CLICKBAIT.search(sl) and not any(
+            k in sl
+            for k in (
+                "health",
+                "wellness",
+                "sleep",
+                "diet",
+                "nutrition",
+                "exercise",
+                "mental",
+                "heart",
+                "diabetes",
+                "stress",
+                "weight",
+                "skin",
+                "gut",
+            )
+        ):
+            return True
+    elif _LISTICLE_OR_CLICKBAIT.search(sl):
         return True
     if "photos and videos" in sl or "instagram photos" in sl:
         return True
@@ -258,7 +363,7 @@ def _fallback_topics_from_titles(
         out.append(t)
         if len(out) >= max(1, int(limit)):
             break
-    if not out and items and normalize_video_format(topic_mode or "news") in ("cartoon", "unhinged", "creepypasta"):
+    if not out and items and normalize_video_format(topic_mode or "news") in _WEB_TOPIC_MODES:
         # Last resort: still show something if everything was filtered.
         seen2: set[str] = set()
         for it in items:

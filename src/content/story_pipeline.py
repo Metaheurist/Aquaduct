@@ -115,6 +115,52 @@ def _prompt_news_clarity(pkg: VideoPackage, web_digest: str, reference_notes: st
     )
 
 
+def _prompt_health_beats(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    arc = (
+        "Enforce a clear wellness-education arc: caring hook → context → concrete tips or general condition facts → "
+        "when to seek professional care → CTA with disclaimer in clinician voice.\n"
+        "Educational tone only — not personal medical advice.\n"
+    )
+    return (
+        f"You revise short-form HEALTH / WELLNESS education vertical scripts (video_format={vf!r}).\n"
+        f"{arc}"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Current script JSON (rewrite completely if needed, preserve educational intent):\n"
+        f"{body}\n"
+    )
+
+
+def _prompt_health_policy(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    return (
+        "You are a medical-safety and quality editor for wellness education shorts.\n"
+        "Remove or rephrase: personal diagnosis of the viewer, medication start/stop/change instructions, dosing, "
+        "graphic injury or procedure detail, fear-mongering, miracle-cure claims.\n"
+        "Add hedging where claims are uncertain. Keep clinician-in-character delivery. Do not add new clinical specifics beyond sources.\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Script JSON:\n"
+        f"{body}\n"
+    )
+
+
+def _prompt_health_clarity(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    return (
+        "Tighten clinician lines for teleprompter/TTS: shorter sentences, warm clear emphasis, no stage directions in narration.\n"
+        "Keep visual_prompt concrete (teaching moment, diagram, calm clinical setting, one action, 9:16) — no gore, no readable long text.\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Script JSON:\n"
+        f"{body}\n"
+    )
+
+
 def _prompt_creepypasta_beats(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
     body = package_to_json_text(pkg)
     ctx = _ctx_block(web_digest, reference_notes)
@@ -243,6 +289,13 @@ def _stages_for_format(vf: str) -> tuple[_StageSpec, ...]:
             _StageSpec("policy", "Safety & hedging", "llm_full_json", _prompt_news_policy),
             _StageSpec("elaboration", "Length & elaboration", "elaboration_gate", None),
             _StageSpec("clarity", "Clarity & TTS", "llm_full_json", _prompt_news_clarity),
+        )
+    if v == "health_advice":
+        return (
+            _StageSpec("beat_structure", "Wellness arc & education", "llm_full_json", _prompt_health_beats),
+            _StageSpec("policy", "Medical safety & hedging", "llm_full_json", _prompt_health_policy),
+            _StageSpec("elaboration", "Length & elaboration", "elaboration_gate", None),
+            _StageSpec("clarity", "Clarity & TTS", "llm_full_json", _prompt_health_clarity),
         )
     if v == "cartoon":
         return (
