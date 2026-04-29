@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from typing import Callable, TypeVar
 
@@ -101,6 +102,55 @@ def pick_next_gpu_index_after_oom(
     return None
 
 
+def gpu_mem_used_fraction(device_index: int | None) -> float | None:
+    """
+    Fraction of total VRAM used on ``device_index`` (0.0–1.0), via ``torch.cuda.mem_get_info``.
+    Returns ``None`` when CUDA is unavailable, ``device_index`` is ``None``, or the query fails.
+    """
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        if device_index is None:
+            return None
+        ix = int(device_index)
+        if ix < 0 or ix >= int(torch.cuda.device_count()):
+            return None
+        free_b, total_b = torch.cuda.mem_get_info(ix)
+        total_b = float(total_b)
+        if total_b <= 0:
+            return None
+        used_b = total_b - float(free_b)
+        return max(0.0, min(1.0, used_b / total_b))
+    except Exception:
+        return None
+
+
+def preempt_used_frac_threshold() -> float:
+    """Env ``AQUADUCT_VRAM_PREEMPT_USED_FRAC`` (default ``0.99``): preempt when used/total ≥ this."""
+    raw = os.environ.get("AQUADUCT_VRAM_PREEMPT_USED_FRAC", "0.99").strip()
+    try:
+        v = float(raw)
+        return max(0.50, min(0.9999, v))
+    except ValueError:
+        return 0.99
+
+
+def pick_relief_gpu_index(*, current_index: int | None, gpus: list[GpuDevice]) -> int | None:
+    """
+    Prefer a larger-VRAM GPU (then equal-VRAM peer), excluding ``current_index``, without tracking OOM failures.
+
+    Same ranking as ``pick_next_gpu_index_after_oom`` but uses a fresh ``failed_indices`` set so preempt moves stay independent of OOM bookkeeping.
+    """
+    failed: set[int] = set()
+    return pick_next_gpu_index_after_oom(
+        current_index=current_index,
+        failed_indices=failed,
+        gpus=gpus,
+    )
+
+
 def higher_vram_gpu_index(*, current_index: int | None, gpus: list[GpuDevice]) -> int | None:
     """
     Returns the index of a GPU with strictly higher VRAM than the current device.
@@ -161,10 +211,14 @@ def retry_stage(
     clear_cb: Callable[[], None],
     run_cb: Callable[[AppSettings, int | None], T],
     max_quant_downgrades: int = 5,
+    preempt_high_vram: bool = True,
 ) -> tuple[T, AppSettings, int | None]:
     """
     Generic retry controller:
     - first attempt: run_cb(settings, cuda_device_index)
+    - optional **preempt** (when ``preempt_high_vram``): if device VRAM use ≥ threshold (default 99%, env
+      ``AQUADUCT_VRAM_PREEMPT_USED_FRAC``), ``clear_cb()`` then re-check; if still high, switch to a larger /
+      equal-VRAM GPU if listed, else lower quant once — **before** running ``run_cb``, to reduce OOM risk.
     - on OOM: try another CUDA device with **more** or **equal** VRAM (never a smaller card), then
     - downgrade quant one step at a time (``max_quant_downgrades``), clearing VRAM between tries.
 
@@ -176,6 +230,47 @@ def retry_stage(
     cur_idx = cuda_device_index
 
     while True:
+        if preempt_high_vram:
+            thr = preempt_used_frac_threshold()
+            frac = gpu_mem_used_fraction(cur_idx)
+            if frac is not None and frac >= thr:
+                clear_cb()
+                frac = gpu_mem_used_fraction(cur_idx)
+            if frac is not None and frac >= thr:
+                alt = pick_relief_gpu_index(current_index=cur_idx, gpus=gpus)
+                if alt is not None and (cur_idx is None or int(alt) != int(cur_idx)):
+                    try:
+                        from debug import pipeline_console
+
+                        pipeline_console(
+                            f"VRAM nearly full (~{100.0 * frac:.1f}% used on cuda={cur_idx!r}) before "
+                            f"{stage_name!r} — moving work to larger/equal VRAM GPU → cuda={alt!r}",
+                            stage=stage_name,
+                        )
+                    except Exception:
+                        pass
+                    clear_cb()
+                    cur_idx = int(alt)
+                    continue
+                if quant_steps < max_quant_downgrades:
+                    new_mode = next_lower_quant_mode(role=role, repo_id=repo_id, settings=cur_settings)
+                    if new_mode is not None:
+                        try:
+                            from debug import pipeline_console
+
+                            pipeline_console(
+                                f"VRAM nearly full (~{100.0 * frac:.1f}% used) before {stage_name!r} — "
+                                f"preemptively lowering {role} quant → {new_mode!r} "
+                                f"(step {quant_steps + 1}/{max_quant_downgrades})",
+                                stage=stage_name,
+                            )
+                        except Exception:
+                            pass
+                        clear_cb()
+                        cur_settings = with_lowered_quant(role=role, new_mode=new_mode, settings=cur_settings)
+                        quant_steps += 1
+                        continue
+
         try:
             out = run_cb(cur_settings, cur_idx)
             return out, cur_settings, cur_idx

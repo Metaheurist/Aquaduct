@@ -27,6 +27,8 @@ Local diffusers pipelines use [`src/util/diffusion_placement.py`](../../src/util
 
 PyTorch may suggest **`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** when the allocator reports large reserved-but-unallocated blocks; see [PyTorch CUDA memory notes](https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf).
 
+- **`AQUADUCT_VRAM_PREEMPT_USED_FRAC`** — optional threshold **0.50–0.9999** (default **0.99**). Used by [`retry_stage`](../../src/runtime/oom_retry.py): when **GPU VRAM used / total** on the stage’s CUDA ordinal is at or above this value after [`cleanup_vram`](../../src/util/utils_vram.py), the pipeline tries a **larger or equal‑VRAM** GPU from the detected list, then lowers quantization — **before** the heavy stage runs — to reduce load-time OOMs. See [Inference profiles — troubleshooting](inference_profiles.md#troubleshooting-run-stops-during-loading-weights).
+
 ## Local LLM inference (VRAM)
 When **`model_execution_mode`** is **`local`**, long article text plus instructions can tokenize to a very long prompt. Attention prefill scales with sequence length and can trigger **`CUDA out of memory`** on tight GPUs (for example ~8GB) even with 4-bit weights.
 
