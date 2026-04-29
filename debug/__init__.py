@@ -9,6 +9,8 @@ from .debug_log import (
     debug_enabled,
     dprint,
     invalidate_debug_cache,
+    log_pipeline_exception,
+    pipeline_console,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "debug_enabled",
     "dprint",
     "invalidate_debug_cache",
+    "log_pipeline_exception",
+    "pipeline_console",
 ]

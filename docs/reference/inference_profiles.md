@@ -47,7 +47,11 @@ Each per-role profile runs alongside the resolved **quantization mode** from [Qu
 ## Troubleshooting: run stops during “Loading weights”
 Frontier **text-to-video** checkpoints (for example **Wan 2.2 14B**) allocate a large contiguous GPU block during `diffusers` load. If the **video** row shows **`quant='bf16'`** (or **`fp16`**) and your **effective VRAM for video** is in the **8–12 GiB** range, loading can hit **CUDA out of memory**, or in rare cases the driver/process may exit without a clean Python traceback.
 
-Automatic mitigation (new): during local runs, Aquaduct may retry a failing stage by first switching to a **higher‑VRAM GPU** (if available) and then stepping the role’s **quant mode** down one notch at a time (e.g. `bf16 → fp16 → int8 → cpu_offload` for video). When a retry succeeds, the updated per‑role quant mode is saved into `ui_settings.json` so the next run starts from the working level.
+Automatic mitigation (runs [`retry_stage`](../../src/runtime/oom_retry.py) around diffusion-heavy steps): on a Python **`CUDA out of memory`** (and similar allocator errors), Aquaduct retries by switching to another CUDA device with **strictly more VRAM**, then — if needed — another device with **equal** VRAM (typical identical dual GPUs), then stepping the role’s **quant mode** down (`bf16 → fp16 → int8 → cpu_offload` for video). Frontier **video** stages allow extra downgrade steps (`max_quant_downgrades=8`). When a retry succeeds, the updated per‑role quant mode is saved into `ui_settings.json` so the next run starts from the working level.
+
+Always-on **`[Aquaduct][run]`** stderr lines from [`pipeline_console`](../../debug/debug_log.py) record coarse stages (`workspace`, `script_llm`, `video_t2v_load`, …); **`AQUADUCT_DEBUG`** categories still drive verbose [`dprint`](../../debug/debug_log.py) output.
+
+**Note:** On Windows a **native** GPU/driver fault may still exit Python with **`3221225477` (`0xC0000005` access violation)** — that is **not** catchable as a Python exception; use driver updates, lighter models, **`cpu_offload`**, or Event Viewer faulting-module hints.
 
 Mitigations:
 
