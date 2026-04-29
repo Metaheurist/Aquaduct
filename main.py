@@ -651,6 +651,17 @@ def run_once(
                 )
                 if (script_digest or "").strip():
                     _pipe_progress(on_progress, 16, -1, "Script web context gathered…")
+
+            if str(vf).strip().lower() == "health_advice":
+                vid = getattr(app, "video", None)
+                w = int(getattr(vid, "width", 1080) or 1080) if vid is not None else 1080
+                h = int(getattr(vid, "height", 1920) or 1920) if vid is not None else 1920
+                orient = "portrait (9:16 typical)" if h >= w else "landscape (16:9 typical)"
+                res_block = (
+                    f"## Video export target\nFrame size: **{w}×{h}** pixels ({orient}). "
+                    "Compose each `visual_prompt` for this output frame shape.\n\n"
+                )
+                script_digest = res_block + (script_digest or "").strip()
     
             def _maybe_multistage(p: VideoPackage) -> VideoPackage:
                 if not bool(getattr(video_settings, "story_multistage_enabled", False)):
@@ -1141,7 +1152,7 @@ def run_once(
             pro_img2vid = "stable-video-diffusion" in lowv or "img2vid" in lowv
             try:
                 vf_tip = str(getattr(app, "video_format", "news") or "news").strip().lower()
-                if vf_tip in ("cartoon", "unhinged", "creepypasta") and pro_img2vid:
+                if vf_tip in ("cartoon", "unhinged", "creepypasta", "health_advice") and pro_img2vid:
                     _pipe_progress(
                         on_progress,
                         64,

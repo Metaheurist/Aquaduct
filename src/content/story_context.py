@@ -2,7 +2,8 @@
 Optional web digest + reference image download for the script pipeline (Firecrawl).
 
 For **cartoon** and **unhinged**, search is biased toward memes / viral / templates. For **creepypasta**, toward
-horror fiction / atmospheric references. Extra Firecrawl supplement queries run for those modes so scraped pages
+horror fiction / atmospheric references. For **health_advice**, toward wellness and health-education pages.
+Extra Firecrawl supplement queries run for those modes so scraped pages
 yield richer reference images for diffusion.
 """
 
@@ -113,6 +114,18 @@ def _search_query(topic_tags: list[str], source_titles: list[str], video_format:
             "creepypasta atmospheric horror reference OR liminal space photography OR vintage horror illustration",
             240,
         )
+    if vf == "health_advice":
+        health_bias = (
+            "(wellness OR \"healthy habits\" OR nutrition OR sleep OR exercise OR \"mental health\" OR "
+            "\"public health\" OR prevention OR \"evidence based\" OR \"health education\") "
+            "(tips OR overview OR explained OR guide OR infographic)"
+        )
+        if base:
+            return _trim(f"{base} {health_bias}", 240)
+        return _trim(
+            "\"wellness tips\" OR \"healthy lifestyle\" OR \"sleep hygiene\" OR \"heart health\" OR diabetes prevention OR stress management OR mindfulness OR hydration OR stretching",
+            240,
+        )
     q = base
     return _trim(q, 240) or "breaking news today"
 
@@ -125,7 +138,7 @@ def _meme_supplement_searches(
 ) -> list[str]:
     """Extra Firecrawl queries for creative video formats to pull richer reference pages."""
     vf = normalize_video_format(video_format)
-    if vf not in ("cartoon", "unhinged", "creepypasta"):
+    if vf not in ("cartoon", "unhinged", "creepypasta", "health_advice"):
         return []
     tags = [t.strip() for t in topic_tags if str(t).strip()][:4]
     tag_expr = " OR ".join(f'"{t}"' for t in tags)
@@ -153,6 +166,20 @@ def _meme_supplement_searches(
             ),
             _trim(
                 "(vintage horror illustration OR unsettling silhouette art OR moonlit forest OR empty hallway)",
+                240,
+            ),
+        ]
+    if vf == "health_advice":
+        return [
+            _trim(
+                f"{lead}{tag_prefix}"
+                "(\"healthy eating\" OR mediterranean diet OR fiber OR protein OR vitamins OR minerals OR hydration) "
+                "(science OR benefits OR guide OR explained)",
+                240,
+            ),
+            _trim(
+                "(stress OR anxiety OR mindfulness OR meditation OR sleep OR burnout OR self-care) "
+                "(coping OR strategies OR wellness OR mental health OR overview)",
                 240,
             ),
         ]
@@ -215,8 +242,8 @@ def build_script_context(
     """
     Build optional web digest and download reference images.
 
-    For ``video_format`` **cartoon**, **unhinged**, or **creepypasta**, search queries bias toward meme/viral or
-    horror-atmosphere content; two supplement Firecrawl searches run; more pages are scraped and more reference
+    For ``video_format`` **cartoon**, **unhinged**, **creepypasta**, or **health_advice**, search queries bias toward
+    meme/viral, horror-atmosphere, or wellness-education content; two supplement Firecrawl searches run; more pages are scraped and more reference
     images may be saved when ``want_refs`` is true.
 
     Returns:
@@ -235,7 +262,7 @@ def build_script_context(
     can_fc = bool(api_key) and bool(firecrawl_enabled)
 
     vf_norm = normalize_video_format(video_format or "news")
-    rich_web_mode = vf_norm in ("cartoon", "unhinged", "creepypasta")
+    rich_web_mode = vf_norm in ("cartoon", "unhinged", "creepypasta", "health_advice")
     max_scrape = MAX_PAGES_TO_SCRAPE_MEME_MODES if rich_web_mode else MAX_PAGES_TO_SCRAPE
     max_ref_save = MAX_REFERENCE_IMAGES_MEME_MODES if rich_web_mode else MAX_REFERENCE_IMAGES
     img_cap = 16 if rich_web_mode else 12
@@ -280,6 +307,8 @@ def build_script_context(
             sup_heading = (
                 "Horror / atmosphere supplement queries"
                 if vf_norm == "creepypasta"
+                else "Wellness / education supplement queries"
+                if vf_norm == "health_advice"
                 else "Meme / viral supplement queries"
             )
             digest_parts.append(f"\n## {sup_heading}\n")

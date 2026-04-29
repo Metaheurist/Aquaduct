@@ -251,6 +251,16 @@ def _ephemeral_character_for_show(
         visual = (
             "Clean infographic-adjacent visuals, diagrams, soft gradients, readable text overlays, 9:16 vertical"
         )
+    elif vf == "health_advice":
+        role = rng.choice(["doctor", "nurse"])
+        identity = (
+            f"{role.title()} {name}: warm, credible medical educator for short-form wellness video — plain language, "
+            f"no fear-mongering; encourages viewers to seek personal care when needed. Topic vibe: {tag_hint}."
+        )
+        visual = (
+            "Soft clinical teaching look: white coat or scrubs (generic), exam-room or health-education set, "
+            "diagrams and stylized anatomy charts, calm lighting, 9:16 vertical — no photoreal gore or identifiable patients"
+        )
     elif vf == "creepypasta":
         identity = (
             f"Narrator {name}: calm first-person storyteller — measured, intimate, like a late-night campfire voice. "
@@ -314,6 +324,24 @@ def fallback_cast_for_show(*, video_format: str, topic_tags: list[str] | None, h
                     "Clean modern vertical studio look, readable overlays, 9:16"
                     if vf == "news"
                     else "Clean infographic-adjacent visuals, diagrams, readable labels, 9:16"
+                ),
+                "negatives": neg,
+            }
+        ]
+
+    if vf == "health_advice":
+        host = _nm()
+        role = rng.choice(["Doctor", "Nurse"])
+        return [
+            {
+                "name": host,
+                "role": f"{role} (educator)",
+                "identity": (
+                    f"{role} {host}: wellness educator — calm, evidence-leaning, never diagnoses the viewer; "
+                    f"topic vibe: {tag_hint}."
+                ),
+                "visual_style": (
+                    "Medical education vertical: soft clinic light, diagrams, stylized charts, 9:16 — no gore, no real patients"
                 ),
                 "negatives": neg,
             }

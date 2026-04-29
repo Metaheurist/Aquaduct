@@ -56,6 +56,13 @@ def _article_prompt_block(*, video_format: str, excerpt: str) -> str:
             "if the excerpt is silent, say you are unsure or stay vague):\n"
             f"{ex}\n\n"
         )
+    if vf == "health_advice":
+        return (
+            "Article excerpt (ground truth for general wellness facts, definitions, and public-health-style information — "
+            "prefer these over guessing; hedge or stay vague where sources disagree; "
+            "do not diagnose the viewer or tell them to start, stop, or change medication or treatment):\n"
+            f"{ex}\n\n"
+        )
     return (
         "Article excerpt (ground truth for facts, names, numbers, and quotes — prefer these over guessing):\n"
         f"{ex}\n\n"
@@ -114,11 +121,26 @@ def _horror_visual_prompt_rules(*, video_format: str) -> str:
     )
 
 
+def _health_visual_prompt_rules(*, video_format: str) -> str:
+    vf = (video_format or "news").strip().lower()
+    if vf != "health_advice":
+        return ""
+    return (
+        "`visual_prompt` rules (still image per beat — mandatory):\n"
+        "- **Medical-education tone**: trusted clinician figure (original character, not a real celebrity), soft clinic or "
+        "clean teaching space, diagrams, anatomical **illustrations** (stylized, not photoreal gore or injury).\n"
+        "- No readable long text, no graphic wounds, no sexualized medical imagery.\n"
+        "- Each `visual_prompt` must **match that segment's narration** — calm, clear, reassuring composition, 9:16.\n\n"
+    )
+
+
 def _meme_visual_prompt_rules(*, video_format: str) -> str:
     """Extra diffusion guidance for cartoon/unhinged — reduces generic neon/abstract stills."""
     vf = (video_format or "news").strip().lower()
     if vf == "creepypasta":
         return _horror_visual_prompt_rules(video_format=vf)
+    if vf == "health_advice":
+        return _health_visual_prompt_rules(video_format=vf)
     if vf not in ("cartoon", "unhinged"):
         return ""
     return (
@@ -151,6 +173,11 @@ def _character_voice_block(character_context: str | None, *, video_format: str) 
                 "Narrator (mandatory — the entire spoken script is this voice; first-person past tense unless the block says otherwise):\n"
                 f"{cc}\n\n"
             )
+        if vf == "health_advice":
+            return (
+                "Clinician (mandatory — the entire spoken script is this doctor or nurse persona; educational, not alarmist):\n"
+                f"{cc}\n\n"
+            )
         return (
             "Character / host (mandatory — the entire spoken script is this persona; not a generic anonymous announcer):\n"
             f"{cc}\n\n"
@@ -168,6 +195,12 @@ def _character_voice_block(character_context: str | None, *, video_format: str) 
     if vf == "explainer":
         return (
             "Host: none provided — invent one explainer host (name + voice) aligned with the topic_tags and headlines.\n\n"
+        )
+    if vf == "health_advice":
+        return (
+            "Clinician: none provided — invent **one** original doctor **or** nurse (name + voice, generic medical professional — "
+            "not a real person or celebrity). The entire spoken script is this persona: warm, clear, educational; "
+            "first-person or direct address as a clinician on a wellness short.\n\n"
         )
     return (
         "Host: none provided — invent one host persona (name + voice) aligned with the topic_tags and headlines; "
@@ -209,6 +242,11 @@ def _personality_character_fusion_block(
     elif vf == "creepypasta":
         beat_note = (
             "Horror pacing: favor concrete wrong details and callbacks over loud hype; let dread accumulate beat-to-beat.\n"
+        )
+    elif vf == "health_advice":
+        beat_note = (
+            "Health-education pacing: one clear idea per beat; favor reassurance, hedging, and \"check with your clinician\" "
+            "where individual care applies — never prescribe or diagnose the viewer.\n"
         )
 
     return (
@@ -596,6 +634,100 @@ def _prompt_for_cartoon_items(
     )
 
 
+def _prompt_for_health_advice_items(
+    headlines: list[dict[str, str]],
+    topic_tags: list[str] | None,
+    personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
+    character_context: str | None = None,
+    article_excerpt: str = "",
+    *,
+    video_format: str = "health_advice",
+) -> str:
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_line = (
+        f"Topic tags (bias wellness angles and on-screen hashtags): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    )
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
+    vf = "health_advice"
+    char_block = _character_voice_block(character_context, video_format=vf)
+    fusion = _personality_character_fusion_block(personality, character_context, video_format=vf)
+    art = _article_prompt_block(video_format=vf, excerpt=article_excerpt)
+    safety = (
+        "Medical safety (mandatory):\n"
+        "- This is **general wellness education** for entertainment — **not** personal medical advice, diagnosis, or treatment planning.\n"
+        "- Do **not** tell viewers to start, stop, or change medication, supplements, or therapy. Do **not** diagnose the viewer from symptoms.\n"
+        "- Encourage seeing a qualified clinician for personal concerns, red-flag symptoms, or before major lifestyle changes.\n"
+        "- Hedge uncertain claims; prefer language like \"research suggests\", \"many guidelines recommend\", \"talk to your care team\".\n"
+        "- No graphic descriptions of injury, surgery, or self-harm.\n\n"
+    )
+    role = (
+        "You write short-form **health education** vertical video (9:16) scripts voiced by **one** original doctor or nurse character "
+        "(see character block). Build the arc from the **topic tags**, **headlines**, and **article excerpt** — wellness tips, "
+        "lifestyle habits, and **general** facts about conditions (public-health style), not sensational cures.\n"
+        "Weave **at least 2–4** headline angles or sources into one coherent narrative where possible.\n"
+    )
+    structure = (
+        f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
+        "The `hook` must come from the actual topics and headlines. Deliver everything **in the clinician’s voice** "
+        "(first person or caring direct address).\n"
+        "Enforce this arc (adapt timing across segments):\n"
+        "- Hook: relatable wellness question or myth — framed carefully (no fear-mongering)\n"
+        "- Context: what the topic is in plain language\n"
+        "- Tips / facts: concrete, evidence-leaning beats (from excerpt/headlines when present)\n"
+        "- Conditions / self-care: general education only — no individualized treatment instructions\n"
+        "- Close/CTA: include a brief disclaimer that this is not medical advice + encourage professional care + follow/subscribe in character\n"
+    )
+    extra_rules = (
+        "- Include **one** spoken line (hook, segment, or CTA) that clearly states the video is educational and not a substitute for professional care.\n"
+        "- `visual_prompt`: clinician-led teaching moments, diagrams, or calm exam-room staging — see visual rules below.\n"
+    )
+    return (
+        f"{safety}"
+        f"{role}"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
+        f"{_tts_block()}"
+        f"{structure}"
+        f"{_health_visual_prompt_rules(video_format=vf)}"
+        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+        "Constraints:\n"
+        f"- narration total {_SCRIPT_WORDS}\n"
+        "- title <= 80 chars\n"
+        "- hashtags: 15-30 items; wellness, education, shorts — match the topics\n"
+        f"{extra_rules}"
+        "- avoid markdown except optional ```json fence\n"
+        "\n"
+        f"{personality_block}"
+        f"{char_block}"
+        f"{fusion}"
+        f"{style_suffix}"
+        f"{tag_line}"
+        f"{art}"
+        f"Headlines (each has title, url, source, published_at when known — use several): "
+        f"{json.dumps(headlines, ensure_ascii=False)}\n"
+    )
+
+
 def _prompt_for_items(
     headlines: list[dict[str, str]],
     topic_tags: list[str] | None,
@@ -628,6 +760,16 @@ def _prompt_for_items(
         )
     if vf == "creepypasta":
         return _prompt_for_creepypasta_items(
+            headlines,
+            topic_tags,
+            personality,
+            branding=branding,
+            character_context=character_context,
+            article_excerpt=article_excerpt,
+            video_format=vf,
+        )
+    if vf == "health_advice":
+        return _prompt_for_health_advice_items(
             headlines,
             topic_tags,
             personality,
@@ -749,6 +891,11 @@ def _vf_hint(video_format: str) -> str:
         return (
             "fictional horror short for vertical video — campfire / urban-legend tone from online creepypasta sources; "
             "single narrator or tight POV; atmospheric dread, no real-person harm claims"
+        )
+    if f == "health_advice":
+        return (
+            "clinician-voiced wellness education for vertical video — general tips and condition overviews from web sources; "
+            "hedged, non-alarmist, not personal medical advice"
         )
     return "timely angle anchored to user topics and sources"
 
@@ -907,6 +1054,40 @@ def _prompt_for_creative_brief(
             f"{expanded_brief.strip()}\n"
             f"{art}"
         )
+    if vf_key == "health_advice":
+        return (
+            "You are a scriptwriter for clinician-led **wellness education** vertical shorts (9:16).\n"
+            "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
+            "Turn it into a complete script package — faithful to intent, with strict medical-safety rules.\n"
+            f"Video format mode: {video_format!r}. Aim for: {vf}\n"
+            "Not personal medical advice — no diagnosis of the viewer, no medication changes, no dosing. "
+            "Encourage professional care where appropriate.\n"
+            f"{_health_visual_prompt_rules(video_format=vf_key)}"
+            f"{_SCRIPT_SUBSTANCE_RULES}"
+            f"{_tts_block()}"
+            f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
+            "Enforce this arc (adapt timing across segments):\n"
+            "- Hook: caring clinician opens with a clear wellness question\n"
+            "- Education: tips and general condition context from the brief\n"
+            "- Practical beats: habits viewers might discuss with their clinician\n"
+            "- Disclaimer + CTA: not medical advice; follow/subscribe in character\n"
+            "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+            "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+            "Constraints:\n"
+            f"- narration total {_SCRIPT_WORDS}\n"
+            "- title <= 80 chars\n"
+            "- hashtags: 15-30 items (wellness, health education, shorts)\n"
+            "- avoid markdown except optional ```json fence\n"
+            "\n"
+            f"{personality_block}"
+            f"{char_block}"
+            f"{fusion}"
+            f"{style_suffix}"
+            f"{tag_line}"
+            "Creative brief (primary — follow this):\n"
+            f"{expanded_brief.strip()}\n"
+            f"{art}"
+        )
     return (
         "You are a short-form scriptwriter for vertical video (9:16).\n"
         "The PRIMARY source below is a creative brief (from the user's instructions, expanded). "
@@ -1038,6 +1219,31 @@ def expand_custom_video_instructions(
             "6) Short on-screen text keywords per beat\n"
             "7) Hashtag theme words (no # prefixes)\n"
             "8) CTA idea (low-key unsettling)\n"
+            "Keep it tight and actionable.\n"
+        )
+    elif vf_key == "health_advice":
+        prompt = (
+            "You are a creative director for clinician-led **wellness education** vertical shorts (9:16).\n"
+            "The user wrote rough notes. Expand them into a structured creative brief. "
+            "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+            f"Video format mode: {video_format!r}. Target style: {vf}\n"
+            "Safety: not personal medical advice — no viewer diagnosis, no medication instructions, no graphic injury. "
+            "One clinician persona (doctor or nurse), original name.\n"
+            f"{fusion}"
+            f"Tone anchor — {personality.label}: {personality.description}\n"
+            "Style rules to respect:\n"
+            + "\n".join(f"- {r}" for r in personality.style_rules)
+            + "\n\nUser's raw notes:\n"
+            f"{raw_instructions.strip()}\n\n"
+            "Output sections (use headings):\n"
+            "1) Working title (one line)\n"
+            "2) Clinician persona (doctor or nurse; name + voice)\n"
+            "3) Core hook (caring, clear)\n"
+            f"4) Beat-by-beat outline ({_SCRIPT_SEGMENTS} beats) — wellness tips + general condition education (spoken lines only)\n"
+            "5) Visual motifs (teaching diagrams, calm clinic or education set — no gore)\n"
+            "6) Disclaimer line to speak near the end (not medical advice)\n"
+            "7) Hashtag theme words (no # prefixes)\n"
+            "8) CTA idea (follow + see a professional when needed)\n"
             "Keep it tight and actionable.\n"
         )
     else:

@@ -98,6 +98,39 @@ def camera_cues(
                 "small town map with forest edge highlighted, ominous red pencil",
             ],
         }
+    elif vf == "health_advice":
+        cues = {
+            "product_shot": [
+                "clean medical diagram hero shot, soft shadows, educational chart aesthetic, 9:16",
+                "stethoscope and clipboard on desk, warm daylight, shallow depth of field, no readable text",
+                "anatomical model or plastic heart on table, studio softbox, calm teaching vibe",
+            ],
+            "infographic": [
+                "friendly wellness infographic panel, soft gradients, simple icons, no long readable text",
+                "before-after lifestyle diagram stylized, clean layout, muted clinical palette",
+                "habit tracker or sleep cycle graphic, minimal labels, vertical short layout",
+            ],
+            "broll": [
+                "calm clinic corridor soft light, plants, reassuring empty space, vertical framing",
+                "morning walk park path golden hour, healthy lifestyle b-roll, steady handheld feel",
+                "yoga mat and water bottle still life, bright natural window light, 9:16",
+            ],
+            "timeline": [
+                "simple recovery or habit timeline graphic, soft colors, no dense text",
+                "day-in-the-life wellness strip panels, clean spacing, educational tone",
+                "weekly sleep improvement roadmap doodle style, gentle arrows",
+            ],
+            "portrait": [
+                "diverse clinician portrait soft smile, white coat, soft key light, trustworthy, 9:16",
+                "nurse bust portrait warm tones, blurred clinic background, professional not glam",
+                "doctor explaining gesture mid-air, friendly eye contact, cinematic portrait lighting",
+            ],
+            "map": [
+                "subtle world map with wellness pins, desaturated, editorial medical style",
+                "local park trail map simplified, health walk route implied, soft palette",
+                "community health center exterior map pin graphic, minimal detail",
+            ],
+        }
     elif vf in ("cartoon", "unhinged"):
         cues = {
             "product_shot": [
@@ -164,6 +197,11 @@ def condition_prompt(
             p = (
                 "figurative surreal meme cartoon, thick black outlines, flat garish colors, "
                 "one clear joke focal subject, vertical 9:16, not abstract neon machinery"
+            )
+        elif vf == "health_advice":
+            p = (
+                "medical education still, calm clinician or teaching diagram, soft natural light, "
+                "trustworthy vertical 9:16, stylized not gory, no readable long text"
             )
         else:
             # Neutral default — avoid forcing cyberpunk/UI when the script is news or unrelated topics.

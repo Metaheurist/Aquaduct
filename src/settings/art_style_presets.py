@@ -78,6 +78,19 @@ ART_STYLE_PRESETS: tuple[ArtStylePreset, ...] = (
         negative_affix="CGI sheen, anime eyes, oversaturated fantasy palette",
         reference_strength=0.35,
     ),
+    ArtStylePreset(
+        id="realism",
+        label="Realism mode",
+        prompt_affix=(
+            "photorealistic detail, natural materials and skin texture, soft realistic key light, "
+            "accurate shadows, editorial still photography continuity, same color grade across shots"
+        ),
+        negative_affix=(
+            "deformed anatomy, extra limbs, wax doll skin, heavy beauty filter, plastic CGI sheen, "
+            "anime eyes, cartoon outlines, graphic injury or gore, blood spray, uncanny valley, watermark"
+        ),
+        reference_strength=0.36,
+    ),
 )
 
 
