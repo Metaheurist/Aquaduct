@@ -14,7 +14,8 @@ from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
 from src.util.diffusion_placement import place_diffusion_pipeline
-from src.util.utils_vram import cleanup_vram, prepare_for_next_model, vram_guard
+from src.util.memory_budget import release_between_stages
+from src.util.utils_vram import cleanup_vram, vram_guard
 
 
 @dataclass(frozen=True)
@@ -512,7 +513,11 @@ def _try_text_to_video(
     Best-effort text-to-video using diffusers. ZeroScope / ModelScope use generic ``DiffusionPipeline``;
     CogVideoX / LTX / HunyuanVideo use dedicated pipeline classes.
     """
-    prepare_for_next_model()
+    release_between_stages(
+        "before_text_to_video_load",
+        cuda_device_index=cuda_device_index,
+        variant="prepare_diffusion",
+    )
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -620,7 +625,7 @@ def _try_text_to_video(
         results.append(GeneratedClip(path=out_path, prompt=p))
 
     del pipe
-    cleanup_vram()
+    release_between_stages("after_text_to_video_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
 
 
@@ -642,7 +647,11 @@ def _try_image_to_video(
     from diffusers import DiffusionPipeline
     from PIL import Image
 
-    prepare_for_next_model()
+    release_between_stages(
+        "before_image_to_video_load",
+        cuda_device_index=cuda_device_index,
+        variant="prepare_diffusion",
+    )
     _fp16 = torch_float16()
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -706,7 +715,7 @@ def _try_image_to_video(
         results.append(GeneratedClip(path=out_path, prompt=p))
 
     del pipe
-    cleanup_vram()
+    release_between_stages("after_image_to_video_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
 
 

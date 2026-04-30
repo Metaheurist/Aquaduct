@@ -56,6 +56,7 @@ from src.speech.audio_fx import (
     build_sfx_mix_cmd,
 )
 from src.runtime.pipeline_control import PipelineRunControl
+from src.util.memory_budget import release_between_stages
 from debug import dprint
 
 
@@ -367,6 +368,9 @@ def run_once_api(
     effective_personality_id = personality_pick.preset.id
     _pipe_progress(on_progress, 44, -1, f"Script ready (API) — {personality_pick.preset.label}")
 
+    # Parity with local run_once: drop retained HTTP/client buffers before voice or photo work.
+    release_between_stages("run_once_api_after_script", variant="cheap")
+
     safe_dir = safe_title_to_dirname(pkg.title)
     video_dir = _projects_root / safe_dir
     assets_dir = video_dir / "assets"
@@ -601,6 +605,8 @@ def run_once_api(
         final_voice_wav = process_voice_wav(ffmpeg_dir=paths.ffmpeg_dir, in_wav=voice_wav, out_wav=processed, cfg=cfg)
     except Exception:
         final_voice_wav = voice_wav
+
+    release_between_stages("run_once_api_after_voice_polish", variant="cheap")
 
     prompts = list(prebuilt_prompts or []) if prebuilt_prompts is not None else [s.visual_prompt for s in pkg.segments][:10]
     branding = getattr(app, "branding", None)

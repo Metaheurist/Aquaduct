@@ -12,6 +12,9 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 - **`AQUADUCT_CPU_THREADS`** — target thread count (default `min(32, os.cpu_count())`). Does not override **`OMP_NUM_THREADS`** / **`MKL_NUM_THREADS`** / etc. if you already set them in the environment.
 - **`AQUADUCT_TORCH_INTEROP_THREADS`** — optional `torch.set_num_interop_threads` (1–32). If unset, the app picks a higher value on CPU-only machines and a modest value when CUDA/MPS is available.
 
+## Host RAM preflight (optional)
+When **`AQUADUCT_HOST_RAM_PREFLIGHT`** is **`1`** / **`true`** / **`yes`** / **`on`**, [`preflight_check`](../../src/runtime/preflight.py) adds a **warning** (never a hard error) if **free host RAM** is under **~4 GiB** and **local** model execution is selected. Useful on laptops before large diffusers checkpoint loads.
+
 ## Multi-GPU (CUDA policy override)
 When set, **`AQUADUCT_CUDA_DEVICE`** forces **all** local CUDA stages (LLM, diffusion, etc.) onto that **ordinal** (`0`, `1`, …) or **`cuda:N`**. It overrides the **My PC** GPU policy saved in `ui_settings.json`. Used by [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py). The **My PC** / **Model** tab fit tables still use the same resolver so labels stay consistent with runtime when this env var is unset; when set, fit heuristics follow the pinned index.
 

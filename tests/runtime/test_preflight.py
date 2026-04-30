@@ -164,3 +164,57 @@ def test_local_hf_snapshot_errors_photo_mode_ignores_video_voice(monkeypatch):
     s = AppSettings(media_mode="photo", video_model_id="", voice_model_id="")
     assert local_hf_model_snapshot_errors(s) == []
 
+
+def test_preflight_host_ram_warning_when_flag_and_low_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    import psutil
+
+    import src.runtime.preflight as pf
+
+    monkeypatch.setenv("AQUADUCT_HOST_RAM_PREFLIGHT", "1")
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+
+    class _VM:
+        total = 16 << 30
+        available = 1 << 30  # 1 GiB free → below 4 GiB threshold
+
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: _VM())
+
+    r = preflight_check(
+        settings=AppSettings(model_execution_mode="local", video_model_id="dummy/video-repo-for-test"),
+        strict=True,
+    )
+    assert r.ok
+    assert any("Low host RAM headroom" in w for w in r.warnings)
+
+
+def test_preflight_host_ram_skipped_for_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    import psutil
+
+    import src.runtime.preflight as pf
+    from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig
+
+    monkeypatch.setenv("AQUADUCT_HOST_RAM_PREFLIGHT", "1")
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "api_preflight_errors", lambda s: [])
+
+    class _VM:
+        total = 16 << 30
+        available = 1 << 30
+
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: _VM())
+
+    s = AppSettings(
+        model_execution_mode="api",
+        api_openai_key="test-key-openai",
+        api_models=ApiModelRuntimeSettings(
+            llm=ApiRoleConfig(provider="openai", model="gpt-4o-mini"),
+            image=ApiRoleConfig(provider="openai", model="dall-e-3"),
+            video=ApiRoleConfig(),
+            voice=ApiRoleConfig(provider="openai", model="tts-1"),
+        ),
+    )
+    r = preflight_check(settings=s, strict=True)
+    assert not any("Low host RAM headroom" in w for w in r.warnings)
+

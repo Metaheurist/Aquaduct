@@ -42,6 +42,7 @@ from src.models.model_manager import (
     verify_project_model_integrity,
 )
 from src.util.cpu_parallelism import disk_bound_verify_workers, io_bound_pool_workers
+from src.util.cuda_device_policy import resolve_llm_cuda_device_index
 
 import main as pipeline_main
 from src.render.artist import generate_images
@@ -61,6 +62,8 @@ from src.content.character_presets import CharacterAutoPreset, GeneratedCharacte
 from src.models.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
 from src.models.model_integrity_cache import classify_integrity_status
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
+from src.runtime.pipeline_notice import pipeline_notice_scope
+from src.runtime.oom_retry import is_oom_error
 from src.content.characters_store import (
     cast_to_ephemeral_character,
     character_context_for_brain,
@@ -71,15 +74,38 @@ from src.content.characters_store import (
 from src.render.branding_video import apply_palette_to_prompts
 from src.content.personality_auto import auto_pick_personality
 from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
-from src.util.utils_vram import prepare_for_next_model
+from src.util.memory_budget import release_between_stages
 from debug import dprint
 
 
 def _failure_text_with_cuda_hints(exc: BaseException, tb: str) -> str:
     """Append VRAM/load hints when the traceback looks like CUDA OOM or related allocation failure."""
-    msg = f"{exc}\n\n{tb}"
-    el = f"{exc}".lower()
-    if "out of memory" in el or ("cuda" in el and "memory" in el):
+    tb_low = tb.lower()
+    loading_weights = "load_state_dict" in tb_low or "model_loading_utils" in tb_low
+
+    head = ""
+    if isinstance(exc, MemoryError) and loading_weights:
+        head = (
+            "**MemoryError while loading model weights** — this usually means **Windows ran out of system RAM** "
+            "(not only GPU VRAM) while diffusers/torch reads multi‑GB checkpoint shards. "
+            "If the traceback ends inside `model_loading_utils.load_state_dict`, diffusers may be running an "
+            "error‑recovery path that reads the whole shard.\n\n"
+        )
+    elif is_oom_error(exc):
+        head = (
+            "CUDA / VRAM memory error — the GPU ran out of memory or an allocator refused the request.\n\n"
+        )
+
+    msg = head + f"{exc}\n\n{tb}"
+
+    if isinstance(exc, MemoryError) and loading_weights:
+        msg += (
+            "\n\n---\nTip (RAM / checkpoints): Close heavy apps (browser, other ML tools), restart Aquaduct, "
+            "then retry. **Wan 2.2 14B** often needs **much more free RAM than 12 GiB VRAM suggests** — "
+            "try **THUDM/CogVideoX-5b** or another lighter Video repo if loads keep failing after CPU offload. "
+            "Ensure checkpoints are fully downloaded (HF snapshot / git‑LFS pointers break loads differently).\n"
+        )
+    elif is_oom_error(exc):
         msg += (
             "\n\n---\nTip (VRAM): Large local T2V models (e.g. Wan 2.2 14B) often need "
             "**CPU offload** on ~12 GiB GPUs — Model tab → Video → quantization → CPU offload — "
@@ -187,6 +213,8 @@ class PipelineWorker(QThread):
     progress = pyqtSignal(str, int, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
+    #: Non-fatal notices during ``run_once`` (VRAM warnings, etc.) — shown as UI dialogs from main thread.
+    pipeline_warning = pyqtSignal(str, str)
     cancelled = pyqtSignal()
 
     def __init__(
@@ -210,17 +238,18 @@ class PipelineWorker(QThread):
     def run(self) -> None:
         try:
             dprint("workers", "PipelineWorker start", f"prebuilt={'yes' if self.prebuilt_pkg else 'no'}")
-            out = pipeline_main.run_once(
-                settings=self.settings,
-                prebuilt_pkg=self.prebuilt_pkg,
-                prebuilt_sources=self.prebuilt_sources,
-                prebuilt_prompts=self.prebuilt_prompts,
-                prebuilt_seeds=self.prebuilt_seeds,
-                run_control=self.run_control,
-                on_progress=lambda tid, ov, tk, msg: self.progress.emit(
-                    str(tid), int(ov), int(tk), str(msg)
-                ),
-            )
+            with pipeline_notice_scope(lambda title, msg: self.pipeline_warning.emit(title, msg)):
+                out = pipeline_main.run_once(
+                    settings=self.settings,
+                    prebuilt_pkg=self.prebuilt_pkg,
+                    prebuilt_sources=self.prebuilt_sources,
+                    prebuilt_prompts=self.prebuilt_prompts,
+                    prebuilt_seeds=self.prebuilt_seeds,
+                    run_control=self.run_control,
+                    on_progress=lambda tid, ov, tk, msg: self.progress.emit(
+                        str(tid), int(ov), int(tk), str(msg)
+                    ),
+                )
             if out is None:
                 self.done.emit("")
                 dprint("workers", "PipelineWorker done", "empty path")
@@ -234,6 +263,12 @@ class PipelineWorker(QThread):
             _reraise_system_interrupt(e)
             dprint("workers", "PipelineWorker failed", str(e)[:300])
             tb = traceback.format_exc()
+            try:
+                from debug import log_pipeline_exception
+
+                log_pipeline_exception("PipelineWorker.run", e, extra="run_once worker thread")
+            except Exception:
+                pass
             self.failed.emit(_failure_text_with_cuda_hints(e, tb))
 
 
@@ -748,9 +783,13 @@ class CharacterPortraitWorker(QThread):
                 png = generate_still_png_bytes(settings=self.app_settings, prompt=prompt)
                 dest.write_bytes(png)
             else:
-                prepare_for_next_model()
                 from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
 
+                release_between_stages(
+                    "character_portrait_before_image",
+                    cuda_device_index=resolve_diffusion_cuda_device_index(self.app_settings),
+                    variant="prepare_diffusion",
+                )
                 gen = generate_images(
                     sdxl_turbo_model_id=self.image_model_id,
                     prompts=[prompt],
@@ -1133,6 +1172,17 @@ class PreviewWorker(QThread):
             dprint("workers", "PreviewWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(_failure_text_with_cuda_hints(e, tb))
+        finally:
+            try:
+                from src.util.cuda_device_policy import resolve_llm_cuda_device_index
+
+                release_between_stages(
+                    "preview_worker_finally",
+                    cuda_device_index=resolve_llm_cuda_device_index(self.settings),
+                    variant="prepare_diffusion",
+                )
+            except Exception:
+                pass
 
 
 class StoryboardWorker(QThread):
@@ -1278,6 +1328,7 @@ class StoryboardWorker(QThread):
                         try_llm_4bit=try_llm_4bit,
                         on_llm_task=_ms_sb,
                         app_settings=app,
+                        llm_cuda_device_index=resolve_llm_cuda_device_index(app),
                     )
                 if not character_selected_in_settings(app):
                     if is_api_mode(app):
@@ -1455,6 +1506,7 @@ class StoryboardWorker(QThread):
                         try_llm_4bit=try_llm_4bit,
                         on_llm_task=_ms2,
                         app_settings=app,
+                        llm_cuda_device_index=resolve_llm_cuda_device_index(app),
                     )
                 if not character_selected_in_settings(app):
                     if is_api_mode(app):
@@ -1494,7 +1546,13 @@ class StoryboardWorker(QThread):
                             except Exception:
                                 pass
 
-            prepare_for_next_model()
+            from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
+
+            release_between_stages(
+                "storyboard_worker_after_script_before_previews",
+                cuda_device_index=resolve_diffusion_cuda_device_index(app),
+                variant="prepare_diffusion",
+            )
 
             safe_dir = pipeline_main.safe_title_to_dirname(pkg.title)
             _mm_sb = str(getattr(app, "media_mode", "video") or "video").strip().lower()
@@ -1627,3 +1685,14 @@ class StoryboardWorker(QThread):
             dprint("workers", "StoryboardWorker failed", str(e)[:300])
             tb = traceback.format_exc()
             self.failed.emit(_failure_text_with_cuda_hints(e, tb))
+        finally:
+            try:
+                from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
+
+                release_between_stages(
+                    "storyboard_worker_finally",
+                    cuda_device_index=resolve_diffusion_cuda_device_index(self.settings),
+                    variant="cheap",
+                )
+            except Exception:
+                pass

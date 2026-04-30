@@ -9,19 +9,31 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from debug import dprint
 
 from src.content.brain import (
     VideoPackage,
-    _generate_with_transformers,
+    _dispose_causal_lm_pair,
+    _generate_with_loaded_causal_lm,
+    _load_causal_lm_pair,
     video_package_from_llm_output,
 )
 from src.core.config import AppSettings, VIDEO_FORMATS
 
+from src.runtime.pipeline_notice import emit_pipeline_notice
+
 SCRIPT_MIN_TOTAL_WORDS = 200
 SCRIPT_MIN_SEGMENTS = 8
+
+_REFINEMENT_JSON_REPAIR_PREFIX = (
+    "Convert the following model output into ONE valid JSON object only for a vertical video script. "
+    "Required keys: title (string), description (string), hashtags (array of strings), hook (string), "
+    "segments (array of objects with narration, visual_prompt, on_screen_text), cta (string). "
+    "Use double quotes for JSON strings. Output ONLY the JSON object — no markdown fences, no commentary.\n\n"
+    "---BEGIN MODEL OUTPUT---\n"
+)
 
 StageKind = Literal["llm_full_json", "elaboration_gate"]
 
@@ -51,7 +63,8 @@ def narration_word_count(pkg: VideoPackage) -> int:
 
 def _common_json_rules() -> str:
     return (
-        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "Respond with ONLY a single JSON object — no preamble, no trailing prose.\n"
+        "Keys: title, description, hashtags, hook, segments, cta.\n"
         "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
         "Rules: TTS reads hook, each narration, and cta — only speakable words there; "
         "put staging only in visual_prompt. title <= 80 chars. hashtags: 15-30 strings.\n"
@@ -342,6 +355,8 @@ def _maybe_elaboration(
     stage_idx: int,
     stage_total: int,
     app_settings: AppSettings | None = None,
+    llm_cuda_device_index: int | None = None,
+    llm_holder: dict[str, Any],
 ) -> VideoPackage:
     words = narration_word_count(pkg)
     nseg = len(pkg.segments)
@@ -360,12 +375,23 @@ def _maybe_elaboration(
 
     prompt = _prompt_elaboration(pkg, web_digest, reference_notes, vf)
     try:
-        raw = _generate_with_transformers(
+        if llm_holder.get("model") is None:
+            tok, mod = _load_causal_lm_pair(
+                model_id,
+                on_llm_task=_emit,
+                try_llm_4bit=try_llm_4bit,
+                llm_cuda_device_index=llm_cuda_device_index,
+                inference_settings=app_settings,
+            )
+            llm_holder["tokenizer"] = tok
+            llm_holder["model"] = mod
+        raw = _generate_with_loaded_causal_lm(
+            llm_holder["model"],
+            llm_holder["tokenizer"],
             model_id,
             prompt,
             on_llm_task=_emit,
             max_new_tokens=2048,
-            try_llm_4bit=try_llm_4bit,
             inference_settings=app_settings,
         )
         return video_package_from_llm_output(raw)
@@ -384,52 +410,106 @@ def run_multistage_refinement(
     try_llm_4bit: bool = True,
     on_llm_task: Callable[[str, int, str], None] | None = None,
     app_settings: AppSettings | None = None,
+    llm_cuda_device_index: int | None = None,
 ) -> VideoPackage:
     """
-    Run format-specific refinement stages. Each LLM stage reloads the causal LM (matches existing brain pattern).
+    Run format-specific refinement stages. Loads the causal LM once and reuses it across LLM stages
+    to avoid VRAM churn from repeated full reloads.
     """
     stages = _stages_for_format(video_format)
     total = len(stages)
     cur = pkg
+    llm_holder: dict[str, Any] = {"tokenizer": None, "model": None}
+    refinement_json_notice_sent = False
 
-    for i, spec in enumerate(stages):
-        if spec.kind == "elaboration_gate":
-            cur = _maybe_elaboration(
-                cur,
-                video_format=video_format,
-                model_id=model_id,
-                web_digest=web_digest,
-                reference_notes=reference_notes,
-                try_llm_4bit=try_llm_4bit,
-                on_llm_task=on_llm_task,
-                stage_idx=i,
-                stage_total=total,
-                app_settings=app_settings,
-            )
-            continue
-        assert spec.prompt_fn is not None
-        prompt = spec.prompt_fn(cur, web_digest, reference_notes, (video_format or "news").strip().lower())
+    try:
+        for i, spec in enumerate(stages):
+            if spec.kind == "elaboration_gate":
+                cur = _maybe_elaboration(
+                    cur,
+                    video_format=video_format,
+                    model_id=model_id,
+                    web_digest=web_digest,
+                    reference_notes=reference_notes,
+                    try_llm_4bit=try_llm_4bit,
+                    on_llm_task=on_llm_task,
+                    stage_idx=i,
+                    stage_total=total,
+                    app_settings=app_settings,
+                    llm_cuda_device_index=llm_cuda_device_index,
+                    llm_holder=llm_holder,
+                )
+                continue
+            assert spec.prompt_fn is not None
+            prompt = spec.prompt_fn(cur, web_digest, reference_notes, (video_format or "news").strip().lower())
 
-        def _emit(task: str, pct: int, msg: str) -> None:
-            if not on_llm_task:
-                return
-            span = max(1, total)
-            base = int(100 * i / span)
-            inner = max(0, min(100, int(pct)))
-            overall = base + int(inner / span)
-            on_llm_task(task, overall, f"{spec.label}: {msg}")
+            def _emit(task: str, pct: int, msg: str) -> None:
+                if not on_llm_task:
+                    return
+                span = max(1, total)
+                base = int(100 * i / span)
+                inner = max(0, min(100, int(pct)))
+                overall = base + int(inner / span)
+                on_llm_task(task, overall, f"{spec.label}: {msg}")
 
-        try:
-            raw = _generate_with_transformers(
-                model_id,
-                prompt,
-                on_llm_task=_emit,
-                max_new_tokens=2048,
-                try_llm_4bit=try_llm_4bit,
-                inference_settings=app_settings,
-            )
-            cur = video_package_from_llm_output(raw)
-        except Exception as e:
-            dprint("story_pipeline", f"stage {spec.id} failed", str(e))
+            try:
+                if llm_holder.get("model") is None:
+                    tok, mod = _load_causal_lm_pair(
+                        model_id,
+                        on_llm_task=_emit,
+                        try_llm_4bit=try_llm_4bit,
+                        llm_cuda_device_index=llm_cuda_device_index,
+                        inference_settings=app_settings,
+                    )
+                    llm_holder["tokenizer"] = tok
+                    llm_holder["model"] = mod
+                raw = _generate_with_loaded_causal_lm(
+                    llm_holder["model"],
+                    llm_holder["tokenizer"],
+                    model_id,
+                    prompt,
+                    on_llm_task=_emit,
+                    max_new_tokens=2048,
+                    inference_settings=app_settings,
+                )
+                try:
+                    cur = video_package_from_llm_output(raw)
+                except (json.JSONDecodeError, ValueError):
+                    repair_prompt = _REFINEMENT_JSON_REPAIR_PREFIX + raw.strip()[:14000]
+                    raw_fix = _generate_with_loaded_causal_lm(
+                        llm_holder["model"],
+                        llm_holder["tokenizer"],
+                        model_id,
+                        repair_prompt,
+                        on_llm_task=_emit,
+                        max_new_tokens=2048,
+                        inference_settings=app_settings,
+                    )
+                    cur = video_package_from_llm_output(raw_fix)
+            except (json.JSONDecodeError, ValueError) as e:
+                dprint("story_pipeline", f"stage {spec.id} failed", str(e))
+                if not refinement_json_notice_sent:
+                    emit_pipeline_notice(
+                        "Script refinement",
+                        "A refinement stage did not return usable JSON (including repair); continuing with the previous draft.",
+                    )
+                    refinement_json_notice_sent = True
+            except Exception as e:
+                dprint("story_pipeline", f"stage {spec.id} failed", str(e))
+    finally:
+        had_llm = llm_holder.get("model") is not None
+        if had_llm:
+            _dispose_causal_lm_pair(llm_holder["model"], llm_holder["tokenizer"])
+        if had_llm:
+            try:
+                from src.util.memory_budget import release_between_stages
+
+                release_between_stages(
+                    "after_multistage_refinement_llm",
+                    cuda_device_index=llm_cuda_device_index,
+                    variant="prepare_diffusion",
+                )
+            except Exception:
+                pass
 
     return cur

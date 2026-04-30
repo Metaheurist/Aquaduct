@@ -39,6 +39,7 @@ remains **simple OR** for developer experience.
 - ``openai`` — OpenAI-compatible HTTP client (API mode / keys redacted)
 - ``inference_profile`` — VRAM band / profile report logging
 - ``story_context`` — Firecrawl / web context for scripts
+- ``memory_budget`` — stage boundaries / RAM–VRAM cleanup between pipeline phases
 
 CLI (merged with env):
 
@@ -79,6 +80,7 @@ DEBUG_CATEGORIES: Final[tuple[str, ...]] = (
     "openai",
     "inference_profile",
     "story_context",
+    "memory_budget",
 )
 
 # Flip to True to enable that category without AQUADUCT_DEBUG (union with env/CLI).

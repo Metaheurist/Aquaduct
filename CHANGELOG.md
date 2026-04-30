@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Pipeline memory boundaries (host RAM / VRAM staging)
+- **`src/util/memory_budget.py`**: `release_between_stages` orchestrates stage transitions by calling **`cleanup_vram`** or **`prepare_for_next_model`** only (no duplicate CUDA cache logic).
+- **`main.py`**: boundaries after script LLM, voice, polish, Pro img2vid/T2V transitions, slideshow diffusion→mux, motion keyframes→clips, and encode-adjacent cheap drops; **`src/runtime/pipeline_api.py`** parity after script and voice polish (cheap clears).
+- **`src/content/story_pipeline.py`**: after multistage refinement disposes the causal LM, **`release_between_stages`** runs with the LLM CUDA ordinal when a session actually loaded weights.
+- **`UI/workers/impl.py`**: **`PreviewWorker`** / **`StoryboardWorker`** **`finally`** cleanup; **`CharacterPortraitWorker`** uses **`prepare_diffusion`** before local **`generate_images`**.
+- **`src/render/clips.py`**: text-to-video / image-to-video preload passes **`cuda_device_index`** into **`prepare_diffusion`**; post-batch **`cheap`** boundary after **`del pipe`**.
+- **`src/render/artist.py`**: **`_maybe_enable_slice_inference`** after placement on image pipelines; post-batch teardown uses **`release_between_stages`** (**`cheap`**).
+- **`src/util/resource_sample.py`**, **`UI/dialogs/resource_graph_dialog.py`**: sparkline samples expose **tree RSS MB**, **host free RAM**, and **child-process count** (CPU tooltip / RAM subtitle).
+- **`src/runtime/preflight.py`**: optional **`AQUADUCT_HOST_RAM_PREFLIGHT`** adds a soft warning when free host RAM is under ~**4 GiB** in **local** execution mode.
+- **Debug** ([`debug/debug_log.py`](debug/debug_log.py)): **`memory_budget`** category for `dprint`.
+- **Docs**: [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/reference/config.md`](docs/reference/config.md).
+- **Tests**: [`tests/util/test_memory_budget.py`](tests/util/test_memory_budget.py), [`tests/runtime/test_preflight.py`](tests/runtime/test_preflight.py), [`tests/models/test_resource_sample.py`](tests/models/test_resource_sample.py).
+
+### My PC — CPU name + nominal clock
+- **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): CPU line uses WMI / ``/proc/cpuinfo`` / macOS ``sysctl`` when possible (commercial name + ``~X.XX GHz max`` from nominal max MHz where exposed); falls back to ``platform.processor()`` unchanged if lookups fail.
+- **Docs**: [`docs/reference/hardware.md`](docs/reference/hardware.md).
+- **Tests**: [`tests/models/test_hardware_cpu_display.py`](tests/models/test_hardware_cpu_display.py).
+
 ### Pipeline observability + VRAM OOM recovery
 - **Always-on run logging** ([`debug/debug_log.py`](debug/debug_log.py), [`debug/__init__.py`](debug/__init__.py)): [`pipeline_console`](debug/debug_log.py) / [`log_pipeline_exception`](debug/debug_log.py) — stderr lines `[Aquaduct][run] [stage] …`, failure traceback from [`main.py`](main.py) `run_once`; append to [`logs/debug.log`](src/util/repo_logs.py) when writable.
 - **`main.py`**: `_run_stage(...)` milestones across the desktop pipeline; [`_clear_after_oom`](main.py) runs **`torch.cuda.synchronize()`** before CUDA cache flush; **`retry_stage`** calls for **video** diffusion pass **`max_quant_downgrades=8`** ([`pro_i2v`](main.py), [`pro_t2v`](main.py), [`clips`](main.py), [`scene_clips`](main.py)).
