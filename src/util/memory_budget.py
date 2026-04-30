@@ -3,6 +3,9 @@ Stage boundaries between heavy pipeline phases.
 
 Delegates exclusively to :func:`cleanup_vram` and :func:`prepare_for_next_model` — no duplicate
 CUDA cache or watchdog logic.
+
+Host CPU thread pools follow ``AQUADUCT_CPU_THREADS`` / related env (see ``docs/reference/hardware.md``);
+do not change those mid-run from here.
 """
 
 from __future__ import annotations
