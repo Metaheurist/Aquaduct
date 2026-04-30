@@ -58,7 +58,7 @@ def test_pro_stable_video_diffusion_pipeline_mock(monkeypatch: pytest.MonkeyPatc
         "preflight_check",
         lambda **kwargs: type("R", (), {"ok": True, "errors": [], "warnings": []})(),
     )
-    monkeypatch.setattr(pipeline_main, "prepare_for_next_model", lambda: None)
+    monkeypatch.setattr(pipeline_main, "prepare_for_next_model", lambda *_a, **_k: None)
     monkeypatch.setattr(editor_mod, "_ffmpeg_align_wav_to_duration", lambda *a, **k: None)
 
     capture: dict = {}

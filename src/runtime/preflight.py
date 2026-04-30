@@ -9,6 +9,7 @@ from src.core.models_dir import models_dir_for_app
 from src.models.model_manager import model_has_local_snapshot
 from src.runtime.model_backend import api_preflight_errors, is_api_mode
 from src.render.utils_ffmpeg import find_ffmpeg
+from src.runtime.preflight_host_hints import preflight_cpu_busy_warnings, preflight_heavy_repo_ram_warnings
 from debug import dprint
 
 
@@ -205,6 +206,9 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
                     )
             except Exception:
                 pass
+
+    warnings.extend(preflight_heavy_repo_ram_warnings(settings))
+    warnings.extend(preflight_cpu_busy_warnings())
 
     # HF token isn't strictly required, but downloads can be rate-limited
     if not os.environ.get("HF_TOKEN") and not os.environ.get("HUGGINGFACEHUB_API_TOKEN"):

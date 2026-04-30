@@ -285,20 +285,83 @@ class VideoPackage:
         return " ".join(parts).strip()
 
 
+def _slice_first_balanced_json_object(text: str) -> str | None:
+    """Return the first top-level `{ ... }` span, respecting JSON string quotes and escapes."""
+    n = len(text)
+    i = 0
+    while i < n:
+        if text[i] != "{":
+            i += 1
+            continue
+        depth = 0
+        j = i
+        in_str = False
+        escape = False
+        while j < n:
+            ch = text[j]
+            if in_str:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_str = False
+                j += 1
+                continue
+            if ch == '"':
+                in_str = True
+                j += 1
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[i : j + 1]
+            j += 1
+        i += 1
+    return None
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """
     Best-effort JSON extraction from a model response that may include prose.
     """
-    # Prefer fenced block
-    m = re.search(r"```json\s*([\s\S]+?)\s*```", text, flags=re.IGNORECASE)
-    if m:
-        return json.loads(m.group(1))
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("No JSON object found in model output.")
 
-    # Otherwise try first {...} span
-    start = text.find("{")
-    end = text.rfind("}")
+    # Prefer fenced ```json ... ```
+    m = re.search(r"```json\s*([\s\S]+?)\s*```", raw, flags=re.IGNORECASE)
+    if m:
+        blob = m.group(1).strip()
+        try:
+            return json.loads(blob)
+        except json.JSONDecodeError:
+            sliced = _slice_first_balanced_json_object(blob)
+            if sliced:
+                return json.loads(sliced)
+
+    # Generic fenced block (model may omit the "json" tag)
+    m2 = re.search(r"```\s*([\s\S]+?)\s*```", raw)
+    if m2:
+        blob2 = m2.group(1).strip()
+        try:
+            return json.loads(blob2)
+        except json.JSONDecodeError:
+            sliced = _slice_first_balanced_json_object(blob2)
+            if sliced:
+                return json.loads(sliced)
+
+    sliced3 = _slice_first_balanced_json_object(raw)
+    if sliced3:
+        return json.loads(sliced3)
+
+    # Legacy: naive outer braces (may fail on braces inside strings — prefer balanced slice above)
+    start = raw.find("{")
+    end = raw.rfind("}")
     if start != -1 and end != -1 and end > start:
-        return json.loads(text[start : end + 1])
+        return json.loads(raw[start : end + 1])
 
     raise ValueError("No JSON object found in model output.")
 
@@ -1705,17 +1768,7 @@ def load_causal_lm_from_pretrained(
     return _try_fp16()
 
 
-def _generate_with_transformers(
-    model_id: str,
-    prompt: str,
-    *,
-    on_llm_task: Callable[[str, int, str], None] | None = None,
-    max_new_tokens: int = 650,
-    try_llm_4bit: bool = True,
-    llm_cuda_device_index: int | None = None,
-    inference_settings: AppSettings | None = None,
-    quant_mode: str | None = None,
-) -> str:
+def _prepare_torch_for_llm_load() -> None:
     import torch
 
     try:
@@ -1725,32 +1778,52 @@ def _generate_with_transformers(
     except Exception:
         pass
 
-    from src.models.hf_access import ensure_hf_token_in_env
-    from src.models.hf_transformers_imports import causal_lm_stack, text_iterator_streamer_cls
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
-    # Gated Hub models need HF_TOKEN before tokenizer/model load; refresh from disk if env empty.
+
+def _load_causal_lm_pair(
+    model_id: str,
+    *,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
+    quant_mode: str | None = None,
+) -> tuple[Any, Any]:
+    """Load tokenizer + causal LM once; caller must `_dispose_causal_lm_pair` when done."""
+    _prepare_torch_for_llm_load()
+
+    from src.models.hf_access import ensure_hf_token_in_env
+    from src.models.hf_transformers_imports import causal_lm_stack
+
     ensure_hf_token_in_env(hf_token="")
 
     _, AutoTokenizer, _ = causal_lm_stack()
 
-    def _stderr(msg: str) -> None:
-        if not on_llm_task:
-            import sys
-
-            print(f"[Aquaduct] {msg}", file=sys.stderr, flush=True)
-
     def _load_status(detail: str) -> None:
         _emit_llm(on_llm_task, "llm_load", 55, detail)
 
-    # Load from project `models/<repo>/` when present; plain repo id uses HF cache (extra downloads).
     load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+
+    try:
+        from src.util.vram_watchdog import check_cuda_headroom
+
+        check_cuda_headroom(llm_cuda_device_index, stage=f"LLM load ({model_id})")
+    except RuntimeError:
+        raise
+    except Exception:
+        pass
 
     _emit_llm(on_llm_task, "llm_load", 0, "Loading tokenizer…")
     tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
     _emit_llm(on_llm_task, "llm_load", 25, "Tokenizer ready")
 
     _emit_llm(on_llm_task, "llm_load", 30, "Loading model weights…")
-    # Prefer explicit quant_mode; else inference_settings.script_quant_mode; else legacy try_llm_4bit.
     _qmode = quant_mode
     if not _qmode and inference_settings is not None:
         _qmode = str(getattr(inference_settings, "script_quant_mode", "") or "") or None
@@ -1762,8 +1835,40 @@ def _generate_with_transformers(
         quant_mode=_qmode,
     )
     _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")
+    return tokenizer, model
 
-    # Simple chat-ish formatting without requiring tokenizer chat template support.
+
+def _dispose_causal_lm_pair(model: Any, tokenizer: Any) -> None:
+    try:
+        del model
+    except Exception:
+        pass
+    try:
+        del tokenizer
+    except Exception:
+        pass
+    cleanup_vram()
+
+
+def _generate_with_loaded_causal_lm(
+    model: Any,
+    tokenizer: Any,
+    model_id: str,
+    prompt: str,
+    *,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 650,
+    inference_settings: AppSettings | None = None,
+) -> str:
+    """Single decode pass using an already-loaded causal LM (multistage refinement session)."""
+    import torch
+
+    def _stderr(msg: str) -> None:
+        if not on_llm_task:
+            import sys
+
+            print(f"[Aquaduct] {msg}", file=sys.stderr, flush=True)
+
     full = f"### Instruction:\n{prompt}\n\n### Response:\n"
     _cap = _llm_max_input_tokens_cap(tokenizer, model_id=model_id, inference_settings=inference_settings)
     max_new_use = int(max_new_tokens)
@@ -1793,6 +1898,8 @@ def _generate_with_transformers(
 
     try:
         from threading import Thread
+
+        from src.models.hf_transformers_imports import text_iterator_streamer_cls
 
         TextIteratorStreamer = text_iterator_streamer_cls()
 
@@ -1854,13 +1961,40 @@ def _generate_with_transformers(
             raw_new = text_full
 
     assert raw_new is not None
-    text = raw_new
+    return raw_new
 
-    # Cleanup aggressively (VRAM limited)
-    del model
-    del tokenizer
-    cleanup_vram()
-    return text
+
+def _generate_with_transformers(
+    model_id: str,
+    prompt: str,
+    *,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 650,
+    try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
+    quant_mode: str | None = None,
+) -> str:
+    tokenizer, model = _load_causal_lm_pair(
+        model_id,
+        on_llm_task=on_llm_task,
+        try_llm_4bit=try_llm_4bit,
+        llm_cuda_device_index=llm_cuda_device_index,
+        inference_settings=inference_settings,
+        quant_mode=quant_mode,
+    )
+    try:
+        return _generate_with_loaded_causal_lm(
+            model,
+            tokenizer,
+            model_id,
+            prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=max_new_tokens,
+            inference_settings=inference_settings,
+        )
+    finally:
+        _dispose_causal_lm_pair(model, tokenizer)
 
 
 def generate_script(

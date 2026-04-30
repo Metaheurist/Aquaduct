@@ -4,10 +4,13 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QStyle,
     QTableWidget,
     QTableWidgetItem,
@@ -22,7 +25,17 @@ from UI.help.tutorial_links import help_tooltip_rich
 
 def attach_library_tab(win) -> None:
     w = QWidget()
-    lay = QVBoxLayout(w)
+    outer = QVBoxLayout(w)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(0)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    inner = QWidget()
+    lay = QVBoxLayout(inner)
     lay.setSpacing(10)
 
     header = QLabel("Library")
@@ -78,7 +91,12 @@ def attach_library_tab(win) -> None:
     win.library_videos_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     win.library_videos_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
     win.library_videos_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-    win.library_videos_table.setMinimumHeight(200)
+    win.library_videos_table.setMinimumHeight(120)
+    win.library_videos_table.setMaximumHeight(280)
+    win.library_videos_table.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    )
+    win.library_videos_table.verticalHeader().setDefaultSectionSize(22)
     win.library_videos_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_video_dir())
     media_lay.addWidget(win.library_videos_table)
 
@@ -102,7 +120,7 @@ def attach_library_tab(win) -> None:
 
     vbtn.addStretch(1)
     media_lay.addLayout(vbtn)
-    lay.addWidget(media_card, 1)
+    lay.addWidget(media_card)
 
     add_section_spacing(lay, px=14)
 
@@ -117,7 +135,12 @@ def attach_library_tab(win) -> None:
     win.library_runs_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     win.library_runs_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
     win.library_runs_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-    win.library_runs_table.setMinimumHeight(180)
+    win.library_runs_table.setMinimumHeight(100)
+    win.library_runs_table.setMaximumHeight(280)
+    win.library_runs_table.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    )
+    win.library_runs_table.verticalHeader().setDefaultSectionSize(22)
     win.library_runs_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_run_dir())
     runs_lay.addWidget(win.library_runs_table)
 
@@ -135,7 +158,10 @@ def attach_library_tab(win) -> None:
 
     rbtn.addStretch(1)
     runs_lay.addLayout(rbtn)
-    lay.addWidget(runs_card, 1)
+    lay.addWidget(runs_card)
+
+    scroll.setWidget(inner)
+    outer.addWidget(scroll, 1)
 
     win._library_tab_widget = w
     win.tabs.addTab(w, "Library")

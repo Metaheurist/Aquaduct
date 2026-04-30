@@ -313,6 +313,8 @@ class MainWindow(QMainWindow):
         self._pipeline_control: PipelineRunControl | None = None
         # FIFO: each entry is a dict from _enqueue_pipeline_snapshot (run while another pipeline is active)
         self._pipeline_run_queue: list[dict] = []
+        # True between scheduling FFmpeg-ready continuation and PipelineWorker.start() (worker.isRunning() still False).
+        self._pipeline_launch_pending: bool = False
         self._last_preview_pkg = None
         self._last_preview_sources = None
         self._last_preview_prompts = None
@@ -1574,6 +1576,7 @@ class MainWindow(QMainWindow):
             else int(getattr(self.settings, "gpu_device_index", 0) or 0)
         )
         _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
+        _rg_split = bool(getattr(self.settings, "resource_graph_split_view", False))
 
         def _quant_mode_from_ui(role_key: str, prefix: str, settings_attr: str) -> str:
             auto_chk = getattr(self, f"{prefix}_quant_auto_chk", None)
@@ -1644,6 +1647,7 @@ class MainWindow(QMainWindow):
             gpu_selection_mode=_gpu_mode,  # type: ignore[arg-type]
             gpu_device_index=_gpu_dev_idx,
             resource_graph_monitor_gpu_index=_rg_mon,
+            resource_graph_split_view=_rg_split,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             art_style_preset_id=(
                 str(self.art_style_preset_combo.currentData())
@@ -2455,19 +2459,22 @@ class MainWindow(QMainWindow):
             pass
         return super().closeEvent(event)
 
-    def _run_when_ffmpeg_ready(self, then: Callable[[], None]) -> None:
+    def _run_when_ffmpeg_ready(self, then: Callable[[], None]) -> bool:
         """
         If ``.Aquaduct_data/.cache/ffmpeg`` has no ``ffmpeg`` yet, download in a background thread, then run ``then``.
         Otherwise call ``then`` immediately.
+
+        Returns False only when FFmpeg prefetch is already running and ``then`` was **not** scheduled
+        (caller should clear ``_pipeline_launch_pending``).
         """
         if find_ffmpeg(self.paths.ffmpeg_dir):
             then()
-            return
+            return True
         if self._ffmpeg_ensure_worker and self._ffmpeg_ensure_worker.isRunning():
             self._append_log(
                 'FFmpeg is still downloading — wait for "FFmpeg is ready" in the log, then click Run again.'
             )
-            return
+            return False
         self._append_log(
             "First-time setup: downloading FFmpeg to .Aquaduct_data/.cache/ffmpeg/ (needs internet; may take a few minutes)…"
         )
@@ -2477,6 +2484,7 @@ class MainWindow(QMainWindow):
         w.finished_ok.connect(self._on_ffmpeg_install_done)
         w.failed.connect(self._on_ffmpeg_install_failed)
         w.start()
+        return True
 
     def _on_ffmpeg_install_done(self) -> None:
         self._ffmpeg_ensure_worker = None
@@ -2489,6 +2497,7 @@ class MainWindow(QMainWindow):
     def _on_ffmpeg_install_failed(self, err: str) -> None:
         self._ffmpeg_ensure_worker = None
         self._ffmpeg_run_after = None
+        self._pipeline_launch_pending = False
         self._append_log("FFmpeg download failed:")
         self._append_log(err[:4000])
 
@@ -2532,8 +2541,10 @@ class MainWindow(QMainWindow):
             self.worker.progress.connect(on_prog)
             self.worker.done.connect(lambda out: self._on_done(out))
             self.worker.failed.connect(self._on_failed)
+            self.worker.pipeline_warning.connect(self._on_pipeline_warning)
             self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
+            self._pipeline_launch_pending = False
             self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
@@ -2555,8 +2566,10 @@ class MainWindow(QMainWindow):
             self.worker.progress.connect(on_prog)
             self.worker.done.connect(lambda out: self._on_done(out))
             self.worker.failed.connect(self._on_failed)
+            self.worker.pipeline_warning.connect(self._on_pipeline_warning)
             self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
             self.worker.start()
+            self._pipeline_launch_pending = False
             self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
@@ -2570,8 +2583,10 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(on_prog)
         self.worker.done.connect(lambda out: self._on_done(out))
         self.worker.failed.connect(self._on_failed)
+        self.worker.pipeline_warning.connect(self._on_pipeline_warning)
         self.worker.cancelled.connect(self._on_pipeline_worker_cancelled)
         self.worker.start()
+        self._pipeline_launch_pending = False
         self._set_run_btn_allow_queue_while_pipeline_runs()
 
     def _drain_pipeline_worker(self) -> None:
@@ -2593,6 +2608,8 @@ class MainWindow(QMainWindow):
     def _try_start_next_queued_pipeline(self) -> None:
         if self._pipeline_run_should_queue():
             return
+        if self._pipeline_launch_pending:
+            return
         if not self._pipeline_run_queue:
             try:
                 self.run_btn.setEnabled(True)
@@ -2610,52 +2627,67 @@ class MainWindow(QMainWindow):
         )
         self._append_log(f"Starting next queued job ({remaining} still waiting)…")
 
+        self._pipeline_launch_pending = True
+
         def _continue() -> None:
-            self._tasks_refresh()
-            kind = str(item.get("kind") or "")
-            settings = item.get("settings")
-            if not isinstance(settings, AppSettings):
-                self._append_log("Queued job skipped (invalid settings).")
-                self._try_start_next_queued_pipeline()
-                return
-
-            pf = preflight_check(settings=settings, strict=True)
-            for w in pf.warnings:
-                self._append_log(f"Warning: {w}")
-            if not pf.ok:
-                self._append_log("Preflight failed for queued job:")
-                for e in pf.errors:
-                    self._append_log(f"- {e}")
-                self._preflight_failed_ui(pf)
-                self._try_start_next_queued_pipeline()
-                return
-
-            if kind == "pipeline":
-                if str(getattr(settings, "run_content_mode", "preset")) == "custom" and not str(
-                    getattr(settings, "custom_video_instructions", "") or ""
-                ).strip():
-                    self._append_log("Queued job skipped (custom mode with empty instructions).")
+            worker_started = False
+            try:
+                self._tasks_refresh()
+                kind = str(item.get("kind") or "")
+                settings = item.get("settings")
+                if not isinstance(settings, AppSettings):
+                    self._append_log("Queued job skipped (invalid settings).")
+                    self._pipeline_launch_pending = False
                     self._try_start_next_queued_pipeline()
                     return
-                self._attach_and_start_pipeline_worker(settings)
-            elif kind == "prebuilt":
-                self._attach_and_start_pipeline_worker(
-                    settings,
-                    prebuilt_pkg=item.get("pkg"),
-                    prebuilt_sources=item.get("sources"),
-                    prebuilt_prompts=item.get("prompts"),
-                )
-            elif kind == "storyboard":
-                self._attach_and_start_pipeline_worker(
-                    settings,
-                    prebuilt_prompts=item.get("prompts"),
-                    prebuilt_seeds=item.get("seeds"),
-                )
-            else:
-                self._append_log("Unknown queued job type; skipping.")
-                self._try_start_next_queued_pipeline()
 
-        self._run_when_ffmpeg_ready(_continue)
+                pf = preflight_check(settings=settings, strict=True)
+                for w in pf.warnings:
+                    self._append_log(f"Warning: {w}")
+                if not pf.ok:
+                    self._append_log("Preflight failed for queued job:")
+                    for e in pf.errors:
+                        self._append_log(f"- {e}")
+                    self._preflight_failed_ui(pf)
+                    self._pipeline_launch_pending = False
+                    self._try_start_next_queued_pipeline()
+                    return
+
+                if kind == "pipeline":
+                    if str(getattr(settings, "run_content_mode", "preset")) == "custom" and not str(
+                        getattr(settings, "custom_video_instructions", "") or ""
+                    ).strip():
+                        self._append_log("Queued job skipped (custom mode with empty instructions).")
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
+                    self._attach_and_start_pipeline_worker(settings)
+                    worker_started = True
+                elif kind == "prebuilt":
+                    self._attach_and_start_pipeline_worker(
+                        settings,
+                        prebuilt_pkg=item.get("pkg"),
+                        prebuilt_sources=item.get("sources"),
+                        prebuilt_prompts=item.get("prompts"),
+                    )
+                    worker_started = True
+                elif kind == "storyboard":
+                    self._attach_and_start_pipeline_worker(
+                        settings,
+                        prebuilt_prompts=item.get("prompts"),
+                        prebuilt_seeds=item.get("seeds"),
+                    )
+                    worker_started = True
+                else:
+                    self._append_log("Unknown queued job type; skipping.")
+                    self._pipeline_launch_pending = False
+                    self._try_start_next_queued_pipeline()
+            finally:
+                if not worker_started:
+                    self._pipeline_launch_pending = False
+
+        if not self._run_when_ffmpeg_ready(_continue):
+            self._pipeline_launch_pending = False
 
     def _on_run(self) -> None:
         dprint("ui", "_on_run")
@@ -2678,32 +2710,61 @@ class MainWindow(QMainWindow):
                 pass
             return
 
+        if self._pipeline_launch_pending:
+            pfq = preflight_check(settings=self.settings, strict=True)
+            if not pfq.ok:
+                self._preflight_failed_ui(pfq)
+                return
+            qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
+            for _ in range(qty):
+                self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
+            n = len(self._pipeline_run_queue)
+            dprint("tasks", "pipeline queued (launch pending)", f"depth={n} batch_qty={qty}")
+            self._append_log(
+                f"Run queued ({n} job(s) waiting — pipeline launch already in progress)."
+            )
+            self._tasks_refresh()
+            try:
+                self.run_btn.setEnabled(True)
+            except Exception:
+                pass
+            return
+
         self._maybe_log_offline_notice()
 
+        self._pipeline_launch_pending = True
+
         def _continue() -> None:
-            pf = preflight_check(settings=self.settings, strict=True)
-            for w in pf.warnings:
-                self._append_log(f"Warning: {w}")
-            if not pf.ok:
-                self._append_log("Preflight failed. Fix these issues before running:")
-                for e in pf.errors:
-                    self._append_log(f"- {e}")
-                self._preflight_failed_ui(pf)
-                return
+            worker_started = False
+            try:
+                pf = preflight_check(settings=self.settings, strict=True)
+                for w in pf.warnings:
+                    self._append_log(f"Warning: {w}")
+                if not pf.ok:
+                    self._append_log("Preflight failed. Fix these issues before running:")
+                    for e in pf.errors:
+                        self._append_log(f"- {e}")
+                    self._preflight_failed_ui(pf)
+                    return
 
-            if self._abort_if_custom_missing_instructions():
-                return
+                if self._abort_if_custom_missing_instructions():
+                    return
 
-            qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
-            if qty > 1:
-                for _ in range(qty - 1):
-                    self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
-                dprint("tasks", "pipeline queued (with immediate start)", f"depth={len(self._pipeline_run_queue)} run_batch={qty}")
-                self._append_log(f"Starting {qty} pipeline runs (1 now, {qty - 1} queued).")
-                self._tasks_refresh()
-            self._attach_and_start_pipeline_worker(self.settings)
+                qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
+                if qty > 1:
+                    for _ in range(qty - 1):
+                        self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
+                    dprint("tasks", "pipeline queued (with immediate start)", f"depth={len(self._pipeline_run_queue)} run_batch={qty}")
+                    self._append_log(f"Starting {qty} pipeline runs (1 now, {qty - 1} queued).")
+                    self._tasks_refresh()
+                self._attach_and_start_pipeline_worker(self.settings)
+                worker_started = True
+            finally:
+                if not worker_started:
+                    self._pipeline_launch_pending = False
 
-        self._run_when_ffmpeg_ready(_continue)
+        if not self._run_when_ffmpeg_ready(_continue):
+            self._pipeline_launch_pending = False
 
     def _on_preview(self) -> None:
         if self.preview_worker and self.preview_worker.isRunning():
@@ -2826,27 +2887,61 @@ class MainWindow(QMainWindow):
                 pass
             return
 
+        if self._pipeline_launch_pending:
+            pfb = preflight_check(settings=self.settings, strict=True)
+            if not pfb.ok:
+                self._preflight_failed_ui(pfb)
+                return
+            self._pipeline_run_queue.append(
+                {
+                    "kind": "prebuilt",
+                    "settings": copy.deepcopy(self.settings),
+                    "pkg": self._last_preview_pkg,
+                    "sources": self._last_preview_sources,
+                    "prompts": self._last_preview_prompts,
+                }
+            )
+            n = len(self._pipeline_run_queue)
+            self._append_log(
+                f"Approved preview run queued ({n} job(s) waiting — pipeline launch already in progress)."
+            )
+            self._tasks_refresh()
+            try:
+                self.run_btn.setEnabled(True)
+            except Exception:
+                pass
+            return
+
         self._maybe_log_offline_notice()
 
+        self._pipeline_launch_pending = True
+
         def _continue() -> None:
-            pf = preflight_check(settings=self.settings, strict=True)
-            for w in pf.warnings:
-                self._append_log(f"Warning: {w}")
-            if not pf.ok:
-                self._append_log("Preflight failed. Fix these issues before running:")
-                for e in pf.errors:
-                    self._append_log(f"- {e}")
-                self._preflight_failed_ui(pf)
-                return
+            worker_started = False
+            try:
+                pf = preflight_check(settings=self.settings, strict=True)
+                for w in pf.warnings:
+                    self._append_log(f"Warning: {w}")
+                if not pf.ok:
+                    self._append_log("Preflight failed. Fix these issues before running:")
+                    for e in pf.errors:
+                        self._append_log(f"- {e}")
+                    self._preflight_failed_ui(pf)
+                    return
 
-            self._attach_and_start_pipeline_worker(
-                self.settings,
-                prebuilt_pkg=self._last_preview_pkg,
-                prebuilt_sources=self._last_preview_sources,
-                prebuilt_prompts=self._last_preview_prompts,
-            )
+                self._attach_and_start_pipeline_worker(
+                    self.settings,
+                    prebuilt_pkg=self._last_preview_pkg,
+                    prebuilt_sources=self._last_preview_sources,
+                    prebuilt_prompts=self._last_preview_prompts,
+                )
+                worker_started = True
+            finally:
+                if not worker_started:
+                    self._pipeline_launch_pending = False
 
-        self._run_when_ffmpeg_ready(_continue)
+        if not self._run_when_ffmpeg_ready(_continue):
+            self._pipeline_launch_pending = False
 
     def _on_storyboard_preview(self) -> None:
         if self.storyboard_worker and self.storyboard_worker.isRunning():
@@ -2955,23 +3050,56 @@ class MainWindow(QMainWindow):
                 pass
             return
 
-        def _continue() -> None:
-            pf = preflight_check(settings=self.settings, strict=True)
-            for w in pf.warnings:
-                self._append_log(f"Warning: {w}")
-            if not pf.ok:
-                self._append_log("Preflight failed. Fix these issues before running:")
-                for e in pf.errors:
-                    self._append_log(f"- {e}")
-                self._preflight_failed_ui(pf)
+        if self._pipeline_launch_pending:
+            pfs = preflight_check(settings=self.settings, strict=True)
+            if not pfs.ok:
+                self._preflight_failed_ui(pfs)
                 return
-            self._attach_and_start_pipeline_worker(
-                self.settings,
-                prebuilt_prompts=prompts,
-                prebuilt_seeds=seeds,
+            self._pipeline_run_queue.append(
+                {
+                    "kind": "storyboard",
+                    "settings": copy.deepcopy(self.settings),
+                    "prompts": prompts,
+                    "seeds": seeds,
+                }
             )
+            n = len(self._pipeline_run_queue)
+            self._append_log(
+                f"Approved storyboard run queued ({n} job(s) waiting — pipeline launch already in progress)."
+            )
+            self._tasks_refresh()
+            try:
+                self.run_btn.setEnabled(True)
+            except Exception:
+                pass
+            return
 
-        self._run_when_ffmpeg_ready(_continue)
+        self._pipeline_launch_pending = True
+
+        def _continue() -> None:
+            worker_started = False
+            try:
+                pf = preflight_check(settings=self.settings, strict=True)
+                for w in pf.warnings:
+                    self._append_log(f"Warning: {w}")
+                if not pf.ok:
+                    self._append_log("Preflight failed. Fix these issues before running:")
+                    for e in pf.errors:
+                        self._append_log(f"- {e}")
+                    self._preflight_failed_ui(pf)
+                    return
+                self._attach_and_start_pipeline_worker(
+                    self.settings,
+                    prebuilt_prompts=prompts,
+                    prebuilt_seeds=seeds,
+                )
+                worker_started = True
+            finally:
+                if not worker_started:
+                    self._pipeline_launch_pending = False
+
+        if not self._run_when_ffmpeg_ready(_continue):
+            self._pipeline_launch_pending = False
 
     def _on_done(self, out_dir: str) -> None:
         self._release_run_control()
@@ -3721,6 +3849,13 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._append_log(f"Failed to save YouTube tokens: {e}")
 
+    def _on_pipeline_warning(self, title: str, msg: str) -> None:
+        """VRAM / pipeline notices from ``PipelineWorker`` (cross-thread signal → GUI slot)."""
+        t = (title or "Notice").strip()
+        m = (msg or "").strip()
+        self._append_log(f"[Pipeline warning] {t}: {m}")
+        aquaduct_warning(self, t, m[:4500])
+
     def _on_failed(self, err: str) -> None:
         self._release_run_control()
         self._clear_tasks_active_row()
@@ -3728,4 +3863,18 @@ class MainWindow(QMainWindow):
         dprint("tasks", "pipeline run failed", str(err)[:400])
         self._append_log("Run failed:")
         self._append_log(err)
+        body = (err or "").strip()
+        summary = body.split("\n", 1)[0].strip() if body else "Unknown error."
+        if len(summary) > 280:
+            summary = summary[:277] + "…"
+        aquaduct_message_with_details(
+            self,
+            "Pipeline failed",
+            summary,
+            informative_text=(
+                "Full traceback is below and was appended to the log. "
+                "CUDA errors often appear as Python exceptions before a native GPU crash."
+            ),
+            details_text=body[:48000],
+        )
         self._try_start_next_queued_pipeline()

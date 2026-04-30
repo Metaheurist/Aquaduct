@@ -214,9 +214,142 @@ def _get_ram_gb_psutil() -> float | None:
         return None
 
 
+def _subprocess_run_hidden(cmd: list[str], *, timeout: float = 12.0) -> subprocess.CompletedProcess:
+    kw: dict[str, Any] = dict(args=cmd, capture_output=True, text=True, timeout=timeout)
+    if os.name == "nt":
+        try:
+            kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    return subprocess.run(**kw)
+
+
+def _cpu_brand_clock_windows() -> tuple[str | None, float | None]:
+    """
+    Commercial CPU name + nominal max clock from WMI (Win32_Processor).
+
+    ``MaxClockSpeed`` is in MHz (often BIOS nominal / turbo table entry — not live turbo).
+    """
+    try:
+        ps_cmd = (
+            "$p = Get-CimInstance Win32_Processor | Select-Object -First 1; "
+            "if ($null -eq $p) { exit 2 }; "
+            "$p.Name.Trim() + '|' + [string][int]$p.MaxClockSpeed"
+        )
+        r = _subprocess_run_hidden(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+            timeout=15.0,
+        )
+        if r.returncode != 0:
+            return None, None
+        line = (r.stdout or "").strip().splitlines()[-1] if (r.stdout or "").strip() else ""
+        if "|" not in line:
+            return None, None
+        name, _, mhz_s = line.partition("|")
+        name = name.strip()
+        if not name:
+            return None, None
+        try:
+            mhz = float(mhz_s.strip())
+        except ValueError:
+            return name, None
+        if mhz <= 0:
+            return name, None
+        return name, mhz / 1000.0
+    except Exception:
+        return None, None
+
+
+def _cpu_brand_clock_linux_proc() -> tuple[str | None, float | None]:
+    """``/proc/cpuinfo`` model name + max ``cpu MHz`` across online cores."""
+    try:
+        model: str | None = None
+        mhz_vals: list[float] = []
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                ls = line.strip()
+                if ls.lower().startswith("model name") and ":" in line:
+                    model = line.split(":", 1)[1].strip() or model
+                elif ls.lower().startswith("cpu mhz") and ":" in line:
+                    try:
+                        mhz_vals.append(float(line.split(":", 1)[1].strip()))
+                    except ValueError:
+                        pass
+                elif ls.startswith("Hardware") and ":" in line:
+                    model = model or line.split(":", 1)[1].strip()
+        if not model and not mhz_vals:
+            return None, None
+        ghz = max(mhz_vals) / 1000.0 if mhz_vals else None
+        return model, ghz
+    except Exception:
+        return None, None
+
+
+def _cpu_brand_clock_darwin_sysctl() -> tuple[str | None, float | None]:
+    """macOS ``machdep.cpu.brand_string`` + optional ``hw.cpufrequency_max`` (Hz → GHz)."""
+    name: str | None = None
+    try:
+        r = subprocess.run(
+            ["sysctl", "-n", "machdep.cpu.brand_string"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode == 0 and (r.stdout or "").strip():
+            name = (r.stdout or "").strip()
+    except Exception:
+        pass
+    ghz: float | None = None
+    for key in ("hw.cpufrequency_max", "machdep.cpu.core_frequency"):
+        try:
+            r2 = subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, timeout=5)
+            if r2.returncode != 0:
+                continue
+            hz_s = (r2.stdout or "").strip()
+            if not hz_s or hz_s == "unknown":
+                continue
+            hz = float(hz_s)
+            # sysctl reports Hz on Intel macs (e.g. 2_400_000_000); Apple Silicon often omits these keys.
+            if hz >= 1e9:
+                ghz = hz / 1e9
+            elif hz >= 1e6:
+                ghz = hz / 1e6
+            elif hz >= 1e3:
+                ghz = hz / 1e3
+            if ghz is not None and ghz > 0:
+                break
+        except Exception:
+            continue
+    return name, ghz
+
+
+def _format_cpu_display_line(*, fallback: str, friendly: str | None, clock_ghz: float | None) -> str:
+    """
+    Single UI line: friendly commercial name when known, else ``platform.processor()`` fallback,
+    plus nominal clock when detected.
+    """
+    base = (friendly or "").strip() or fallback.strip() or "Unknown CPU"
+    if clock_ghz is not None and clock_ghz > 0:
+        return f"{base} · ~{clock_ghz:.2f} GHz max"
+    return base
+
+
 def get_hardware_info() -> HardwareInfo:
     os_name = f"{platform.system()} {platform.release()} ({platform.version()})"
-    cpu = platform.processor() or platform.machine() or "Unknown CPU"
+    raw_cpu = platform.processor() or platform.machine() or "Unknown CPU"
+    friendly: str | None = None
+    clk_ghz: float | None = None
+    try:
+        sysname = platform.system()
+        if sysname == "Windows":
+            friendly, clk_ghz = _cpu_brand_clock_windows()
+        elif sysname == "Linux":
+            friendly, clk_ghz = _cpu_brand_clock_linux_proc()
+        elif sysname == "Darwin":
+            friendly, clk_ghz = _cpu_brand_clock_darwin_sysctl()
+    except Exception:
+        friendly, clk_ghz = None, None
+    cpu = _format_cpu_display_line(fallback=raw_cpu, friendly=friendly, clock_ghz=clk_ghz)
     ram_gb = _get_ram_gb_windows() if os.name == "nt" else None
     if ram_gb is None:
         ram_gb = _get_ram_gb_psutil()

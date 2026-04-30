@@ -14,12 +14,29 @@ All notable changes to this project will be documented in this file.
 - **`src/util/resource_sample.py`**, **`UI/dialogs/resource_graph_dialog.py`**: sparkline samples expose **tree RSS MB**, **host free RAM**, **machine-wide system RAM used %** (`psutil.virtual_memory().percent`), and **child-process count** (CPU / RAM tooltips; FFmpeg called out on CPU). Sampling uses **one** recursive process-tree walk per tick (CPU + RSS + child count).
 - **`src/util/memory_budget.py`**: module doc notes CPU thread env belongs in hardware docs — boundaries do not alter ``OMP_*`` mid-run.
 - **`src/runtime/preflight.py`**: optional **`AQUADUCT_HOST_RAM_PREFLIGHT`** adds a soft warning when free host RAM is under ~**4 GiB** in **local** execution mode.
+- **`src/runtime/preflight_host_hints.py`**, **`preflight.py`**: optional **`AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM`** (HF size cache + frontier repo ids vs free‑RAM threshold) and **`AQUADUCT_CPU_PREFLIGHT`** (high host CPU % via **`psutil`**).
+- **`src/util/diffusers_load.py`**: **`AQUADUCT_DIFFUSERS_DISABLE_MMAP`** merges **`disable_mmap`** into diffusers **`from_pretrained`** with **`TypeError`** fallback; wired from **`clips.py`** / **`artist.py`**.
 - **Debug** ([`debug/debug_log.py`](debug/debug_log.py)): **`memory_budget`** category for `dprint`.
-- **Docs**: [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/reference/config.md`](docs/reference/config.md).
-- **Tests**: [`tests/util/test_memory_budget.py`](tests/util/test_memory_budget.py), [`tests/runtime/test_preflight.py`](tests/runtime/test_preflight.py), [`tests/models/test_resource_sample.py`](tests/models/test_resource_sample.py).
+- **Docs**: [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/ui/ui.md`](docs/ui/ui.md).
+- **Tests**: [`tests/util/test_memory_budget.py`](tests/util/test_memory_budget.py), [`tests/runtime/test_preflight.py`](tests/runtime/test_preflight.py), [`tests/util/test_diffusers_load.py`](tests/util/test_diffusers_load.py), [`tests/runtime/test_vram_watchdog.py`](tests/runtime/test_vram_watchdog.py), [`tests/models/test_resource_sample.py`](tests/models/test_resource_sample.py).
+
+### VRAM watchdog + pipeline notices
+- **`src/util/vram_watchdog.py`**: **`check_cuda_headroom`** inspects **`torch.cuda.mem_get_info`** before heavy loads — logs warnings, optional **`emit_pipeline_notice`** to the desktop worker, or **`RuntimeError`** when free VRAM is critically low (tunable via **`AQUADUCT_VRAM_WATCHDOG`** and **`AQUADUCT_VRAM_*_FREE_*`** env vars). **`cuda_mem_snapshot`** for diagnostics.
+- **`src/runtime/pipeline_notice.py`**: context‑scoped callback (**`pipeline_notice_scope`**) so worker threads can raise **non-blocking** UI notices without importing Qt.
+- **`UI/workers/impl.py`**: **`PipelineWorker`** wraps **`run_once`** in **`pipeline_notice_scope`** ( **`pipeline_warning`** signal).
+- **`UI/main_window.py`**: connects **`pipeline_warning`**; **`_run_when_ffmpeg_ready`** returns **`bool`** and **`_pipeline_launch_pending`** avoids queue races while FFmpeg prefetch is in flight or the worker has not yet **`start()`**‑ed.
+- **`src/util/utils_vram.py`**, **`src/content/brain.py`**, **`src/util/memory_budget.py`**: integrate **`check_cuda_headroom`** at diffusion prep and LLM load boundaries.
+
+### Inference profile logging + script JSON extraction
+- **`src/models/inference_profiles.py`**: serialized **`log_inference_profiles_for_run`** (thread lock, batched stderr lines, mirror lines to **`logs/debug.log`** via **`append_debug_log`**).
+- **`src/content/brain.py`**: **`_slice_first_balanced_json_object`** — robust extraction when models wrap JSON in fences or prose with nested braces.
+
+### Desktop UI + Library
+- **`AppSettings`** / **`ui_settings.json`**: **`resource_graph_split_view`** — optional **one VRAM sparkline per CUDA GPU** in the resource graph (wired from **`MainWindow`** snapshot → worker).
+- **`UI/tabs/library_tab.py`**: scrollable Library tab; tighter default **videos** table height (min/max) for small screens.
 
 ### My PC — CPU name + nominal clock
-- **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): CPU line uses WMI / ``/proc/cpuinfo`` / macOS ``sysctl`` when possible (commercial name + ``~X.XX GHz max`` from nominal max MHz where exposed); falls back to ``platform.processor()`` unchanged if lookups fail.
+- **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): CPU line uses WMI / ``/proc/cpuinfo`` / macOS ``sysctl`` when possible (commercial name + ``~X.XX GHz max`` from nominal max MHz where exposed); falls back to ``platform.processor()`` unchanged if lookups fail. Windows subprocess probes use **`CREATE_NO_WINDOW`** where supported so brief PowerShell/WMI checks do not flash a console.
 - **Docs**: [`docs/reference/hardware.md`](docs/reference/hardware.md).
 - **Tests**: [`tests/models/test_hardware_cpu_display.py`](tests/models/test_hardware_cpu_display.py).
 

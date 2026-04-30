@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.content.brain import ScriptSegment, VideoPackage
+from src.content.brain import ScriptSegment, VideoPackage, video_package_from_llm_output
 from src.content.story_pipeline import (
     SCRIPT_MIN_SEGMENTS,
     SCRIPT_MIN_TOTAL_WORDS,
@@ -48,3 +48,25 @@ def test_package_to_json_text_roundtrip_shape() -> None:
 def test_script_min_thresholds_sane() -> None:
     assert SCRIPT_MIN_TOTAL_WORDS >= 120
     assert SCRIPT_MIN_SEGMENTS >= 6
+
+
+def test_video_package_from_llm_output_skips_prologue_before_json() -> None:
+    raw = (
+        'Sure — here is the rewrite:\n{"title": "T", "description": "D", "hashtags": ["#x"], '
+        '"hook": "h", "segments": [{"narration": "n", "visual_prompt": "v", "on_screen_text": null}], '
+        '"cta": "c"}\nLet me know if you need tweaks.'
+    )
+    pkg = video_package_from_llm_output(raw)
+    assert pkg.title == "T"
+    assert pkg.hook == "h"
+
+
+def test_video_package_from_llm_output_balanced_braces_in_strings() -> None:
+    raw = (
+        '{"title": "T", "description": "D", "hashtags": ["#x"], '
+        '"hook": "brace literal { ok }", '
+        '"segments": [{"narration": "n", "visual_prompt": "v", "on_screen_text": null}], '
+        '"cta": "c"}'
+    )
+    pkg = video_package_from_llm_output(raw)
+    assert "{ ok }" in pkg.hook
