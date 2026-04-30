@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 
@@ -43,7 +44,13 @@ def attach_api_tab(win) -> None:
     sub = QLabel("Keys are saved in ui_settings.json on this machine (env vars can override — see each section).")
     sub.setWordWrap(True)
     sub.setStyleSheet("color: #B7B7C2; font-size: 12px;")
-    sub.setToolTip("HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.")
+    sub.setToolTip(
+        help_tooltip_rich(
+            "HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.",
+            "api_social",
+            slide=0,
+        )
+    )
     il.addWidget(sub)
 
     from UI.services.api_model_widgets import build_generation_api_panel

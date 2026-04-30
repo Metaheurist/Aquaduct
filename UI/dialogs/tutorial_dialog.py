@@ -48,9 +48,27 @@ TUTORIAL_TOPICS: list[_Topic] = [
             (
                 "Title bar & saving",
                 "Save — writes every tab’s settings to ui_settings.json (same as Run → Save settings).\n\n"
-                "Resource graph — live CPU, RAM, and GPU memory for this process (about once per second).\n\n"
+                "Resource graph — opens the Resource usage window (about once per second). Default is a compact "
+                "**summary** (numbers only); use the title-bar toggle to switch to **live charts** for CPU, RAM, "
+                "and GPU VRAM. The next slide explains Monitor GPU, split view, and Purge memory.\n\n"
                 "Help — opens this window any time.\n\n"
                 "Drag the top bar to move the window. The app uses a fixed width; height follows the active tab.",
+            ),
+            (
+                "Resource usage monitor",
+                "The Resource usage window samples about once per second.\n\n"
+                "CPU — usage for this process tree (including subprocesses such as FFmpeg), normalized vs logical cores.\n\n"
+                "RAM — in chart mode the yellow series is process-tree RSS vs total RAM; the label always shows "
+                "MB by app vs other (approximate split from psutil). Hover labels and the Monitor combo for tooltips "
+                "with **Open in Help** links.\n\n"
+                "GPU VRAM — percent used on the CUDA device selected in the Monitor dropdown (when multiple GPUs exist, "
+                "Auto routing may put script LLM on one card and diffusion on another — switch entries to compare).\n\n"
+                "Split view — pick “Split view — all GPUs” at the bottom of the same Monitor dropdown for each CUDA "
+                "GPU (chart per device when expanded; one VRAM line per GPU in summary mode — scroll when many devices).\n\n"
+                "Purge (sparkle icon beside Monitor) — runs aggressive Python garbage collection and clears the PyTorch "
+                "CUDA cache on all GPUs (and MPS cache on Apple Silicon). It frees unreachable objects and returns "
+                "allocator memory to the driver; it does **not** force-unload models that are still in use by a "
+                "running job. Status text appears under the metrics area after you click (or under charts in expanded mode).",
             ),
             (
                 "Small UX details",

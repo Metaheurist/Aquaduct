@@ -53,7 +53,7 @@ def attach_tasks_tab(win) -> None:
     win.tasks_refresh_btn.setIcon(qicon_toolbar("refresh", _t_accent, _t_icon_px))
     win.tasks_refresh_btn.setToolTip(
         help_tooltip_rich(
-            "Refresh task list",
+            "Refresh task list from upload_tasks.json and in-progress rows.",
             "tasks_library",
             slide=0,
         )
@@ -70,8 +70,8 @@ def attach_tasks_tab(win) -> None:
     win.tasks_pause_btn.setToolTip(
         help_tooltip_rich(
             "Pause between pipeline steps (not mid–GPU operation). Click again to resume.",
-            "tasks_library",
-            slide=0,
+            "run",
+            slide=3,
         )
     )
     win.tasks_pause_btn.setAccessibleName("Pause")
@@ -87,8 +87,8 @@ def attach_tasks_tab(win) -> None:
     win.tasks_stop_btn.setToolTip(
         help_tooltip_rich(
             "Request cancel at the next checkpoint (may take a few seconds).",
-            "tasks_library",
-            slide=0,
+            "run",
+            slide=3,
         )
     )
     win.tasks_stop_btn.setAccessibleName("Stop")

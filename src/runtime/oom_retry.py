@@ -13,8 +13,49 @@ from src.models.quantization import (
     manual_quant_modes_low_to_high,
     resolve_quant_mode,
 )
+from src.runtime.pipeline_control import PipelineCancelled
 
 T = TypeVar("T")
+
+
+class QuantDowngradeExhaustedError(RuntimeError):
+    """Raised when ``auto_quant_downgrade_on_failure`` cannot lower quant further or step budget is exhausted."""
+
+    def __init__(
+        self,
+        *,
+        role: str,
+        repo_id: str,
+        last_error: BaseException,
+        reason: str = "no_lower_mode",
+    ) -> None:
+        self.role = role
+        self.repo_id = repo_id
+        self.last_error = last_error
+        self.reason = reason
+        if reason == "no_lower_mode":
+            msg = (
+                f"All quantization levels were exhausted for {role} (model {repo_id!r}). "
+                f"The run still failed: {last_error}\n\n"
+                "Try a different model or adjust quantization manually on the Model tab. "
+                "You can turn off “Auto quant downgrade on failure” if you prefer fixed settings."
+            )
+        else:
+            msg = (
+                f"Auto quant downgrade stopped after several attempts for {role} ({repo_id!r}). "
+                f"Last error: {last_error}\n\n"
+                "Try a different model or lower quality settings on the Model tab."
+            )
+        super().__init__(msg)
+
+
+def _persist_quant_settings(settings: AppSettings) -> None:
+    try:
+        from src.settings.ui_settings import save_settings
+
+        save_settings(settings)
+    except Exception:
+        pass
 
 
 def is_oom_error(exc: BaseException) -> bool:
@@ -221,6 +262,9 @@ def retry_stage(
       equal-VRAM GPU if listed, else lower quant once — **before** running ``run_cb``, to reduce OOM risk.
     - on OOM: try another CUDA device with **more** or **equal** VRAM (never a smaller card), then
     - downgrade quant one step at a time (``max_quant_downgrades``), clearing VRAM between tries.
+    - when ``settings.auto_quant_downgrade_on_failure`` is True, a **non-OOM** failure also triggers the same
+      one-step quant lowering (per role), persisting settings, until success or
+      :class:`QuantDowngradeExhaustedError`.
 
     Returns (result, settings_after, cuda_device_index_after).
     """
@@ -269,13 +313,50 @@ def retry_stage(
                         clear_cb()
                         cur_settings = with_lowered_quant(role=role, new_mode=new_mode, settings=cur_settings)
                         quant_steps += 1
+                        _persist_quant_settings(cur_settings)
                         continue
 
         try:
             out = run_cb(cur_settings, cur_idx)
             return out, cur_settings, cur_idx
         except BaseException as e:
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
+            if isinstance(e, PipelineCancelled):
+                raise
             if not is_oom_error(e):
+                downgrade = bool(getattr(cur_settings, "auto_quant_downgrade_on_failure", False))
+                if downgrade and quant_steps < max_quant_downgrades:
+                    new_mode = next_lower_quant_mode(role=role, repo_id=repo_id, settings=cur_settings)
+                    if new_mode is None:
+                        raise QuantDowngradeExhaustedError(
+                            role=str(role),
+                            repo_id=str(repo_id),
+                            last_error=e,
+                            reason="no_lower_mode",
+                        ) from e
+                    try:
+                        from debug import pipeline_console
+
+                        pipeline_console(
+                            f"Failure in {stage_name!r} ({type(e).__name__}) — lowering {role} quant → {new_mode!r} "
+                            f"(auto quant downgrade, step {quant_steps + 1}/{max_quant_downgrades}); retrying…",
+                            stage=stage_name,
+                        )
+                    except Exception:
+                        pass
+                    clear_cb()
+                    cur_settings = with_lowered_quant(role=role, new_mode=new_mode, settings=cur_settings)
+                    quant_steps += 1
+                    _persist_quant_settings(cur_settings)
+                    continue
+                if downgrade and quant_steps >= max_quant_downgrades:
+                    raise QuantDowngradeExhaustedError(
+                        role=str(role),
+                        repo_id=str(repo_id),
+                        last_error=e,
+                        reason="max_steps",
+                    ) from e
                 try:
                     from debug import pipeline_console
 
@@ -314,6 +395,13 @@ def retry_stage(
                 raise
             new_mode = next_lower_quant_mode(role=role, repo_id=repo_id, settings=cur_settings)
             if new_mode is None:
+                if bool(getattr(cur_settings, "auto_quant_downgrade_on_failure", False)):
+                    raise QuantDowngradeExhaustedError(
+                        role=str(role),
+                        repo_id=str(repo_id),
+                        last_error=e,
+                        reason="no_lower_mode",
+                    ) from e
                 raise
             try:
                 from debug import pipeline_console
@@ -327,4 +415,5 @@ def retry_stage(
             clear_cb()
             cur_settings = with_lowered_quant(role=role, new_mode=new_mode, settings=cur_settings)
             quant_steps += 1
+            _persist_quant_settings(cur_settings)
 

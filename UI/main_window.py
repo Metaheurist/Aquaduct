@@ -195,7 +195,7 @@ class MainWindow(QMainWindow):
             help_tooltip_rich(
                 "Resource graph — live CPU, RAM, and GPU memory for this process (about once per second).",
                 "welcome",
-                slide=1,
+                slide=2,
             )
         )
         graph_btn.clicked.connect(self._show_resource_graph)
@@ -1035,8 +1035,13 @@ class MainWindow(QMainWindow):
                 "The chosen tone also steers TTS (MOSS voice design + line breaks for other engines)."
             )
             self.personality_combo.setToolTip(
-                "After the script is generated, the effective personality is passed into voice: "
-                "MOSS-VoiceGenerator instruction text, and `shape_tts_text` phrasing (pacing, line breaks) for Kokoro / pyttsx3 / ElevenLabs."
+                help_tooltip_rich(
+                    "After the script is generated, the effective personality is passed into voice: "
+                    "MOSS-VoiceGenerator instruction text, and `shape_tts_text` phrasing (pacing, line breaks) "
+                    "for Kokoro / pyttsx3 / ElevenLabs.",
+                    "run",
+                    slide=2,
+                )
             )
         else:
             self.personality_hint.setVisible(False)
@@ -1046,7 +1051,7 @@ class MainWindow(QMainWindow):
                 "\n\nVoice: this preset steers the spoken delivery — MOSS uses it in the style instruction; "
                 "Kokoro / pyttsx3 / ElevenLabs use the shaped script (pacing, line breaks) from the same choice."
             )
-            self.personality_combo.setToolTip(tip)
+            self.personality_combo.setToolTip(help_tooltip_rich(tip, "run", slide=2))
         self._resize_to_current_tab()
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
@@ -1146,7 +1151,7 @@ class MainWindow(QMainWindow):
                 f'(using your "{mode}" tags when set) and suggests topic phrases from page titles — '
                 "enable Firecrawl on the API tab with a key."
             )
-        self.discover_btn.setToolTip(tip)
+        self.discover_btn.setToolTip(help_tooltip_rich(tip, "topics_chars", slide=0))
 
     def _sync_tags_to_ui(self) -> None:
         from PyQt6.QtWidgets import QListWidgetItem
@@ -1577,6 +1582,7 @@ class MainWindow(QMainWindow):
         )
         _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
         _rg_split = bool(getattr(self.settings, "resource_graph_split_view", False))
+        _rg_compact = bool(getattr(self.settings, "resource_graph_compact", True))
 
         def _quant_mode_from_ui(role_key: str, prefix: str, settings_attr: str) -> str:
             auto_chk = getattr(self, f"{prefix}_quant_auto_chk", None)
@@ -1596,6 +1602,11 @@ class MainWindow(QMainWindow):
         image_q = _quant_mode_from_ui("image", "img", "image_quant_mode")
         video_q = _quant_mode_from_ui("video", "vid", "video_quant_mode")
         voice_q = _quant_mode_from_ui("voice", "voice", "voice_quant_mode")
+        auto_q_down = (
+            bool(self.auto_quant_downgrade_on_failure_chk.isChecked())
+            if hasattr(self, "auto_quant_downgrade_on_failure_chk")
+            else bool(getattr(self.settings, "auto_quant_downgrade_on_failure", False))
+        )
 
         return AppSettings(
             topic_tags_by_mode=topic_map,
@@ -1614,6 +1625,7 @@ class MainWindow(QMainWindow):
             image_quant_mode=image_q,  # type: ignore[arg-type]
             video_quant_mode=video_q,  # type: ignore[arg-type]
             voice_quant_mode=voice_q,  # type: ignore[arg-type]
+            auto_quant_downgrade_on_failure=auto_q_down,
             background_music_path=str(self.music_path.text()).strip(),
             hf_token=hf_tok,
             hf_api_enabled=hf_en,
@@ -1648,6 +1660,7 @@ class MainWindow(QMainWindow):
             gpu_device_index=_gpu_dev_idx,
             resource_graph_monitor_gpu_index=_rg_mon,
             resource_graph_split_view=_rg_split,
+            resource_graph_compact=_rg_compact,
             personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
             art_style_preset_id=(
                 str(self.art_style_preset_combo.currentData())
@@ -3105,6 +3118,16 @@ class MainWindow(QMainWindow):
         self._release_run_control()
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
+        try:
+            from src.settings.ui_settings import load_settings
+
+            self.settings = load_settings()
+            if hasattr(self, "auto_quant_downgrade_on_failure_chk"):
+                self.auto_quant_downgrade_on_failure_chk.setChecked(
+                    bool(getattr(self.settings, "auto_quant_downgrade_on_failure", False))
+                )
+        except Exception:
+            pass
         if not out_dir:
             dprint("tasks", "pipeline run completed", "empty out_dir")
             self._append_log("No new items found.")
@@ -3226,11 +3249,21 @@ class MainWindow(QMainWindow):
             btn.setStyleSheet("")
             btn.setIcon(qicon_toolbar("play" if paused else "pause", text_hex, _size))
             if paused:
-                btn.setToolTip("Resume pipeline")
+                btn.setToolTip(
+                    help_tooltip_rich(
+                        "Resume the pipeline after a mid-run pause (waits between major steps, not mid-GPU).",
+                        "run",
+                        slide=3,
+                    )
+                )
                 btn.setAccessibleName("Resume")
             else:
                 btn.setToolTip(
-                    "Pause between pipeline steps (not mid–GPU operation). Click again to resume."
+                    help_tooltip_rich(
+                        "Pause between pipeline steps (not mid–GPU operation). Click again to resume.",
+                        "run",
+                        slide=3,
+                    )
                 )
                 btn.setAccessibleName("Pause")
         except Exception:
@@ -3860,6 +3893,16 @@ class MainWindow(QMainWindow):
         self._release_run_control()
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
+        try:
+            from src.settings.ui_settings import load_settings
+
+            self.settings = load_settings()
+            if hasattr(self, "auto_quant_downgrade_on_failure_chk"):
+                self.auto_quant_downgrade_on_failure_chk.setChecked(
+                    bool(getattr(self.settings, "auto_quant_downgrade_on_failure", False))
+                )
+        except Exception:
+            pass
         dprint("tasks", "pipeline run failed", str(err)[:400])
         self._append_log("Run failed:")
         self._append_log(err)

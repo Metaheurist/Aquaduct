@@ -5,6 +5,8 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QSizePolicy, QToolButton, QWidget
 
+from UI.help.tutorial_links import help_tooltip_rich
+
 
 class GpuPolicyToggle(QWidget):
     """
@@ -21,9 +23,13 @@ class GpuPolicyToggle(QWidget):
         self.setObjectName("gpuPolicyToggleRoot")
         self.setAccessibleName("GPU policy")
         self.setToolTip(
-            "Auto: multi-GPU stage routing (script vs diffusion may use different devices; VRAM is not pooled). "
-            "Select GPU: pin all local stages to the device below. "
-            "If AQUADUCT_CUDA_DEVICE is set in the environment, it overrides the saved policy (see docs/reference/hardware.md)."
+            help_tooltip_rich(
+                "Auto: multi-GPU stage routing (script vs diffusion may use different devices; VRAM is not pooled). "
+                "Select GPU: pin all local stages to the device below. "
+                "If AQUADUCT_CUDA_DEVICE is set in the environment, it overrides the saved policy.",
+                "my_pc",
+                slide=0,
+            )
         )
 
         root = QHBoxLayout(self)
@@ -56,11 +62,21 @@ class GpuPolicyToggle(QWidget):
             b.setAccessibleName(acc)
 
         self._auto.setToolTip(
-            "LLM tends toward the compute-heuristic CUDA device; image/video diffusion uses the max-VRAM GPU. "
-            "If both would use the same GPU, the LLM moves to the best other CUDA device so both cards stay busy. "
-            "VRAM is not merged across GPUs."
+            help_tooltip_rich(
+                "LLM tends toward the compute-heuristic CUDA device; image/video diffusion uses the max-VRAM GPU. "
+                "If both would use the same GPU, the LLM moves to the best other CUDA device so both cards stay busy. "
+                "VRAM is not merged across GPUs.",
+                "my_pc",
+                slide=0,
+            )
         )
-        self._single.setToolTip("All local pipeline stages use the CUDA index chosen in Device.")
+        self._single.setToolTip(
+            help_tooltip_rich(
+                "All local pipeline stages use the CUDA index chosen in Device.",
+                "my_pc",
+                slide=0,
+            )
+        )
 
         self._grp = QButtonGroup(self)
         self._grp.setExclusive(True)

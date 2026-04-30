@@ -21,6 +21,7 @@ from src.settings.api_model_catalog import (
     providers_for_role,
     uses_openai_chat_protocol_for_llm,
 )
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 
 
@@ -67,7 +68,13 @@ def _refill_model_combo(model_combo: QComboBox, *, role: str, provider: str, sav
         n = per_rank[rk]
         row = QStandardItem(f"{n:02d}. {m}")
         row.setData(m, Qt.ItemDataRole.UserRole)
-        row.setToolTip(f"Tier: {tier_label(tr)}\nModel: {m}\nProvider: {pid or '(none)'}")
+        row.setToolTip(
+            help_tooltip_rich(
+                f"Tier: {tier_label(tr)}\nModel: {m}\nProvider: {pid or '(none)'}",
+                "api_social",
+                slide=1,
+            )
+        )
         mdl.appendRow(row)
 
     model_combo.blockSignals(True)
@@ -87,29 +94,39 @@ def _sync_api_model_combo_tip(model_combo: QComboBox, provider_id: str) -> None:
     pid = str(provider_id or "").strip().lower()
     idx = model_combo.currentIndex()
     if idx < 0:
-        model_combo.setToolTip("Select a model or type a custom model / version id.")
+        model_combo.setToolTip(
+            help_tooltip_rich("Select a model or type a custom model / version id.", "api_social", slide=1)
+        )
         return
     tip = model_combo.itemData(idx, Qt.ItemDataRole.ToolTipRole)
     if tip is not None and str(tip).strip():
-        model_combo.setToolTip(str(tip))
+        model_combo.setToolTip(help_tooltip_rich(str(tip), "api_social", slide=1))
         return
     mid = str(model_combo.itemData(idx) or model_combo.currentText() or "").strip()
     if not mid:
-        model_combo.setToolTip("API model (editable).")
+        model_combo.setToolTip(help_tooltip_rich("API model (editable).", "api_social", slide=1))
         return
     tr = api_tier_for_model(pid, mid)
     model_combo.setToolTip(
-        f"Tier: {tier_label(tr)} ({tier_badge(tr).strip('[]')})\nModel: {mid}\nProvider: {pid or '(none)'}"
+        help_tooltip_rich(
+            f"Tier: {tier_label(tr)} ({tier_badge(tr).strip('[]')})\nModel: {mid}\nProvider: {pid or '(none)'}",
+            "api_social",
+            slide=1,
+        )
     )
 
 
 def build_generation_api_panel(win) -> QWidget:
     root = QGroupBox("Generation APIs (API execution mode)")
     root.setToolTip(
-        "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GEMINI_API_KEY, "
-        "GROQ_API_KEY, TOGETHER_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, "
-        "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, SILICONFLOW_API_KEY, KLING_ACCESS_KEY, KLING_SECRET_KEY, "
-        "MAGIC_HOUR_API_KEY, INWORLD_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY, …"
+        help_tooltip_rich(
+            "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GEMINI_API_KEY, "
+            "GROQ_API_KEY, TOGETHER_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, "
+            "FIREWORKS_API_KEY, CEREBRAS_API_KEY, NEBIUS_API_KEY, SILICONFLOW_API_KEY, KLING_ACCESS_KEY, KLING_SECRET_KEY, "
+            "MAGIC_HOUR_API_KEY, INWORLD_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY, …",
+            "api_social",
+            slide=1,
+        )
     )
     root.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     root.setMinimumWidth(420)

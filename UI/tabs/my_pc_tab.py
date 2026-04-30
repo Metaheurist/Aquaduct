@@ -19,6 +19,7 @@ from src.models.hardware import (
 )
 from src.models.model_manager import model_options
 from src.util.cuda_device_policy import effective_vram_gb_for_kind
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.gpu_policy_toggle import GpuPolicyToggle
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
@@ -47,7 +48,13 @@ def attach_my_pc_tab(win) -> None:
 
     sub = QLabel("Hardware summary and per-model fit (uses GPU policy below).")
     sub.setStyleSheet("color: #B7B7C2;")
-    sub.setToolTip("Effective VRAM per model kind follows Auto vs Select GPU and cuda_device_policy.")
+    sub.setToolTip(
+        help_tooltip_rich(
+            "Effective VRAM per model kind follows Auto vs Select GPU and cuda_device_policy.",
+            "my_pc",
+            slide=0,
+        )
+    )
     lay.addWidget(sub)
 
     info = get_hardware_info()
@@ -103,8 +110,12 @@ def attach_my_pc_tab(win) -> None:
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
     table.setToolTip(
-        "Fit markers match the Model tab (EXCELLENT / OK / RISKY / …). "
-        "Rows use effective VRAM from the policy above (Auto vs Select GPU)."
+        help_tooltip_rich(
+            "Fit markers match the Model tab (EXCELLENT / OK / RISKY / …). "
+            "Rows use effective VRAM from the policy above (Auto vs Select GPU).",
+            "my_pc",
+            slide=0,
+        )
     )
 
     def _fill_model_table() -> None:

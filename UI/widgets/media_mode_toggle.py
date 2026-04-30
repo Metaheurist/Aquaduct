@@ -5,6 +5,8 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QSizePolicy, QToolButton, QWidget
 
+from UI.help.tutorial_links import help_tooltip_rich
+
 
 class MediaModeToggle(QWidget):
     """
@@ -20,7 +22,13 @@ class MediaModeToggle(QWidget):
         super().__init__(parent)
         self.setObjectName("mediaModeToggleRoot")
         self.setAccessibleName("Media mode")
-        self.setToolTip("Video: render MP4 shorts. Photo: generate still images and layouts.")
+        self.setToolTip(
+            help_tooltip_rich(
+                "Video: render MP4 shorts. Photo: generate still images and layouts (Picture tab).",
+                "run",
+                slide=2,
+            )
+        )
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

@@ -41,15 +41,15 @@ class FramelessDialog(QDialog):
         outer.setSpacing(0)
 
         self._title_bar = QWidget()
-        tb = QHBoxLayout(self._title_bar)
-        tb.setContentsMargins(0, 0, 0, 8)
+        self._title_bar_layout = QHBoxLayout(self._title_bar)
+        self._title_bar_layout.setContentsMargins(0, 0, 0, 8)
         self._title_lbl = QLabel(title)
         self._title_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #FFFFFF;")
-        tb.addWidget(self._title_lbl, 1)
+        self._title_bar_layout.addWidget(self._title_lbl, 1)
         close_btn = styled_outline_button("✕", "danger", fixed=(44, 32))
         close_btn.setToolTip("Close")
         close_btn.clicked.connect(self.reject)
-        tb.addWidget(close_btn)
+        self._title_bar_layout.addWidget(close_btn)
         self._frameless_close_button = close_btn
         outer.addWidget(self._title_bar)
 
@@ -61,6 +61,11 @@ class FramelessDialog(QDialog):
 
     def set_frameless_title(self, t: str) -> None:
         self._title_lbl.setText(t)
+
+    def insert_title_bar_widget_before_close(self, w: QWidget) -> None:
+        """Insert a control immediately left of the title-bar ✕ (last widget in the row)."""
+        lay = self._title_bar_layout
+        lay.insertWidget(lay.count() - 1, w)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:

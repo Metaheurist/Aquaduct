@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QComboBox, QFormLayout, QLabel, QScrollArea, QSpinBox, QVBoxLayout, QWidget
 
+from UI.help.tutorial_links import help_tooltip_rich
+
 
 def attach_picture_tab(win) -> None:
     """
@@ -37,24 +39,39 @@ def attach_picture_tab(win) -> None:
     win.picture_template_combo.addItem("Vertical 9:16 — 720×1280", ("vertical_720", 720, 1280))
     win.picture_template_combo.addItem("Square 1:1 — 1080×1080", ("square_1080", 1080, 1080))
     win.picture_template_combo.addItem("Landscape 16:9 — 1920×1080", ("landscape_1080", 1920, 1080))
+    win.picture_template_combo.setToolTip(
+        help_tooltip_rich("Canvas size and aspect for photo-mode outputs.", "run", slide=2)
+    )
     form.addRow("Template", win.picture_template_combo)
 
     win.picture_output_type_combo = QComboBox()
     win.picture_output_type_combo.addItem("Single final image (PNG)", "single_image")
     win.picture_output_type_combo.addItem("Image pack (N images)", "image_set")
     win.picture_output_type_combo.addItem("Layouted design (poster/newspaper/comic)", "layouted")
+    win.picture_output_type_combo.setToolTip(
+        help_tooltip_rich("Single image, image pack, or layouted design (poster / newspaper / comic).", "run", slide=2)
+    )
     form.addRow("Output type", win.picture_output_type_combo)
 
     win.picture_count_spin = QSpinBox()
     win.picture_count_spin.setRange(1, 32)
     win.picture_count_spin.setValue(6)
-    win.picture_count_spin.setToolTip("Used for Image pack (and as a source pool for layouts).")
+    win.picture_count_spin.setToolTip(
+        help_tooltip_rich(
+            "Used for Image pack (and as a source pool for layouts).",
+            "run",
+            slide=2,
+        )
+    )
     form.addRow("Images to generate", win.picture_count_spin)
 
     win.picture_format_combo = QComboBox()
     win.picture_format_combo.addItem("Poster", "poster")
     win.picture_format_combo.addItem("Newspaper", "newspaper")
     win.picture_format_combo.addItem("Comic", "comic")
+    win.picture_format_combo.setToolTip(
+        help_tooltip_rich("Visual style for layouted outputs (pairs with Run tab picture format).", "run", slide=2)
+    )
     form.addRow("Picture format", win.picture_format_combo)
 
     lay.addStretch(1)

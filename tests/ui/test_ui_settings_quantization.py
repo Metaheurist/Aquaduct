@@ -20,6 +20,7 @@ def test_save_roundtrip_quant_modes(tmp_path, monkeypatch) -> None:
         image_quant_mode="bf16",  # type: ignore[arg-type]
         video_quant_mode="cpu_offload",  # type: ignore[arg-type]
         voice_quant_mode="fp16",  # type: ignore[arg-type]
+        auto_quant_downgrade_on_failure=True,
     )
     assert save_settings(s) is True
 
@@ -28,12 +29,14 @@ def test_save_roundtrip_quant_modes(tmp_path, monkeypatch) -> None:
     assert raw.get("image_quant_mode") == "bf16"
     assert raw.get("video_quant_mode") == "cpu_offload"
     assert raw.get("voice_quant_mode") == "fp16"
+    assert raw.get("auto_quant_downgrade_on_failure") is True
 
     loaded = load_settings()
     assert loaded.script_quant_mode == "nf4_4bit"
     assert loaded.image_quant_mode == "bf16"
     assert loaded.video_quant_mode == "cpu_offload"
     assert loaded.voice_quant_mode == "fp16"
+    assert loaded.auto_quant_downgrade_on_failure is True
 
 
 def test_legacy_try_llm_4bit_migrates_to_script_quant_mode() -> None:

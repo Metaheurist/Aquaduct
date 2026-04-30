@@ -133,7 +133,13 @@ def load_settings() -> AppSettings:
         return AppSettings()
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        try:
+            from debug import dprint
+
+            dprint("config", "load_settings failed", str(p), repr(e))
+        except Exception:
+            pass
         return AppSettings()
 
     return app_settings_from_dict(data)
@@ -294,6 +300,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         image_quant_mode=image_q,  # type: ignore[arg-type]
         video_quant_mode=video_q,  # type: ignore[arg-type]
         voice_quant_mode=voice_q,  # type: ignore[arg-type]
+        auto_quant_downgrade_on_failure=bool(data.get("auto_quant_downgrade_on_failure", False))
+        if isinstance(data, dict)
+        else False,
         background_music_path=str(data.get("background_music_path", "")) if isinstance(data, dict) else "",
         hf_token=str(data.get("hf_token", "")) if isinstance(data, dict) else "",
         hf_api_enabled=bool(data.get("hf_api_enabled", True)) if isinstance(data, dict) else True,
@@ -363,6 +372,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
             else None
         ),
         resource_graph_split_view=bool(data.get("resource_graph_split_view", False)) if isinstance(data, dict) else False,
+        resource_graph_compact=bool(data.get("resource_graph_compact", True)) if isinstance(data, dict) else True,
     )
 
 

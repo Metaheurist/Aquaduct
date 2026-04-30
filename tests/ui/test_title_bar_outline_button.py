@@ -39,6 +39,21 @@ def test_frameless_dialog_close_is_outline_button(qapplication):
 
 
 @pytest.mark.qt
+def test_frameless_dialog_insert_title_bar_widget_before_close(qapplication):
+    from PyQt6.QtWidgets import QLabel
+
+    from UI.dialogs.frameless_dialog import FramelessDialog
+
+    d = FramelessDialog(None, title="Test")
+    close = getattr(d, "_frameless_close_button", None)
+    pill = QLabel("x")
+    d.insert_title_bar_widget_before_close(pill)
+    lay = d._title_bar_layout
+    assert lay.indexOf(pill) == lay.count() - 2
+    assert lay.indexOf(close) == lay.count() - 1
+
+
+@pytest.mark.qt
 def test_tutorial_dialog_nav_buttons_are_outline(qapplication):
     from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
     from UI.dialogs.tutorial_dialog import TutorialDialog
