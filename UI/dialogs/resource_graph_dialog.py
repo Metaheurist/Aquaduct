@@ -359,16 +359,23 @@ class ResourceGraphDialog(FramelessDialog):
             self._ram_chart.push(s.process_ram_pct)
             self._cpu_lbl.setText(f"CPU {s.process_cpu_pct:5.1f}%")
             self._cpu_lbl.setToolTip(
-                "Process-tree CPU (Python + subprocesses such as FFmpeg). "
+                "Process-tree CPU (Python + subprocesses). Spikes during encode often include "
+                "FFmpeg child processes (mux/micro-clips). "
                 f"Child processes (recursive): {s.tree_child_count}."
             )
-            ram_bits = [f"{s.process_ram_pct:5.1f}% of system", f"tree ~{s.tree_rss_mb:.0f} MB"]
+            ram_bits = [
+                f"Aquaduct tree {s.process_ram_pct:5.1f}% of RAM",
+                f"~{s.tree_rss_mb:.0f} MB RSS",
+            ]
+            if s.system_memory_used_pct is not None:
+                ram_bits.append(f"system used {s.system_memory_used_pct:.0f}%")
             if s.available_ram_mb is not None:
-                ram_bits.append(f"host free ~{s.available_ram_mb:.0f} MB")
+                ram_bits.append(f"free ~{s.available_ram_mb:.0f} MB")
             self._ram_lbl.setText("RAM · " + " · ".join(ram_bits))
             self._ram_lbl.setToolTip(
-                "Yellow sparkline: Aquaduct process tree RSS as % of total RAM. "
-                "RSS MB sums resident pages for this process and children (encode/mux helpers)."
+                "Yellow sparkline: Aquaduct process tree RSS as % of total physical RAM (not the same as "
+                "whole-machine usage). RSS MB sums resident pages for this process and children "
+                "(e.g. FFmpeg). System used % is host-wide from psutil."
             )
 
             if self._split_chk.isChecked():

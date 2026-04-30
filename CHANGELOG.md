@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - **`UI/workers/impl.py`**: **`PreviewWorker`** / **`StoryboardWorker`** **`finally`** cleanup; **`CharacterPortraitWorker`** uses **`prepare_diffusion`** before local **`generate_images`**.
 - **`src/render/clips.py`**: text-to-video / image-to-video preload passes **`cuda_device_index`** into **`prepare_diffusion`**; post-batch **`cheap`** boundary after **`del pipe`**.
 - **`src/render/artist.py`**: **`_maybe_enable_slice_inference`** after placement on image pipelines; post-batch teardown uses **`release_between_stages`** (**`cheap`**).
-- **`src/util/resource_sample.py`**, **`UI/dialogs/resource_graph_dialog.py`**: sparkline samples expose **tree RSS MB**, **host free RAM**, and **child-process count** (CPU tooltip / RAM subtitle).
+- **`src/util/resource_sample.py`**, **`UI/dialogs/resource_graph_dialog.py`**: sparkline samples expose **tree RSS MB**, **host free RAM**, **machine-wide system RAM used %** (`psutil.virtual_memory().percent`), and **child-process count** (CPU / RAM tooltips; FFmpeg called out on CPU).
 - **`src/runtime/preflight.py`**: optional **`AQUADUCT_HOST_RAM_PREFLIGHT`** adds a soft warning when free host RAM is under ~**4 GiB** in **local** execution mode.
 - **Debug** ([`debug/debug_log.py`](debug/debug_log.py)): **`memory_budget`** category for `dprint`.
 - **Docs**: [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/reference/config.md`](docs/reference/config.md).
