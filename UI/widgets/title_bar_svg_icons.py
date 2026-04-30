@@ -32,6 +32,29 @@ _SVGS: dict[str, str] = {
   <line x1="18" y1="6" x2="6" y2="18"/>
   <line x1="6" y1="6" x2="18" y2="18"/>
 </svg>""",
+    # Cylinder (VRAM heap) + sparkles — “purge / clear caches” (Resource usage dialog).
+    "purge": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <ellipse cx="12" cy="7" rx="7" ry="3"/>
+  <path d="M5 7v5c0 1.66 3.13 3 7 3s7-1.34 7-3V7"/>
+  <path d="M5 12v1c0 1.66 3.13 3 7 3s7-1.34 7-3v-1"/>
+  <path d="M17 2v2M18 3h-2"/>
+  <path d="M19 5l1 1M20 4l-1 1"/>
+  <path d="M15 3l1 1M16 2l-1 1"/>
+</svg>""",
+    # Outward corners — “expand resource charts” (shown in mini mode; click expands).
+    "resource_expand": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="9,21 3,21 3,15"/>
+  <polyline points="15,21 21,21 21,15"/>
+  <polyline points="21,9 21,3 15,3"/>
+  <polyline points="3,9 3,3 9,3"/>
+</svg>""",
+    # Inward corners — “compact resource charts” (shown in expanded mode; click goes mini).
+    "resource_compress": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="15,21 21,21 21,15"/>
+  <polyline points="9,21 3,21 3,15"/>
+  <polyline points="3,9 3,3 9,3"/>
+  <polyline points="21,9 21,3 15,3"/>
+</svg>""",
 }
 
 

@@ -63,7 +63,7 @@ from src.models.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
 from src.models.model_integrity_cache import classify_integrity_status
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.runtime.pipeline_notice import pipeline_notice_scope
-from src.runtime.oom_retry import is_oom_error
+from src.runtime.oom_retry import QuantDowngradeExhaustedError, is_oom_error
 from src.content.characters_store import (
     cast_to_ephemeral_character,
     character_context_for_brain,
@@ -269,7 +269,10 @@ class PipelineWorker(QThread):
                 log_pipeline_exception("PipelineWorker.run", e, extra="run_once worker thread")
             except Exception:
                 pass
-            self.failed.emit(_failure_text_with_cuda_hints(e, tb))
+            if isinstance(e, QuantDowngradeExhaustedError):
+                self.failed.emit(str(e))
+            else:
+                self.failed.emit(_failure_text_with_cuda_hints(e, tb))
 
 
 class TopicDiscoverWorker(QThread):

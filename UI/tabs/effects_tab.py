@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from src.settings.effects_presets import EFFECT_PRESETS, find_best_preset_for_effects, preset_by_id
 from src.render.ffmpeg_slideshow import XFADE_TRANSITIONS
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 
 
@@ -117,7 +118,7 @@ def attach_effects_tab(win) -> None:
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(_TILE_QSS)
         btn.setText(f"{p.title}\n{p.subtitle}")
-        btn.setToolTip(f"{p.title}\n\n{p.description}")
+        btn.setToolTip(help_tooltip_rich(f"{p.title}\n\n{p.description}", "video", slide=3))
         btn.setProperty("preset_id", p.id)
         btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         win._effects_preset_tile_group.addButton(btn)
@@ -134,7 +135,13 @@ def attach_effects_tab(win) -> None:
     custom_tile.setCursor(Qt.CursorShape.PointingHandCursor)
     custom_tile.setStyleSheet(_TILE_QSS)
     custom_tile.setText("Custom\nManual settings")
-    custom_tile.setToolTip("Keep your own mix. Pick a template first, then tweak fields below.")
+    custom_tile.setToolTip(
+        help_tooltip_rich(
+            "Keep your own mix. Pick a template first, then tweak fields below.",
+            "video",
+            slide=3,
+        )
+    )
     custom_tile.setProperty("preset_id", "")
     custom_tile.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
     win._effects_preset_tile_group.addButton(custom_tile)
@@ -199,7 +206,13 @@ def attach_effects_tab(win) -> None:
     if xf_idx >= 0:
         win.xfade_transition_combo.setCurrentIndex(xf_idx)
     _prep_combo(win.xfade_transition_combo)
-    win.xfade_transition_combo.setToolTip("FFmpeg xfade transition between slideshow images (when strength is not Off).")
+    win.xfade_transition_combo.setToolTip(
+        help_tooltip_rich(
+            "FFmpeg xfade transition between slideshow images (when transition strength is not Off).",
+            "video",
+            slide=3,
+        )
+    )
     form_vis.addRow("Transition style", win.xfade_transition_combo)
 
     win.seed_base_input = QLineEdit()

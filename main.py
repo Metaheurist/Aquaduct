@@ -2080,7 +2080,9 @@ def main() -> None:
 
     music = Path(args.music).resolve() if args.music else None
 
-    saved_settings = load_settings() if (args.cli or args.once) else None
+    # Always load so saved HF token / hub prefs apply before UI or `--once`, not only `--cli`/`--once`.
+    # (`UI/app.py` + `MainWindow` load again for theme/widgets — path is the same `settings_path()`.)
+    saved_settings = load_settings()
     if saved_settings and bool(getattr(saved_settings, "hf_api_enabled", True)):
         saved_token = str(getattr(saved_settings, "hf_token", "") or "").strip()
         if saved_token and not (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")):

@@ -4,6 +4,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.title_bar_outline_button import styled_outline_button
 
 
@@ -35,7 +36,13 @@ class DownloadPopup(QDialog):
         top.addWidget(self.title, 1)
 
         pause = styled_outline_button("⏸", "muted_icon", fixed=(44, 32))
-        pause.setToolTip("Pause (you can resume later)")
+        pause.setToolTip(
+            help_tooltip_rich(
+                "Pause the download queue (you can resume later from the Model tab).",
+                "models",
+                slide=2,
+            )
+        )
         pause.clicked.connect(self._request_pause)
         top.addWidget(pause, 0, Qt.AlignmentFlag.AlignRight)
 

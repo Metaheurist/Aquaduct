@@ -69,6 +69,13 @@ def attach_run_tab(win) -> None:
         cur_vf = "news"
     idx_vf = win.video_format_combo.findData(cur_vf)
     win.video_format_combo.setCurrentIndex(idx_vf if idx_vf >= 0 else 0)
+    win.video_format_combo.setToolTip(
+        help_tooltip_rich(
+            "Video format selects which topic list and crawler behavior apply, together with the Topics tab.",
+            "run",
+            slide=2,
+        )
+    )
     fmt_row.addWidget(win.video_format_combo, 1)
     fmt_row.addStretch(1)
     out_lay.addLayout(fmt_row)
@@ -82,6 +89,13 @@ def attach_run_tab(win) -> None:
     win.picture_format_run_combo.addItem("Newspaper", "newspaper")
     win.picture_format_run_combo.addItem("Comic", "comic")
     win.picture_format_run_combo.setCurrentIndex(0)
+    win.picture_format_run_combo.setToolTip(
+        help_tooltip_rich(
+            "Picture format (poster / newspaper / comic) for photo-mode runs; pair with the Picture tab for size and output type.",
+            "run",
+            slide=2,
+        )
+    )
     pic_row.addWidget(win.picture_format_run_combo, 1)
     pic_row.addStretch(1)
     out_lay.addLayout(pic_row)
@@ -134,6 +148,21 @@ def attach_run_tab(win) -> None:
         win.run_content_custom_radio.setChecked(True)
     else:
         win.run_content_preset_radio.setChecked(True)
+    win.run_content_preset_radio.setToolTip(
+        help_tooltip_rich(
+            "Preset uses your per-format topic tags plus the news/headline cache (behavior depends on video format).",
+            "run",
+            slide=1,
+        )
+    )
+    win.run_content_custom_radio.setToolTip(
+        help_tooltip_rich(
+            "Custom uses your multiline instructions: the script model expands them into a brief, then writes "
+            "the full script (two LLM passes — slower than Preset).",
+            "run",
+            slide=1,
+        )
+    )
     mode_row.addWidget(win.run_content_preset_radio)
     mode_row.addWidget(win.run_content_custom_radio)
     mode_row.addStretch(1)
@@ -146,6 +175,14 @@ def attach_run_tab(win) -> None:
         f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters stored.)"
     )
     win.custom_instructions_edit.setPlainText(str(getattr(win.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS])
+    win.custom_instructions_edit.setToolTip(
+        help_tooltip_rich(
+            "Custom content: the script model expands your notes into a brief, then writes the full script "
+            "(two LLM passes). Does not pick headlines from the news cache.",
+            "run",
+            slide=1,
+        )
+    )
     win.custom_instructions_edit.setMinimumHeight(72)
     win.custom_instructions_edit.setMaximumHeight(160)
     sc_lay.addWidget(win.custom_instructions_edit)
@@ -279,6 +316,13 @@ def attach_run_tab(win) -> None:
         idx_c = win.character_combo.findData(cur_cid)
         if idx_c >= 0:
             win.character_combo.setCurrentIndex(idx_c)
+    win.character_combo.setToolTip(
+        help_tooltip_rich(
+            "Optional character ties voice and visuals to a profile from the Characters tab.",
+            "run",
+            slide=2,
+        )
+    )
     c_row.addWidget(win.character_combo, 1)
     c_row.addStretch(1)
     sc_lay.addLayout(c_row)
@@ -302,18 +346,46 @@ def attach_run_tab(win) -> None:
     row.addWidget(win.run_btn)
 
     win.preview_btn = QPushButton("Preview")
+    win.preview_btn.setToolTip(
+        help_tooltip_rich(
+            "Preview drafts a script package without a full render. Progress appears on the Tasks tab.",
+            "run",
+            slide=3,
+        )
+    )
     win.preview_btn.clicked.connect(win._on_preview)
     row.addWidget(win.preview_btn)
 
     win.storyboard_btn = QPushButton("Storyboard Preview")
+    win.storyboard_btn.setToolTip(
+        help_tooltip_rich(
+            "Storyboard preview builds a visual grid plan. Progress appears on the Tasks tab.",
+            "run",
+            slide=3,
+        )
+    )
     win.storyboard_btn.clicked.connect(win._on_storyboard_preview)
     row.addWidget(win.storyboard_btn)
 
     win.open_videos_btn = QPushButton("Open videos folder")
+    win.open_videos_btn.setToolTip(
+        help_tooltip_rich(
+            "Opens the videos/ output root in the file manager (finished projects with final.mp4).",
+            "tasks_library",
+            slide=1,
+        )
+    )
     win.open_videos_btn.clicked.connect(win._open_videos)
     row.addWidget(win.open_videos_btn)
 
     win.save_btn = QPushButton("Save settings")
+    win.save_btn.setToolTip(
+        help_tooltip_rich(
+            "Writes every tab’s settings to ui_settings.json (same as the title bar Save button).",
+            "welcome",
+            slide=1,
+        )
+    )
     win.save_btn.clicked.connect(win._save_settings)
     row.addWidget(win.save_btn)
 
@@ -335,7 +407,11 @@ def refresh_run_tab_for_media_mode(win) -> None:
     if hasattr(win, "run_qty_spin"):
         if is_photo:
             win.run_qty_spin.setToolTip(
-                "Each count is one photo pipeline run (each project folder under .Aquaduct_data/pictures/)."
+                help_tooltip_rich(
+                    "Each count is one photo pipeline run (each project folder under .Aquaduct_data/pictures/).",
+                    "run",
+                    slide=0,
+                )
             )
         else:
             win.run_qty_spin.setToolTip(
@@ -365,11 +441,28 @@ def refresh_run_tab_for_media_mode(win) -> None:
         win.storyboard_btn.setVisible(not is_photo)
     if hasattr(win, "open_videos_btn"):
         win.open_videos_btn.setText("Open outputs folder" if is_photo else "Open videos folder")
+        win.open_videos_btn.setToolTip(
+            help_tooltip_rich(
+                "Opens the pictures/ or videos/ output root in the file manager.",
+                "tasks_library",
+                slide=1,
+            )
+            if is_photo
+            else help_tooltip_rich(
+                "Opens the videos/ output root in the file manager (finished projects with final.mp4).",
+                "tasks_library",
+                slide=1,
+            )
+        )
     if hasattr(win, "_sync_run_content_hints"):
         win._sync_run_content_hints()
     if hasattr(win, "run_btn"):
         win.run_btn.setToolTip(
-            "Each Run starts one pipeline; status appears on the Tasks tab."
+            help_tooltip_rich(
+                "Each Run starts one photo pipeline; status appears on the Tasks tab.",
+                "run",
+                slide=0,
+            )
             if is_photo
             else help_tooltip_rich(
                 "While a job runs, live stage + percent appear as the top row on the Tasks tab.",

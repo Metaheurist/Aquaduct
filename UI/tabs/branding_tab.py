@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.config import BrandingSettings
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.theme import PRESET_PALETTES, build_qss, resolve_palette
 from UI.widgets.title_bar_outline_button import refresh_open_main_window_title_chrome
@@ -68,7 +69,13 @@ def attach_branding_tab(win) -> None:
 
     sub = QLabel("Optional — enable a row to apply it.")
     sub.setStyleSheet("color: #B7B7C2;")
-    sub.setToolTip("Theme overrides, video/photo styling, and watermark are all optional.")
+    sub.setToolTip(
+        help_tooltip_rich(
+            "Theme overrides, video/photo styling, and watermark are all optional.",
+            "branding",
+            slide=0,
+        )
+    )
     content_lay.addWidget(sub)
 
     form = QFormLayout()
@@ -122,7 +129,7 @@ def attach_branding_tab(win) -> None:
             chip.setStyleSheet(
                 f"QLabel {{ background-color: {nm}; border: 1px solid #3A3A44; border-radius: 6px; }}"
             )
-            chip.setToolTip(f"{label}: {nm.upper()}")
+            chip.setToolTip(help_tooltip_rich(f"{label}: {nm.upper()}", "branding", slide=0))
 
         pick = QPushButton("Pick…")
         pick.setMaximumWidth(90)
@@ -324,13 +331,17 @@ def attach_branding_tab(win) -> None:
     win.brand_watermark_opacity = QSlider(Qt.Orientation.Horizontal)
     win.brand_watermark_opacity.setRange(15, 75)
     win.brand_watermark_opacity.setValue(int(round(float(getattr(b, "watermark_opacity", 0.22)) * 100)))
-    win.brand_watermark_opacity.setToolTip("Opacity (%)")
+    win.brand_watermark_opacity.setToolTip(
+        help_tooltip_rich("Watermark opacity as percent of full strength.", "branding", slide=0)
+    )
     wm_form.addRow("Opacity", win.brand_watermark_opacity)
 
     win.brand_watermark_scale = QSlider(Qt.Orientation.Horizontal)
     win.brand_watermark_scale.setRange(8, 40)
     win.brand_watermark_scale.setValue(int(round(float(getattr(b, "watermark_scale", 0.18)) * 100)))
-    win.brand_watermark_scale.setToolTip("Size (% of video width)")
+    win.brand_watermark_scale.setToolTip(
+        help_tooltip_rich("Watermark width as a percent of video frame width.", "branding", slide=0)
+    )
     wm_form.addRow("Size", win.brand_watermark_scale)
     content_lay.addLayout(wm_form)
 

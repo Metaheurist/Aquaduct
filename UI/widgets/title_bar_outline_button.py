@@ -14,7 +14,7 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QApplication, QPushButton
 
 Variant = Literal["accent_icon", "muted_icon", "danger"]
-IconKind = Literal["save", "graph", "help", "close"]
+IconKind = Literal["save", "graph", "help", "close", "purge", "resource_expand", "resource_compress"]
 
 
 class TitleBarOutlineButton(QPushButton):
@@ -35,6 +35,10 @@ class TitleBarOutlineButton(QPushButton):
         self._text = QColor("#FFFFFF")
         self.setProperty("chrome", "title_outline")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def set_icon_kind(self, kind: IconKind | None) -> None:
+        self._icon_kind = kind
+        self.update()
 
     def set_chrome_colors(self, accent_hex: str, danger_hex: str, muted_hex: str, text_hex: str) -> None:
         self._accent = QColor(accent_hex)
@@ -139,6 +143,7 @@ def styled_outline_button(
     text: str,
     variant: Variant,
     *,
+    icon_kind: IconKind | None = None,
     fixed: tuple[int, int] | None = None,
     min_width: int = 96,
     min_height: int = 32,
@@ -147,7 +152,8 @@ def styled_outline_button(
     """Rounded-outline button with theme palette (for dialogs and footers)."""
     from UI.theme import resolve_palette
 
-    b = TitleBarOutlineButton(text, variant=variant)
+    label = "" if icon_kind is not None else text
+    b = TitleBarOutlineButton(label, variant=variant, icon_kind=icon_kind)
     if fixed is not None:
         b.setFixedSize(fixed[0], fixed[1])
     else:

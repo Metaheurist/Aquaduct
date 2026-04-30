@@ -102,7 +102,7 @@ def attach_video_tab(win) -> None:
         btn.setStyleSheet(_TILE_QSS)
         # Compact lines: wide platform strings force huge min-width; full list stays in the tooltip.
         btn.setText(f"{p.title}\n{p.width}×{p.height} · {p.fps}fps")
-        btn.setToolTip(f"{p.title}\n\n{p.platforms}")
+        btn.setToolTip(help_tooltip_rich(f"{p.title}\n\n{p.platforms}", "video", slide=0))
         btn.setProperty("preset_id", p.id)
         btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         win._platform_preset_tile_group.addButton(btn)
@@ -119,7 +119,13 @@ def attach_video_tab(win) -> None:
     custom_tile.setCursor(Qt.CursorShape.PointingHandCursor)
     custom_tile.setStyleSheet(_TILE_QSS)
     custom_tile.setText("Custom\nManual settings")
-    custom_tile.setToolTip("Keep your own mix of settings. Pick a template first, then tweak fields below.")
+    custom_tile.setToolTip(
+        help_tooltip_rich(
+            "Keep your own mix of settings. Pick a template first, then tweak fields below.",
+            "video",
+            slide=0,
+        )
+    )
     custom_tile.setProperty("preset_id", "")
     custom_tile.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
     win._platform_preset_tile_group.addButton(custom_tile)
@@ -160,6 +166,13 @@ def attach_video_tab(win) -> None:
         win.format_combo.insertItem(0, f"Custom — {cur[0]}×{cur[1]}", cur)
         win.format_combo.setCurrentIndex(0)
     _prep_combo(win.format_combo)
+    win.format_combo.setToolTip(
+        help_tooltip_rich(
+            "Output resolution and aspect; drives final frame size with FPS and bitrate.",
+            "video",
+            slide=0,
+        )
+    )
     form_video.addRow("Resolution", win.format_combo)
 
     win.images_spin = NoWheelSpinBox()
@@ -187,8 +200,12 @@ def attach_video_tab(win) -> None:
     win.pro_clip_seconds_spin.setDecimals(1)
     win.pro_clip_seconds_spin.setValue(float(getattr(win.settings.video, "pro_clip_seconds", 4.0)))
     win.pro_clip_seconds_spin.setToolTip(
-        "Target duration per generated scene (seconds). Long beats may split into extra scenes. "
-        "See preflight for model caps."
+        help_tooltip_rich(
+            "Target duration per generated scene (seconds). Long beats may split into extra scenes. "
+            "See preflight for model caps.",
+            "video",
+            slide=1,
+        )
     )
     form_video.addRow("Pro scene length (seconds)", win.pro_clip_seconds_spin)
 
@@ -221,8 +238,22 @@ def attach_video_tab(win) -> None:
     win.bitrate_combo.addItems(["low", "med", "high"])
     win.bitrate_combo.setCurrentText(win.settings.video.bitrate_preset)
     _prep_combo(win.bitrate_combo, min_w=200)
-    win.bitrate_combo.setToolTip(win.bitrate_combo.currentText())
-    win.bitrate_combo.currentIndexChanged.connect(lambda: win.bitrate_combo.setToolTip(win.bitrate_combo.currentText()))
+    win.bitrate_combo.setToolTip(
+        help_tooltip_rich(
+            f"Bitrate preset: {win.bitrate_combo.currentText()} (low / med / high).",
+            "video",
+            slide=0,
+        )
+    )
+    win.bitrate_combo.currentIndexChanged.connect(
+        lambda: win.bitrate_combo.setToolTip(
+            help_tooltip_rich(
+                f"Bitrate preset: {win.bitrate_combo.currentText()} (low / med / high).",
+                "video",
+                slide=0,
+            )
+        )
+    )
     form_video.addRow("Bitrate preset", win.bitrate_combo)
 
     win.export_microclips_chk = QCheckBox("Export intermediate micro-scenes into assets/")
@@ -236,8 +267,12 @@ def attach_video_tab(win) -> None:
     win.allow_nsfw_chk = QCheckBox("Allow NSFW image output (disables diffusion safety checker)")
     win.allow_nsfw_chk.setChecked(bool(getattr(win.settings, "allow_nsfw", False)))
     win.allow_nsfw_chk.setToolTip(
-        "When enabled, Stable Diffusion will not blank frames flagged by the built-in classifier. "
-        "Use only where appropriate; you are responsible for compliance with platform rules."
+        help_tooltip_rich(
+            "When enabled, Stable Diffusion will not blank frames flagged by the built-in classifier. "
+            "Use only where appropriate; you are responsible for compliance with platform rules.",
+            "video",
+            slide=3,
+        )
     )
     form_video.addRow("", win.allow_nsfw_chk)
 
@@ -269,8 +304,12 @@ def attach_video_tab(win) -> None:
     win.story_multistage_chk = QCheckBox("Multi-stage script review (format-specific LLM passes)")
     win.story_multistage_chk.setChecked(bool(getattr(win.settings.video, "story_multistage_enabled", False)))
     win.story_multistage_chk.setToolTip(
-        "Runs extra local LLM passes after the first draft: beat structure, safety, length, and clarity "
-        "(news/explainer) or dialogue, pacing, and punchlines (cartoon/unhinged). Slower but higher quality."
+        help_tooltip_rich(
+            "Runs extra local LLM passes after the first draft: beat structure, safety, length, and clarity "
+            "(news/explainer) or dialogue, pacing, and punchlines (cartoon/unhinged). Slower but higher quality.",
+            "video",
+            slide=2,
+        )
     )
     lay.addWidget(win.story_multistage_chk)
 
@@ -290,9 +329,13 @@ def attach_video_tab(win) -> None:
     win.story_refimg_chk = QCheckBox("Download reference images for diffusion (from scraped pages)")
     win.story_refimg_chk.setChecked(bool(getattr(win.settings.video, "story_reference_images", False)))
     win.story_refimg_chk.setToolTip(
-        "Saves images from scraped pages (up to a few more for Cartoon / Unhinged when meme searches run) "
-        "under the run folder; the first is used as an img2img init for the first generated frame when your "
-        "image model supports image-to-image. Needs Firecrawl for discovery; SDXL-style models work best."
+        help_tooltip_rich(
+            "Saves images from scraped pages (up to a few more for Cartoon / Unhinged when meme searches run) "
+            "under the run folder; the first is used as an img2img init for the first generated frame when your "
+            "image model supports image-to-image. Needs Firecrawl for discovery; SDXL-style models work best.",
+            "video",
+            slide=2,
+        )
     )
     lay.addWidget(win.story_refimg_chk)
 

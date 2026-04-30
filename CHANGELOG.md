@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
 
 ### Desktop UI + Library
 - **`AppSettings`** / **`ui_settings.json`**: **`resource_graph_split_view`** — optional **one VRAM sparkline per CUDA GPU** in the resource graph (wired from **`MainWindow`** snapshot → worker).
+- **Resource usage** ([`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): title-bar **mini / expanded** toggle (SVG expand–compress) left of **Close**; **`resource_graph_compact`** in **`ui_settings.json`** (default **`true`** / missing key → compact). **[`FramelessDialog`](UI/dialogs/frameless_dialog.py)** **`insert_title_bar_widget_before_close`** for title-bar controls; new icons in **[`UI/widgets/title_bar_svg_icons.py`](UI/widgets/title_bar_svg_icons.py)** / **[`UI/widgets/title_bar_outline_button.py`](UI/widgets/title_bar_outline_button.py)**.
 - **`UI/tabs/library_tab.py`**: scrollable Library tab; tighter default **videos** table height (min/max) for small screens.
 
 ### My PC — CPU name + nominal clock

@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 
 # Wall clock + cumulative CPU seconds (user+system) for this process and all children, for delta-%CPU.
 _cpu_tree_prev: tuple[float, float] | None = None
+
+# Short-lived cache so split-view (N GPUs) does not spawn N ``nvidia-smi`` calls per second when Torch fails.
+_smi_vram_pct_cache: tuple[float, dict[int, float]] | None = None
 
 
 def _tree_cpu_rss_and_children(proc) -> tuple[float, int, int]:
@@ -45,6 +50,7 @@ class ResourceSample:
     tree_rss_mb: float = 0.0  # summed RSS for process tree (approximate)
     available_ram_mb: float | None = None  # host free RAM per psutil.virtual_memory().available
     system_memory_used_pct: float | None = None  # machine-wide RAM use (psutil virtual_memory().percent)
+    host_used_mb: float | None = None  # psutil virtual_memory().used (MB), for app vs “other” split in UI
     tree_child_count: int = 0  # descendant processes (FFmpeg workers, etc.)
 
 
@@ -63,6 +69,7 @@ def sample_aquaduct_resources() -> ResourceSample:
     rss_mb = 0.0
     avail_mb: float | None = None
     sys_used_pct: float | None = None
+    host_used_mb: float | None = None
     n_children = 0
     try:
         import psutil
@@ -89,6 +96,11 @@ def sample_aquaduct_resources() -> ResourceSample:
         ram_pct = max(0.0, min(100.0, ram_pct))
         rss_mb = rss / (1024.0 * 1024.0)
         avail_mb = float(vm.available) / (1024.0 * 1024.0) if vm.total else None
+        if vm.total:
+            try:
+                host_used_mb = float(vm.used) / (1024.0 * 1024.0)
+            except Exception:
+                host_used_mb = None
         try:
             sys_used_pct = max(0.0, min(100.0, float(vm.percent)))
         except Exception:
@@ -98,6 +110,7 @@ def sample_aquaduct_resources() -> ResourceSample:
         rss_mb = 0.0
         avail_mb = None
         sys_used_pct = None
+        host_used_mb = None
         n_children = 0
 
     gpu_pct: float | None = None
@@ -105,12 +118,7 @@ def sample_aquaduct_resources() -> ResourceSample:
         import torch
 
         if torch.cuda.is_available():
-            dev = torch.cuda.current_device()
-            free_b, total_b = torch.cuda.mem_get_info(dev)
-            total_b = float(total_b)
-            if total_b > 0:
-                used_b = total_b - float(free_b)
-                gpu_pct = max(0.0, min(100.0, 100.0 * used_b / total_b))
+            gpu_pct = sample_gpu_mem_pct(int(torch.cuda.current_device()))
     except Exception:
         gpu_pct = None
 
@@ -121,12 +129,12 @@ def sample_aquaduct_resources() -> ResourceSample:
         tree_rss_mb=rss_mb,
         available_ram_mb=avail_mb,
         system_memory_used_pct=sys_used_pct,
+        host_used_mb=host_used_mb,
         tree_child_count=n_children,
     )
 
 
-def sample_gpu_mem_pct(device_index: int) -> float | None:
-    """VRAM used on ``device_index`` as 0–100% of that GPU's total (no ``set_device`` required)."""
+def _torch_gpu_mem_pct(device_index: int) -> float | None:
     try:
         import torch
 
@@ -143,3 +151,80 @@ def sample_gpu_mem_pct(device_index: int) -> float | None:
         return max(0.0, min(100.0, 100.0 * used_b / total_b))
     except Exception:
         return None
+
+
+def _parse_nvidia_smi_gpu_mem_pct(stdout: str) -> dict[int, float]:
+    """Parse ``--query-gpu=index,memory.used,memory.total`` CSV lines → index → used % (0–100)."""
+    out: dict[int, float] = {}
+    for raw in (stdout or "").strip().splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        parts = [x.strip() for x in line.split(",")]
+        if len(parts) < 3:
+            continue
+        try:
+            ix = int(parts[0])
+            used_m = float(parts[1])
+            total_m = float(parts[2])
+        except ValueError:
+            continue
+        if total_m <= 0.0:
+            continue
+        out[ix] = max(0.0, min(100.0, 100.0 * used_m / total_m))
+    return out
+
+
+def _nvidia_smi_gpu_used_pct_by_index() -> dict[int, float]:
+    """
+    VRAM used % per GPU index via ``nvidia-smi`` (matches :func:`list_cuda_gpus` when PyTorch is absent).
+
+    Cached briefly so split-view ticks do not run one subprocess per GPU per second.
+    """
+    global _smi_vram_pct_cache
+    now = time.perf_counter()
+    if _smi_vram_pct_cache is not None and now - _smi_vram_pct_cache[0] < 0.85:
+        return _smi_vram_pct_cache[1]
+
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        _smi_vram_pct_cache = (now, {})
+        return {}
+
+    cmd = [
+        smi,
+        "--query-gpu=index,memory.used,memory.total",
+        "--format=csv,noheader,nounits",
+    ]
+    kw: dict = dict(args=cmd, capture_output=True, text=True, timeout=5.0)
+    if os.name == "nt":
+        try:
+            kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    try:
+        p = subprocess.run(**kw)
+    except Exception:
+        _smi_vram_pct_cache = (now, {})
+        return {}
+
+    if p.returncode != 0:
+        _smi_vram_pct_cache = (now, {})
+        return {}
+
+    table = _parse_nvidia_smi_gpu_mem_pct(p.stdout or "")
+    _smi_vram_pct_cache = (now, table)
+    return table
+
+
+def sample_gpu_mem_pct(device_index: int) -> float | None:
+    """VRAM used on ``device_index`` as 0–100% of that GPU's total.
+
+    Uses ``torch.cuda.mem_get_info`` when available; falls back to ``nvidia-smi`` so split-view
+    charts still update when Torch cannot query VRAM (driver/build quirks, CPU-only Torch with
+    NVIDIA drivers present, etc.).
+    """
+    t = _torch_gpu_mem_pct(device_index)
+    if t is not None:
+        return t
+    return _nvidia_smi_gpu_used_pct_by_index().get(device_index)

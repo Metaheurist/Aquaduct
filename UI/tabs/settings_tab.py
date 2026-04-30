@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.core.config import get_models
 from src.core.models_dir import models_dir_for_app
 
 from src.models.hardware import (
@@ -64,6 +65,24 @@ def _vram_label_style() -> str:
     return "color:#9BB0C4;font-size:12px;padding:4px 4px;"
 
 
+def _models_help_tip(body: str, *, slide: int = 0) -> str:
+    t = (body or "").strip()
+    if not t:
+        t = "See Help for models & storage."
+    return help_tooltip_rich(t, "models", slide=slide)
+
+
+def _my_pc_help_tip(body: str) -> str:
+    t = (body or "").strip()
+    if not t:
+        t = "See Help for hardware fit guidance."
+    return help_tooltip_rich(t, "my_pc", slide=0)
+
+
+def _api_help_tip(body: str, *, slide: int = 1) -> str:
+    return help_tooltip_rich((body or "API generation — see Help.").strip(), "api_social", slide=slide)
+
+
 def _fit_badge_style(marker: str) -> str:
     m = (marker or "").upper().strip()
     if m == "EXCELLENT":
@@ -89,6 +108,15 @@ def attach_settings_tab(win) -> None:
     win.model_execution_mode_combo = ModelExecutionModeToggle()
     _mem = str(getattr(win.settings, "model_execution_mode", "local") or "local").strip().lower()
     win.model_execution_mode_combo.setCurrentIndex(1 if _mem == "api" else 0)
+    win.model_execution_mode_combo.setToolTip(
+        help_tooltip_rich(
+            "Local — Hugging Face weights on this PC (downloads, verify checksums, Auto-fit, VRAM fit badges).\n\n"
+            "API — cloud script, stills, and voice; configure providers in the panel below (same as the API tab).\n\n"
+            "Fit badges use the same GPU policy and effective VRAM per role as the My PC tab.",
+            "models",
+            slide=1,
+        )
+    )
     title_row.addWidget(win.model_execution_mode_combo)
     lay.addLayout(title_row)
 
@@ -112,8 +140,11 @@ def attach_settings_tab(win) -> None:
     dl_menu.addAction(_a)
     _a = QAction("Download all voice models", win)
     _a.setToolTip(
-        "Queue Hugging Face snapshots for every curated TTS repo (Kokoro, MOSS-VoiceGenerator). "
-        "Skips folders already under models/."
+        _models_help_tip(
+            "Queue Hugging Face snapshots for every curated TTS repo (Kokoro, MOSS-VoiceGenerator). "
+            "Skips folders already under models/.",
+            slide=2,
+        )
     )
     _a.triggered.connect(win._download_all_voice_models)
     dl_menu.addAction(_a)
@@ -126,19 +157,24 @@ def attach_settings_tab(win) -> None:
     dl_menu.addAction(_a)
     dl_menu.addSeparator()
     _a = QAction("Import models from folder", win)
-    _a.setToolTip("Select a folder containing model directories to import curated models from.")
+    _a.setToolTip(
+        _models_help_tip("Select a folder containing model directories to import curated models from.", slide=2)
+    )
     _a.triggered.connect(win._import_models_from_folder)
     dl_menu.addAction(_a)
     dl_menu.addSeparator()
     _a = QAction("Verify checksums — selected models (on disk)", win)
     _a.setToolTip(
-        "Compare local files to Hugging Face Hub (SHA-256 for LFS weights, git blob ids for small files). "
-        "Needs internet. Large models can take several minutes."
+        _models_help_tip(
+            "Compare local files to Hugging Face Hub (SHA-256 for LFS weights, git blob ids for small files). "
+            "Needs internet. Large models can take several minutes.",
+            slide=2,
+        )
     )
     _a.triggered.connect(win._verify_models_checksums_selected)
     dl_menu.addAction(_a)
     _a = QAction("Verify checksums — all folders in models/", win)
-    _a.setToolTip("Same as above, for every model-sized folder under models/.")
+    _a.setToolTip(_models_help_tip("Same as above, for every model-sized folder under models/.", slide=2))
     _a.triggered.connect(win._verify_models_checksums_all)
     dl_menu.addAction(_a)
     dl_menu.addSeparator()
@@ -151,8 +187,11 @@ def attach_settings_tab(win) -> None:
     win.install_deps_btn = QPushButton("Install dependencies")
     win.install_deps_btn.setObjectName("primary")
     win.install_deps_btn.setToolTip(
-        "Install PyTorch for this PC (CUDA if an NVIDIA GPU is detected, else CPU; macOS uses PyPI), "
-        "then pip install -r requirements.txt — same as: python scripts/install_pytorch.py --with-rest"
+        _models_help_tip(
+            "Install PyTorch for this PC (CUDA if an NVIDIA GPU is detected, else CPU; macOS uses PyPI), "
+            "then pip install -r requirements.txt — same as: python scripts/install_pytorch.py --with-rest",
+            slide=2,
+        )
     )
     win.install_deps_btn.clicked.connect(win._install_deps)
     actions_row.addWidget(win.install_deps_btn)
@@ -160,8 +199,11 @@ def attach_settings_tab(win) -> None:
     win.clear_data_btn = QPushButton("Clear data")
     win.clear_data_btn.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
     win.clear_data_btn.setToolTip(
-        "Wipe settings, cache, and project outputs. Removes default models under .Aquaduct_data/models; "
-        "does not delete an external models folder."
+        _models_help_tip(
+            "Wipe settings, cache, and project outputs. Removes default models under .Aquaduct_data/models; "
+            "does not delete an external models folder.",
+            slide=2,
+        )
     )
     win.clear_data_btn.setObjectName("danger")
     win.clear_data_btn.clicked.connect(win._clear_all_data)
@@ -212,11 +254,33 @@ def attach_settings_tab(win) -> None:
     ll.addWidget(win._hub_status_lbl)
 
     win._model_fit_policy_hint = QLabel(
-        "Fit badges use the same GPU policy and effective VRAM per role as the My PC tab (set Auto vs Single there)."
+        "Fit badges follow GPU policy and effective VRAM from the My PC tab (Auto vs Single device)."
     )
     win._model_fit_policy_hint.setWordWrap(True)
     win._model_fit_policy_hint.setStyleSheet("color:#7A8A9A;font-size:12px;padding:0 0 8px 0;")
     ll.addWidget(win._model_fit_policy_hint)
+
+    win.auto_quant_downgrade_on_failure_chk = QCheckBox(
+        "Auto quant downgrade on failure (local): step quantization down one level for the failing role, "
+        "save settings, and retry until success or all levels fail."
+    )
+    win.auto_quant_downgrade_on_failure_chk.setChecked(
+        bool(getattr(win.settings, "auto_quant_downgrade_on_failure", False))
+    )
+    win.auto_quant_downgrade_on_failure_chk.setWordWrap(True)
+    win.auto_quant_downgrade_on_failure_chk.setStyleSheet("color:#E8EEF5;font-size:12px;padding:0 0 10px 0;")
+    win.auto_quant_downgrade_on_failure_chk.setToolTip(
+        help_tooltip_rich(
+            "When enabled, if a **local** pipeline stage fails (including errors other than VRAM OOM), "
+            "Aquaduct lowers **Script / Image / Video / Voice** quantization by one step (same ordering as "
+            "the manual slider on this tab), saves **ui_settings.json**, and retries. "
+            "VRAM OOM still prefers switching to a larger or equal VRAM GPU when possible, then lowers quant. "
+            "If every quantization level still fails, you get a message suggesting a different model.",
+            "models",
+            slide=0,
+        )
+    )
+    ll.addWidget(win.auto_quant_downgrade_on_failure_chk)
 
     win._model_opts = model_options()
     win._model_opt_by_repo = {o.repo_id: o for o in win._model_opts}
@@ -303,6 +367,57 @@ def attach_settings_tab(win) -> None:
             except Exception:
                 continue
 
+    def _append_saved_repo_row(combo: QComboBox, repo_id: str) -> None:
+        """Append a selectable row so Hub ids from ui_settings.json appear even when not curated."""
+        rid = (repo_id or "").strip()
+        if not rid or _combo_index_for_data(combo, rid) >= 0:
+            return
+        m = combo.model()
+        if not isinstance(m, QStandardItemModel):
+            return
+        item = QStandardItem(f"● Saved repo  [{rid}]")
+        item.setData(rid, Qt.ItemDataRole.UserRole)
+        item.setToolTip(
+            _models_help_tip(
+                "This repo id is stored in ui_settings.json but is not in the curated Model list.\n" + rid,
+                slide=0,
+            )
+        )
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+        m.appendRow(item)
+
+    def _apply_saved_model_combo(combo: QComboBox, saved_id: str, *, default_repo: str) -> None:
+        """Select curated row for saved id, or default when blank; append row for unknown ids."""
+        rid = (saved_id or "").strip()
+        pick = rid or (default_repo or "").strip()
+        if not pick:
+            _pick_first_enabled(combo)
+            return
+        idx = _combo_index_for_data(combo, pick)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            return
+        _append_saved_repo_row(combo, pick)
+        combo.setCurrentIndex(max(0, combo.count() - 1))
+
+    def _restore_combo_after_fill(combo: QComboBox, prev_data, *, default_repo: str) -> None:
+        """After rebuilding combo models (e.g. HF probe refresh), restore selection incl. non-curated ids."""
+        if prev_data is None:
+            _apply_saved_model_combo(combo, "", default_repo=default_repo)
+            return
+        sid = str(prev_data).strip()
+        if not sid:
+            _apply_saved_model_combo(combo, "", default_repo=default_repo)
+            return
+        idx = _combo_index_for_data(combo, sid)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            return
+        _append_saved_repo_row(combo, sid)
+        combo.setCurrentIndex(max(0, combo.count() - 1))
+
+    _defaults = get_models()
+
     def _tier_header_item(title: str) -> QStandardItem:
         h = QStandardItem(title)
         h.setEnabled(False)
@@ -342,7 +457,7 @@ def attach_settings_tab(win) -> None:
                 full_tip = "\n".join(tip_lines)
                 if not en and tip:
                     full_tip = tip + "\n\n" + full_tip
-                item.setToolTip(full_tip)
+                item.setToolTip(_models_help_tip(full_tip, slide=0))
                 if en:
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 else:
@@ -362,37 +477,20 @@ def attach_settings_tab(win) -> None:
         fill_combo_model(win.vid_combo, "video")
         fill_combo_model(win.voice_combo, "voice")
 
-        role = Qt.ItemDataRole.UserRole
         try:
-            i = win.llm_combo.findData(llm_data, role)
-            if i >= 0:
-                win.llm_combo.setCurrentIndex(i)
-            elif llm_data is not None:
-                _pick_first_enabled(win.llm_combo)
+            _restore_combo_after_fill(win.llm_combo, llm_data, default_repo=_defaults.llm_id)
         except Exception:
             _pick_first_enabled(win.llm_combo)
         try:
-            i = win.img_combo.findData(img_data, role)
-            if i >= 0:
-                win.img_combo.setCurrentIndex(i)
-            elif img_data is not None:
-                _pick_first_enabled(win.img_combo)
+            _restore_combo_after_fill(win.img_combo, img_data, default_repo=_defaults.sdxl_turbo_id)
         except Exception:
             _pick_first_enabled(win.img_combo)
         try:
-            i = win.vid_combo.findData(vid_data, role)
-            if i >= 0:
-                win.vid_combo.setCurrentIndex(i)
-            elif vid_data is not None:
-                _pick_first_enabled(win.vid_combo)
+            _restore_combo_after_fill(win.vid_combo, vid_data, default_repo="")
         except Exception:
             _pick_first_enabled(win.vid_combo)
         try:
-            i = win.voice_combo.findData(voice_data, role)
-            if i >= 0:
-                win.voice_combo.setCurrentIndex(i)
-            elif voice_data is not None:
-                _pick_first_enabled(win.voice_combo)
+            _restore_combo_after_fill(win.voice_combo, voice_data, default_repo=_defaults.kokoro_id)
         except Exception:
             _pick_first_enabled(win.voice_combo)
 
@@ -428,24 +526,14 @@ def attach_settings_tab(win) -> None:
         _b.setFixedWidth(_dl_badge_w)
         _b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-    if win.settings.llm_model_id:
-        idx = _combo_index_for_data(win.llm_combo, win.settings.llm_model_id)
-        if idx >= 0:
-            win.llm_combo.setCurrentIndex(idx)
-    im = str(getattr(win.settings, "image_model_id", "") or "").strip()
-    if im:
-        idx = _combo_index_for_data(win.img_combo, im)
-        if idx >= 0:
-            win.img_combo.setCurrentIndex(idx)
-    vm = str(getattr(win.settings, "video_model_id", "") or "").strip()
-    if vm:
-        idx = _combo_index_for_data(win.vid_combo, vm)
-        if idx >= 0:
-            win.vid_combo.setCurrentIndex(idx)
-    if win.settings.voice_model_id:
-        idx = _combo_index_for_data(win.voice_combo, win.settings.voice_model_id)
-        if idx >= 0:
-            win.voice_combo.setCurrentIndex(idx)
+    _apply_saved_model_combo(win.llm_combo, win.settings.llm_model_id, default_repo=_defaults.llm_id)
+    _apply_saved_model_combo(
+        win.img_combo, str(getattr(win.settings, "image_model_id", "") or ""), default_repo=_defaults.sdxl_turbo_id
+    )
+    _apply_saved_model_combo(
+        win.vid_combo, str(getattr(win.settings, "video_model_id", "") or ""), default_repo=""
+    )
+    _apply_saved_model_combo(win.voice_combo, win.settings.voice_model_id, default_repo=_defaults.kokoro_id)
 
     # Required VRAM (typical; heuristic) between combo and fit badge
     win.llm_vram_lbl = QLabel("—")
@@ -458,7 +546,9 @@ def attach_settings_tab(win) -> None:
         _lbl.setWordWrap(False)
         _lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         _lbl.setMaximumWidth(280)
-        _lbl.setToolTip("Typical GPU VRAM for this model class (estimate only; CPU fallback may apply).")
+        _lbl.setToolTip(
+            _my_pc_help_tip("Typical GPU VRAM for this model class (estimate only; CPU fallback may apply).")
+        )
 
     # Fit badges (based on detected hardware)
     win.llm_fit = QLabel("UNKNOWN")
@@ -502,14 +592,18 @@ def attach_settings_tab(win) -> None:
         if auto_chk.isChecked() or not modes:
             value_lbl.setText("Automatic")
             value_lbl.setToolTip(
-                "Resolves quantization from available GPU memory (same policy as fit badges)."
+                _models_help_tip(
+                    "Resolves quantization from available GPU memory (same policy as fit badges).",
+                    slide=0,
+                )
             )
             return
         idx = max(0, min(int(slider.value()), len(modes) - 1))
         m = modes[idx]
         opt = opts.get(m)
         value_lbl.setText(opt.label if opt else mode_label(m))
-        value_lbl.setToolTip((opt.tooltip if opt else "") or "")
+        raw_tip = (opt.tooltip if opt else "") or ""
+        value_lbl.setToolTip(_models_help_tip(raw_tip, slide=0) if raw_tip.strip() else _models_help_tip("", slide=0))
 
     def _current_effective_quant_mode(rkey: str, auto_chk: QCheckBox, slider: NoWheelSlider) -> str:
         modes = getattr(win, "_quant_manual_modes", {}).get(rkey) or ()
@@ -677,20 +771,26 @@ def attach_settings_tab(win) -> None:
                 lbl.setText("○ Not on disk")
                 lbl.setStyleSheet(_dl_badge_base_style() + "color:#9BB0C4;")
                 lbl.setToolTip(
-                    "No local snapshot under models/ yet (or below minimum size).\n"
-                    + "\n".join(f"{r}: not downloaded" for r in uniq)
+                    _models_help_tip(
+                        "No local snapshot under models/ yet (or below minimum size).\n"
+                        + "\n".join(f"{r}: not downloaded" for r in uniq),
+                        slide=2,
+                    )
                 )
                 return
             if len(have) < len(uniq):
                 lbl.setText("◐ Partial")
                 lbl.setStyleSheet(_dl_badge_base_style() + "color:#6EC8FF;")
                 lbl.setToolTip(
-                    "Some weights on disk; others missing.\n"
-                    + "\n".join(
-                        f"{r}: {local_model_size_label(r, models_dir=ms)}"
-                        if model_has_local_snapshot(r, models_dir=ms)
-                        else f"{r}: not downloaded"
-                        for r in uniq
+                    _models_help_tip(
+                        "Some weights on disk; others missing.\n"
+                        + "\n".join(
+                            f"{r}: {local_model_size_label(r, models_dir=ms)}"
+                            if model_has_local_snapshot(r, models_dir=ms)
+                            else f"{r}: not downloaded"
+                            for r in uniq
+                        ),
+                        slide=2,
                     )
                 )
                 return
@@ -703,8 +803,11 @@ def attach_settings_tab(win) -> None:
                 lbl.setText("✓ On disk")
                 lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
                 lbl.setToolTip(
-                    f"Downloaded in models/: {sizes_tooltip()}\n\n"
-                    "Checksum status unknown — use Download → Verify checksums to confirm files."
+                    _models_help_tip(
+                        f"Downloaded in models/: {sizes_tooltip()}\n\n"
+                        "Checksum status unknown — use Download → Verify checksums to confirm files.",
+                        slide=2,
+                    )
                 )
                 return
 
@@ -734,7 +837,7 @@ def attach_settings_tab(win) -> None:
                 extra = ""
                 if unknown_repos:
                     extra = f"\n\nNot verified yet: {', '.join(unknown_repos)}."
-                lbl.setToolTip(f"{tips.get(w, '')}\n\n{sizes_tooltip()}{extra}")
+                lbl.setToolTip(_models_help_tip(f"{tips.get(w, '')}\n\n{sizes_tooltip()}{extra}", slide=2))
                 return
 
             if unknown_repos:
@@ -742,14 +845,17 @@ def attach_settings_tab(win) -> None:
                 lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
                 ok_rs = [uniq[i] for i, s in enumerate(integ) if s == "ok"]
                 lbl.setToolTip(
-                    f"Checksum OK for: {', '.join(ok_rs)}.\n"
-                    f"Not verified yet: {', '.join(unknown_repos)}.\n\n{sizes_tooltip()}"
+                    _models_help_tip(
+                        f"Checksum OK for: {', '.join(ok_rs)}.\n"
+                        f"Not verified yet: {', '.join(unknown_repos)}.\n\n{sizes_tooltip()}",
+                        slide=2,
+                    )
                 )
                 return
 
             lbl.setText("✓ Verified")
             lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
-            lbl.setToolTip("Local files matched Hugging Face checksums.\n\n" + sizes_tooltip())
+            lbl.setToolTip(_models_help_tip("Local files matched Hugging Face checksums.\n\n" + sizes_tooltip(), slide=2))
 
         def set_badge(lbl: QLabel, *, kind: str, repo_id: str, pair_image_repo_id: str = "") -> None:
             opt = win._model_opt_by_repo.get(repo_id)
@@ -764,7 +870,7 @@ def attach_settings_tab(win) -> None:
             )
             lbl.setText(fit_marker_display(marker))
             lbl.setStyleSheet(_fit_badge_style(marker))
-            lbl.setToolTip(why)
+            lbl.setToolTip(_my_pc_help_tip(why))
 
         # Rebuilding manual quant steps resets the slider; preserve the live UI
         # selection when the same Hub repo is still selected; use ``AppSettings``
@@ -824,7 +930,7 @@ def attach_settings_tab(win) -> None:
             qm = _current_effective_quant_mode("script", win.llm_quant_auto_chk, win.llm_quant_slider)
             pv = predict_vram_gb(role="script", repo_id=llm_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.llm_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
-            win.llm_vram_lbl.setToolTip(pv.rationale)
+            win.llm_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
             win.llm_vram_lbl.setText("—")
         if llm_repo:
@@ -852,7 +958,7 @@ def attach_settings_tab(win) -> None:
             qm = _current_effective_quant_mode("image", win.img_quant_auto_chk, win.img_quant_slider)
             pv = predict_vram_gb(role="image", repo_id=img_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.img_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
-            win.img_vram_lbl.setToolTip(pv.rationale)
+            win.img_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
             win.img_vram_lbl.setText("—")
         if img_repo:
@@ -881,7 +987,7 @@ def attach_settings_tab(win) -> None:
             qm = _current_effective_quant_mode("video", win.vid_quant_auto_chk, win.vid_quant_slider)
             pv = predict_vram_gb(role="video", repo_id=vid_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.vid_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
-            win.vid_vram_lbl.setToolTip(pv.rationale)
+            win.vid_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
             win.vid_vram_lbl.setText("—")
         if vid_repo:
@@ -910,7 +1016,7 @@ def attach_settings_tab(win) -> None:
             qm = _current_effective_quant_mode("voice", win.voice_quant_auto_chk, win.voice_quant_slider)
             pv = predict_vram_gb(role="voice", repo_id=voice_repo, base_low_gb=lo, base_high_gb=hi, mode=qm)  # type: ignore[arg-type]
             win.voice_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
-            win.voice_vram_lbl.setToolTip(pv.rationale)
+            win.voice_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
             win.voice_vram_lbl.setText("—")
         if voice_repo:
@@ -923,14 +1029,16 @@ def attach_settings_tab(win) -> None:
     def _sync_local_model_combo_tooltip(combo: QComboBox) -> None:
         idx = combo.currentIndex()
         if idx < 0:
-            combo.setToolTip(combo.currentText() or "")
+            ct = (combo.currentText() or "").strip()
+            combo.setToolTip(_models_help_tip(ct, slide=0) if ct else _models_help_tip("", slide=0))
             return
         midx = combo.model().index(idx, 0)
         t = midx.data(Qt.ItemDataRole.ToolTipRole)
         if t is not None and str(t).strip():
-            combo.setToolTip(str(t))
+            combo.setToolTip(_models_help_tip(str(t), slide=0))
         else:
-            combo.setToolTip(combo.currentText() or "")
+            ct = (combo.currentText() or "").strip()
+            combo.setToolTip(_models_help_tip(ct, slide=0) if ct else _models_help_tip("", slide=0))
 
     win.llm_combo.currentIndexChanged.connect(_update_fit_badges)
     win.img_combo.currentIndexChanged.connect(_update_fit_badges)
@@ -1204,10 +1312,25 @@ def attach_settings_tab(win) -> None:
     win.models_external_browse_btn = QPushButton("Browse…")
     win.models_external_apply_btn = QPushButton("Apply")
     win.models_external_apply_btn.setObjectName("primary")
-    win.models_external_apply_btn.setToolTip("Save path and storage mode to settings.")
+    win.models_external_apply_btn.setToolTip(
+        _models_help_tip("Save path and storage mode to settings.", slide=3)
+    )
     win.models_external_detect_btn = QPushButton("Detect")
-    win.models_external_detect_btn.setToolTip("List model snapshots found under the resolved folder (uses path field when External).")
+    win.models_external_detect_btn.setToolTip(
+        _models_help_tip(
+            "List model snapshots found under the resolved folder (uses path field when External).",
+            slide=3,
+        )
+    )
     win.models_external_path_edit.setText(str(getattr(win.settings, "models_external_path", "") or ""))
+    win.models_external_path_edit.setToolTip(
+        _models_help_tip(
+            "Absolute path to a folder for Hugging Face model snapshots when storage is External. "
+            "Apply saves the path; Detect lists repos found on disk.",
+            slide=3,
+        )
+    )
+    win.models_external_browse_btn.setToolTip(_models_help_tip("Choose a folder for external model snapshots.", slide=3))
 
     ext_row = QHBoxLayout()
     ext_row.addWidget(win.models_external_path_edit, 1)
@@ -1216,9 +1339,14 @@ def attach_settings_tab(win) -> None:
     ext_row.addWidget(win.models_external_detect_btn, 0)
     ll.addLayout(ext_row)
 
-    storage_hint = QLabel(
-        "Default uses the project folder .Aquaduct_data/models. External uses another folder for downloads and loading weights — Apply saves the path."
+    win.models_storage_mode_combo.setToolTip(
+        _models_help_tip(
+            "Default: snapshots under .Aquaduct_data/models. External: another folder for large disks or shared "
+            "libraries — set path, Apply, Detect.",
+            slide=3,
+        )
     )
+    storage_hint = QLabel("Default .Aquaduct_data/models, or External + path + Apply — hover storage toggle for detail.")
     storage_hint.setWordWrap(True)
     storage_hint.setStyleSheet("color:#8A8A96;font-size:11px;padding:0 0 4px 0;")
     ll.addWidget(storage_hint)
@@ -1327,11 +1455,7 @@ def attach_settings_tab(win) -> None:
 
     api_page = QWidget()
     al = QVBoxLayout(api_page)
-    api_hint = QLabel(
-        "API mode runs script, stills, and (optionally) voice via cloud APIs — no local diffusion weights. "
-        "Configure providers and keys in the panel below (same controls appear on the API tab). "
-        "FFmpeg still runs locally for assembly."
-    )
+    api_hint = QLabel("API mode: cloud generation — hover the scroll area below for full detail.")
     api_hint.setWordWrap(True)
     api_hint.setStyleSheet("color:#B7B7C2;font-size:12px;")
     al.addWidget(api_hint, 0)
@@ -1354,6 +1478,14 @@ def attach_settings_tab(win) -> None:
     win._model_api_gen_layout.setContentsMargins(0, 0, 8, 0)
     win._model_api_gen_layout.setSpacing(0)
     scroll.setWidget(inner)
+    scroll.setToolTip(
+        _api_help_tip(
+            "API mode runs script, stills, and (optionally) voice via cloud APIs — no local diffusion weights. "
+            "Configure providers and keys in the panel below (same controls appear on the API tab). "
+            "FFmpeg still runs locally for assembly.",
+            slide=1,
+        )
+    )
     al.addWidget(scroll, 1)
     win._model_api_gen_scroll = scroll
 

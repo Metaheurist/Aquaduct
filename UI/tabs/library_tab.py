@@ -63,12 +63,20 @@ def attach_library_tab(win) -> None:
     tool_row.addWidget(win.library_refresh_btn)
 
     win.library_open_videos_root_btn = QPushButton("Open videos folder")
-    win.library_open_videos_root_btn.setToolTip("Open the videos/ root in the file manager")
+    win.library_open_videos_root_btn.setToolTip(
+        help_tooltip_rich("Open the videos/ root in the file manager.", "tasks_library", slide=1)
+    )
     win.library_open_videos_root_btn.clicked.connect(win._library_open_videos_root)
     tool_row.addWidget(win.library_open_videos_root_btn)
 
     win.library_open_runs_root_btn = QPushButton("Open runs folder")
-    win.library_open_runs_root_btn.setToolTip("Open the runs/ root (intermediate workspace per pipeline run)")
+    win.library_open_runs_root_btn.setToolTip(
+        help_tooltip_rich(
+            "Open the runs/ root (intermediate workspace per pipeline run).",
+            "tasks_library",
+            slide=1,
+        )
+    )
     win.library_open_runs_root_btn.clicked.connect(win._library_open_runs_root)
     tool_row.addWidget(win.library_open_runs_root_btn)
 
@@ -104,17 +112,23 @@ def attach_library_tab(win) -> None:
     vbtn.setSpacing(8)
     win.library_video_open_btn = QPushButton("Open folder")
     win.library_video_open_btn.setObjectName("primary")
-    win.library_video_open_btn.setToolTip("Open the selected video project folder")
+    win.library_video_open_btn.setToolTip(
+        help_tooltip_rich("Open the selected video or picture project folder.", "tasks_library", slide=1)
+    )
     win.library_video_open_btn.clicked.connect(win._library_open_selected_video_dir)
     vbtn.addWidget(win.library_video_open_btn)
 
     win.library_video_assets_btn = QPushButton("Open assets")
-    win.library_video_assets_btn.setToolTip("Open …/assets/ (images, audio, clips)")
+    win.library_video_assets_btn.setToolTip(
+        help_tooltip_rich("Open …/assets/ (images, audio, clips).", "tasks_library", slide=1)
+    )
     win.library_video_assets_btn.clicked.connect(win._library_open_selected_video_assets)
     vbtn.addWidget(win.library_video_assets_btn)
 
     win.library_video_play_btn = QPushButton("Play final.mp4")
-    win.library_video_play_btn.setToolTip("Open final.mp4 with the default app")
+    win.library_video_play_btn.setToolTip(
+        help_tooltip_rich("Open final.mp4 or final.png with the default app.", "tasks_library", slide=1)
+    )
     win.library_video_play_btn.clicked.connect(win._library_play_selected_video)
     vbtn.addWidget(win.library_video_play_btn)
 
@@ -152,7 +166,9 @@ def attach_library_tab(win) -> None:
     rbtn.addWidget(win.library_run_open_btn)
 
     win.library_run_assets_btn = QPushButton("Open assets")
-    win.library_run_assets_btn.setToolTip("Open runs/<id>/assets/")
+    win.library_run_assets_btn.setToolTip(
+        help_tooltip_rich("Open runs/<id>/assets/ for the selected workspace.", "tasks_library", slide=1)
+    )
     win.library_run_assets_btn.clicked.connect(win._library_open_selected_run_assets)
     rbtn.addWidget(win.library_run_assets_btn)
 
@@ -229,7 +245,17 @@ def refresh_library_tab_for_media_mode(win) -> None:
     if hasattr(win, "library_open_videos_root_btn"):
         win.library_open_videos_root_btn.setText("Open pictures folder" if is_photo else "Open videos folder")
         win.library_open_videos_root_btn.setToolTip(
-            "Open the pictures/ root (photo mode outputs)" if is_photo else "Open the videos/ root in the file manager"
+            help_tooltip_rich(
+                "Open the pictures/ root (photo mode outputs).",
+                "tasks_library",
+                slide=1,
+            )
+            if is_photo
+            else help_tooltip_rich(
+                "Open the videos/ root in the file manager.",
+                "tasks_library",
+                slide=1,
+            )
         )
     if hasattr(win, "_library_media_title") and win._library_media_title is not None:
         win._library_media_title.setText(
@@ -242,7 +268,9 @@ def refresh_library_tab_for_media_mode(win) -> None:
     if hasattr(win, "library_video_play_btn"):
         win.library_video_play_btn.setText("Open final.png" if is_photo else "Play final.mp4")
         win.library_video_play_btn.setToolTip(
-            "Open final.png with the default app" if is_photo else "Open final.mp4 with the default app"
+            help_tooltip_rich("Open final.png with the default app.", "tasks_library", slide=1)
+            if is_photo
+            else help_tooltip_rich("Open final.mp4 with the default app.", "tasks_library", slide=1)
         )
     if hasattr(win, "_library_fill_tables"):
         try:

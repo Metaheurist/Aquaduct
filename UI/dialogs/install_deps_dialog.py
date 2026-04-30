@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.dialogs.frameless_dialog import FramelessDialog
+from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.title_bar_outline_button import styled_outline_button
 
 from src.models.torch_install import (
@@ -210,7 +211,14 @@ class InstallDepsDialog(FramelessDialog):
         self._ack_timer.stop()
         self._pip_ack_lbl.setText("✓ Pip confirmed — first output received. Download/install is active.")
         self._pip_ack_lbl.setStyleSheet("color: #5DFFB0; font-size: 12px; font-weight: 600;")
-        self._pip_ack_lbl.setToolTip(snippet.strip())
+        sn = snippet.strip()
+        self._pip_ack_lbl.setToolTip(
+            help_tooltip_rich(
+                "First pip log line received:\n\n" + (sn[:8000] if sn else "(empty)"),
+                "models",
+                slide=2,
+            )
+        )
 
     def _on_pip_ack_timeout(self) -> None:
         if self._pip_ack_received:
@@ -221,6 +229,14 @@ class InstallDepsDialog(FramelessDialog):
             "Worry if both stay at 0 for a long time, or use Cancel and run pip in a terminal to see errors."
         )
         self._pip_ack_lbl.setStyleSheet("color: #E7C86B; font-size: 12px; font-weight: 600;")
+        self._pip_ack_lbl.setToolTip(
+            help_tooltip_rich(
+                "Slow pip logs on large wheels are common. Use Task Manager to confirm the pip worker is active; "
+                "cancel and run pip in a terminal if you need full error output.",
+                "models",
+                slide=2,
+            )
+        )
 
     def _on_phase(self, text: str) -> None:
         self._phase_lbl.setText(text)

@@ -263,6 +263,8 @@ class AppSettings:
     image_quant_mode: QuantMode = "auto"
     video_quant_mode: QuantMode = "auto"
     voice_quant_mode: QuantMode = "auto"
+    #: Local runs: on load/inference failure (not only OOM), step quantization down one notch for that role and retry.
+    auto_quant_downgrade_on_failure: bool = False
     background_music_path: str = ""
     hf_token: str = ""  # optional: Hugging Face access token for gated repos / API calls
     hf_api_enabled: bool = True  # when False, saved token is not applied to HF_TOKEN (soft opt-out)
@@ -326,8 +328,10 @@ class AppSettings:
     gpu_device_index: int = 0
     #: Resource graph: which GPU index to chart (None = default 0).
     resource_graph_monitor_gpu_index: int | None = None
-    #: Resource graph: show one VRAM sparkline per CUDA GPU instead of the Monitor picker.
+    #: Resource graph: last Monitor dropdown choice was “Split view — all GPUs” (one VRAM sparkline per CUDA GPU).
     resource_graph_split_view: bool = False
+    #: Resource graph: compact (mini) title-bar layout and smaller sparklines; ``False`` = expanded detail.
+    resource_graph_compact: bool = True
 
 
 def safe_title_to_dirname(title: str) -> str:

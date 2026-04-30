@@ -5,6 +5,8 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QSizePolicy, QToolButton, QWidget
 
+from UI.help.tutorial_links import help_tooltip_rich
+
 
 class ModelsStorageModeToggle(QWidget):
     """
@@ -18,7 +20,13 @@ class ModelsStorageModeToggle(QWidget):
         super().__init__(parent)
         self.setObjectName("modelsStorageModeToggleRoot")
         self.setAccessibleName("Models storage location")
-        self.setToolTip("Default: project .Aquaduct_data/models. External: another drive or shared cache.")
+        self.setToolTip(
+            help_tooltip_rich(
+                "Default: project .Aquaduct_data/models. External: another drive or shared cache.",
+                "models",
+                slide=3,
+            )
+        )
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

@@ -165,15 +165,15 @@ def attach_characters_tab(win) -> None:
     _tb_icon_px = 22
     win.characters_add_btn = QPushButton()
     win.characters_add_btn.setIcon(qicon_toolbar("folder_plus", _tb_muted, _tb_icon_px))
-    win.characters_add_btn.setToolTip("Add character")
+    win.characters_add_btn.setToolTip(help_tooltip_rich("Add a new character profile.", "topics_chars", slide=2))
     win.characters_add_btn.setAccessibleName("Add character")
     win.characters_dup_btn = QPushButton()
     win.characters_dup_btn.setIcon(qicon_toolbar("duplicate", _tb_muted, _tb_icon_px))
-    win.characters_dup_btn.setToolTip("Duplicate character")
+    win.characters_dup_btn.setToolTip(help_tooltip_rich("Duplicate the selected character.", "topics_chars", slide=2))
     win.characters_dup_btn.setAccessibleName("Duplicate character")
     win.characters_del_btn = QPushButton()
     win.characters_del_btn.setIcon(qicon_toolbar("trash", _tb_muted, _tb_icon_px))
-    win.characters_del_btn.setToolTip("Delete character")
+    win.characters_del_btn.setToolTip(help_tooltip_rich("Delete the selected character.", "topics_chars", slide=2))
     win.characters_del_btn.setAccessibleName("Delete character")
     for b in (win.characters_add_btn, win.characters_dup_btn, win.characters_del_btn):
         b.setProperty("buttonRole", "secondary")
@@ -229,7 +229,11 @@ def attach_characters_tab(win) -> None:
     win.character_portrait_generate_btn.setMaximumHeight(28)
     win.character_portrait_generate_btn.setMinimumWidth(132)
     win.character_portrait_generate_btn.setToolTip(
-        "Render one reference still with the image model selected on the Model tab. Requires Visual style text."
+        help_tooltip_rich(
+            "Render one reference still with the image model selected on the Model tab. Requires Visual style text.",
+            "topics_chars",
+            slide=2,
+        )
     )
     portrait_row.addWidget(win.character_portrait_generate_btn)
     win.character_portrait_preview = QLabel()
@@ -248,7 +252,11 @@ def attach_characters_tab(win) -> None:
     portrait_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
     portrait_hint.setText("Portrait uses Model-tab image weights after Visual style is filled.")
     portrait_hint.setToolTip(
-        "Fill Visual style first — the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards."
+        help_tooltip_rich(
+            "Fill Visual style first — the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards.",
+            "topics_chars",
+            slide=2,
+        )
     )
     edit_lay.addWidget(portrait_hint)
 
@@ -281,7 +289,9 @@ def attach_characters_tab(win) -> None:
     win.character_voice_refresh_btn.setProperty("buttonRole", "secondary")
     win.character_voice_refresh_btn.setMaximumHeight(28)
     win.character_voice_refresh_btn.setMinimumWidth(88)
-    win.character_voice_refresh_btn.setToolTip("Refresh pyttsx3 voice list")
+    win.character_voice_refresh_btn.setToolTip(
+        help_tooltip_rich("Refresh the local pyttsx3 voice list.", "topics_chars", slide=2)
+    )
     vrow.addWidget(win.character_voice_refresh_btn)
     edit_lay.addLayout(vrow)
 
@@ -296,8 +306,12 @@ def attach_characters_tab(win) -> None:
     lbl_vi = QLabel("Voice instruction (MOSS-VoiceGenerator)")
     lbl_vi.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lbl_vi.setToolTip(
-        "When Settings → Voice model is OpenMOSS MOSS-VoiceGenerator: describe the voice "
-        "(e.g. a young woman with a raspy voice, speaking fast). Not used for Kokoro."
+        help_tooltip_rich(
+            "When Settings → Voice model is OpenMOSS MOSS-VoiceGenerator: describe the voice "
+            "(e.g. a young woman with a raspy voice, speaking fast). Not used for Kokoro.",
+            "topics_chars",
+            slide=2,
+        )
     )
     edit_lay.addWidget(lbl_vi)
     win.character_voice_instruction_edit = QTextEdit()
@@ -316,7 +330,13 @@ def attach_characters_tab(win) -> None:
     win.character_el_hint = QLabel("ElevenLabs when default voice is off — configure on API tab.")
     win.character_el_hint.setWordWrap(True)
     win.character_el_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    win.character_el_hint.setToolTip("Requires API tab + key or ELEVENLABS_API_KEY in the environment.")
+    win.character_el_hint.setToolTip(
+        help_tooltip_rich(
+            "Requires API tab + key or ELEVENLABS_API_KEY in the environment.",
+            "api_social",
+            slide=0,
+        )
+    )
     el_outer.addWidget(win.character_el_hint)
     el_row = QHBoxLayout()
     el_row.setSpacing(6)
@@ -332,7 +352,9 @@ def attach_characters_tab(win) -> None:
     win.character_el_refresh_btn.setProperty("buttonRole", "secondary")
     win.character_el_refresh_btn.setMaximumHeight(28)
     win.character_el_refresh_btn.setMinimumWidth(98)
-    win.character_el_refresh_btn.setToolTip("Refresh ElevenLabs voice list")
+    win.character_el_refresh_btn.setToolTip(
+        help_tooltip_rich("Refresh the ElevenLabs voice list from the API.", "api_social", slide=0)
+    )
     el_row.addWidget(win.character_el_refresh_btn)
     el_outer.addLayout(el_row)
     edit_lay.addWidget(win.character_el_container)

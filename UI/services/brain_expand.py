@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QLineEdit, QSizePolicy, QTextEdit, QToolButton, QWidget
 
 from UI.dialogs.frameless_dialog import aquaduct_warning
+from UI.help.tutorial_links import help_tooltip_rich
 
 from src.core.config import get_models
 
@@ -96,7 +97,13 @@ class BrainAugmentedEditor(QWidget):
         self._btn.setObjectName("brainExpandBtn")
         self._btn.setText("\u2009🧠")
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn.setToolTip(f"Expand / improve with LLM — {field_label}")
+        self._btn.setToolTip(
+            help_tooltip_rich(
+                f"Expand / improve with LLM — {field_label}",
+                "topics_chars",
+                slide=0,
+            )
+        )
         self._btn.setAutoRaise(True)
         self._btn.setStyleSheet(
             "QToolButton#brainExpandBtn {"
@@ -169,7 +176,13 @@ class BrainAugmentedEditor(QWidget):
 
         def _ok(out: str) -> None:
             self._btn.setEnabled(True)
-            self._btn.setToolTip(f"Expand / improve with LLM — {self._field_label}")
+            self._btn.setToolTip(
+                help_tooltip_rich(
+                    f"Expand / improve with LLM — {self._field_label}",
+                    "topics_chars",
+                    slide=0,
+                )
+            )
             self._apply_result(out)
             self._worker = None
             if hasattr(self._win, "_append_log"):
@@ -180,7 +193,13 @@ class BrainAugmentedEditor(QWidget):
 
         def _fail(err: str) -> None:
             self._btn.setEnabled(True)
-            self._btn.setToolTip(f"Expand / improve with LLM — {self._field_label}")
+            self._btn.setToolTip(
+                help_tooltip_rich(
+                    f"Expand / improve with LLM — {self._field_label}",
+                    "topics_chars",
+                    slide=0,
+                )
+            )
             self._worker = None
             if hasattr(self._win, "_append_log"):
                 self._win._append_log(f"LLM expand failed ({self._field_label}):\n{err}")

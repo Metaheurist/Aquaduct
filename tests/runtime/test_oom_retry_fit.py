@@ -8,6 +8,7 @@ from src.core.config import AppSettings
 from src.models.hardware import GpuDevice
 from src.runtime import oom_retry
 from src.runtime.oom_retry import (
+    QuantDowngradeExhaustedError,
     higher_vram_gpu_index,
     is_oom_error,
     next_lower_quant_mode,
@@ -189,6 +190,68 @@ def test_retry_stage_preempt_disabled_runs_on_busy_gpu(monkeypatch: pytest.Monke
         preempt_high_vram=False,
     )
     assert idx1 == 0
+
+
+def test_retry_stage_non_oom_downgrades_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oom_retry, "_persist_quant_settings", lambda _s: None)
+    s0 = replace(
+        AppSettings(),
+        video_quant_mode="bf16",
+        auto_quant_downgrade_on_failure=True,
+    )
+    g0 = GpuDevice(index=0, name="A", total_vram_bytes=8 * (1024**3))
+
+    class FailOnce:
+        n = 0
+
+        def __call__(self, settings: AppSettings, idx: int | None) -> str:
+            self.n += 1
+            if self.n == 1:
+                raise RuntimeError("bad checkpoint shard")
+            return "ok"
+
+    out, s1, idx1 = retry_stage(
+        stage_name="t2v",
+        role="video",
+        repo_id="Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        settings=s0,
+        cuda_device_index=0,
+        gpus=[g0],
+        clear_cb=lambda: None,
+        run_cb=FailOnce(),
+        max_quant_downgrades=5,
+        preempt_high_vram=False,
+    )
+    assert out == "ok"
+    assert idx1 == 0
+    assert str(getattr(s1, "video_quant_mode")) == "fp16"
+
+
+def test_retry_stage_non_oom_exhausted_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oom_retry, "_persist_quant_settings", lambda _s: None)
+    s0 = replace(
+        AppSettings(),
+        video_quant_mode="cpu_offload",
+        auto_quant_downgrade_on_failure=True,
+    )
+    g0 = GpuDevice(index=0, name="A", total_vram_bytes=8 * (1024**3))
+
+    def _always_bad(_s: AppSettings, _idx: int | None) -> str:
+        raise RuntimeError("load failed")
+
+    with pytest.raises(QuantDowngradeExhaustedError, match="All quantization levels"):
+        retry_stage(
+            stage_name="t2v",
+            role="video",
+            repo_id="Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+            settings=s0,
+            cuda_device_index=0,
+            gpus=[g0],
+            clear_cb=lambda: None,
+            run_cb=_always_bad,
+            max_quant_downgrades=5,
+            preempt_high_vram=False,
+        )
 
 
 def test_retry_stage_stops_when_no_more_downgrades() -> None:

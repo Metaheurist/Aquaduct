@@ -5,6 +5,8 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QSizePolicy, QToolButton, QWidget
 
+from UI.help.tutorial_links import help_tooltip_rich
+
 
 class ModelExecutionModeToggle(QWidget):
     """
@@ -18,7 +20,13 @@ class ModelExecutionModeToggle(QWidget):
         super().__init__(parent)
         self.setObjectName("modelExecutionModeToggleRoot")
         self.setAccessibleName("Model execution mode")
-        self.setToolTip("Local: Hugging Face weights on this PC. API: cloud script / images / voice.")
+        self.setToolTip(
+            help_tooltip_rich(
+                "Local: Hugging Face weights on this PC. API: cloud script / images / voice.",
+                "models",
+                slide=1,
+            )
+        )
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
