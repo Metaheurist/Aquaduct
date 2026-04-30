@@ -267,7 +267,6 @@ def attach_settings_tab(win) -> None:
     win.auto_quant_downgrade_on_failure_chk.setChecked(
         bool(getattr(win.settings, "auto_quant_downgrade_on_failure", False))
     )
-    win.auto_quant_downgrade_on_failure_chk.setWordWrap(True)
     win.auto_quant_downgrade_on_failure_chk.setStyleSheet("color:#E8EEF5;font-size:12px;padding:0 0 10px 0;")
     win.auto_quant_downgrade_on_failure_chk.setToolTip(
         help_tooltip_rich(
