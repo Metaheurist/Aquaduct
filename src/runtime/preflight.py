@@ -188,9 +188,25 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
     except Exception as e:
         errors.append(f"FFmpeg not available: {e}")
 
-    # HF token isn't strictly required, but downloads can be rate-limited
     import os
 
+    # Optional host RAM hint for local runs (large checkpoint loads).
+    if os.environ.get("AQUADUCT_HOST_RAM_PREFLIGHT", "").strip().lower() in ("1", "true", "yes", "on"):
+        if not is_api_mode(settings):
+            try:
+                import psutil
+
+                vm = psutil.virtual_memory()
+                avail_gb = float(vm.available) / (1024.0**3)
+                if avail_gb < 4.0:
+                    warnings.append(
+                        f"Low host RAM headroom (~{avail_gb:.1f} GiB free). Large local models can spike system RAM "
+                        "during load — close other apps or use lighter profiles."
+                    )
+            except Exception:
+                pass
+
+    # HF token isn't strictly required, but downloads can be rate-limited
     if not os.environ.get("HF_TOKEN") and not os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
         warnings.append("No HF_TOKEN set (downloads may be slower / rate-limited).")
 

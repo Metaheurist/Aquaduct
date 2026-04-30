@@ -14,8 +14,10 @@ from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
+from src.render.clips import _maybe_enable_slice_inference
 from src.util.diffusion_placement import place_diffusion_pipeline
-from src.util.utils_vram import cleanup_vram, vram_guard
+from src.util.memory_budget import release_between_stages
+from src.util.utils_vram import vram_guard
 
 
 @dataclass(frozen=True)
@@ -530,6 +532,7 @@ def _try_sdxl_turbo(
     pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _maybe_enable_slice_inference(pipe)
 
     n = len(prompts)
     results: list[GeneratedImage] = []
@@ -550,7 +553,7 @@ def _try_sdxl_turbo(
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
     del pipe
-    cleanup_vram()
+    release_between_stages("after_sdxl_turbo_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
 
 
@@ -575,6 +578,7 @@ def _try_sdxl_turbo_seeded(
     pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _maybe_enable_slice_inference(pipe)
 
     n = len(prompts)
     results: list[GeneratedImage] = []
@@ -597,7 +601,7 @@ def _try_sdxl_turbo_seeded(
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
     del pipe
-    cleanup_vram()
+    release_between_stages("after_sdxl_turbo_seeded_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
 
 
@@ -630,6 +634,7 @@ def _try_sdxl_reference_chain(
     pipe = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _maybe_enable_slice_inference(pipe)
 
     kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
@@ -672,7 +677,7 @@ def _try_sdxl_reference_chain(
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
     del pipe
-    cleanup_vram()
+    release_between_stages("after_sdxl_reference_chain_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
 
 
@@ -703,6 +708,7 @@ def _try_external_ref_then_txt2img(
     pipe_i2i = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _maybe_enable_slice_inference(pipe_i2i)
     kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
     h = int(kw_base.get("height", 1024))
@@ -712,7 +718,11 @@ def _try_external_ref_then_txt2img(
     n = len(prompts)
     if n < 1:
         del pipe_i2i
-        cleanup_vram()
+        release_between_stages(
+            "after_external_ref_empty_batch",
+            cuda_device_index=cuda_device_index,
+            variant="cheap",
+        )
         return results
 
     if on_image_progress:
@@ -721,7 +731,11 @@ def _try_external_ref_then_txt2img(
         init = Image.open(external_reference).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
     except Exception:
         del pipe_i2i
-        cleanup_vram()
+        release_between_stages(
+            "after_external_ref_load_fail",
+            cuda_device_index=cuda_device_index,
+            variant="cheap",
+        )
         raise
     p0, seed0 = prompts[0], seeds[0]
     pos, neg = _split_prompt_negative(p0)
@@ -736,7 +750,11 @@ def _try_external_ref_then_txt2img(
     img0.save(out0)
     results.append(GeneratedImage(path=out0, prompt=p0))
     del pipe_i2i
-    cleanup_vram()
+    release_between_stages(
+        "after_external_ref_img2img_stage",
+        cuda_device_index=cuda_device_index,
+        variant="cheap",
+    )
 
     if n <= 1:
         if on_image_progress:
@@ -746,6 +764,7 @@ def _try_external_ref_then_txt2img(
     pipe_txt = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe_txt, allow_nsfw=allow_nsfw)
     _place_pipe_on_device(pipe_txt, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _maybe_enable_slice_inference(pipe_txt)
     dev = "cuda" if str(pipe_txt.device).startswith("cuda") else "cpu"
 
     for i in range(2, n + 1):
@@ -767,7 +786,11 @@ def _try_external_ref_then_txt2img(
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
     del pipe_txt
-    cleanup_vram()
+    release_between_stages(
+        "after_external_ref_txt2img_batch",
+        cuda_device_index=cuda_device_index,
+        variant="cheap",
+    )
     return results
 
 

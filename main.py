@@ -111,6 +111,7 @@ from src.speech.voice import (
     synthesize_unhinged_rotating_kokoro,
     synthesize_unhinged_rotating_pyttsx3,
 )
+from src.util.memory_budget import release_between_stages
 from src.util.single_instance import single_instance_guard
 from src.util.utils_vram import prepare_for_next_model
 
@@ -135,6 +136,7 @@ def _clear_after_oom() -> None:
         import gc
 
         gc.collect()
+        gc.collect()
     except Exception:
         pass
     try:
@@ -146,9 +148,17 @@ def _clear_after_oom() -> None:
             except Exception:
                 pass
             try:
-                torch.cuda.empty_cache()
+                for di in range(int(torch.cuda.device_count())):
+                    try:
+                        with torch.cuda.device(di):
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
             except Exception:
-                pass
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
             try:
                 torch.cuda.ipc_collect()
             except Exception:
@@ -211,7 +221,10 @@ def _firecrawl_kwargs(app: AppSettings) -> dict:
 
 
 def _now_run_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    # Include milliseconds so two pipelines starting in the same UTC second (e.g. Run + queue)
+    # do not share the same runs/ folder or run_id.
+    dt = datetime.now(timezone.utc)
+    return dt.strftime("%Y%m%d_%H%M%S") + f"_{dt.microsecond // 1000:03d}"
 
 
 def _write_video_folder(
@@ -707,6 +720,7 @@ def run_once(
                     try_llm_4bit=try_llm_4bit,
                     on_llm_task=_ms_llm,
                     app_settings=app,
+                    llm_cuda_device_index=_llm_cuda_idx,
                 )
     
             if str(getattr(app, "run_content_mode", "preset")) == "custom" and str(getattr(app, "custom_video_instructions", "") or "").strip():
@@ -896,8 +910,12 @@ def run_once(
         _rc(run_control)
     
         # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
-        prepare_for_next_model()
-    
+        release_between_stages(
+            "after_script_llm_before_voice_or_photo",
+            cuda_device_index=_llm_cuda_idx,
+            variant="prepare_diffusion",
+        )
+
         safe_dir = safe_title_to_dirname(pkg.title)
         video_dir = _projects_root / safe_dir
         assets_dir = video_dir / "assets"
@@ -1115,9 +1133,13 @@ def run_once(
         _pipe_progress(on_progress, 58, -1, "Voice track ready")
         _run_stage("voice_tts", "Voice track + captions ready")
         _rc(run_control)
-    
-        prepare_for_next_model()
-    
+
+        release_between_stages(
+            "after_voice_tts_before_polish",
+            cuda_device_index=_diffusion_cuda_idx,
+            variant="prepare_diffusion",
+        )
+
         # Audio polish + mixing (FFmpeg best-effort)
         final_voice_wav = voice_wav
         try:
@@ -1130,7 +1152,9 @@ def run_once(
         except Exception:
             final_voice_wav = voice_wav
             pipeline_console("Voice polish skipped (using raw voice.wav)", stage="audio_polish")
-    
+
+        release_between_stages("after_voice_polish_before_visuals", variant="cheap")
+
         # Images
         prompts = list(prebuilt_prompts or []) if prebuilt_prompts is not None else [s.visual_prompt for s in pkg.segments][:10]
         seeds = list(prebuilt_seeds or []) if prebuilt_seeds is not None else None
@@ -1276,7 +1300,11 @@ def run_once(
                     run_cb=_run_pro_keyframes,
                 )
                 keyframes = [g.path for g in key_gen]
-                prepare_for_next_model()
+                release_between_stages(
+                    "after_pro_keyframes_before_img2vid",
+                    cuda_device_index=_diffusion_cuda_idx,
+                    variant="prepare_diffusion",
+                )
                 _pipe_progress(on_progress, 68, -1, "Pro: image-to-video (motion model)…")
                 _run_stage("video_motion", f"Pro img2vid: motion model {vid_slot!r} (load + encode per scene)")
                 _rc(run_control)
@@ -1306,6 +1334,12 @@ def run_once(
                     max_quant_downgrades=8,
                 )
             else:
+                # Large local T2V (e.g. Wan 14B) spikes host RAM during shard load; drop retained VRAM/heap first.
+                release_between_stages(
+                    "before_pro_text_to_video_load",
+                    cuda_device_index=_diffusion_cuda_idx,
+                    variant="prepare_diffusion",
+                )
                 _pipe_progress(on_progress, 68, -1, "Text-to-video (Pro)…")
                 _run_stage(
                     "video_t2v",
@@ -1340,7 +1374,9 @@ def run_once(
             clip_paths = [c.path for c in gen_clips]
             if not clip_paths:
                 raise RuntimeError("Pro mode produced no video segments.")
-    
+
+            release_between_stages("pro_after_video_diffusion_before_timeline_align", variant="cheap")
+
             # Align narration to the total Pro timeline so captions and audio match the generated clip duration.
             total_T = float(T) * float(len(clip_paths))
             mix_wav = final_voice_wav
@@ -1665,7 +1701,9 @@ def run_once(
                 )
                 image_paths = [g.path for g in gen]
             _pipe_progress(on_progress, 80, -1, "Images ready")
-    
+
+            release_between_stages("slideshow_after_diffusion_before_audio_mix", variant="cheap")
+
             # Quality reject/regenerate (best-effort; pro mode skips — too many frames).
             retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
             if retries > 0 and not _pro:
@@ -1895,8 +1933,12 @@ def run_once(
             _rc(run_control)
     
             # Keyframe image model off GPU before loading the clip / video diffusion model.
-            prepare_for_next_model()
-    
+            release_between_stages(
+                "motion_after_keyframes_before_clip_diffusion",
+                cuda_device_index=_diffusion_cuda_idx,
+                variant="prepare_diffusion",
+            )
+
             clip_dir = assets_dir / "clips"
             _pipe_progress(on_progress, 82, -1, "Video diffusion (animate scenes)…")
             _vid_id = (clip_id or img_id)
@@ -1928,6 +1970,9 @@ def run_once(
             )
             clip_paths = [c.path for c in gen_clips]
             _pipe_progress(on_progress, 88, -1, "Scenes ready")
+
+            release_between_stages("motion_after_scene_clips_before_audio_mux", variant="cheap")
+
             mix_wav = final_voice_wav
             try:
                 if music and music.exists():

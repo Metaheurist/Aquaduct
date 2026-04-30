@@ -44,11 +44,23 @@ def _tree_rss_bytes(proc) -> int:
     return r
 
 
+def _tree_child_count(proc) -> int:
+    import psutil
+
+    try:
+        return len(proc.children(recursive=True))
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return 0
+
+
 @dataclass(frozen=True)
 class ResourceSample:
     process_cpu_pct: float  # 0–100: CPU time / wall time / logical cores (tree: main + children)
     process_ram_pct: float  # RSS (main + children) as % of machine RAM
     gpu_mem_pct: float | None  # 0–100 of total VRAM, or None if unavailable
+    tree_rss_mb: float = 0.0  # summed RSS for process tree (approximate)
+    available_ram_mb: float | None = None  # host free RAM per psutil.virtual_memory().available
+    tree_child_count: int = 0  # descendant processes (FFmpeg workers, etc.)
 
 
 def sample_aquaduct_resources() -> ResourceSample:
@@ -63,6 +75,9 @@ def sample_aquaduct_resources() -> ResourceSample:
     global _cpu_tree_prev
     cpu_pct = 0.0
     ram_pct = 0.0
+    rss_mb = 0.0
+    avail_mb: float | None = None
+    n_children = 0
     try:
         import psutil
 
@@ -86,8 +101,14 @@ def sample_aquaduct_resources() -> ResourceSample:
         rss = float(_tree_rss_bytes(p))
         ram_pct = 100.0 * rss / float(vm.total) if vm.total else 0.0
         ram_pct = max(0.0, min(100.0, ram_pct))
+        rss_mb = rss / (1024.0 * 1024.0)
+        avail_mb = float(vm.available) / (1024.0 * 1024.0) if vm.total else None
+        n_children = _tree_child_count(p)
     except Exception:
         cpu_pct, ram_pct = 0.0, 0.0
+        rss_mb = 0.0
+        avail_mb = None
+        n_children = 0
 
     gpu_pct: float | None = None
     try:
@@ -103,7 +124,14 @@ def sample_aquaduct_resources() -> ResourceSample:
     except Exception:
         gpu_pct = None
 
-    return ResourceSample(process_cpu_pct=cpu_pct, process_ram_pct=ram_pct, gpu_mem_pct=gpu_pct)
+    return ResourceSample(
+        process_cpu_pct=cpu_pct,
+        process_ram_pct=ram_pct,
+        gpu_mem_pct=gpu_pct,
+        tree_rss_mb=rss_mb,
+        available_ram_mb=avail_mb,
+        tree_child_count=n_children,
+    )
 
 
 def sample_gpu_mem_pct(device_index: int) -> float | None:

@@ -9,6 +9,9 @@ def test_resource_sample_returns_dataclass() -> None:
     assert 0.0 <= s.process_cpu_pct <= 100.0
     assert 0.0 <= s.process_ram_pct <= 100.0
     assert s.gpu_mem_pct is None or 0.0 <= s.gpu_mem_pct <= 100.0
+    assert s.tree_rss_mb >= 0.0
+    assert s.tree_child_count >= 0
+    assert s.available_ram_mb is None or s.available_ram_mb >= 0.0
 
 
 def test_sample_gpu_mem_pct_invalid_index_returns_none() -> None:
