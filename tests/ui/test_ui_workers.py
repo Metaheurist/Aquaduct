@@ -4,6 +4,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import sys
+
+
+def _minimal_wav(path: Path) -> None:
+    """Tiny placeholder WAV so FFmpeg-oriented stubs do not choke on empty files."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00"
+        b"D\xac\x00\x00\x88X\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
+    )
 
 
 @pytest.mark.qt
@@ -46,14 +56,41 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
 
     monkeypatch.setattr(wmod, "expand_custom_video_instructions", fake_expand)
     monkeypatch.setattr(wmod, "generate_script", fake_generate_script)
-    monkeypatch.setattr(wmod, "enforce_arc", lambda pkg: pkg)
+    monkeypatch.setattr(wmod, "enforce_arc", lambda pkg, **kwargs: pkg)
+    # Bypass optional API mode + any accidental real LLM loads — PreviewWorker calls these unified helpers.
+    monkeypatch.setattr(wmod, "is_api_mode", lambda _app: False)
+
+    def fake_expand_u(**kwargs):
+        assert "cats" in kwargs["raw_instructions"]
+        return "expanded brief"
+
+    def fake_gsu(**kwargs):
+        assert kwargs.get("creative_brief") == "expanded brief"
+        assert kwargs["items"][0].get("source") == "custom"
+        return fake_generate_script(**kwargs)
+
+    monkeypatch.setattr(wmod, "_expand_brief_unified", fake_expand_u)
+    monkeypatch.setattr(wmod, "_generate_script_unified", fake_gsu)
+
+    from src.content.characters_store import Character
+
+    monkeypatch.setattr(
+        wmod,
+        "resolve_character_for_pipeline",
+        lambda *a, **k: Character(id="abcd1234567890abcd", name="Host"),
+    )
+    monkeypatch.setattr(wmod, "character_context_for_brain", lambda _ch: "")
+    monkeypatch.setattr(wmod, "apply_palette_to_prompts", lambda prompts, _branding=None: list(prompts))
 
     app = AppSettings(run_content_mode="custom", custom_video_instructions="A video about cats")
     w = PreviewWorker(app)
     results: list[tuple] = []
+    failures: list[str] = []
     w.done.connect(lambda *a: results.append(tuple(a)))
+    w.failed.connect(lambda msg: failures.append(str(msg)))
     w.start()
-    qtbot.waitUntil(lambda: len(results) >= 1, timeout=8000)
+    qtbot.waitUntil(lambda: not w.isRunning(), timeout=25_000)
+    assert not failures, failures
     assert len(results) == 1
     pkg, sources, prompts, personality_id, confidence = results[0]
     assert pkg.title == "T"
@@ -62,6 +99,8 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
 
 def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
     import main as pipeline_main
+    from dataclasses import replace
+
     from src.content.brain import VideoPackage, ScriptSegment
     from src.core.config import AppSettings, Paths
 
@@ -106,12 +145,50 @@ def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
 
     monkeypatch.setattr(pipeline_main, "get_generation_facade", _fake_facade)
 
-    # Stub heavy stages
-    monkeypatch.setattr(pipeline_main, "synthesize", lambda **kwargs: None)
-    # Avoid ensure_ffmpeg(): process_voice_wav() would download FFmpeg into tmp ffmpeg_dir (minutes, looks hung).
+    # Stub heavy stages / FFmpeg discovery (video mode forces Pro — needs motion model id + clip stubs).
+    monkeypatch.setattr(pipeline_main, "find_ffmpeg", lambda _ffmpeg_dir: True)
+    monkeypatch.setattr(
+        pipeline_main,
+        "ensure_ffmpeg",
+        lambda ffmpeg_dir: str(Path(ffmpeg_dir) / ("ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg")),
+    )
+    monkeypatch.setattr(pipeline_main, "prepare_for_next_model", lambda *_a, **_k: None)
+
+    def _fake_syn(**kwargs):
+        _minimal_wav(Path(kwargs["out_wav_path"]))
+        captions = Path(kwargs["out_captions_json"])
+        captions.parent.mkdir(parents=True, exist_ok=True)
+        captions.write_text("[]", encoding="utf-8")
+
+    monkeypatch.setattr(pipeline_main, "synthesize", _fake_syn)
     monkeypatch.setattr(pipeline_main, "process_voice_wav", lambda **kwargs: kwargs["in_wav"])
     monkeypatch.setattr(pipeline_main, "generate_images", lambda **kwargs: [])
     monkeypatch.setattr(pipeline_main, "assemble_microclips_then_concat", lambda **kwargs: None)
+
+    def _fake_assemble(**kwargs):
+        p = Path(kwargs["out_final_mp4"])
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"")
+
+    monkeypatch.setattr(pipeline_main, "assemble_generated_clips_then_concat", _fake_assemble)
+
+    def _fake_cast(**_kwargs):
+        raise RuntimeError("test: skip cast LLM")
+
+    monkeypatch.setattr(pipeline_main, "generate_cast_from_storyline_llm", _fake_cast)
+
+    class _FakeClip:
+        def __init__(self, p: Path) -> None:
+            self.path = p
+
+    def _fake_gen_clips(**kwargs):
+        out = Path(kwargs["out_dir"])
+        out.mkdir(parents=True, exist_ok=True)
+        p = out / "stub_clip.mp4"
+        p.write_bytes(b"")
+        return [_FakeClip(p)]
+
+    monkeypatch.setattr(pipeline_main, "generate_clips", _fake_gen_clips)
 
     pkg = VideoPackage(
         title="T",
@@ -123,7 +200,7 @@ def test_run_once_uses_prebuilt_pkg(monkeypatch, tmp_path):
     )
 
     out = pipeline_main.run_once(
-        settings=AppSettings(),
+        settings=replace(AppSettings(), video_model_id="dummy/T2V-test-stub"),
         prebuilt_pkg=pkg,
         prebuilt_sources=[{"title": "x", "url": "u", "source": "s"}],
         prebuilt_prompts=["V"],

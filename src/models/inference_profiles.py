@@ -13,8 +13,11 @@ where that branch exists.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, field
 from typing import Any
+
+_inference_profile_report_lock = threading.Lock()
 
 from src.core.config import AppSettings
 
@@ -500,15 +503,31 @@ def _fallback_voice() -> str:
 
 
 def log_inference_profiles_for_run(settings: AppSettings) -> None:
-    try:
-        text = format_inference_profile_report(settings)
-        for line in text.splitlines():
-            print(f"[Aquaduct][inference_profile] {line}", flush=True)
-    except Exception as e:
-        print(f"[Aquaduct][inference_profile] (report failed: {e})", flush=True)
-    try:
-        from debug import dprint
+    """
+    Emit inference profile lines to stderr (always) and mirror each line to ``logs/debug.log``.
 
-        dprint("inference_profile", "report", format_inference_profile_report(settings)[:12_000])
-    except Exception:
-        pass
+    Serialized with a lock so concurrent pipeline starts cannot interleave lines on stderr.
+    Printed as one newline-separated block per report so tqdm-style updates are less likely to splice rows.
+    """
+    with _inference_profile_report_lock:
+        try:
+            text = format_inference_profile_report(settings)
+        except Exception as e:
+            print(f"[Aquaduct][inference_profile] (report failed: {e})", flush=True)
+            return
+        lines = text.splitlines()
+        blob = "\n".join(f"[Aquaduct][inference_profile] {line}" for line in lines)
+        print(blob, flush=True)
+        try:
+            from datetime import datetime
+
+            from src.util.repo_logs import append_debug_log
+
+            ts = datetime.now().isoformat(timespec="seconds")
+            for line in lines:
+                try:
+                    append_debug_log(f"{ts} [Aquaduct][inference_profile] {line}")
+                except Exception:
+                    pass
+        except Exception:
+            pass

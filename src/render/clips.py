@@ -14,6 +14,7 @@ from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
 from src.util.diffusion_placement import place_diffusion_pipeline
+from src.util.diffusers_load import diffusers_from_pretrained
 from src.util.memory_budget import release_between_stages
 from src.util.utils_vram import cleanup_vram, vram_guard
 
@@ -375,19 +376,22 @@ def _load_text_to_video_pipeline(
         from debug import pipeline_console
 
         pipeline_console(f"Wan T2V: loading VAE submodule from {load_path!r}", stage="video_t2v_load")
-        vae = AutoencoderKLWan.from_pretrained(load_path, subfolder="vae", torch_dtype=torch.float32)
+        vae = diffusers_from_pretrained(
+            AutoencoderKLWan, load_path, subfolder="vae", torch_dtype=torch.float32
+        )
         default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         pipeline_console(
             "Wan T2V: loading main pipeline (diffusers 'Loading pipeline components…' may take several minutes)",
             stage="video_t2v_load",
         )
-        try:
-            pipe = WanPipeline.from_pretrained(
-                load_path, vae=vae, torch_dtype=dt, low_cpu_mem_usage=True
-            )
-        except TypeError:
-            pipe = WanPipeline.from_pretrained(load_path, vae=vae, torch_dtype=dt)
+        pipe = diffusers_from_pretrained(
+            WanPipeline,
+            load_path,
+            vae=vae,
+            torch_dtype=dt,
+            low_cpu_mem_usage=True,
+        )
         pipeline_console("Wan T2V: pipeline weights loaded", stage="video_t2v_load")
         try:
             from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
@@ -405,44 +409,39 @@ def _load_text_to_video_pipeline(
 
         pipeline_console(f"Mochi T2V: loading from {load_path!r}", stage="video_t2v_load")
         dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
-        try:
-            return MochiPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-        except TypeError:
-            return MochiPipeline.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            MochiPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+        )
     if "cogvideox" in mid and "i2v" not in mid:
         from diffusers import CogVideoXPipeline
 
         dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
-        try:
-            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-        except TypeError:
-            return CogVideoXPipeline.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            CogVideoXPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+        )
     if "ltx-2" in mid:
         from diffusers import LTX2Pipeline
 
         default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
-        try:
-            return LTX2Pipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-        except TypeError:
-            return LTX2Pipeline.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            LTX2Pipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+        )
     if "ltx-video" in mid or mid.startswith("lightricks/ltx"):
         from diffusers import LTXPipeline
 
         default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
-        try:
-            return LTXPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-        except TypeError:
-            return LTXPipeline.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            LTXPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+        )
     if "hunyuanvideo" in mid:
         from diffusers import HunyuanVideoPipeline
 
         dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
-        try:
-            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-        except TypeError:
-            return HunyuanVideoPipeline.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            HunyuanVideoPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+        )
 
     from diffusers import DiffusionPipeline
 
@@ -453,10 +452,9 @@ def _load_text_to_video_pipeline(
         stage="video_t2v_load",
     )
     dt = _video_quant_dtype(quant_mode, _fp16, _fp16)
-    try:
-        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-    except TypeError:
-        return DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt)
+    return diffusers_from_pretrained(
+        DiffusionPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+    )
 
 
 def _img2vid_accepts_text_prompt(model_id: str) -> bool:
@@ -668,10 +666,9 @@ def _try_image_to_video(
         else "auto"
     )
     dt = _video_quant_dtype(qm, _fp16, _fp16)
-    try:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt, low_cpu_mem_usage=True)
-    except TypeError:
-        pipe = DiffusionPipeline.from_pretrained(load_path, torch_dtype=dt)
+    pipe = diffusers_from_pretrained(
+        DiffusionPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
+    )
     place_diffusion_pipeline(
         pipe,
         cuda_device_index=cuda_device_index,

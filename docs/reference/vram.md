@@ -12,7 +12,7 @@ Keep the pipeline stable on **8GB VRAM** by aggressively freeing memory between 
 - [`release_between_stages`](../../src/util/memory_budget.py) ([`memory_budget.py`](../../src/util/memory_budget.py)):
   - thin orchestrator used at pipeline transitions (`main.run_once`, workers, story refinement teardown, render batches).
   - **`variant="cheap"`** → calls `cleanup_vram()` only (no per-device watchdog).
-  - **`variant="prepare_diffusion"`** with a CUDA ordinal → calls `prepare_for_next_model(index)` so **`AQUADUCT_VRAM_WATCHDOG`** / [`check_cuda_headroom`](../../src/util/vram_watchdog.py) behavior stays unchanged.
+  - **`variant="prepare_diffusion"`** with a CUDA ordinal → calls `prepare_for_next_model(index)` so **`AQUADUCT_VRAM_WATCHDOG`** / [`check_cuda_headroom`](../../src/util/vram_watchdog.py) behavior stays unchanged (threshold env vars: [Config — VRAM watchdog](config.md#vram-watchdog-cuda-free-memory-before-loads)).
 - `purge_process_memory_aggressive()` — stronger multi-pass GC + **all-device** CUDA cache flush; intended for the Resource dialog **Purge memory** button and OOM retry paths, not every inner loop.
 
 Enable categorized traces with **`AQUADUCT_DEBUG=memory_budget`** (or **`memory_budget`** in the comma list).

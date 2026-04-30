@@ -16,6 +16,7 @@ from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
 from src.render.clips import _maybe_enable_slice_inference
 from src.util.diffusion_placement import place_diffusion_pipeline
+from src.util.diffusers_load import diffusers_from_pretrained
 from src.util.memory_budget import release_between_stages
 from src.util.utils_vram import vram_guard
 
@@ -242,35 +243,35 @@ def _load_auto_t2i_pipeline(
     if quant_cfg is not None:
         _status(f"Loading image pipeline ({(quant_mode or '').upper()}, experimental)…")
         try:
-            return AutoPipelineForText2Image.from_pretrained(
+            return diffusers_from_pretrained(
+                AutoPipelineForText2Image,
                 load_path, torch_dtype=dt, low_cpu_mem_usage=True, quantization_config=quant_cfg
             )
         except Exception as e:
             _status(f"Experimental {quant_mode} failed for image ({type(e).__name__}); falling back to dtype path…")
 
     if is_frontier:
-        try:
-            return AutoPipelineForText2Image.from_pretrained(
-                load_path, torch_dtype=dt, low_cpu_mem_usage=True
-            )
-        except TypeError:
-            return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            AutoPipelineForText2Image,
+            load_path,
+            torch_dtype=dt,
+            low_cpu_mem_usage=True,
+        )
     try:
-        return AutoPipelineForText2Image.from_pretrained(
+        return diffusers_from_pretrained(
+            AutoPipelineForText2Image,
             load_path,
             torch_dtype=dt,
             variant="fp16",
             low_cpu_mem_usage=True,
         )
     except OSError:
-        try:
-            return AutoPipelineForText2Image.from_pretrained(
-                load_path, torch_dtype=dt, low_cpu_mem_usage=True
-            )
-        except TypeError:
-            return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=dt)
-    except TypeError:
-        return AutoPipelineForText2Image.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            AutoPipelineForText2Image,
+            load_path,
+            torch_dtype=dt,
+            low_cpu_mem_usage=True,
+        )
 
 
 def _load_auto_i2i_pipeline(
@@ -302,35 +303,38 @@ def _load_auto_i2i_pipeline(
     if quant_cfg is not None:
         _status(f"Loading image pipeline ({(quant_mode or '').upper()}, experimental)…")
         try:
-            return AutoPipelineForImage2Image.from_pretrained(
-                load_path, torch_dtype=dt, low_cpu_mem_usage=True, quantization_config=quant_cfg
+            return diffusers_from_pretrained(
+                AutoPipelineForImage2Image,
+                load_path,
+                torch_dtype=dt,
+                low_cpu_mem_usage=True,
+                quantization_config=quant_cfg,
             )
         except Exception as e:
             _status(f"Experimental {quant_mode} failed for image ({type(e).__name__}); falling back to dtype path…")
 
     if is_frontier:
-        try:
-            return AutoPipelineForImage2Image.from_pretrained(
-                load_path, torch_dtype=dt, low_cpu_mem_usage=True
-            )
-        except TypeError:
-            return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            AutoPipelineForImage2Image,
+            load_path,
+            torch_dtype=dt,
+            low_cpu_mem_usage=True,
+        )
     try:
-        return AutoPipelineForImage2Image.from_pretrained(
+        return diffusers_from_pretrained(
+            AutoPipelineForImage2Image,
             load_path,
             torch_dtype=dt,
             variant="fp16",
             low_cpu_mem_usage=True,
         )
     except OSError:
-        try:
-            return AutoPipelineForImage2Image.from_pretrained(
-                load_path, torch_dtype=dt, low_cpu_mem_usage=True
-            )
-        except TypeError:
-            return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=dt)
-    except TypeError:
-        return AutoPipelineForImage2Image.from_pretrained(load_path, torch_dtype=dt)
+        return diffusers_from_pretrained(
+            AutoPipelineForImage2Image,
+            load_path,
+            torch_dtype=dt,
+            low_cpu_mem_usage=True,
+        )
 
 
 def _apply_flux_negative_cfg(model_id: str, call_kw: dict) -> None:

@@ -326,6 +326,8 @@ class AppSettings:
     gpu_device_index: int = 0
     #: Resource graph: which GPU index to chart (None = default 0).
     resource_graph_monitor_gpu_index: int | None = None
+    #: Resource graph: show one VRAM sparkline per CUDA GPU instead of the Monitor picker.
+    resource_graph_split_view: bool = False
 
 
 def safe_title_to_dirname(title: str) -> str:

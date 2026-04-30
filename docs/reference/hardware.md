@@ -10,7 +10,7 @@ Implemented in:
 
 ## Hardware detection (best-effort)
 The app attempts to detect:
-- OS + CPU (via `platform`)
+- OS + CPU: commercial CPU name when available (**Windows**: WMI ``Win32_Processor`` Name + MaxClockSpeed via PowerShell ``Get-CimInstance``; **Linux**: ``/proc/cpuinfo`` ``model name`` / ``Hardware`` + highest ``cpu MHz``; **macOS**: ``machdep.cpu.brand_string`` + optional ``hw.cpufrequency_max``), falling back to ``platform.processor()`` if those fail. Nominal GHz shows as ``~X.XX GHz max`` when a frequency can be read (WMI max clock / sysfs — **not** live turbo vs idle).
 - RAM: total physical memory on Windows (`GlobalMemoryStatusEx`); on other OSes or if that fails, **`psutil.virtual_memory().total`**
 - **GPUs + VRAM (multi-GPU)**:
   - Prefer **`torch.cuda`**: enumerate **`range(torch.cuda.device_count())`** and read names, total VRAM, multiprocessor count, and compute capability from **`torch.cuda.get_device_properties(i)`** (same ordinals local inference uses).

@@ -15,6 +15,19 @@ Optional tuning for OpenMP/BLAS and PyTorch **CPU** thread pools (logical cores 
 ## Host RAM preflight (optional)
 When **`AQUADUCT_HOST_RAM_PREFLIGHT`** is **`1`** / **`true`** / **`yes`** / **`on`**, [`preflight_check`](../../src/runtime/preflight.py) adds a **warning** (never a hard error) if **free host RAM** is under **~4 GiB** and **local** model execution is selected. Useful on laptops before large diffusers checkpoint loads.
 
+Additional optional hints ([`preflight_host_hints.py`](../../src/runtime/preflight_host_hints.py)):
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM`** | When **`1`** / **`true`** / **`yes`** / **`on`** and execution is **local**, emit a warning if **free host RAM** is below **`AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM_FREE_GIB`** (default **8**) **and** a selected repo looks large: **`hf_model_sizes.json`** Hub byte totals ≥ **`AQUADUCT_PREFLIGHT_HEAVY_REPO_HUB_GIB`** (default **6** GiB), or known frontier ids (e.g. Wan / HunyuanVideo / large FLUX / DeepSeek‑V3‑class script models). |
+| **`AQUADUCT_CPU_PREFLIGHT`** | When **`1`** / **`true`** / **`yes`** / **`on`**, adds a soft warning if combined CPU utilization is ≥ **`AQUADUCT_CPU_PREFLIGHT_PCT`** (default **90**) before starting a run (`psutil`). |
+
+Diffusers loading ([`diffusers_load.py`](../../src/util/diffusers_load.py)):
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_DIFFUSERS_DISABLE_MMAP`** | When **`1`** / **`true`** / **`yes`** / **`on`**, passes **`disable_mmap=True`** into diffusers **`from_pretrained`** on image/video pipeline loads ([`clips.py`](../../src/render/clips.py), [`artist.py`](../../src/render/artist.py)). Older diffusers builds that reject the kwarg fall back automatically. |
+
 ## Multi-GPU (CUDA policy override)
 When set, **`AQUADUCT_CUDA_DEVICE`** forces **all** local CUDA stages (LLM, diffusion, etc.) onto that **ordinal** (`0`, `1`, …) or **`cuda:N`**. It overrides the **My PC** GPU policy saved in `ui_settings.json`. Used by [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py). The **My PC** / **Model** tab fit tables still use the same resolver so labels stay consistent with runtime when this env var is unset; when set, fit heuristics follow the pinned index.
 
@@ -31,6 +44,18 @@ Local diffusers pipelines use [`src/util/diffusion_placement.py`](../../src/util
 PyTorch may suggest **`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** when the allocator reports large reserved-but-unallocated blocks; see [PyTorch CUDA memory notes](https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf).
 
 - **`AQUADUCT_VRAM_PREEMPT_USED_FRAC`** — optional threshold **0.50–0.9999** (default **0.99**). Used by [`retry_stage`](../../src/runtime/oom_retry.py): when **GPU VRAM used / total** on the stage’s CUDA ordinal is at or above this value after [`cleanup_vram`](../../src/util/utils_vram.py), the pipeline tries a **larger or equal‑VRAM** GPU from the detected list, then lowers quantization — **before** the heavy stage runs — to reduce load-time OOMs. See [Inference profiles — troubleshooting](inference_profiles.md#troubleshooting-run-stops-during-loading-weights).
+
+## VRAM watchdog (CUDA free memory before loads)
+[`check_cuda_headroom`](../../src/util/vram_watchdog.py) runs before heavy CUDA loads (e.g. local LLM weights, **`prepare_for_next_model`** / diffusion staging via [`memory_budget.release_between_stages`](../../src/util/memory_budget.py)). It uses **`torch.cuda.mem_get_info`**. Set **`AQUADUCT_VRAM_WATCHDOG=0`** / **`false`** / **`off`** to disable both warn and abort paths.
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_VRAM_WARN_FREE_MIB`** | Absolute minimum **free** VRAM for a **warning** (default **768** MiB). Combined with the fractional rule below (`max` of both). |
+| **`AQUADUCT_VRAM_WARN_FREE_FRAC`** | Warn when free VRAM **&lt;** this fraction of **total** (default **0.07**, clamped ~0.001–0.95). |
+| **`AQUADUCT_VRAM_ABORT_FREE_MIB`** | Absolute minimum free VRAM before **`RuntimeError`** (default **96** MiB). |
+| **`AQUADUCT_VRAM_ABORT_FREE_FRAC`** | Abort when free **&lt;** this fraction of total (default **0.025**). |
+
+Moderate pressure logs to the pipeline console and may surface a **non-blocking** desktop notice when the pipeline worker provides a callback ([`pipeline_notice`](../../src/runtime/pipeline_notice.py)). Critical pressure raises **`RuntimeError`** with remediation hints.
 
 ## Local LLM inference (VRAM)
 When **`model_execution_mode`** is **`local`**, long article text plus instructions can tokenize to a very long prompt. Attention prefill scales with sequence length and can trigger **`CUDA out of memory`** on tight GPUs (for example ~8GB) even with 4-bit weights.
@@ -85,6 +110,7 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
   - `gpu_selection_mode`: **`auto`** (default) or **`single`** — Auto routes LLM vs diffusion per [`cuda_device_policy`](../../src/util/cuda_device_policy.py); Single pins `gpu_device_index`.
   - `gpu_device_index`: CUDA ordinal used when `gpu_selection_mode == "single"` (shown in the **Device** combo only when **Select GPU** is chosen and CUDA GPUs exist).
   - `resource_graph_monitor_gpu_index`: optional int — last **Resource graph** “Monitor GPU” selection (`None` = default to device **0** when opening the graph).
+  - `resource_graph_split_view`: when **`true`**, chart **one VRAM sparkline per CUDA device** instead of using only the Monitor combo (persisted in `ui_settings.json`).
 - `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](../ui/ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](../ui/ui.md))
 - `video_format`: `news` | `cartoon` | `explainer` | `unhinged` | `creepypasta` | `health_advice` (drives which tag list applies to a run; see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))

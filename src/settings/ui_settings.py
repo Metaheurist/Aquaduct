@@ -362,6 +362,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
             and str(data.get("resource_graph_monitor_gpu_index", "")).strip().lstrip("-").isdigit()
             else None
         ),
+        resource_graph_split_view=bool(data.get("resource_graph_split_view", False)) if isinstance(data, dict) else False,
     )
 
 

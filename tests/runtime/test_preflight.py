@@ -218,3 +218,86 @@ def test_preflight_host_ram_skipped_for_api(monkeypatch: pytest.MonkeyPatch) -> 
     r = preflight_check(settings=s, strict=True)
     assert not any("Low host RAM headroom" in w for w in r.warnings)
 
+
+def test_preflight_heavy_repo_ram_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    import psutil
+
+    import src.runtime.preflight as pf
+
+    monkeypatch.setenv("AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM", "1")
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(
+        "src.models.model_manager.load_hf_size_cache",
+        lambda _path: {"black-forest-labs/flux.1-dev": 7 * (1024**3)},
+    )
+
+    class _VM:
+        total = 32 << 30
+        available = 2 << 30
+
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: _VM())
+
+    s = AppSettings(
+        model_execution_mode="local",
+        image_model_id="black-forest-labs/flux.1-dev",
+        video_model_id="cerspense/zeroscope_v2_576w",
+    )
+    r = preflight_check(settings=s, strict=True)
+    assert r.ok
+    assert any("frontier-class" in w or "large" in w for w in r.warnings)
+
+
+def test_preflight_heavy_repo_ram_skipped_when_ram_high(monkeypatch: pytest.MonkeyPatch) -> None:
+    import psutil
+
+    import src.runtime.preflight as pf
+
+    monkeypatch.setenv("AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM", "1")
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(
+        "src.models.model_manager.load_hf_size_cache",
+        lambda _path: {"black-forest-labs/flux.1-dev": 7 * (1024**3)},
+    )
+
+    class _VM:
+        total = 64 << 30
+        available = 20 << 30
+
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: _VM())
+
+    s = AppSettings(
+        model_execution_mode="local",
+        image_model_id="black-forest-labs/flux.1-dev",
+        video_model_id="cerspense/zeroscope_v2_576w",
+    )
+    r = preflight_check(settings=s, strict=True)
+    assert r.ok
+    assert not any("frontier-class" in w for w in r.warnings)
+
+
+def test_preflight_cpu_busy_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    import psutil
+
+    import src.runtime.preflight as pf
+
+    monkeypatch.setenv("AQUADUCT_CPU_PREFLIGHT", "1")
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+
+    def _cpu(interval=None):  # noqa: ANN001
+        return 0.0 if interval is None else 95.0
+
+    monkeypatch.setattr(psutil, "cpu_percent", _cpu)
+
+    r = preflight_check(
+        settings=AppSettings(
+            model_execution_mode="local",
+            video_model_id="cerspense/zeroscope_v2_576w",
+        ),
+        strict=True,
+    )
+    assert r.ok
+    assert any("CPU load is high" in w for w in r.warnings)
+
