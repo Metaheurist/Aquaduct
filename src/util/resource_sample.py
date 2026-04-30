@@ -10,47 +10,31 @@ from dataclasses import dataclass
 _cpu_tree_prev: tuple[float, float] | None = None
 
 
-def _tree_cpu_times_seconds(proc) -> float:
-    """Sum user+system CPU time for ``proc`` and all descendants (FFmpeg, etc.)."""
+def _tree_cpu_rss_and_children(proc) -> tuple[float, int, int]:
+    """
+    One recursive walk: summed CPU time (user+system), RSS bytes, and descendant count.
+
+    Avoids calling ``children(recursive=True)`` three times per sample tick.
+    """
     import psutil
 
-    t = proc.cpu_times()
-    s = float(t.user + t.system)
+    t0 = proc.cpu_times()
+    cpu_s = float(t0.user + t0.system)
+    rss = int(proc.memory_info().rss)
+    n_children = 0
     try:
-        for c in proc.children(recursive=True):
+        children = proc.children(recursive=True)
+        n_children = len(children)
+        for c in children:
             try:
                 ct = c.cpu_times()
-                s += float(ct.user + ct.system)
+                cpu_s += float(ct.user + ct.system)
+                rss += int(c.memory_info().rss)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
-    return s
-
-
-def _tree_rss_bytes(proc) -> int:
-    """RSS for main process plus children (encode/mux helpers often run as separate processes)."""
-    import psutil
-
-    r = int(proc.memory_info().rss)
-    try:
-        for c in proc.children(recursive=True):
-            try:
-                r += int(c.memory_info().rss)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                pass
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
-    return r
-
-
-def _tree_child_count(proc) -> int:
-    import psutil
-
-    try:
-        return len(proc.children(recursive=True))
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return 0
+    return cpu_s, rss, n_children
 
 
 @dataclass(frozen=True)
@@ -86,7 +70,7 @@ def sample_aquaduct_resources() -> ResourceSample:
         p = psutil.Process(os.getpid())
         n = max(1, psutil.cpu_count(logical=True) or 1)
         now = time.perf_counter()
-        cum = _tree_cpu_times_seconds(p)
+        cum, rss_b, n_children = _tree_cpu_rss_and_children(p)
         prev = _cpu_tree_prev
         _cpu_tree_prev = (now, cum)
         if prev is not None:
@@ -100,7 +84,7 @@ def sample_aquaduct_resources() -> ResourceSample:
                 cpu_pct = max(0.0, min(100.0, 100.0 * (d_cpu / dt) / float(n)))
 
         vm = psutil.virtual_memory()
-        rss = float(_tree_rss_bytes(p))
+        rss = float(rss_b)
         ram_pct = 100.0 * rss / float(vm.total) if vm.total else 0.0
         ram_pct = max(0.0, min(100.0, ram_pct))
         rss_mb = rss / (1024.0 * 1024.0)
@@ -109,7 +93,6 @@ def sample_aquaduct_resources() -> ResourceSample:
             sys_used_pct = max(0.0, min(100.0, float(vm.percent)))
         except Exception:
             sys_used_pct = None
-        n_children = _tree_child_count(p)
     except Exception:
         cpu_pct, ram_pct = 0.0, 0.0
         rss_mb = 0.0
