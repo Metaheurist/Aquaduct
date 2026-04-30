@@ -60,6 +60,7 @@ class ResourceSample:
     gpu_mem_pct: float | None  # 0–100 of total VRAM, or None if unavailable
     tree_rss_mb: float = 0.0  # summed RSS for process tree (approximate)
     available_ram_mb: float | None = None  # host free RAM per psutil.virtual_memory().available
+    system_memory_used_pct: float | None = None  # machine-wide RAM use (psutil virtual_memory().percent)
     tree_child_count: int = 0  # descendant processes (FFmpeg workers, etc.)
 
 
@@ -77,6 +78,7 @@ def sample_aquaduct_resources() -> ResourceSample:
     ram_pct = 0.0
     rss_mb = 0.0
     avail_mb: float | None = None
+    sys_used_pct: float | None = None
     n_children = 0
     try:
         import psutil
@@ -103,11 +105,16 @@ def sample_aquaduct_resources() -> ResourceSample:
         ram_pct = max(0.0, min(100.0, ram_pct))
         rss_mb = rss / (1024.0 * 1024.0)
         avail_mb = float(vm.available) / (1024.0 * 1024.0) if vm.total else None
+        try:
+            sys_used_pct = max(0.0, min(100.0, float(vm.percent)))
+        except Exception:
+            sys_used_pct = None
         n_children = _tree_child_count(p)
     except Exception:
         cpu_pct, ram_pct = 0.0, 0.0
         rss_mb = 0.0
         avail_mb = None
+        sys_used_pct = None
         n_children = 0
 
     gpu_pct: float | None = None
@@ -130,6 +137,7 @@ def sample_aquaduct_resources() -> ResourceSample:
         gpu_mem_pct=gpu_pct,
         tree_rss_mb=rss_mb,
         available_ram_mb=avail_mb,
+        system_memory_used_pct=sys_used_pct,
         tree_child_count=n_children,
     )
 
