@@ -401,6 +401,17 @@ def merge_t2v_from_settings(model_id: str, base: dict[str, Any], settings: AppSe
     v = resolve_effective_vram_gb(kind="video", settings=settings)
     out = merge_t2v_kwargs(base, model_id, v)
     try:
+        from src.render.video_quality_presets import (
+            apply_t2v_length_factor,
+            length_factor_for,
+        )
+
+        factor = float(length_factor_for(getattr(settings, "video", None)))
+        if abs(factor - 1.0) > 1e-6:
+            out = apply_t2v_length_factor(out, factor)
+    except Exception:
+        pass
+    try:
         from src.runtime.resource_ladder import apply_inference_profile_scales
 
         return apply_inference_profile_scales(out, settings)

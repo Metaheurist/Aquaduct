@@ -1438,6 +1438,33 @@ class MainWindow(QMainWindow):
                 if hasattr(self, "_effects_preset_id")
                 else str(getattr(self.settings.video, "effects_preset_id", "") or "")
             ),
+            smoothness_mode=(
+                str(self.video_smoothness_combo.currentData() or "off")
+                if hasattr(self, "video_smoothness_combo")
+                else str(getattr(self.settings.video, "smoothness_mode", "off") or "off")
+            ),
+            smoothness_target_fps=int(getattr(self.settings.video, "smoothness_target_fps", 24) or 24),
+            video_length_preset_id=(
+                str(self.video_length_preset_combo.currentData() or "medium")
+                if hasattr(self, "video_length_preset_combo")
+                else str(getattr(self.settings.video, "video_length_preset_id", "medium") or "medium")
+            ),
+            video_scene_preset_id=(
+                str(self.video_scene_preset_combo.currentData() or "balanced")
+                if hasattr(self, "video_scene_preset_combo")
+                else str(getattr(self.settings.video, "video_scene_preset_id", "balanced") or "balanced")
+            ),
+            video_fps_preset_id=(
+                str(self.video_fps_preset_combo.currentData() or "standard_30")
+                if hasattr(self, "video_fps_preset_combo")
+                else str(getattr(self.settings.video, "video_fps_preset_id", "standard_30") or "standard_30")
+            ),
+            video_resolution_preset_id=(
+                str(self.video_resolution_preset_combo.currentData() or "vertical_1080p")
+                if hasattr(self, "video_resolution_preset_combo")
+                else str(getattr(self.settings.video, "video_resolution_preset_id", "vertical_1080p") or "vertical_1080p")
+            ),
+            article_relevance_screen=bool(getattr(self.settings.video, "article_relevance_screen", True)),
         )
 
         branding = getattr(self.settings, "branding", BrandingSettings())

@@ -157,6 +157,15 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         return AppSettings()
 
     video_raw = data.get("video", {}) if isinstance(data, dict) else {}
+    try:
+        from src.render.video_quality_presets import (
+            apply_video_presets,
+            migrate_legacy_video_settings,
+        )
+
+        video_raw = apply_video_presets(migrate_legacy_video_settings(dict(video_raw)))
+    except Exception:
+        pass
     video = VideoSettings(
         width=int(video_raw.get("width", 1080)),
         height=int(video_raw.get("height", 1920)),
@@ -210,6 +219,15 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         else "short",
         platform_preset_id=str(video_raw.get("platform_preset_id", "") or ""),
         effects_preset_id=str(video_raw.get("effects_preset_id", "") or ""),
+        smoothness_mode=str(video_raw.get("smoothness_mode", "off") or "off")
+        if str(video_raw.get("smoothness_mode", "off")) in ("off", "ffmpeg", "rife")
+        else "off",
+        smoothness_target_fps=int(video_raw.get("smoothness_target_fps", 24) or 24),
+        video_length_preset_id=str(video_raw.get("video_length_preset_id", "medium") or "medium"),
+        video_scene_preset_id=str(video_raw.get("video_scene_preset_id", "balanced") or "balanced"),
+        video_fps_preset_id=str(video_raw.get("video_fps_preset_id", "standard_30") or "standard_30"),
+        video_resolution_preset_id=str(video_raw.get("video_resolution_preset_id", "vertical_1080p") or "vertical_1080p"),
+        article_relevance_screen=bool(video_raw.get("article_relevance_screen", True)),
     )
 
     branding_raw = data.get("branding", {}) if isinstance(data, dict) else {}
