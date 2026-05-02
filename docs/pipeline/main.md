@@ -13,6 +13,8 @@ It also exposes a `run_once(settings: AppSettings)` function that the desktop UI
 
 For **Cartoon** and **Cartoon (unhinged)** preset runs, when **Gather web context** and/or **Download reference images** is enabled on the Video tab, `run_once` prepends the latest **Topics → Discover** research digest from **`data/topic_research/<mode>/`** into the Firecrawl `build_script_context` `extra_markdown` bundle (same helper as storyboard preview in [`UI/workers.py`](../../UI/workers.py)); see [Crawler](../integrations/crawler.md).
 
+**Crash resilience**: when **`resume_partial_pipeline`** is on, **`run_checkpoint.json`** and **`pipeline_script_package.json`** live under **`assets/`** inside each video project; milestone stages feed resume from an incomplete **`videos/`** folder. Ephemeral **`resume_partial_project_directory`** pins output to the chosen resume target. Overview: [crash-resilience.md](crash-resilience.md).
+
 ## Commands
 
 ### Run once (recommended for testing)

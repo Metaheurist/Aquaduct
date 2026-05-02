@@ -202,7 +202,7 @@ def attach_my_pc_tab(win) -> None:
         if callable(u):
             u()
 
-    def _on_multi_gpu_shard_changed(_i: int = 0) -> None:
+    def _on_gpu_device_changed(_i: int = 0) -> None:
         if hasattr(win, "_save_settings"):
             win._save_settings()
         win.settings = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
@@ -211,6 +211,7 @@ def attach_my_pc_tab(win) -> None:
         if callable(u):
             u()
 
+    def _on_multi_gpu_shard_changed(_i: int = 0) -> None:
         if hasattr(win, "_save_settings"):
             win._save_settings()
         win.settings = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings

@@ -394,6 +394,7 @@ def _load_text_to_video_pipeline(
             low_cpu_mem_usage=True,
         )
         pipeline_console("Wan T2V: pipeline weights loaded", stage="video_t2v_load")
+        _maybe_enable_slice_inference(pipe)
         try:
             from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 
@@ -496,6 +497,24 @@ def _maybe_enable_slice_inference(pipe) -> None:
                 fn()
             except Exception:
                 pass
+    vae = getattr(pipe, "vae", None)
+    if vae is not None and hasattr(vae, "enable_tiling"):
+        try:
+            vae.enable_tiling()
+        except Exception:
+            pass
+    try:
+        from diffusers.models.attention_processor import AttnProcessor2_0
+
+        if hasattr(pipe, "set_attn_processor"):
+            pipe.set_attn_processor(AttnProcessor2_0())
+    except Exception:
+        pass
+    try:
+        if hasattr(pipe, "enable_xformers_memory_efficient_attention"):
+            pipe.enable_xformers_memory_efficient_attention()
+    except Exception:
+        pass
 
 
 def _try_text_to_video(

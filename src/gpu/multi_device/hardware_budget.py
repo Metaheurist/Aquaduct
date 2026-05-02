@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from dataclasses import dataclass
 
 
@@ -70,4 +72,22 @@ def build_accelerate_max_memory(
     else:
         cpu_gib = int(min_cpu_gib)
     out["cpu"] = f"{cpu_gib}GiB"
+    try:
+        dg: int | None = None
+        raw = os.environ.get("AQUADUCT_ACCELERATE_DISK_GIB", "").strip()
+        if raw.replace(".", "", 1).isdigit():
+            dg = max(1, int(float(raw)))
+        elif os.environ.get("AQUADUCT_ACCELERATE_DISK_AUTO", "1").strip().lower() not in ("0", "false", "no"):
+            from src.core.config import get_paths
+
+            dd = get_paths().cache_dir / "accelerate_disk"
+            dd.mkdir(parents=True, exist_ok=True)
+            free_b = shutil.disk_usage(str(dd)).free
+            frac = float(os.environ.get("AQUADUCT_ACCELERATE_DISK_FREE_FRAC", "0.35"))
+            dg = max(24, int((free_b * frac) / (1024**3)))
+            dg = min(512, dg)
+        if dg is not None and dg >= 24:
+            out["disk"] = f"{dg}GiB"
+    except Exception:
+        pass
     return out

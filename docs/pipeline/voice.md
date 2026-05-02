@@ -32,6 +32,9 @@ The app wires **Kokoro-82M** and **MOSS-VoiceGenerator** in [`src/speech/voice.p
 
 **Settings → Model → Voice** only lists **Kokoro-82M** and **MOSS-VoiceGenerator** for local snapshot **download**; the pipeline runs Kokoro, MOSS, or `pyttsx3` for speech.
 
+## Retry ladder (local transformers path)
+Heavy local voice loads are wrapped in **`retry_stage`** ([`main.py`](../../main.py)): failures can downgrade **MOSS → Kokoro** per [`variant_fallback`](../../src/runtime/variant_fallback.py), and curated mappings include a **`aquaduct/system-tts-pyttsx3`** sentinel id mapped to **`pyttsx3`**-only synthesis when GPUs or wheels cannot run MOSS/Kokoro. **ElevenLabs** remains a separate HTTP API path — not the same transformer retry loop.
+
 ## Offline fallback (always runnable)
 If Kokoro generation is unavailable, the MVP falls back to:
 - `pyttsx3` (Windows SAPI)

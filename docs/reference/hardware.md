@@ -53,6 +53,8 @@ The My PC tab assigns each model option a marker (internal codes; UI labels matc
 
 These are simple heuristics based mainly on VRAM and the model kind. **`rate_model_fit_for_repo`** also applies **per-repo** thresholds for frontier checkpoints (e.g. **FLUX** / **SD3.5**, **Wan 2.2** / **Mochi 1.5** / **CogVideoX 5B** / **HunyuanVideo** / **LTX-2** for T2V, and user-typed **SVD** / **LTX-Video** / **ZeroScope** ids) — see [`src/models/hardware.py`](../../src/models/hardware.py) (`vram_requirement_hint`, `rate_model_fit_for_repo`).
 
+On **Models**, when the **Video (motion)** fit badge is **VRAM Limit** (red) or **Risky** (amber), **Use lighter Motion / Video checkpoint** may appear; it swaps to a curated smaller T2V repo id via **`next_smaller_repo_id("video", …)`** ([`src/runtime/variant_fallback.py`](../../src/runtime/variant_fallback.py), used from [`UI/tabs/settings_tab.py`](../../UI/tabs/settings_tab.py)). **Gated** checkpoints usually need **`HF_TOKEN`** configured — startup preflight warns when missing.
+
 - **Image (SDXL Turbo class default)**:
   - `EXCELLENT`: ≥ 10GB VRAM
   - `OK`: ≥ 8GB VRAM

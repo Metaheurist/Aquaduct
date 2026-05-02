@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
 
 from src.core.config import get_models
 from src.core.models_dir import models_dir_for_app
-
+from src.runtime.variant_fallback import next_smaller_repo_id
 from src.models.hardware import (
     fit_marker_display,
     get_hardware_info,
@@ -101,7 +101,7 @@ def attach_settings_tab(win) -> None:
     lay = QVBoxLayout(w)
 
     title_row = QHBoxLayout()
-    header = QLabel("Model (dependencies + model downloads)")
+    header = QLabel("Models — pick weights and downloads")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     title_row.addWidget(header)
     title_row.addStretch(1)
@@ -254,15 +254,14 @@ def attach_settings_tab(win) -> None:
     ll.addWidget(win._hub_status_lbl)
 
     win._model_fit_policy_hint = QLabel(
-        "Fit badges follow GPU policy and effective VRAM from the My PC tab (Auto vs Single device)."
+        "Green/amber fit badges use VRAM from My PC (Auto picks a card vs pinning one GPU)."
     )
     win._model_fit_policy_hint.setWordWrap(True)
     win._model_fit_policy_hint.setStyleSheet("color:#7A8A9A;font-size:12px;padding:0 0 8px 0;")
     ll.addWidget(win._model_fit_policy_hint)
 
     win.auto_quant_downgrade_on_failure_chk = QCheckBox(
-        "Auto quant downgrade on failure (local): step quantization down one level for the failing role, "
-        "save settings, and retry until success or all levels fail."
+        "If a local run fails, try one step lower quality and retry (auto-save)"
     )
     win.auto_quant_downgrade_on_failure_chk.setChecked(
         bool(getattr(win.settings, "auto_quant_downgrade_on_failure", False))
@@ -719,12 +718,22 @@ def attach_settings_tab(win) -> None:
             from debug import debug_enabled, dprint
 
             if debug_enabled("ui"):
-                dprint(
-                    "ui",
-                    "settings fit badges refresh",
-                    f"llm={(_combo_repo_id_from_selection(win.llm_combo) or '')[:64]!r}",
-                    f"img={(_combo_repo_id_from_selection(win.img_combo) or '')[:64]!r}",
+                sig = (
+                    _combo_repo_id_from_selection(win.llm_combo) or "",
+                    _combo_repo_id_from_selection(win.img_combo) or "",
+                    _combo_repo_id_from_selection(win.vid_combo) or "",
+                    _combo_repo_id_from_selection(win.voice_combo) or "",
                 )
+                if getattr(win, "_fit_badge_debug_sig", None) != sig:
+                    win._fit_badge_debug_sig = sig
+                    dprint(
+                        "ui",
+                        "settings fit badges refresh",
+                        f"llm={sig[0][:64]!r}",
+                        f"img={sig[1][:64]!r}",
+                        f"vid={sig[2][:64]!r}",
+                        f"voice={sig[3][:64]!r}",
+                    )
         except Exception:
             pass
         try:
@@ -995,6 +1004,26 @@ def attach_settings_tab(win) -> None:
         else:
             win.vid_fit.setText("—")
             win.vid_dl_badge.setText("")
+        if hasattr(win, "video_lighter_fit_btn"):
+            vid_mk = ""
+            sug_v = ""
+            if vid_repo:
+                vid_mk, _vw = rate_model_fit_for_repo(
+                    kind="video",
+                    speed=vid_spd,
+                    repo_id=str(vid_repo),
+                    pair_image_repo_id=pair_id,
+                    vram_gb=_vram_for_kind("video"),
+                    ram_gb=win._hw_info.ram_gb,
+                )
+                sug_v = next_smaller_repo_id("video", vid_repo) or ""
+            tight = str(vid_mk or "").strip().upper() in ("NO_GPU", "RISKY")
+            win.video_lighter_fit_btn.setVisible(bool(vid_repo and sug_v and tight))
+            win.video_lighter_fit_btn.setToolTip(
+                f"Apply curated smaller Motion model ({sug_v}) when the badge is risky."
+                if sug_v
+                else "No curated smaller checkpoint is defined for this repo."
+            )
 
         voice_repo = _combo_repo_id_from_selection(win.voice_combo)
         _refill_and_restore_quant(
@@ -1134,6 +1163,39 @@ def attach_settings_tab(win) -> None:
     ]
     for _txt, combo, dl_b, quant_panel, vram_l, fit_l in _model_rows:
         ll.addWidget(_model_role_card(_txt, combo, dl_b, quant_panel, vram_l, fit_l))
+
+    win.video_lighter_fit_btn = QPushButton("Use lighter Motion / Video checkpoint (red/amber badges)")
+    win.video_lighter_fit_btn.setVisible(False)
+    win.video_lighter_fit_btn.setToolTip(
+        help_tooltip_rich(
+            "When the **Video fit badge** is **VRAM Limit** (red) or **Risky**, this applies a curated lighter "
+            "Motion checkpoint if one exists — same mapping as crash-resilience “variant ladder” falls back.\n\n"
+            "Downloads still happen from Hugging Face; pick a lighter class if you regularly OOM.",
+            "models",
+            slide=2,
+        )
+    )
+
+    lighter_row = QHBoxLayout()
+    lighter_row.addWidget(win.video_lighter_fit_btn, 0)
+    lighter_row.addStretch(1)
+    ll.addLayout(lighter_row)
+
+    def _on_video_lighter_fit_clicked() -> None:
+        vid_r = _combo_repo_id_from_selection(win.vid_combo)
+        cand = next_smaller_repo_id("video", vid_r)
+        if not cand:
+            aquaduct_information(win, title="Video model", subtitle="No smaller curated fallback is wired for this repo.")
+            return
+        _append_saved_repo_row(win.vid_combo, cand)
+        _update_fit_badges()
+        if hasattr(win, "_save_settings"):
+            try:
+                win._save_settings()
+            except Exception:
+                pass
+
+    win.video_lighter_fit_btn.clicked.connect(_on_video_lighter_fit_clicked)
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
@@ -1428,8 +1490,7 @@ def attach_settings_tab(win) -> None:
                         win._hf_remote_sizes[str(rid)] = int(info["bytes"])
                 bad = sum(1 for v in (probe or {}).values() if isinstance(v, dict) and not v.get("ok"))
                 win._hub_status_lbl.setText(
-                    f"Hub check done. Precise sizes updated. "
-                    f"Unavailable entries ({bad}) are grayed unless you already have them under models/."
+                    f"Model list updated from Hugging Face. {bad} not listed online—dimmed unless already in models/."
                 )
                 _refresh_model_combos_keep_selection()
                 _update_fit_badges()

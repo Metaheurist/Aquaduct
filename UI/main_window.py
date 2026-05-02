@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QTabWidget,
     QPushButton,
     QStyle,
@@ -1400,6 +1401,7 @@ class MainWindow(QMainWindow):
             story_multistage_enabled=bool(self.story_multistage_chk.isChecked()) if hasattr(self, "story_multistage_chk") else False,
             story_web_context=bool(self.story_web_chk.isChecked()) if hasattr(self, "story_web_chk") else False,
             story_reference_images=bool(self.story_refimg_chk.isChecked()) if hasattr(self, "story_refimg_chk") else False,
+            resume_partial_pipeline=bool(self.resume_partial_chk.isChecked()) if hasattr(self, "resume_partial_chk") else False,
             seed_base=int(str(self.seed_base_input.text()).strip())
             if hasattr(self, "seed_base_input") and str(self.seed_base_input.text()).strip().lstrip("-").isdigit()
             else None,
@@ -2609,6 +2611,45 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def _maybe_offer_resume_partial(self, settings: AppSettings) -> AppSettings:
+        """When resume checkpointing is enabled, offer the latest incomplete videos/ project."""
+        if not bool(getattr(getattr(settings, "video", None), "resume_partial_pipeline", False)):
+            return settings
+        if str(getattr(settings, "resume_partial_project_directory", "") or "").strip():
+            return settings
+        if str(getattr(settings, "media_mode", "video") or "video").strip().lower() != "video":
+            return settings
+        try:
+            from src.runtime.run_checkpoint import clear_checkpoint, find_latest_resumable_video_project
+
+            root = media_output_root(get_paths(), "video")
+            cand = find_latest_resumable_video_project(root, settings)
+            if cand is None:
+                return settings
+            m = QMessageBox(self)
+            m.setIcon(QMessageBox.Icon.Question)
+            m.setWindowTitle("Resume partial pipeline?")
+            m.setText(
+                f"Found an unfinished video project:\n{cand}\n\n"
+                "Resume using run_checkpoint.json (completed stages such as script or voice may be skipped)?"
+            )
+            yes = QMessageBox.StandardButton.Yes
+            no = QMessageBox.StandardButton.No
+            discard = QMessageBox.StandardButton.Help
+            m.setStandardButtons(yes | no | discard)
+            db = m.button(discard)
+            if db is not None:
+                db.setText("Discard checkpoint")
+            choice = m.exec()
+            if choice == discard:
+                clear_checkpoint(cand / "assets", settings)
+                return settings
+            if choice == yes:
+                return replace(settings, resume_partial_project_directory=str(cand.resolve()))
+            return settings
+        except Exception:
+            return settings
+
     def _attach_and_start_pipeline_worker(
         self,
         settings: AppSettings,
@@ -2623,6 +2664,9 @@ class MainWindow(QMainWindow):
         def on_prog(tid: str, overall_pct: int, task_pct: int, status: str) -> None:
             self._update_tasks_active_progress(tid, overall_pct, task_pct, status)
             self._resize_to_current_tab()
+
+        if prebuilt_pkg is None and prebuilt_prompts is None:
+            settings = self._maybe_offer_resume_partial(settings)
 
         if prebuilt_pkg is not None:
             self._set_tasks_active_row(
@@ -3209,9 +3253,13 @@ class MainWindow(QMainWindow):
             from src.settings.ui_settings import load_settings
 
             self.settings = load_settings()
+            try:
+                self.settings = replace(self.settings, resume_partial_project_directory="")
+            except Exception:
+                pass
             if hasattr(self, "auto_quant_downgrade_on_failure_chk"):
                 self.auto_quant_downgrade_on_failure_chk.setChecked(
-                    bool(getattr(self.settings, "auto_quant_downgrade_on_failure", False))
+                    bool(getattr(self.settings, "auto_quant_downgrade_on_failure", True))
                 )
         except Exception:
             pass

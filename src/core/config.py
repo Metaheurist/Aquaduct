@@ -153,6 +153,8 @@ class VideoSettings:
     story_multistage_enabled: bool = False
     story_web_context: bool = False
     story_reference_images: bool = False
+    # When True, ``run_checkpoint.json`` guides skipping completed coarse stages after a crash (artifacts + fingerprints).
+    resume_partial_pipeline: bool = False
     # Visual quality controls
     seed_base: int | None = None
     quality_retries: int = 2
@@ -267,7 +269,7 @@ class AppSettings:
     video_quant_mode: QuantMode = "auto"
     voice_quant_mode: QuantMode = "auto"
     #: Local runs: on load/inference failure (not only OOM), step quantization down one notch for that role and retry.
-    auto_quant_downgrade_on_failure: bool = False
+    auto_quant_downgrade_on_failure: bool = True
     background_music_path: str = ""
     hf_token: str = ""  # optional: Hugging Face access token for gated repos / API calls
     hf_api_enabled: bool = True  # when False, saved token is not applied to HF_TOKEN (soft opt-out)
@@ -339,6 +341,19 @@ class AppSettings:
     resource_graph_compact: bool = True
     #: When True, skip the startup dialog that offers CUDA PyTorch if the user chose "Don't ask again".
     skip_cuda_cpu_torch_mismatch_prompt: bool = False
+    #: Diffusion pipelines: force CPU execution (crash-resilience ladder last resort).
+    _force_cpu_diffusion: bool = False
+    # Ephemeral retry scalars — stripped in ``save_settings()``; reset each fresh run.
+    resource_retry_resolution_scale: float = 1.0
+    resource_retry_frames_scale: float = 1.0
+    #: Last-resort: render diffusion on CPU (very slow).
+    cpu_render_last_resort: bool = True
+    #: Variant swap ladder (filled during retry_stage when applicable).
+    recovery_swapped_voice_model_id: str = ""
+    recovery_swapped_video_model_id: str = ""
+    recovery_swapped_image_model_id: str = ""
+    #: Ephemeral: when set, ``run_once`` may skip script LLM stages and bind outputs to this project folder (not saved).
+    resume_partial_project_directory: str = ""
 
 
 def safe_title_to_dirname(title: str) -> str:

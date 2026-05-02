@@ -60,7 +60,9 @@ Mitigations:
 3. On **multi-GPU** setups, confirm **My PC** → GPU policy assigns **video** to the card with the **most VRAM** (effective VRAM per role appears in the `[Aquaduct][inference_profile]` lines).
 4. Avoid starting a second heavy download/load (e.g. HF **Loading weights**) at the same time as a run — competing loads reduce headroom.
 
-Partial outputs for a dated folder under **`.Aquaduct_data`** (for example `runs/<timestamp>/` or project folders under `videos/`) may exist without **`final.mp4`** if the pipeline stopped before the editor stage.
+5. **Observability during long HF loads:** periodic heartbeat lines (**`AQUADUCT_LOAD_HEARTBEAT_INTERVAL_S`**, optional stalled-load watchdog **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** / **`AQUADUCT_LOAD_TIMEOUT_S`**) mirror to the desktop **Resource usage** footer — see [Performance — Resource graph heartbeat](../pipeline/performance.md), [Crash resilience overview](../pipeline/crash-resilience.md).
+
+Partial outputs for a dated folder under **`.Aquaduct_data`** (for example `runs/<timestamp>/` or project folders under `videos/`) may exist without **`final.mp4`** if the pipeline stopped before the editor stage. With **Resume partial pipeline** enabled, coarse **`assets/run_checkpoint.json`** milestones can shorten the **next** desktop run — see [Crash resilience](../pipeline/crash-resilience.md).
 
 ## Related docs
 - [Config](config.md) — env overrides, GPU policy fields  
@@ -68,3 +70,4 @@ Partial outputs for a dated folder under **`.Aquaduct_data`** (for example `runs
 - [Hardware + model fit](hardware.md) — `rate_model_fit_for_repo`  
 - [Brain](../pipeline/brain.md) — local LLM path  
 - [Quantization](quantization.md) — per-model quant modes, VRAM multipliers, fallbacks  
+- [Crash resilience](../pipeline/crash-resilience.md) — checkpoints / resume / heartbeat  

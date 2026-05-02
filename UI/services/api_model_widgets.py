@@ -117,7 +117,7 @@ def _sync_api_model_combo_tip(model_combo: QComboBox, provider_id: str) -> None:
 
 
 def build_generation_api_panel(win) -> QWidget:
-    root = QGroupBox("Generation APIs (API execution mode)")
+    root = QGroupBox("Cloud generation (when Model tab is set to API)")
     root.setToolTip(
         help_tooltip_rich(
             "Used when Model tab is set to API. Env overrides saved keys: OPENAI_API_KEY, GEMINI_API_KEY, "
@@ -135,13 +135,13 @@ def build_generation_api_panel(win) -> QWidget:
     keys_row = QFormLayout()
     win.api_gen_openai_key = QLineEdit()
     win.api_gen_openai_key.setEchoMode(QLineEdit.EchoMode.Password)
-    win.api_gen_openai_key.setPlaceholderText("Bearer for OpenAI or compatible LLM (optional if env is set)")
+    win.api_gen_openai_key.setPlaceholderText("Paste API key—or set OPENAI_API_KEY in your environment")
     win.api_gen_openai_key.setText(str(getattr(win.settings, "api_openai_key", "") or ""))
     keys_row.addRow("OpenAI / LLM API key", win.api_gen_openai_key)
 
     win.api_gen_replicate_token = QLineEdit()
     win.api_gen_replicate_token.setEchoMode(QLineEdit.EchoMode.Password)
-    win.api_gen_replicate_token.setPlaceholderText("r8_… (optional if REPLICATE_API_TOKEN is set)")
+    win.api_gen_replicate_token.setPlaceholderText("Replicate token—or set REPLICATE_API_TOKEN")
     win.api_gen_replicate_token.setText(str(getattr(win.settings, "api_replicate_token", "") or ""))
     keys_row.addRow("Replicate API token", win.api_gen_replicate_token)
     outer.addLayout(keys_row)
@@ -169,16 +169,16 @@ def build_generation_api_panel(win) -> QWidget:
         voice: QLineEdit | None = None
         if role == "llm":
             base = QLineEdit()
-            base.setPlaceholderText("Optional base URL (default https://api.openai.com/v1)")
+            base.setPlaceholderText("Custom API base URL (leave blank for OpenAI)")
             base.setText(str(getattr(_rcfg("llm"), "base_url", "") or "") if _rcfg("llm") is not None else "")
             org = QLineEdit()
-            org.setPlaceholderText("Optional OpenAI-Organization")
+            org.setPlaceholderText("Org ID (optional, OpenAI-style)")
             org.setText(str(getattr(_rcfg("llm"), "org_id", "") or "") if _rcfg("llm") is not None else "")
             fl.addRow("Base URL", base)
             fl.addRow("Organization", org)
         if role == "voice":
             voice = QLineEdit()
-            voice.setPlaceholderText("Voice id (OpenAI: alloy, … / ElevenLabs: voice id)")
+            voice.setPlaceholderText("Provider’s voice or speaker id")
             voice.setText(str(getattr(_rcfg("voice"), "voice_id", "") or "") if _rcfg("voice") is not None else "")
             fl.addRow("Voice / speaker id", voice)
 
@@ -209,12 +209,17 @@ def build_generation_api_panel(win) -> QWidget:
     win.api_gen_video_provider, win.api_gen_video_model, _, _, _ = _role_block("Video API (Pro / Replicate)", "video")
     win.api_gen_voice_provider, win.api_gen_voice_model, _, _, win.api_gen_voice_id = _role_block("Voice API", "voice")
 
-    hint = QLabel(
-        "Env overrides take precedence: OPENAI / GEMINI / GROQ / … keys, SILICONFLOW / MAGIC_HOUR / INWORLD "
-        "where used, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY."
-    )
+    hint = QLabel("Tip: you can set API keys as environment variables instead—hover for a list.")
     hint.setWordWrap(True)
     hint.setStyleSheet("color:#9BB0C4;font-size:12px;")
+    hint.setToolTip(
+        help_tooltip_rich(
+            "Common names: OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY, "
+            "plus provider-specific keys (see this panel’s group tooltip for the full set). Env wins over saved fields.",
+            "api_social",
+            slide=1,
+        )
+    )
     outer.addWidget(hint)
 
     def _sync_rows() -> None:

@@ -67,7 +67,18 @@ The title-bar **Resource usage** graph ([`UI/dialogs/resource_graph_dialog.py`](
 
 **Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured on the **My PC** tab (**Auto** \| **Select GPU** and optional **Device** when pinning one index) and implemented in [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py); see [hardware.md](../reference/hardware.md). This is separate from **CPU thread** tuning above.
 
+**Resource graph — model load heartbeat:** long synchronous Hugging Face / diffusers **`from_pretrained`** calls run a background heartbeat (see [`src/runtime/load_heartbeat.py`](../../src/runtime/load_heartbeat.py)). The latest line is mirrored in the Resource usage dialog footer when fresh. Tunables:
+
+| Variable | Role |
+|----------|------|
+| `AQUADUCT_LOAD_HEARTBEAT_INTERVAL_S` | Seconds between heartbeat log lines (default **30**). |
+| `AQUADUCT_LOAD_FATAL_TIMEOUT_S` or `AQUADUCT_LOAD_TIMEOUT_S` | If \> **0**, emits a stalled-load watchdog message after this many seconds (**does not** cancel the load — best-effort observability only). |
+
+Checkpoint / resume (optional): enable **Resume partial pipeline** on the Video tab. The pipeline writes **`assets/run_checkpoint.json`** and **`assets/pipeline_script_package.json`** as coarse milestones complete; on the next Run, the app may offer to resume the newest incomplete folder under **`videos/`** (same model fingerprint). See [`src/runtime/run_checkpoint.py`](../../src/runtime/run_checkpoint.py).
+
 ## Related
+
+- Checkpoints, partial resume, OOM / voice ladders, memory preflight: [crash-resilience.md](crash-resilience.md)
 
 - Desktop UX (wheel guard, tabs): [ui.md](../ui/ui.md)
 - Build + import smoke for frozen EXEs: [building_windows_exe.md](../build/building_windows_exe.md), [`../build/README.md`](../../build/README.md)

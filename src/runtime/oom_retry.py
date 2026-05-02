@@ -19,6 +19,84 @@ from src.util.cuda_capabilities import cuda_device_reported_by_torch
 T = TypeVar("T")
 
 
+def _attempt_recovery_beyond_quant(*, role: QuantRole, repo_id: str, settings: AppSettings, rx: dict[str, int]) -> AppSettings | None:
+    """Return updated settings after a coarse recovery step beyond quantization, else ``None``."""
+    max_geom = int(os.environ.get("AQUADUCT_RESOURCE_GEOM_MAX_STEPS", "3"))
+    max_frm = int(os.environ.get("AQUADUCT_RESOURCE_FRAME_MAX_STEPS", "3"))
+    max_variant = int(os.environ.get("AQUADUCT_RESOURCE_VARIANT_MAX_STEPS", "2"))
+
+    from src.runtime.resource_ladder import downgrade_frames_step, downgrade_resolution_step
+    from src.runtime.variant_fallback import apply_variant_swap, next_smaller_repo_id
+
+    geom_n = int(rx.get("geom", 0))
+    frm_n = int(rx.get("frm", 0))
+    var_n = int(rx.get("variant", 0))
+
+    gs = downgrade_resolution_step(settings, role=role)
+    if gs is not None and geom_n < max_geom:
+        rx["geom"] = geom_n + 1
+        try:
+            from debug import pipeline_console
+
+            pipeline_console(
+                f"VRAM recovery ({role!r}): shrinking diffusion resolution (~{geom_n + 1}/{max_geom})…",
+                stage="resource_ladder",
+            )
+        except Exception:
+            pass
+        return gs
+
+    fs = downgrade_frames_step(settings, role=role)
+    if fs is not None and frm_n < max_frm:
+        rx["frm"] = frm_n + 1
+        try:
+            from debug import pipeline_console
+
+            pipeline_console(
+                f"VRAM recovery ({role!r}): reducing video frames (~{frm_n + 1}/{max_frm})…",
+                stage="resource_ladder",
+            )
+        except Exception:
+            pass
+        return fs
+
+    cand = next_smaller_repo_id(role, repo_id)
+    if cand and var_n < max_variant:
+        rx["variant"] = var_n + 1
+        try:
+            from debug import pipeline_console
+
+            pipeline_console(
+                f"VRAM recovery ({role!r}): switching checkpoint → {cand!r} (variant {var_n + 1}/{max_variant})…",
+                stage="variant_fallback",
+            )
+        except Exception:
+            pass
+        next_s = apply_variant_swap(settings, role=role, new_repo=cand)
+        if role == "video":
+            return replace(next_s, recovery_swapped_video_model_id=str(cand))
+        if role == "image":
+            return replace(next_s, recovery_swapped_image_model_id=str(cand))
+        if role == "voice":
+            return replace(next_s, recovery_swapped_voice_model_id=str(cand))
+        return next_s
+
+    if bool(getattr(settings, "cpu_render_last_resort", True)) and not bool(rx.get("cpu")):
+        rx["cpu"] = 1
+        try:
+            from debug import pipeline_console
+
+            pipeline_console(
+                f"VRAM recovery ({role!r}): enabling CPU diffusion last-resort mode (slow; reliable)…",
+                stage="cpu_last_resort",
+            )
+        except Exception:
+            pass
+        return replace(settings, _force_cpu_diffusion=True)
+
+    return None
+
+
 class QuantDowngradeExhaustedError(RuntimeError):
     """Raised when ``auto_quant_downgrade_on_failure`` cannot lower quant further or step budget is exhausted."""
 
@@ -76,11 +154,41 @@ def is_dependency_setup_error(exc: BaseException) -> bool:
         parts.append(f"{type(cur).__name__}: {cur}")
         cur = cur.__cause__ or cur.__context__
     blob = "\n".join(parts).lower()
-    if "pip install tiktoken" in blob or "`tiktoken` is required" in blob or "no module named 'tiktoken'" in blob:
+    if "pip install tiktoken" in blob or "`tiktoken` is required" in blob or "tiktoken" in blob and "is required" in blob:
         return True
     if "sentencepiece" in blob and (
         "not found in your environment" in blob or "requires the sentencepiece" in blob or "pip install sentencepiece" in blob
     ):
+        return True
+    if "is required to read a" in blob and ("pip install" in blob or "install it with" in blob):
+        return True
+    notable_modules = (
+        "tiktoken",
+        "sentencepiece",
+        "triton",
+        "bitsandbytes",
+        "accelerate",
+        "flash_attn",
+        "flash-attention",
+        "xformers",
+        "opencv",
+        "cv2",
+        "imageio",
+        "imageio_ffmpeg",
+        "av",
+        "transformers_stream_generator",
+        "peft",
+        "einops",
+        "safetensors",
+    )
+    if "modulenotfounderror" in blob or "importerror" in blob or "no module named" in blob:
+        if any(m in blob for m in notable_modules):
+            return True
+    if "could not load bitsandbytes" in blob or "bitsandbytes" in blob and "not available" in blob:
+        return True
+    if "xformers" in blob and ("not found" in blob or "not installed" in blob):
+        return True
+    if "ffmpeg" in blob and ("not found" in blob or "no ffmpeg" in blob):
         return True
     return False
 
@@ -297,6 +405,7 @@ def retry_stage(
     """
     failed_gpu_indices: set[int] = set()
     quant_steps = 0
+    recovery_rx: dict[str, int] = {}
     cur_settings = settings
     cur_idx = cuda_device_index
 
@@ -358,6 +467,17 @@ def retry_stage(
                 if downgrade and quant_steps < max_quant_downgrades:
                     new_mode = next_lower_quant_mode(role=role, repo_id=repo_id, settings=cur_settings)
                     if new_mode is None:
+                        adj = _attempt_recovery_beyond_quant(
+                            role=role,
+                            repo_id=str(repo_id),
+                            settings=cur_settings,
+                            rx=recovery_rx,
+                        )
+                        if adj is not None:
+                            cur_settings = adj
+                            quant_steps = 0
+                            clear_cb()
+                            continue
                         raise QuantDowngradeExhaustedError(
                             role=str(role),
                             repo_id=str(repo_id),
@@ -380,6 +500,17 @@ def retry_stage(
                     _persist_quant_settings(cur_settings)
                     continue
                 if downgrade and quant_steps >= max_quant_downgrades:
+                    adj = _attempt_recovery_beyond_quant(
+                        role=role,
+                        repo_id=str(repo_id),
+                        settings=cur_settings,
+                        rx=recovery_rx,
+                    )
+                    if adj is not None:
+                        cur_settings = adj
+                        quant_steps = 0
+                        clear_cb()
+                        continue
                     raise QuantDowngradeExhaustedError(
                         role=str(role),
                         repo_id=str(repo_id),
@@ -421,9 +552,31 @@ def retry_stage(
 
             # Retry: lower quant mode (VRAM saver path).
             if quant_steps >= max_quant_downgrades:
+                adj = _attempt_recovery_beyond_quant(
+                    role=role,
+                    repo_id=str(repo_id),
+                    settings=cur_settings,
+                    rx=recovery_rx,
+                )
+                if adj is not None:
+                    cur_settings = adj
+                    quant_steps = 0
+                    clear_cb()
+                    continue
                 raise
             new_mode = next_lower_quant_mode(role=role, repo_id=repo_id, settings=cur_settings)
             if new_mode is None:
+                adj = _attempt_recovery_beyond_quant(
+                    role=role,
+                    repo_id=str(repo_id),
+                    settings=cur_settings,
+                    rx=recovery_rx,
+                )
+                if adj is not None:
+                    cur_settings = adj
+                    quant_steps = 0
+                    clear_cb()
+                    continue
                 if bool(getattr(cur_settings, "auto_quant_downgrade_on_failure", False)):
                     raise QuantDowngradeExhaustedError(
                         role=str(role),

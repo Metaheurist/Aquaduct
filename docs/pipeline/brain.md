@@ -24,7 +24,10 @@ If the local model fails to load (common on some Windows setups), it returns a d
 - `cta`
 
 ## Inference profiles (local)
-When the desktop app or `run_once` passes **`inference_settings`** (`AppSettings`), [`_generate_with_transformers`](../../src/content/brain.py) tightens **`max_new_tokens`** and the tokenizer **input** cap using [`pick_script_profile`](../../src/models/inference_profiles.py) and the same **effective script VRAM** as the GPU policy fit badges. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still overrides the input cap when set. See [Inference profiles](../reference/inference_profiles.md).
+When the desktop app or `run_once` passes **`inference_settings`** (`AppSettings`), [`_infer_text_with_optional_holder`](../../src/content/brain.py) tightens **`max_new_tokens`** and the tokenizer **input** cap (via **`_generate_with_loaded_causal_lm`**) using [`pick_script_profile`](../../src/models/inference_profiles.py) and the same **effective script VRAM** as the GPU policy fit badges. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still overrides the input cap when set. See [Inference profiles](../reference/inference_profiles.md).
+
+## Shared LLM holder (fewer reloads)
+The desktop pipeline passes a mutable **`llm_holder`** dict across successive brain calls (**`expand_custom_video_instructions`**, **`generate_script`**, story refinement, cast, …) so **`_infer_text_with_optional_holder`** swaps or reuses **`AutoModelForCausalLM`** in place ([`src/content/llm_session.py`](../../src/content/llm_session.py)). When **`llm_holder`** is **`None`** (CLI / one-shot), each call loads, infers, and disposes the pair (legacy behaviour). See [Crash resilience — LLM holder](crash-resilience.md).
 
 ## Quantization
 [`load_causal_lm_from_pretrained`](../../src/content/brain.py) accepts an explicit **`quant_mode`** (`auto | bf16 | fp16 | int8 | nf4_4bit`) sourced from `AppSettings.script_quant_mode`. The loader resolves `auto` against the **effective script VRAM**, attempts the corresponding `BitsAndBytesConfig` (4-bit NF4 / 8-bit) or fp16 / bf16 dtype, and falls back to fp16 / CPU on failure with a status message. The legacy `try_llm_4bit=True` continues to work and is migrated to `script_quant_mode="nf4_4bit"` on first save. See [Quantization](../reference/quantization.md).

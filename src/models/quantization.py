@@ -151,7 +151,7 @@ def normalize_settings_quant_modes(settings: AppSettings) -> AppSettings:
         image_quant_mode=_norm_mode(getattr(settings, "image_quant_mode", "auto")),
         video_quant_mode=_norm_mode(getattr(settings, "video_quant_mode", "auto")),
         voice_quant_mode=_norm_mode(getattr(settings, "voice_quant_mode", "auto")),
-        auto_quant_downgrade_on_failure=bool(getattr(settings, "auto_quant_downgrade_on_failure", False)),
+        auto_quant_downgrade_on_failure=bool(getattr(settings, "auto_quant_downgrade_on_failure", True)),
     )
 
 

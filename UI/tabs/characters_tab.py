@@ -250,7 +250,7 @@ def attach_characters_tab(win) -> None:
     portrait_hint = QLabel("")
     portrait_hint.setWordWrap(True)
     portrait_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
-    portrait_hint.setText("Portrait uses Model-tab image weights after Visual style is filled.")
+    portrait_hint.setText("Portrait uses your image model from Settings after you fill Visual style.")
     portrait_hint.setToolTip(
         help_tooltip_rich(
             "Fill Visual style first — the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards.",
@@ -277,7 +277,7 @@ def attach_characters_tab(win) -> None:
 
     vrow = QHBoxLayout()
     vrow.setSpacing(6)
-    v_lbl = QLabel("System TTS (pyttsx3)")
+    v_lbl = QLabel("On-device voice (pyttsx3)")
     v_lbl.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     v_lbl.setMinimumWidth(108)
     vrow.addWidget(v_lbl)
@@ -295,15 +295,15 @@ def attach_characters_tab(win) -> None:
     vrow.addWidget(win.character_voice_refresh_btn)
     edit_lay.addLayout(vrow)
 
-    lbl_ko = QLabel("Kokoro speaker (optional)")
+    lbl_ko = QLabel("Kokoro voice (optional)")
     lbl_ko.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     edit_lay.addWidget(lbl_ko)
     win.character_kokoro_edit = QLineEdit()
-    win.character_kokoro_edit.setPlaceholderText("Kokoro: af_bella, af_nicole, am_adam (or Bella / Nicole / Adam); empty = shuffle presets")
+    win.character_kokoro_edit.setPlaceholderText("e.g. af_bella or “Bella” — leave empty to rotate voices")
     win.character_kokoro_edit.setMaximumHeight(26)
     edit_lay.addWidget(win.character_kokoro_edit)
 
-    lbl_vi = QLabel("Voice instruction (MOSS-VoiceGenerator)")
+    lbl_vi = QLabel("Voice description (MOSS only)")
     lbl_vi.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lbl_vi.setToolTip(
         help_tooltip_rich(
@@ -316,7 +316,7 @@ def attach_characters_tab(win) -> None:
     edit_lay.addWidget(lbl_vi)
     win.character_voice_instruction_edit = QTextEdit()
     win.character_voice_instruction_edit.setPlaceholderText(
-        "Optional. For MOSS-VoiceGenerator only: e.g. “A young woman with a raspy voice, speaking excitedly and fast.”"
+        'Example: "Young woman, raspy, speaks fast" — only when MOSS is your voice model in Settings.'
     )
     win.character_voice_instruction_edit.setAcceptRichText(False)
     win.character_voice_instruction_edit.setFixedHeight(56)

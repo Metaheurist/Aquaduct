@@ -181,6 +181,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         story_multistage_enabled=bool(video_raw.get("story_multistage_enabled", False)),
         story_web_context=bool(video_raw.get("story_web_context", False)),
         story_reference_images=bool(video_raw.get("story_reference_images", False)),
+        resume_partial_pipeline=bool(video_raw.get("resume_partial_pipeline", False)),
         seed_base=(int(video_raw.get("seed_base")) if str(video_raw.get("seed_base", "")).strip().lstrip("-").isdigit() else None),
         quality_retries=int(video_raw.get("quality_retries", 2)),
         enable_motion=bool(video_raw.get("enable_motion", True)),
@@ -306,9 +307,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         image_quant_mode=image_q,  # type: ignore[arg-type]
         video_quant_mode=video_q,  # type: ignore[arg-type]
         voice_quant_mode=voice_q,  # type: ignore[arg-type]
-        auto_quant_downgrade_on_failure=bool(data.get("auto_quant_downgrade_on_failure", False))
+        auto_quant_downgrade_on_failure=bool(data.get("auto_quant_downgrade_on_failure", True))
         if isinstance(data, dict)
-        else False,
+        else True,
         background_music_path=str(data.get("background_music_path", "")) if isinstance(data, dict) else "",
         hf_token=str(data.get("hf_token", "")) if isinstance(data, dict) else "",
         hf_api_enabled=bool(data.get("hf_api_enabled", True)) if isinstance(data, dict) else True,
@@ -398,7 +399,18 @@ def save_settings(settings: AppSettings) -> bool:
     from debug import dprint
 
     p = settings_path()
-    payload = json.dumps(asdict(settings), indent=2, ensure_ascii=False)
+    d = asdict(settings)
+    for k in (
+        "resource_retry_resolution_scale",
+        "resource_retry_frames_scale",
+        "recovery_swapped_voice_model_id",
+        "recovery_swapped_video_model_id",
+        "recovery_swapped_image_model_id",
+        "resume_partial_project_directory",
+        "_force_cpu_diffusion",
+    ):
+        d.pop(k, None)
+    payload = json.dumps(d, indent=2, ensure_ascii=False)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
     except OSError as e:

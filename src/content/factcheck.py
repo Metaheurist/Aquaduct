@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from collections.abc import MutableMapping
 from typing import Any
 
 from .brain import VideoPackage, ScriptSegment, _extract_json, load_causal_lm_from_pretrained
@@ -91,6 +92,7 @@ def rewrite_with_uncertainty(
     quant_mode: str | None = None,
     inference_settings: AppSettings | None = None,
     llm_cuda_device_index: int | None = None,
+    llm_holder: MutableMapping[str, Any] | None = None,
 ) -> VideoPackage:
     """
     LLM-assisted safety rewrite: attribute numeric/strong claims when article text is thin,
@@ -109,6 +111,7 @@ def rewrite_with_uncertainty(
     # Try local LLM rewrite. Keep it strict JSON.
     model = None
     tokenizer = None
+    reused_from_holder = False
     try:
         import torch
 
@@ -116,17 +119,27 @@ def rewrite_with_uncertainty(
 
         _, AutoTokenizer, _ = causal_lm_stack()
 
-        load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
-        tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
-        model = load_causal_lm_from_pretrained(
-            load_path,
-            try_4bit=bool(try_llm_4bit),
-            on_status=None,
-            quant_mode=quant_mode,
-            cuda_device_index=llm_cuda_device_index,
-            inference_settings=inference_settings,
-            hub_model_id=model_id,
-        )
+        mid = str(model_id or "").strip()
+        if (
+            llm_holder is not None
+            and llm_holder.get("model") is not None
+            and str(llm_holder.get("hub_model_id") or "").strip() == mid
+        ):
+            reused_from_holder = True
+            model = llm_holder["model"]
+            tokenizer = llm_holder["tokenizer"]
+        else:
+            load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+            tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
+            model = load_causal_lm_from_pretrained(
+                load_path,
+                try_4bit=bool(try_llm_4bit),
+                on_status=None,
+                quant_mode=quant_mode,
+                cuda_device_index=llm_cuda_device_index,
+                inference_settings=inference_settings,
+                hub_model_id=model_id,
+            )
 
         src_line = json.dumps(sources[:3], ensure_ascii=False)
         article_snip = (article_text or "")[:2400]
@@ -175,16 +188,17 @@ def rewrite_with_uncertainty(
     except Exception:
         pass
     finally:
-        try:
-            if model is not None:
-                del model
-            if tokenizer is not None:
-                del tokenizer
-            from src.util.utils_vram import cleanup_vram
+        if not reused_from_holder:
+            try:
+                if model is not None:
+                    del model
+                if tokenizer is not None:
+                    del tokenizer
+                from src.util.utils_vram import cleanup_vram
 
-            cleanup_vram()
-        except Exception:
-            pass
+                cleanup_vram()
+            except Exception:
+                pass
 
     # Deterministic fallback: soften absolutes + add attribution stub if thin.
     def soften(s: str) -> str:

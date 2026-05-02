@@ -28,6 +28,27 @@ Diffusers loading ([`diffusers_load.py`](../../src/util/diffusers_load.py)):
 |----------|---------|
 | **`AQUADUCT_DIFFUSERS_DISABLE_MMAP`** | When **`1`** / **`true`** / **`yes`** / **`on`**, passes **`disable_mmap=True`** into diffusers **`from_pretrained`** on image/video pipeline loads ([`clips.py`](../../src/render/clips.py), [`artist.py`](../../src/render/artist.py)). Older diffusers builds that reject the kwarg fall back automatically. |
 
+## Process-wide defaults (`main.py`)
+
+Before most CUDA-heavy work begins, **`main`** applies **`setdefault`** so you can override in the outer environment:
+
+| Variable | Default Aquaduct sets |
+|----------|-------------------------|
+| **`PYTORCH_CUDA_ALLOC_CONF`** | `expandable_segments:True,max_split_size_mb:128` — reduces fragmentation from large diffusers/transformers allocations ([PyTorch CUDA memory](https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). |
+| **`HF_HUB_ENABLE_HF_TRANSFER`** | **`0`** — disables optional **`hf_transfer`** unless you opt in externally. |
+
+## Stage memory budget (host RAM heuristic)
+
+[`check_stage_memory_budget`](../../src/runtime/memory_budget_preflight.py) logs **warnings** when free host RAM may be tight versus **`hf_model_sizes.json`** footprint (with a buffer factor):
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_MEMORY_PREFLIGHT`** | **`0`** / **`false`** / **`no`** / **`off`** disables these warnings (**default**: enabled unless set off). |
+| **`AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR`** | Float multiplier on cached Hub GiB (**default **2.0**) — unzip / transient spike headroom. |
+| **`AQUADUCT_HOST_RAM_FLOOR_GIB`** | Absolute floor (GiB) free RAM (**default **5.0**) used with the scaled model estimate. |
+
+See [Crash resilience — host RAM heuristic](../pipeline/crash-resilience.md).
+
 ## Multi-GPU (CUDA policy override)
 When set, **`AQUADUCT_CUDA_DEVICE`** forces **all** local CUDA stages (LLM, diffusion, etc.) onto that **ordinal** (`0`, `1`, …) or **`cuda:N`**. It overrides the **My PC** GPU policy saved in `ui_settings.json`. Used by [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py). The **My PC** / **Model** tab fit tables still use the same resolver so labels stay consistent with runtime when this env var is unset; when set, fit heuristics follow the pinned index.
 
@@ -57,6 +78,16 @@ PyTorch may suggest **`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** when 
 
 Moderate pressure logs to the pipeline console and may surface a **non-blocking** desktop notice when the pipeline worker provides a callback ([`pipeline_notice`](../../src/runtime/pipeline_notice.py)). Critical pressure raises **`RuntimeError`** with remediation hints.
 
+## Model load heartbeat (stderr + Resource graph footer)
+Long synchronous **`from_pretrained`** calls use [`diffusion_load_watch`](../../src/runtime/load_heartbeat.py). Console lines periodically report load progress; the latest line mirrors to the desktop **Resource usage** footer.
+
+| Variable | Role |
+|----------|------|
+| **`AQUADUCT_LOAD_HEARTBEAT_INTERVAL_S`** | Seconds between beats (default **30**, minimum clamp **10**). |
+| **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** or **`AQUADUCT_LOAD_TIMEOUT_S`** | If **> 0**, emits a stalled-load watchdog after elapsed seconds (**does not** safely cancel HF loads). |
+
+[Performance.md](../pipeline/performance.md), [crash-resilience.md](../pipeline/crash-resilience.md).
+
 ## Local LLM inference (VRAM)
 When **`model_execution_mode`** is **`local`**, long article text plus instructions can tokenize to a very long prompt. Attention prefill scales with sequence length and can trigger **`CUDA out of memory`** on tight GPUs (for example ~8GB) even with 4-bit weights.
 
@@ -68,6 +99,7 @@ For **local** runs, **image** and **video** diffusion call paths merge **per-rep
 ## Per-model quantization (local)
 `AppSettings` exposes per-row **quantization** modes that the **Settings → Model** tab dropdowns persist:
 
+- **`auto_quant_downgrade_on_failure`** (default **True** — Model tab checkbox): feed [`retry_stage`](../../src/runtime/oom_retry.py) so load/OOM failures can step **down** manual quant ladders before giving up ([Quantization](quantization.md), [Crash resilience](../pipeline/crash-resilience.md)).
 - **`script_quant_mode`** (LLM): `auto | bf16 | fp16 | int8 | nf4_4bit`
 - **`image_quant_mode`** / **`video_quant_mode`** (diffusion): `auto | bf16 | fp16 | int8 | cpu_offload`
 - **`voice_quant_mode`** (TTS): `auto | bf16 | fp16 | int8 | nf4_4bit | cpu_offload` (MOSS); Kokoro accepts `auto` only
@@ -115,6 +147,8 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
   - `resource_graph_compact`: when **`true`** (default; omitted key in older `ui_settings.json` also defaults to **mini**), the Resource usage window opens in **compact** layout (smaller sparklines, no chart footers, shorter split-view scroll). Set **`false`** after expanding via the title-bar toggle so the larger “expanded” layout persists.
 - `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](../ui/ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](../ui/ui.md))
+- **`resume_partial_pipeline`**: **`false`** default — Video tab (**Resume partial pipeline**). When **`true`**, **`run_checkpoint.json`** milestones and **`pipeline_script_package.json`** are written under **`videos/<project>/assets/`** so a later desktop run can skip completed stages when fingerprint matches; see [`run_checkpoint`](../../src/runtime/run_checkpoint.py), [crash-resilience.md](../pipeline/crash-resilience.md).
+- **`resume_partial_project_directory`**: ephemeral in-memory/ephemeral-save only — pinned output folder during a resumed session; stripped from **`ui_settings.json`** on Save ([`strip_ephemeral_save_keys`](../../src/settings/ui_settings.py)).
 - `video_format`: `news` | `cartoon` | `explainer` | `unhinged` | `creepypasta` | `health_advice` (drives which tag list applies to a run; see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
 - `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in [`src/core/config.py`](../../src/core/config.py))

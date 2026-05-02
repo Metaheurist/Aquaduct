@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, runtime_checkable
-
+from typing import Any, Protocol, runtime_checkable
 from src.content.brain import VideoPackage
 from src.core.config import AppSettings, BrandingSettings
 
@@ -28,6 +27,7 @@ class GenerationFacade(Protocol):
         try_llm_4bit: bool = True,
         article_excerpt: str | None = None,
         supplement_context: str = "",
+        llm_holder: dict[str, Any] | None = None,
     ) -> VideoPackage: ...
 
 
@@ -49,6 +49,7 @@ class _LocalGenerationFacade:
         try_llm_4bit: bool = True,
         article_excerpt: str | None = None,
         supplement_context: str = "",
+        llm_holder: dict[str, Any] | None = None,
     ) -> VideoPackage:
         from src.content.brain import generate_script
         from src.util.cuda_device_policy import resolve_llm_cuda_device_index
@@ -73,6 +74,7 @@ class _LocalGenerationFacade:
             supplement_context=supplement_context,
             llm_cuda_device_index=llm_idx,
             inference_settings=settings,
+            llm_holder=llm_holder,
         )
 
 
@@ -94,12 +96,14 @@ class _ApiGenerationFacade:
         try_llm_4bit: bool = True,
         article_excerpt: str | None = None,
         supplement_context: str = "",
+        llm_holder: dict[str, Any] | None = None,
     ) -> VideoPackage:
         from src.content.brain_api import generate_script_openai
 
         assert isinstance(settings, AppSettings)
         _ = llm_cuda_device_index  # API mode runs remotely; CUDA index not applicable.
         _ = model_id, try_llm_4bit  # API routing uses settings.api_models, not local HF ids.
+        _ = llm_holder
         return generate_script_openai(
             settings=settings,
             items=list(items or []),

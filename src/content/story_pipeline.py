@@ -385,6 +385,7 @@ def _maybe_elaboration(
             )
             llm_holder["tokenizer"] = tok
             llm_holder["model"] = mod
+            llm_holder["hub_model_id"] = str(model_id or "").strip()
         raw = _generate_with_loaded_causal_lm(
             llm_holder["model"],
             llm_holder["tokenizer"],
@@ -411,15 +412,20 @@ def run_multistage_refinement(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     app_settings: AppSettings | None = None,
     llm_cuda_device_index: int | None = None,
+    llm_holder: dict[str, Any] | None = None,
 ) -> VideoPackage:
     """
     Run format-specific refinement stages. Loads the causal LM once and reuses it across LLM stages
     to avoid VRAM churn from repeated full reloads.
+
+    If ``llm_holder`` is provided (from the pipeline runner), refinement reuses shared weights instead
+    of owning its own load/dispose lifecycle.
     """
     stages = _stages_for_format(video_format)
     total = len(stages)
     cur = pkg
-    llm_holder: dict[str, Any] = {"tokenizer": None, "model": None}
+    external_holder = llm_holder is not None
+    llm_holder = llm_holder if llm_holder is not None else {"tokenizer": None, "model": None, "hub_model_id": ""}
     refinement_json_notice_sent = False
 
     try:
@@ -463,6 +469,7 @@ def run_multistage_refinement(
                     )
                     llm_holder["tokenizer"] = tok
                     llm_holder["model"] = mod
+                    llm_holder["hub_model_id"] = str(model_id or "").strip()
                 raw = _generate_with_loaded_causal_lm(
                     llm_holder["model"],
                     llm_holder["tokenizer"],
@@ -498,9 +505,9 @@ def run_multistage_refinement(
                 dprint("story_pipeline", f"stage {spec.id} failed", str(e))
     finally:
         had_llm = llm_holder.get("model") is not None
-        if had_llm:
+        if had_llm and not external_holder:
             _dispose_causal_lm_pair(llm_holder["model"], llm_holder["tokenizer"])
-        if had_llm:
+        if had_llm and not external_holder:
             try:
                 from src.util.memory_budget import release_between_stages
 

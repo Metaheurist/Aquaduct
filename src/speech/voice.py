@@ -13,6 +13,7 @@ from src.speech.tts_kokoro_moss import (
     DEFAULT_MOSS_INSTRUCTION,
     is_kokoro_repo,
     is_moss_vg_repo,
+    is_pyttsx3_fallback_repo,
     kokoro_speaker_for_unhinged_segment,
     pick_kokoro_speaker,
     try_kokoro_tts,
@@ -115,7 +116,7 @@ def _synthesize_tts_to_wav(
     ``only_pyttsx3`` skips cloud/Kokoro (for per-segment local voice rotation).
     """
     out_wav_path.parent.mkdir(parents=True, exist_ok=True)
-    if only_pyttsx3:
+    if only_pyttsx3 or is_pyttsx3_fallback_repo(kokoro_model_id):
         with vram_guard():
             _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
     else:
@@ -138,7 +139,9 @@ def _synthesize_tts_to_wav(
                     el_ok = False
             if not el_ok:
                 vid = (kokoro_model_id or "").strip()
-                if is_moss_vg_repo(vid):
+                if is_pyttsx3_fallback_repo(vid):
+                    _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
+                elif is_moss_vg_repo(vid):
                     inst = (voice_instruction or "").strip() or DEFAULT_MOSS_INSTRUCTION
                     if not try_moss_voicegenerator_tts(
                         model_id=vid,
@@ -463,6 +466,13 @@ def synthesize_unhinged_moss(
 
     inst = (voice_instruction or "").strip() or DEFAULT_MOSS_INSTRUCTION
     dprint("voice", "synthesize_unhinged_moss", f"segments={len(segment_texts)}")
+    if is_pyttsx3_fallback_repo(kokoro_model_id):
+        return synthesize_unhinged_rotating_pyttsx3(
+            kokoro_model_id=kokoro_model_id,
+            segment_texts=segment_texts,
+            out_wav_path=out_wav_path,
+            out_captions_json=out_captions_json,
+        )
     out_captions_json.parent.mkdir(parents=True, exist_ok=True)
     offset_s = 0.0
     combined: list[WordTimestamp] = []

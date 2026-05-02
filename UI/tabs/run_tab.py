@@ -232,10 +232,7 @@ def attach_run_tab(win) -> None:
                     "local TTS rotates voices per beat (single cloud voice if your character uses ElevenLabs)."
                 )
             elif vf == "creepypasta":
-                extra = (
-                    " Creepypasta mode writes fictional horror from web-sourced story pages (Firecrawl). "
-                    "Stay fiction-only — no true-crime framing."
-                )
+                extra = " Short horror from the web; keep it fiction only."
             vf_hint.setText(
                 "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
                 "then writes the script (two passes — slower than Preset). Topic tags from the Topics tab still bias "
@@ -244,9 +241,8 @@ def attach_run_tab(win) -> None:
             )
         elif vf == "unhinged":
             vf_hint.setText(
-                "Cartoon (unhinged): Preset pulls comedy/absurdist headlines using your Topics tags (no local seen-URL cache). "
-                "Adult-animation satire tone. Local TTS rotates one system voice per script beat; "
-                "when a character uses ElevenLabs, one voice is used for the full track."
+                "Comedy headlines from the web using your Topics tags. Satire tone. "
+                "Local voices rotate by beat; ElevenLabs uses one voice for the whole track if set."
             )
         elif vf == "creepypasta":
             vf_hint.setText(

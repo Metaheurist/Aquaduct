@@ -42,7 +42,7 @@ def attach_captions_tab(win) -> None:
     win.caption_max_words_spin.setValue(int(getattr(win.settings.video, "caption_max_words", 8)))
     form.addRow("Max words on screen", win.caption_max_words_spin)
 
-    win.facts_card_chk = QCheckBox("Show Key facts card (from article text when available)")
+    win.facts_card_chk = QCheckBox('Show a "Key facts" overlay when article text is available')
     win.facts_card_chk.setChecked(bool(getattr(win.settings.video, "facts_card_enabled", True)))
     form.addRow("", win.facts_card_chk)
 
@@ -65,8 +65,7 @@ def attach_captions_tab(win) -> None:
     form.addRow("Facts card duration", win.facts_card_dur_combo)
 
     win.facts_card_scope_hint = QLabel(
-        "The Key facts card is drawn only for **News** and **Explainer** video formats "
-        "(Cartoon / Unhinged runs skip it at render time). Change format on the Run tab."
+        "Shown for News and Explainer only. Cartoon and other styles skip it—change format on Run."
     )
     win.facts_card_scope_hint.setWordWrap(True)
     win.facts_card_scope_hint.setStyleSheet("color: #9898A8; font-size: 11px;")
@@ -74,9 +73,7 @@ def attach_captions_tab(win) -> None:
 
     lay.addLayout(form)
 
-    tip = QLabel(
-        "Branding palette accents can affect caption highlights; see the Branding tab for theme overrides."
-    )
+    tip = QLabel("Caption accent colors follow your theme—open Branding to adjust.")
     tip.setWordWrap(True)
     tip.setStyleSheet("color: #B7B7C2;")
     lay.addWidget(tip)
