@@ -6,6 +6,24 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _disable_memory_preflight_host_ram_gating(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent catastrophic-RAM shortfall checks from failing tests on constrained hosts.
+
+    ``preflight_check`` imports ``check_stage_memory_*`` from ``memory_budget_preflight``
+    on each call, so patching the module restores deterministic ``pytest`` runs.
+    """
+
+    monkeypatch.setattr(
+        "src.runtime.memory_budget_preflight.check_stage_memory_hard_blocks",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        "src.runtime.memory_budget_preflight.check_stage_memory_budget",
+        lambda **_kwargs: [],
+    )
+
+
 @pytest.fixture()
 def tmp_repo_root(tmp_path: Path) -> Path:
     # Provides a fake repo root for path monkeypatching

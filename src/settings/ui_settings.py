@@ -119,6 +119,22 @@ def _parse_api_models(raw: Any) -> ApiModelRuntimeSettings:
     )
 
 
+def _sanitize_topic_tag_notes_for_settings(raw: Any) -> dict[str, str]:
+    """Coerce persisted ``topic_tag_notes`` into ``{tag_lower: note}``.
+
+    Defers to :func:`src.content.topic_constraints.sanitize_topic_tag_notes`
+    so the validation logic stays in one place; if the import path fails
+    (e.g. during install bootstrap) we still return ``{}`` instead of
+    crashing the load.
+    """
+    try:
+        from src.content.topic_constraints import sanitize_topic_tag_notes
+
+        return sanitize_topic_tag_notes(raw)
+    except Exception:
+        return {}
+
+
 def _sanitize_topic_tags_map(raw: Any) -> dict[str, list[str]]:
     merged = default_topic_tags_by_mode()
     if not isinstance(raw, dict):
@@ -310,6 +326,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
 
     return AppSettings(
         topic_tags_by_mode=topic_map,
+        topic_tag_notes=_sanitize_topic_tag_notes_for_settings(data.get("topic_tag_notes"))
+        if isinstance(data, dict)
+        else {},
         media_mode=media_mode,  # type: ignore[arg-type]
         video_format=video_format,
         model_execution_mode=model_execution_mode,

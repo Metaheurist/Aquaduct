@@ -554,7 +554,12 @@ def _prompt_for_unhinged_items(
 ) -> str:
     """Preset prompts for 'unhinged' adult-animation-style satire (not AI tool reviews)."""
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
-    tag_line = f"Topic tags (bias hashtags and story angle): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    tag_line = (
+        f"Topic tags (HARD constraint — every segment must reference or align to these): "
+        f"{json.dumps(tags, ensure_ascii=False)}\n"
+        if tags
+        else ""
+    )
     personality_block = (
         "Tone/personality:\n"
         f"- {personality.label}\n"
@@ -638,7 +643,12 @@ def _prompt_for_creepypasta_items(
 ) -> str:
     """Preset: fictional horror shorts adapted from online creepypasta / short scary fiction pages."""
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
-    tag_line = f"Topic tags (bias mood, setting, and hashtags): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    tag_line = (
+        f"Topic tags (HARD constraint — mood, setting, and hashtags must reflect these): "
+        f"{json.dumps(tags, ensure_ascii=False)}\n"
+        if tags
+        else ""
+    )
     personality_block = (
         "Tone/personality:\n"
         f"- {personality.label}\n"
@@ -719,7 +729,12 @@ def _prompt_for_cartoon_items(
 ) -> str:
     """Preset prompts for cartoon format — character-voiced story, not news reviews."""
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
-    tag_line = f"Topic tags (bias hashtags and story angle): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+    tag_line = (
+        f"Topic tags (HARD constraint — every segment must reference or align to these): "
+        f"{json.dumps(tags, ensure_ascii=False)}\n"
+        if tags
+        else ""
+    )
     personality_block = (
         "Tone/personality:\n"
         f"- {personality.label}\n"
@@ -800,7 +815,10 @@ def _prompt_for_health_advice_items(
 ) -> str:
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     tag_line = (
-        f"Topic tags (bias wellness angles and on-screen hashtags): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+        f"Topic tags (HARD constraint — wellness angles and on-screen hashtags must reflect these): "
+        f"{json.dumps(tags, ensure_ascii=False)}\n"
+        if tags
+        else ""
     )
     personality_block = (
         "Tone/personality:\n"
@@ -935,9 +953,19 @@ def _prompt_for_items(
     # Keep it stable for JSON parsing.
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     if vf == "explainer":
-        tag_line = f"Topic tags (bias the explanation angle and on-screen hashtags): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+        tag_line = (
+            f"Topic tags (HARD constraint — every segment must explain at least one of these): "
+            f"{json.dumps(tags, ensure_ascii=False)}\n"
+            if tags
+            else ""
+        )
     else:
-        tag_line = f"Topic tags (must strongly influence the story angle and hashtags): {json.dumps(tags, ensure_ascii=False)}\n" if tags else ""
+        tag_line = (
+            f"Topic tags (HARD constraint — story angle and hashtags must reflect these): "
+            f"{json.dumps(tags, ensure_ascii=False)}\n"
+            if tags
+            else ""
+        )
     personality_block = (
         "Tone/personality:\n"
         f"- {personality.label}\n"

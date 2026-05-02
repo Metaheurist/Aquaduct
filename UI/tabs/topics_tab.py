@@ -258,6 +258,25 @@ def attach_topics_tab(win) -> None:
     win.tag_list = QListWidget()
     tags_lay.addWidget(win.tag_list, 1)
 
+    notes_intro = QLabel(
+        "Optional grounding line per tag: the script LLM treats topic tags as hard constraints — "
+        "these notes add extra direction (tone, must-mention angles, things to avoid)."
+    )
+    notes_intro.setWordWrap(True)
+    notes_intro.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    tags_lay.addWidget(section_title("Per-tag notes (grounding)", emphasis=False))
+    tags_lay.addWidget(notes_intro)
+
+    topic_notes_scroll = QScrollArea()
+    topic_notes_scroll.setWidgetResizable(True)
+    topic_notes_scroll.setMinimumHeight(100)
+    topic_notes_scroll.setMaximumHeight(240)
+    win.topic_notes_inner = QWidget()
+    win.topic_notes_layout = QVBoxLayout(win.topic_notes_inner)
+    win.topic_notes_layout.setContentsMargins(4, 4, 4, 4)
+    topic_notes_scroll.setWidget(win.topic_notes_inner)
+    tags_lay.addWidget(topic_notes_scroll)
+
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
     win.discover_btn.setToolTip(

@@ -8,6 +8,55 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 7 — tests roll-up + docs + deterministic pytest RAM preflight**:
+  new / expanded tests —
+  [`tests/models/test_length_factor_in_merge_t2v.py`](tests/models/test_length_factor_in_merge_t2v.py),
+  [`tests/runtime/test_smoothness_preflight.py`](tests/runtime/test_smoothness_preflight.py),
+  [`tests/render/test_scene_prompts_expansion.py`](tests/render/test_scene_prompts_expansion.py),
+  [`tests/content/test_creepypasta_prompt_v2.py`](tests/content/test_creepypasta_prompt_v2.py).
+  Global autouse stubs in [`tests/conftest.py`](tests/conftest.py) replace
+  `check_stage_memory_hard_blocks` **and**
+  `check_stage_memory_budget` with no-ops so constrained laptops / CI hosts
+  don’t fail unrelated unit tests (“catastrophic host RAM shortfall”) while
+  production [`preflight_check`](src/runtime/preflight.py) is unchanged outside pytest.
+  Docs: refreshed [brain.md](docs/pipeline/brain.md), [ui.md](docs/ui/ui.md),
+  [config.md](docs/reference/config.md), [inference_profiles.md](docs/reference/inference_profiles.md),
+  new [topics.md](docs/ui/topics.md); Topics tab grounding-note rows
+  ([`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py),
+  [`UI/main_window.py`](UI/main_window.py)).
+
+- **Phase 6 — topic tags as hard constraints + source quality**:
+  new [`src/content/topic_constraints.py`](src/content/topic_constraints.py)
+  treats topic tags as a hard requirement instead of a soft mood bias.
+  `topic_constraints_block(tags, notes, cast_names)` produces a structured
+  block ("HARD CONSTRAINTS — every required tag must appear in the angle,
+  hook, payoff, hashtags, and at least one segment's narration / on-screen
+  text") that `main.py` appends to `script_digest` after the style-context
+  merge. Per-tag context notes from a new
+  `AppSettings.topic_tag_notes: dict[str, str]` are loaded/sanitised by
+  [`src/settings/ui_settings.py`](src/settings/ui_settings.py) (≤ 240
+  chars per note after [`sanitize_topic_tag_notes`](src/content/topic_constraints.py))
+  `Tag context: <tag> — <note>` lines. Cast names parsed from the active
+  Characters-tab character (or the auto-cast roster — see Phase 8) are
+  injected as required on-screen presence so scenes stop drifting to
+  generic stock-footage subjects. `score_source_url(url, body_length)`
+  + `source_quality_label(...)` produce a deterministic 0–1 score with
+  reasons (TLD heuristics, body length, fandom/aggregator demerits) and
+  the orchestrator writes `source_quality.json` next to the article and
+  emits a pipeline notice (`source_quality: high — wikipedia.org, body
+  12,341 chars`). The format-specific prompts in
+  [`src/content/brain.py`](src/content/brain.py) (`creepypasta`, `news`,
+  `explainer`, `wellness`) now phrase the tag line as
+  `Topic tags (HARD constraint — ...)` so the LLM cannot silently drop
+  them. Tests:
+  [`tests/content/test_topic_constraints.py`](tests/content/test_topic_constraints.py)
+  (24 cases — normalisation, block / JSON shape, per-tag notes, cast
+  injection, sanitisation, URL scoring across high/aggregator/fandom
+  sources and short / long bodies). Topics tab: **Per-tag notes (grounding)**
+  scroll area ([`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py),
+  [`UI/main_window.py`](UI/main_window.py)) edits the same map alongside
+  each mode’s tag list.
+
 - **Phase 5 — Video tab v2 quality presets**: new
   [`src/render/video_quality_presets.py`](src/render/video_quality_presets.py)
   introduces four named knobs (Length / Scene / FPS / Resolution) plus

@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QTabWidget,
@@ -64,6 +65,7 @@ from src.models.model_integrity_cache import (
     save_integrity_cache,
 )
 from src.content.crawler import clear_news_seen_cache_files
+from src.content.topic_constraints import sanitize_topic_tag_notes, topic_notes_for
 from src.content.topics import normalize_video_format, video_format_writes_topic_research_pack
 from src.util.fs_delete import rmtree_robust, unlink_file
 from src.models.model_manager import download_model_to_project, find_repo_dirs_in_folder, list_installed_repo_ids_from_disk, model_has_local_snapshot, project_model_dirname
@@ -1205,6 +1207,10 @@ class MainWindow(QMainWindow):
         old = getattr(self, "_last_topics_mode", None)
         new = normalize_video_format(str(self.topics_mode_combo.currentData() or "news"))
         if old is not None and old != new:
+            self.settings = replace(
+                self.settings,
+                topic_tag_notes=sanitize_topic_tag_notes(self._merge_topic_notes_edits_into_dict()),
+            )
             self._flush_topic_list_to_mode(old)
         self._last_topics_mode = new
         self._sync_tags_to_ui()
@@ -1244,6 +1250,58 @@ class MainWindow(QMainWindow):
         key = self._topics_bucket_key()
         for t in self.settings.topic_tags_by_mode.get(key, []):
             self.tag_list.addItem(QListWidgetItem(t))
+        self._sync_topic_notes_rows()
+
+    def _merge_topic_notes_edits_into_dict(self) -> dict[str, str]:
+        """Flatten current per-tag ``QLineEdit`` rows into a normalized note map."""
+        base = dict(self.settings.topic_tag_notes or {})
+        edits = getattr(self, "topic_note_edits_by_tag_norm", None)
+        if isinstance(edits, dict):
+            for nk, widget in list(edits.items()):
+                nk2 = str(nk or "").strip().lower()
+                if not nk2:
+                    continue
+                try:
+                    txt = str(widget.text() or "").strip() if widget is not None else ""
+                except Exception:
+                    txt = ""
+                if txt:
+                    base[nk2] = txt
+                else:
+                    base.pop(nk2, None)
+        return sanitize_topic_tag_notes(base)
+
+    def _sync_topic_notes_rows(self) -> None:
+        if not hasattr(self, "topic_notes_layout"):
+            return
+        lay = self.topic_notes_layout
+        while lay.count():
+            item = lay.takeAt(0)
+            iw = item.widget()
+            if iw is not None:
+                iw.deleteLater()
+        self.topic_note_edits_by_tag_norm = {}
+        key = self._topics_bucket_key()
+        notes_map = dict(self.settings.topic_tag_notes or {})
+        for raw in self.settings.topic_tags_by_mode.get(key, []) or []:
+            tag_disp = str(raw).strip()
+            nk = " ".join(tag_disp.split()).strip().lower()
+            if not nk:
+                continue
+            row_w = QWidget()
+            rlay = QHBoxLayout(row_w)
+            rlay.setContentsMargins(0, 2, 0, 2)
+            lab = QLabel(tag_disp[:80] + ("…" if len(tag_disp) > 80 else ""))
+            lab.setMinimumWidth(140)
+            lab.setToolTip(tag_disp)
+            lab.setStyleSheet("color: #E6E6E6; font-size: 12px;")
+            ed = QLineEdit()
+            ed.setPlaceholderText("Optional grounding (tone, anchors, bans)…")
+            ed.setText(topic_notes_for(notes_map, tag_disp))
+            rlay.addWidget(lab)
+            rlay.addWidget(ed, 1)
+            lay.addWidget(row_w)
+            self.topic_note_edits_by_tag_norm[nk] = ed
 
     def _add_tag(self) -> None:
         self._ensure_topic_modes()
@@ -1723,8 +1781,11 @@ class MainWindow(QMainWindow):
             else bool(getattr(self.settings, "auto_quant_downgrade_on_failure", False))
         )
 
+        topic_notes_out = sanitize_topic_tag_notes(self._merge_topic_notes_edits_into_dict())
+
         return AppSettings(
             topic_tags_by_mode=topic_map,
+            topic_tag_notes=topic_notes_out,
             media_mode=mm,  # type: ignore[arg-type]
             video_format=vfmt,
             model_execution_mode=mex,  # type: ignore[arg-type]
