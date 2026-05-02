@@ -8,6 +8,29 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 3 — script repair + article sanitizer**:
+  [`brain._to_package`](src/content/brain.py) now synthesizes a
+  `visual_prompt` from the narration (and on-screen text / title) when the
+  LLM returns only one of the two fields, instead of silently dropping the
+  segment — fixes the
+  [`Two_Sentenced_Horror_Stories`](.Aquaduct_data/videos/Two_Sentenced_Horror_Stories/assets/pipeline_script_package.json)
+  collapse where multiple beats reduced to a single placeholder. The
+  synthesis is format-aware (`creepypasta`, `cartoon`, `unhinged`,
+  `health_advice`, `news`, `explainer` all get tailored framing affixes).
+  `video_package_from_llm_output(text, *, video_format)` and `_to_package`
+  thread the active format; both transformers and OpenAI generation paths
+  pass it. The `creepypasta` prompt is tightened to demand both fields per
+  beat. New deterministic article sanitizer
+  [`src/content/article_clean.py`](src/content/article_clean.py) strips
+  Fandom/wiki rails (Fan Feed, Trending pages, Categories), citation markers,
+  promo / cookie chrome, collapses numbered link lists, and caps to
+  `max_chars`; `crawler.fetch_article_text(..., sanitize=True)` (default)
+  runs it before returning. Tests:
+  [`tests/content/test_brain_to_package_synthesis.py`](tests/content/test_brain_to_package_synthesis.py),
+  [`tests/content/test_article_clean.py`](tests/content/test_article_clean.py).
+  Docs: [`docs/pipeline/brain.md`](docs/pipeline/brain.md),
+  [`docs/integrations/crawler.md`](docs/integrations/crawler.md).
+
 - **Phase 1 — native FPS + per-clip duration alignment**: every T2V / I2V
   clip is encoded at the model's trained playback fps (CogVideoX **8**,
   Wan **16**, Mochi **30**, LTX **24**, Hunyuan **24**) instead of the user's

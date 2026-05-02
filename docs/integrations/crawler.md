@@ -44,3 +44,24 @@ Persisted under `data/news_cache/`:
 - `news_seen_paths(news_cache_dir, mode)` — resolved paths for a mode’s seen files
 - `pick_one_item(items)` (currently selects the first fresh item)
 
+## Article excerpt sanitization (Phase 3)
+
+`fetch_article_text(url, *, sanitize=True, max_chars=10000, ...)` runs the
+deterministic [`clean_article_excerpt`](../../src/content/article_clean.py)
+on the longest text candidate before returning it. The sanitizer:
+
+- removes citation markers (`[12]`, `[citation needed]`),
+- strips wiki nav tabs (`Edit | Talk | View source`) and pagers,
+- truncates at the first recognized Fandom / wiki rail header
+  (`Fan Feed`, `Trending pages`, `Categories: …`, etc.) — auto-enabled when
+  the URL is on a Fandom / Wikipedia / `*wiki*` domain, or forced via
+  `aggressive=True`,
+- collapses dense numbered link lists (`1 X 2 Y 3 Z …`) into a single
+  `(related pages: X, Y, Z…)` note,
+- drops common share / cookie / promo lines,
+- caps the result to `max_chars` with an ellipsis.
+
+Pass `sanitize=False` to recover the legacy raw behavior (used by tests and
+by callers that want to feed the chunked LLM relevance pass added in
+Phase 10).
+

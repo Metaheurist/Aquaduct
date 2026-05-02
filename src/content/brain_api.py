@@ -94,7 +94,7 @@ def generate_script_openai(
     )
     if on_llm_task:
         on_llm_task("llm_generate", 100, "Script JSON received")
-    return video_package_from_llm_output(raw)
+    return video_package_from_llm_output(raw, video_format=str(video_format or "news"))
 
 
 def expand_custom_video_instructions_openai(

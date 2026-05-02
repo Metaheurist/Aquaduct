@@ -23,6 +23,36 @@ If the local model fails to load (common on some Windows setups), it returns a d
 - `segments[]`: `{ narration, visual_prompt, on_screen_text? }`
 - `cta`
 
+### Validator: `_to_package` synthesizes missing fields (Phase 3)
+
+Real LLM output frequently emits beats with only `narration` (or only
+`visual_prompt`). The pre-Phase-3 validator dropped those segments silently,
+which on the `Two_Sentenced_Horror_Stories` run collapsed the storyboard to a
+single placeholder beat — the visible "stitched motion pictures" effect was
+amplified by this loss.
+
+`_to_package(data, *, video_format="")` now:
+
+1. Drops only segments where **both** fields are empty.
+2. Synthesizes a `visual_prompt` from `narration` (and `on_screen_text` /
+   title) using a small format-aware affix (`creepypasta` → atmospheric
+   horror still; `cartoon` → bold linework; `health_advice` → clean
+   infographic; etc.).
+3. Synthesizes a `narration` from `visual_prompt` when only the visual is
+   present (kept short and speakable).
+4. Falls back to a single placeholder segment only when *every* segment is
+   empty.
+
+`video_package_from_llm_output(text, *, video_format="")` threads the active
+format through the validator. Both transformers (`generate_script`) and
+OpenAI (`generate_script_openai`) callers pass the active format. Refinement
+stages in [`src/content/story_pipeline.py`](../../src/content/story_pipeline.py)
+also propagate the format on each repair / retry.
+
+The `creepypasta` prompt now states explicitly that empty `visual_prompt`
+makes a segment unusable; this is paired with the validator above so partial
+outputs degrade gracefully instead of becoming the new failure mode.
+
 ## Inference profiles (local)
 When the desktop app or `run_once` passes **`inference_settings`** (`AppSettings`), [`_infer_text_with_optional_holder`](../../src/content/brain.py) tightens **`max_new_tokens`** and the tokenizer **input** cap (via **`_generate_with_loaded_causal_lm`**) using [`pick_script_profile`](../../src/models/inference_profiles.py) and the same **effective script VRAM** as the GPU policy fit badges. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still overrides the input cap when set. See [Inference profiles](../reference/inference_profiles.md).
 

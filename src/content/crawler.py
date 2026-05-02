@@ -563,11 +563,21 @@ def fetch_article_text(
     timeout_s: int = 35,
     firecrawl_enabled: bool = False,
     firecrawl_api_key: str | None = None,
+    sanitize: bool = True,
+    max_chars: int = 10000,
 ) -> str:
     """
     Best-effort article text extraction from a URL.
-    Intended for lightweight verification/summary; not perfect.
+
+    When ``sanitize`` is True (default), the returned excerpt is post-processed
+    by :func:`src.content.article_clean.clean_article_excerpt` to strip Fandom
+    / wiki rails (Fan Feed, Trending pages, Categories…), citation markers,
+    and common share/cookie chrome. The legacy raw behavior is available with
+    ``sanitize=False`` for unit tests or callers that need the unmodified
+    longest-candidate string.
     """
+    from src.content.article_clean import clean_article_excerpt
+
     url = (url or "").strip()
     if not url:
         return ""
@@ -579,7 +589,8 @@ def fetch_article_text(
             if k:
                 text = firecrawl_scrape_markdown(url, api_key=k, timeout_s=min(120, max(int(timeout_s), 20)))
                 if text.strip():
-                    return text[:10000]
+                    raw = text[:max_chars]
+                    return clean_article_excerpt(raw, url=url, max_chars=max_chars) if sanitize else raw
         except Exception:
             pass
     r = requests.get(url, timeout=timeout_s, headers={"User-Agent": "Mozilla/5.0"})
@@ -609,8 +620,8 @@ def fetch_article_text(
     # Pick the longest candidate
     text = max(candidates, key=lambda s: len(s or "")) if candidates else ""
     text = " ".join((text or "").split()).strip()
-    # Cap size to keep LLM prompts bounded
-    return text[:10000]
+    raw = text[:max_chars]
+    return clean_article_excerpt(raw, url=url, max_chars=max_chars) if sanitize else raw
 
 
 def get_scored_items(
