@@ -21,6 +21,56 @@ class PreflightResult:
     warnings: list[str]
 
 
+def _preflight_smoothness_warnings(settings: AppSettings) -> list[str]:
+    """Validate Phase 2 smoothness preset against available resources.
+
+    - ``off``    -- silent.
+    - ``ffmpeg`` -- always supported (we ship ffmpeg). No warning.
+    - ``rife``   -- warn (and let the runtime fall back) when the optional
+      package is missing or VRAM headroom looks too tight.
+    """
+    out: list[str] = []
+    v = getattr(settings, "video", None)
+    mode = str(getattr(v, "smoothness_mode", "off") or "off").strip().lower()
+    if mode != "rife":
+        return out
+    if is_api_mode(settings):
+        out.append(
+            "Smoothness 'rife' is for local renders only — API-mode runs ignore the setting "
+            "(cloud T2V already encodes at high fps). The pipeline will skip smoothing."
+        )
+        return out
+    try:
+        from src.render.temporal_smooth import (
+            RIFE_VRAM_BUDGET_MB,
+            rife_available,
+            rife_vram_budget_ok,
+        )
+    except Exception:
+        return out
+    if not rife_available():
+        out.append(
+            "Smoothness 'rife' is selected but the optional package isn't installed; the pipeline "
+            "will fall back to FFmpeg minterpolate. Install ``rife_ncnn_vulkan_python`` to enable RIFE."
+        )
+        return out
+    free_mb: int | None = None
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            free_b, _ = torch.cuda.mem_get_info()  # type: ignore[no-untyped-call]
+            free_mb = int(free_b) // (1024 * 1024)
+    except Exception:
+        free_mb = None
+    if not rife_vram_budget_ok(free_vram_mb=free_mb):
+        out.append(
+            f"Smoothness 'rife' needs ≥{RIFE_VRAM_BUDGET_MB} MB free VRAM; pipeline will fall back "
+            "to FFmpeg minterpolate. Free GPU memory or pick 'ffmpeg' to silence this warning."
+        )
+    return out
+
+
 def _check_imports(mods: Iterable[str]) -> list[str]:
     missing: list[str] = []
     for m in mods:
@@ -223,6 +273,7 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
 
     warnings.extend(preflight_heavy_repo_ram_warnings(settings))
     warnings.extend(preflight_cpu_busy_warnings())
+    warnings.extend(_preflight_smoothness_warnings(settings))
 
     if not is_api_mode(settings):
         try:

@@ -134,9 +134,55 @@ def _caption_overlay_factory(t_start, fn):
 
 so each clip's overlay is bound to its own start time.
 
+## Optional temporal smoothing (Phase 2)
+
+Native-fps encoding fixed the timing problem but the *visible* motion still
+ticks at the model's frame rate (CogVideoX at 8 fps reads as visibly
+"chuggy" against a 30-fps timeline). Phase 2 adds an opt-in motion-aware
+upsampling pass driven from `VideoSettings.smoothness_mode`:
+
+| Mode      | Backend                                     | Resource cost                | Quality           |
+|-----------|---------------------------------------------|------------------------------|-------------------|
+| `off`     | (no-op — default)                           | none                          | identical to legacy |
+| `ffmpeg`  | `minterpolate=mci:aobmc:vsbmf=1`            | CPU only, bundled binary     | smooth, occasional warps |
+| `rife`    | `rife_ncnn_vulkan_python` (lazy import)     | CPU + ≥1.5 GB free VRAM      | best, requires extra package |
+
+Behaviour summary, all implemented in
+[`src/render/temporal_smooth.py`](../../src/render/temporal_smooth.py):
+
+- `target_fps` is clamped to `[12, 60]` and capped per the
+  `smoothness_target_fps` Video setting.
+- If the resolved target is **≤** the clip's encoded fps, smoothing is a
+  no-op (no needless re-encode).
+- The original mp4 is replaced atomically; the `.mp4.meta.json` sidecar is
+  rewritten so the editor + audio aligner pick up the new fps and frame
+  count.
+- On any failure the original clip is kept and a `mode_used="off"`
+  result is returned — smoothing must never break a successful render.
+- `rife` falls back to `ffmpeg` when the package is missing or
+  `torch.cuda.mem_get_info()` reports too little headroom (< 1500 MB by
+  default; see `RIFE_VRAM_BUDGET_MB`).
+
+`src/render/clips.py::generate_clips` calls
+`_maybe_smooth_clips(...)` immediately after the T2V/I2V batch returns, so
+all downstream stages (editor, audio align, captions) see the upsampled
+mp4s and matching sidecars without further changes.
+
+`src/runtime/preflight.py` now warns up-front when:
+
+- `smoothness_mode == "rife"` is selected in API mode (silently ignored).
+- `rife_available()` returns `False` (package missing — falls back to
+  ffmpeg).
+- Free VRAM is below `RIFE_VRAM_BUDGET_MB` (falls back to ffmpeg).
+
+These warnings appear in the run preflight panel so the user can either
+free GPU memory, install the optional package, or simply switch to
+`ffmpeg` mode.
+
 ## See also
 
 - [`docs/pipeline/editor.md`](editor.md) — overall mux and overlay pipeline.
 - [`docs/pipeline/main.md`](main.md) — Pro-mode call sites for T2V / I2V.
 - `tests/render/test_native_fps_encode.py`
 - `tests/render/test_audio_alignment_real_durations.py`
+- `tests/render/test_temporal_smooth.py`
