@@ -31,7 +31,7 @@ Rough buckets (from `vram_gb_to_band`):
 ## What changes per mode
 - **Script**: caps **input** and **output** token budgets via `pick_script_profile` (with small per-repo tweaks for Qwen3, Miqu, Fimbulvetr, DeepSeek, etc.), merged in [`_generate_with_transformers`](../../src/content/brain.py) when `inference_settings` is passed. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still wins when set; see [Config](config.md#local-llm-inference-vram).
 - **Image**: merges **width**, **height**, **num_inference_steps**, and **guidance** from the profile on top of baselines in [`_diffusion_kw_for_model`](../../src/render/artist.py) / [`merge_t2i_from_settings`](../../src/models/inference_profiles.py) when `inference_settings` is passed to [`generate_images`](../../src/render/artist.py) (see [Artist](../pipeline/artist.md)).
-- **Video**: merges kwargs after [`_video_pipe_kwargs`](../../src/render/clips.py); **LTX-2** enforces the pipeline **(num_frames − 1) % 8 == 0** rule in [`merge_t2v_from_settings`](../../src/models/inference_profiles.py). Cog / Mochi paths avoid inventing resolution where the pipeline defaults are used.
+- **Video**: merges kwargs after [`_video_pipe_kwargs`](../../src/render/clips.py); **LTX-2** enforces the pipeline **(num_frames − 1) % 8 == 0** rule in [`merge_t2v_from_settings`](../../src/models/inference_profiles.py). After the VRAM-band profile resolves **`num_frames`**, [`merge_t2v_from_settings`](../../src/models/inference_profiles.py) applies **`length_factor_for(settings.video)`** from [`video_quality_presets`](../../src/render/video_quality_presets.py) (Video tab Length preset: ~0.85 / 1.0 / 1.25) via [`apply_t2v_length_factor`](../../src/render/video_quality_presets.py), clamped to **≥ 8** frames. Cog / Mochi paths avoid inventing resolution where the pipeline defaults are used.
 - **Voice**: profile placeholders for Kokoro / MOSS (reserved for future kwargs).
 
 ## Console and UI
@@ -42,7 +42,8 @@ Rough buckets (from `vram_gb_to_band`):
 Each per-role profile runs alongside the resolved **quantization mode** from [Quantization](quantization.md) (`script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode`). The report now includes `quant=<mode>` so the log shows both the band-level profile and the actual dtype / 4-bit / cpu_offload path used for that role.
 
 ## Tests
-[`tests/models/test_inference_profiles.py`](../../tests/models/test_inference_profiles.py) — band mapping, T2I merge, LTX-2 frame rule, report smoke.
+- [`tests/models/test_inference_profiles.py`](../../tests/models/test_inference_profiles.py) — band mapping, T2I merge, LTX-2 frame rule, report smoke.
+- [`tests/models/test_length_factor_in_merge_t2v.py`](../../tests/models/test_length_factor_in_merge_t2v.py) — **`length_factor`** scales **`num_frames`** after the band profile merge.
 
 ## Troubleshooting: run stops during “Loading weights”
 Frontier **text-to-video** checkpoints (for example **Wan 2.2 14B**) allocate a large contiguous GPU block during `diffusers` load. If the **video** row shows **`quant='bf16'`** (or **`fp16`**) and your **effective VRAM for video** is in the **8–12 GiB** range, loading can hit **CUDA out of memory**, or in rare cases the driver/process may exit without a clean Python traceback.

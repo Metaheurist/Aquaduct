@@ -156,7 +156,8 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
 - `video_format`: `news` | `cartoon` | `explainer` | `unhinged` | `creepypasta` | `health_advice` (drives which tag list applies to a run; see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
 - `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in [`src/core/config.py`](../../src/core/config.py))
-- `topic_tags_by_mode`: per-format tag lists (bias crawling + scripting for the active format); use [`src/content/topics.py`](../../src/content/topics.py) `effective_topic_tags()` for the current format
+- `topic_tags_by_mode`: per-format tag lists (crawling + scripting for the active format); use [`src/content/topics.py`](../../src/content/topics.py) `effective_topic_tags()` for the current format
+- `topic_tag_notes`: optional `dict[str, str]` — per-tag **grounding** lines (Topics tab; keys normalized lowercase; values trimmed to **≤ 240** chars via [`sanitize_topic_tag_notes`](../../src/content/topic_constraints.py)). Merged into [`topic_constraints_block`](../../src/content/topic_constraints.py) at run time; see [Topics UI](../ui/topics.md)
 - `background_music_path`
 - model overrides (repo IDs):
   - `llm_model_id`

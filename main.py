@@ -615,6 +615,36 @@ def run_once(
                 article_url_for_screen = str(getattr(item, "url", "") or "")
                 if article_text:
                     (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
+                try:
+                    from src.content.topic_constraints import (
+                        score_source_url as _score_source_url,
+                        source_quality_label as _source_quality_label,
+                    )
+
+                    _src_q = _score_source_url(
+                        article_url_for_screen,
+                        body_length=len(article_text or ""),
+                    )
+                    (run_assets / "source_quality.json").write_text(
+                        json.dumps(
+                            {
+                                "url": article_url_for_screen,
+                                "score": _src_q.score,
+                                "badge": _src_q.badge,
+                                "reasons": list(_src_q.reasons),
+                                "body_length": len(article_text or ""),
+                            },
+                            indent=2,
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    _run_stage(
+                        "source_quality",
+                        f"Source quality: {_source_quality_label(_src_q)} — {', '.join(_src_q.reasons) or 'no flags'}",
+                    )
+                except Exception:
+                    pass
             except Exception:
                 article_text = ""
     
@@ -809,6 +839,34 @@ def run_once(
                     _dprint("style", "prompt_context skipped", str(_exc))
                 except Exception:
                     pass
+
+            try:
+                from src.content.topic_constraints import topic_constraints_block as _topic_block
+
+                _cast_names: list[str] = []
+                try:
+                    if active_character is not None:
+                        _cast_names = [str(active_character.name).strip()]
+                except Exception:
+                    _cast_names = []
+                _topic_constraint = _topic_block(
+                    list(effective_topic_tags(app)),
+                    notes=getattr(app, "topic_tag_notes", None),
+                    cast_names=_cast_names,
+                )
+                if _topic_constraint:
+                    if script_digest and script_digest.strip():
+                        script_digest = (script_digest.rstrip() + "\n\n" + _topic_constraint).strip() + "\n"
+                    else:
+                        script_digest = _topic_constraint
+            except Exception as _exc:
+                try:
+                    from debug import dprint as _dprint
+
+                    _dprint("topics", "topic_constraints_block skipped", str(_exc))
+                except Exception:
+                    pass
+
     
             def _maybe_multistage(p: VideoPackage) -> VideoPackage:
                 if not bool(getattr(video_settings, "story_multistage_enabled", False)):

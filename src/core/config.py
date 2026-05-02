@@ -283,6 +283,10 @@ class BrandingSettings:
 @dataclass(frozen=True)
 class AppSettings:
     topic_tags_by_mode: dict[str, list[str]] = field(default_factory=default_topic_tags_by_mode)
+    #: Phase 6 — per-tag context note ({"tag": "free-form note"}). Surfaced as a
+    #: hard constraint in the script LLM prompt; see
+    #: ``src/content/topic_constraints.py``. Tags are matched case-insensitively.
+    topic_tag_notes: dict[str, str] = field(default_factory=dict)
     media_mode: MediaMode = "video"
     video_format: VideoFormat = "news"
     prefer_gpu: bool = True

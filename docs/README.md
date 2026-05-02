@@ -4,7 +4,7 @@
 |--------|----------|
 | [reference](reference/) | Config, CLI, [model + tier + VRAM inventory](reference/model_inventory.md), models, hardware (incl. multi-GPU VRAM-first notes), VRAM, [quantization](reference/quantization.md), [inference profiles](reference/inference_profiles.md) |
 | [pipeline](pipeline/) | Main loop, brain, artist, voice, editor, FFmpeg, performance, [**crash resilience** (checkpoints / resume / heartbeat)](pipeline/crash-resilience.md) |
-| [ui](ui/) | Desktop UI, branding, characters |
+| [ui](ui/) | Desktop UI, branding, characters, **[Topics (tags + notes)](ui/topics.md)**, [**Video tab v2 / quality presets**](ui/video-tab-v2.md) |
 | [integrations](integrations/) | API mode (Gemini, SiliconFlow, Magic Hour, Inworld, OpenAI, Replicate, …), crawler, ElevenLabs, TikTok, YouTube |
 | [review](review/) | QA / review checklists (e.g. [API mode](review/api_mode_checklist.md)) |
 | [build](build/) | Windows EXE build, model + YouTube demos |

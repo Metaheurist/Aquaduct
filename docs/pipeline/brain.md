@@ -74,11 +74,16 @@ The desktop pipeline passes a mutable **`llm_holder`** dict across successive br
 ## Character context
 When the Run tab selects a **character** (see [Characters](../ui/characters.md)), an extra block is added so narration and on-screen text stay consistent with that host identity (layered on top of **Personality** presets).
 
-## Topic tags
-If `topic_tags` are provided (from the UI Topics tab list for the **current video format**, via `effective_topic_tags()`), they are injected into the prompt to bias:
-- which tool release is selected
-- the angle of the script
-- the hashtag set
+## Topic tags & hard constraints
+
+If `topic_tags` are provided (from the Topics tab list for the **current video format**, via [`effective_topic_tags()`](../../src/content/topics.py)), they drive crawling and scripting. **Phase 6** upgrades them from a soft bias to **hard anchors**:
+
+- **`main.py`** appends [`topic_constraints_block()`](../../src/content/topic_constraints.py) to `script_digest` after [`StyleContext`](../../src/content/prompt_context.py) merges — the block lists every tag as a **must** for angle, hashtags, hooks, and segment beats.
+- Optional **`topic_tag_notes`** (per-tag grounding lines edited on the Topics tab; persisted in `ui_settings.json`) attach as **`Tag context: &lt;tag&gt; → &lt;note&gt;`** in that same block ([Topics UI](../ui/topics.md)).
+- Cast names from the active **Character(s)** feed the block so narration stays anchored to declared speakers ([character persistence](character-persistence.md)).
+- URL **source quality** (`score_source_url` / `assets/source_quality.json`) is heuristic only; pairing with chunked article relevance is documented in [`article-relevance.md`](article-relevance.md).
+
+Format-specific prompts (`_prompt_for_*`) still spell out tag lines (`Topic tags (HARD constraint — …)` for creepypasta, news, explainer, wellness) so the structured JSON stays on-brief after the fused digest arrives.
 
 ## UI field expansion (`expand_custom_field_text`)
 For free-form text in the desktop app (character fields, topic tag line, storyboard scene prompt), the **🧠** button calls **`expand_custom_field_text`** with the user’s draft (or empty) and a short field label. It reuses the same local transformer path as script generation (`_generate_with_transformers`), then strips common markdown wrappers from the reply. Implemented in [`src/content/brain.py`](../../src/content/brain.py); runs off the GUI thread via **`TextExpandWorker`** in [`UI/workers.py`](../../UI/workers.py), which applies the saved Hugging Face token via [`ensure_hf_token_in_env`](../../src/models/hf_access.py) when needed and maps gated-repo / 401 errors with [`humanize_hf_hub_error`](../../src/models/hf_access.py).
