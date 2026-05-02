@@ -8,6 +8,27 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 10 — chunked LLM article relevance pass**: new
+  [`src/content/article_chunker.py`](src/content/article_chunker.py) and
+  [`src/content/article_relevance.py`](src/content/article_relevance.py).
+  After `crawler.fetch_article_text` returns and `article_clean` strips the
+  obvious chrome, the pipeline hands each chunk to the shared script LLM
+  (`llm_sess` from [`src/content/llm_session.py`](src/content/llm_session.py))
+  with a single `{"keep": true|false}` reply per chunk; kept chunks are
+  recomposed into a tight excerpt that the script prompt then sees instead
+  of the full page body. Resource discipline: hard caps on chunk count
+  (`AQUADUCT_ARTICLE_RELEVANCE_MAX_CHUNKS`, default 8) and chunk size
+  (`AQUADUCT_ARTICLE_RELEVANCE_CHUNK_CHARS`, default 1800), per-chunk
+  `max_new_tokens=96`, fallback to keep-all if every chunk is rejected, and
+  a persistent per-URL cache keyed by URL + content hash. Setting:
+  `AppSettings.video.article_relevance_screen` (default `True`); env
+  override `AQUADUCT_ARTICLE_RELEVANCE_SCREEN=0` disables. The pipeline now
+  also writes `assets/article.relevance.json` (kept indices / total chunks
+  / cache hit / used LLM) for auditing. Tests:
+  [`tests/content/test_article_chunker.py`](tests/content/test_article_chunker.py),
+  [`tests/content/test_article_relevance.py`](tests/content/test_article_relevance.py).
+  Docs: [`docs/pipeline/article-relevance.md`](docs/pipeline/article-relevance.md).
+
 - **Phase 3 — script repair + article sanitizer**:
   [`brain._to_package`](src/content/brain.py) now synthesizes a
   `visual_prompt` from the narration (and on-screen text / title) when the

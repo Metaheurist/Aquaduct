@@ -673,6 +673,7 @@ def run_once(
         _run_stage("workspace", f"Run workspace: {run_dir} (intermediate assets under assets/)")
 
         article_text = ""
+        article_url_for_screen: str = ""
         if prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
             _run_stage("article", "Fetching full article text (Firecrawl/crawl; may be empty on failure)")
             try:
@@ -680,6 +681,7 @@ def run_once(
                     str(getattr(item, "url", "") or ""),
                     **_firecrawl_kwargs(app),
                 )
+                article_url_for_screen = str(getattr(item, "url", "") or "")
                 if article_text:
                     (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
             except Exception:
@@ -749,6 +751,66 @@ def run_once(
             tags = list(effective_topic_tags(app))
             vf = str(getattr(app, "video_format", "news") or "news")
             try_llm_4bit = bool(getattr(app, "try_llm_4bit", True))
+
+            # Phase 10: chunked LLM relevance pass over the fetched article body so the
+            # script LLM only sees actual story content (drops Fandom rails, sidebars,
+            # comment sections that survived ``article_clean``). Reuses ``llm_sess`` so
+            # we don't double-load weights, caches by URL+content hash, and honors
+            # ``AppSettings.article_relevance_screen`` / ``AQUADUCT_ARTICLE_RELEVANCE_SCREEN``.
+            if (
+                article_text
+                and bool(getattr(video_settings, "article_relevance_screen", True))
+                and not is_api_mode(app)
+            ):
+                try:
+                    from src.content.article_relevance import (
+                        relevance_screen_enabled,
+                        screen_article_relevance,
+                    )
+
+                    if relevance_screen_enabled(video_settings):
+                        topic_hint = ", ".join(
+                            [str(s.get("title") or "") for s in (sources or [])][:3]
+                        ).strip()
+                        rel = screen_article_relevance(
+                            article_text,
+                            url=article_url_for_screen,
+                            topic_hint=topic_hint,
+                            video_format=vf,
+                            llm_holder=llm_sess,
+                            model_id=llm_id,
+                            inference_settings=app,
+                        )
+                        if rel.excerpt and rel.excerpt != article_text:
+                            article_text = rel.excerpt
+                            try:
+                                (run_assets / "article.txt").write_text(
+                                    article_text, encoding="utf-8"
+                                )
+                                (run_assets / "article.relevance.json").write_text(
+                                    json.dumps(
+                                        {
+                                            "kept": rel.kept,
+                                            "total_chunks": rel.total_chunks,
+                                            "cache_hit": rel.cache_hit,
+                                            "used_llm": rel.used_llm,
+                                            "url": article_url_for_screen,
+                                        },
+                                        indent=2,
+                                        ensure_ascii=False,
+                                    ),
+                                    encoding="utf-8",
+                                )
+                            except OSError:
+                                pass
+                except Exception as exc:
+                    try:
+                        from debug import dprint as _dprint
+
+                        _dprint("article", "relevance screen skipped", str(exc))
+                    except Exception:
+                        pass
+
             script_digest = ""
             script_ref_notes = ""
             if bool(getattr(video_settings, "story_web_context", False)) or bool(
