@@ -1,11 +1,17 @@
-"""Pro-mode scene prompt splitting (headline anchoring vs cartoon / unhinged)."""
+"""Pro-mode scene prompt splitting (Phase 4: title prefix dropped, genre cues + cast injection)."""
 
 from src.content.brain import ScriptSegment, VideoPackage
 
 from main import _split_into_pro_scenes_from_script
 
 
-def test_pro_scenes_news_prefixes_headline() -> None:
+def test_pro_scenes_news_no_longer_prefixes_headline() -> None:
+    """Phase 4: T2V prompts no longer begin with the article title verbatim.
+
+    CLIP-class T2V encoders treat the title as a literal text-rendering request,
+    which collapses every clip into the same shot. The headline now lives in
+    branding overlays only.
+    """
     pkg = VideoPackage(
         title="Top 10 Widgets — Blog",
         description="",
@@ -16,7 +22,9 @@ def test_pro_scenes_news_prefixes_headline() -> None:
     )
     scenes = _split_into_pro_scenes_from_script(pkg=pkg, prompts=["v"], video_format="news")
     assert scenes
-    assert all(s.startswith("Top 10 Widgets — Blog |") for s in scenes)
+    for s in scenes:
+        assert "Top 10 Widgets" not in s
+        assert " | " not in s.split(",")[0]
 
 
 def test_pro_scenes_cartoon_omits_headline_prefix() -> None:

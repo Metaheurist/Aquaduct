@@ -8,6 +8,30 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 4 — diversified scene-prompt builder**: new
+  [`src/render/scene_prompts.py`](src/render/scene_prompts.py) replaces
+  the inline scene splitting in `main.py`. Drops the legacy
+  forced `"<title> | "` prefix for every format (CLIP-class T2V encoders
+  were treating it as a literal text-rendering request and collapsing
+  every clip into the same shot). Parses cast names out of the
+  `character_context` block and injects them per scene
+  (`Lead and Foil, kitchen scene...`). Adds genre-specific motion cues
+  (`creepypasta` → "slow dolly into darkness"; `cartoon` →
+  "snap zoom, squash-stretch"; etc.) and a per-format style tail.
+  `_ensure_unique_starts` rotates consecutive scenes whose first 4 words
+  match so the prompt set stays visually distinct. New
+  `expand_scenes_via_llm(...)` lazily extends a short script up to
+  `n_scenes` via the script LLM (caller-supplied invoker — keeps the
+  module unit-testable). `main.py::_split_into_pro_scenes_from_script`
+  is now a thin delegator and the Pro T2V branch in `run_once` forwards
+  `char_ctx`, `style_ctx.as_t2v_affix()`, and
+  `video_settings.clips_per_video`. Tests:
+  [`tests/render/test_scene_prompts.py`](tests/render/test_scene_prompts.py)
+  (18 cases) plus updated
+  [`tests/render/test_pro_scene_prompts.py`](tests/render/test_pro_scene_prompts.py).
+  Docs:
+  [`docs/pipeline/scene-prompts.md`](docs/pipeline/scene-prompts.md).
+
 - **Phase 2 — optional temporal smoothing**: new
   [`src/render/temporal_smooth.py`](src/render/temporal_smooth.py)
   adds a post-generation motion-aware upsampling pass with three modes —
