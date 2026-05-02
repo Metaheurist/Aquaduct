@@ -147,6 +147,10 @@ class VideoSettings:
     # Content-quality toggles (v1 defaults on)
     high_quality_topic_selection: bool = True
     fetch_article_text: bool = True
+    # When True, run a chunk-by-chunk LLM relevance pass over the fetched article body
+    # (src/content/article_relevance.py) so the script prompt only sees story content;
+    # disable per-run from settings, or globally with AQUADUCT_ARTICLE_RELEVANCE_SCREEN=0.
+    article_relevance_screen: bool = True
     llm_factcheck: bool = True
     prompt_conditioning: bool = True
     # Multi-stage script LLM + optional Firecrawl context / reference images (Video tab)
