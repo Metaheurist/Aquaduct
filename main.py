@@ -382,101 +382,31 @@ def _split_into_pro_scenes_from_script(
     pkg: VideoPackage,
     prompts: list[str],
     video_format: str = "news",
+    n_scenes: int | None = None,
+    character_context: str | None = None,
+    art_style_affix: str = "",
+    branding_affix: str = "",
 ) -> list[str]:
+    """Create a list of scene prompts for Pro video, covering the whole script.
+
+    Phase 4: delegates to :mod:`src.render.scene_prompts` so the diversity,
+    character-awareness, and genre-cue logic lives in one tested module.
+    The legacy forced ``"<title> | "`` prefix is dropped for every format
+    (the article headline lives in branding overlays now, not in T2V prompts
+    where CLIP encoders try to render it as on-screen text).
     """
-    Create a list of scene prompts for Pro video, covering the whole script.
+    from src.render.scene_prompts import build_scene_prompts, specs_to_prompts
 
-    If a beat is too long for CLIP (~77 tokens), we split it into multiple scenes instead of over-condensing.
-
-    News / explainer style anchors scenes with the headline; cartoon / unhinged omits the title so prompts stay
-    character-first (matches storyboard + image models).
-    """
-    vf = str(video_format or "news").strip().lower()
-    use_title = vf not in ("cartoon", "unhinged")
-    title = (" ".join(str(pkg.title or "").split()).strip()) if use_title else ""
-    out: list[str] = []
-
-    def _motion_cue(i: int) -> str:
-        # Short cues — CLIP T2V stacks often cap at ~77 tokens for the whole prompt.
-        if vf in ("cartoon", "unhinged"):
-            cues = (
-                "push-in, whip pan",
-                "snap zoom, squash-stretch",
-                "handheld wobble",
-                "dolly blur",
-                "lunge to camera",
-                "spin smear",
-            )
-        else:
-            cues = (
-                "slow push-in",
-                "parallax drift",
-                "gentle pan",
-                "rack focus",
-            )
-        return cues[int(i) % len(cues)]
-
-    def _push(scene_text: str) -> None:
-        st = _strip_negative_and_noise(scene_text)
-        if not st:
-            return
-        # ~40 words targets under 77 CLIP tokens including punctuation.
-        _max_scene = 40
-        if len(st.split()) <= _max_scene:
-            out.append(st)
-            return
-        words = st.split()
-        # Split into chunks; keep continuity by repeating the title prefix.
-        chunk = 32
-        start = 0
-        while start < len(words) and len(out) < 16:
-            part = " ".join(words[start : start + chunk]).strip()
-            if title:
-                part = f"{title} | {part}"
-            out.append(_cap_words(part, _max_scene))
-            start += chunk
-
-    # Prefer visual prompts for comedy formats (motion models need visual/action cues; narration is not a scene prompt).
-    if vf in ("cartoon", "unhinged"):
-        segs = list(pkg.segments or [])
-        # Hook: reuse first segment visual if present.
-        if segs:
-            v0 = " ".join(str(getattr(segs[0], "visual_prompt", "") or "").split()).strip()
-            if v0:
-                _push(f"{v0}, {_motion_cue(len(out))}")
-        for seg in segs:
-            vis = " ".join(str(getattr(seg, "visual_prompt", "") or "").split()).strip()
-            if vis:
-                _push(f"{vis}, {_motion_cue(len(out))}")
-        # CTA: reuse last segment visual if present; otherwise fall back.
-        if segs:
-            vlast = " ".join(str(getattr(segs[-1], "visual_prompt", "") or "").split()).strip()
-            if vlast:
-                _push(f"{vlast}, {_motion_cue(len(out))}")
-    else:
-        # Prefer script segments as scenes; include hook/CTA as their own scenes.
-        if (pkg.hook or "").strip():
-            _push(f"{title} | {pkg.hook}" if title else str(pkg.hook).strip())
-        for seg in (pkg.segments or []):
-            nar = " ".join(str(getattr(seg, "narration", "") or "").split()).strip()
-            if nar:
-                _push(f"{title} | {nar}" if title else nar)
-        if (pkg.cta or "").strip():
-            _push(f"{title} | {pkg.cta}" if title else str(pkg.cta).strip())
-
-    # Fallback: use visual prompts if narration is empty.
-    if not out:
-        for p in prompts:
-            t = _strip_negative_and_noise(p)
-            if t:
-                _push(f"{title} | {t}" if title else t)
-            if len(out) >= 8:
-                break
-
-    # Keep at least 1 scene.
-    if not out:
-        out = [_cap_words(title or "cinematic vertical video", 30)]
-    return out
+    specs = build_scene_prompts(
+        pkg=pkg,
+        fallback_prompts=list(prompts or []),
+        video_format=video_format,
+        n_scenes=n_scenes,
+        character_context=character_context,
+        art_style_affix=art_style_affix,
+        branding_affix=branding_affix,
+    )
+    return specs_to_prompts(specs)
 
 
 def run_once(
@@ -1535,10 +1465,21 @@ def run_once(
 
             T = float(getattr(video_settings, "pro_clip_seconds", 4.0))
             T = max(0.5, T)
+            try:
+                from src.content.prompt_context import compose_prompt_context as _cpc
+
+                _scene_style_ctx = _cpc(app=app, character_context=char_ctx)
+                _scene_art_affix = _scene_style_ctx.as_t2v_affix()
+            except Exception:
+                _scene_art_affix = ""
+            _n_scenes_target = int(getattr(video_settings, "clips_per_video", 0) or 0) or None
             pro_scenes = _split_into_pro_scenes_from_script(
                 pkg=pkg,
                 prompts=prompts,
                 video_format=str(getattr(app, "video_format", "news") or "news"),
+                n_scenes=_n_scenes_target,
+                character_context=char_ctx,
+                art_style_affix=_scene_art_affix,
             )
             # Persist the exact prompts used for debugging.
             (assets_dir / "pro_prompt.txt").write_text("\n\n".join(pro_scenes), encoding="utf-8")
