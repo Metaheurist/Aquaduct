@@ -8,6 +8,24 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 9 — fused prompt context**: new
+  [`src/content/prompt_context.py`](src/content/prompt_context.py)
+  resolves `video_format`, `personality`, `art_style`, and `branding`
+  once per run and emits ready-to-paste blocks for the script LLM
+  (`as_script_prompt_block()`), T2I affix (`as_t2i_affix()`), and T2V
+  affix (`as_t2v_affix()`). `compose_prompt_context(app=...)` picks the
+  current settings and `merge_with_supplement(...)` is idempotent so the
+  block can safely fuse into the existing `script_digest`. Includes
+  `format_voice_lock` (per-format default narrator voice),
+  `reconcile_format_personality` (swaps `creepypasta+hype` →
+  `creepypasta+neutral`, `unhinged+cozy` → `unhinged+comedic`, etc.) with
+  conflict warnings that bubble up via `emit_pipeline_notice`. `main.py`
+  calls it after `script_digest` is built so the script LLM sees the
+  fused style brief alongside the web digest. Tests:
+  [`tests/content/test_prompt_context.py`](tests/content/test_prompt_context.py)
+  (14 cases). Docs:
+  [`docs/pipeline/prompt-context.md`](docs/pipeline/prompt-context.md).
+
 - **Phase 10 — chunked LLM article relevance pass**: new
   [`src/content/article_chunker.py`](src/content/article_chunker.py) and
   [`src/content/article_relevance.py`](src/content/article_relevance.py).
