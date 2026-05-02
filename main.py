@@ -854,6 +854,30 @@ def run_once(
                     "Compose each `visual_prompt` for this output frame shape.\n\n"
                 )
                 script_digest = res_block + (script_digest or "").strip()
+
+            # Phase 9: fuse video_format + personality + art_style + branding into one block
+            # that every prompt-building stage can re-use. Surfaces format/personality conflicts
+            # and gives the script LLM consistent style hints alongside the web digest.
+            try:
+                from src.content.prompt_context import compose_prompt_context, merge_with_supplement
+
+                style_ctx = compose_prompt_context(app=app, character_context=char_ctx)
+                if style_ctx.conflict_warnings:
+                    try:
+                        from src.runtime.pipeline_notice import emit_pipeline_notice as _emit_notice
+
+                        for warn in style_ctx.conflict_warnings:
+                            _emit_notice("Style fusion", warn)
+                    except Exception:
+                        pass
+                script_digest = merge_with_supplement(script_digest, style_ctx)
+            except Exception as _exc:
+                try:
+                    from debug import dprint as _dprint
+
+                    _dprint("style", "prompt_context skipped", str(_exc))
+                except Exception:
+                    pass
     
             def _maybe_multistage(p: VideoPackage) -> VideoPackage:
                 if not bool(getattr(video_settings, "story_multistage_enabled", False)):
