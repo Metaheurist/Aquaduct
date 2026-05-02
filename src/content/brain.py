@@ -397,7 +397,66 @@ def _normalize_hashtags(tags: list[Any]) -> list[str]:
     return deduped[:30]
 
 
-def _to_package(data: dict[str, Any]) -> VideoPackage:
+def _synthesize_visual_prompt(
+    *,
+    narration: str,
+    on_screen_text: str | None,
+    title: str,
+    video_format: str = "",
+) -> str:
+    """Build a usable ``visual_prompt`` from narration when the LLM omitted one.
+
+    Pre-Phase-3 behavior: ``_to_package`` silently dropped any segment without
+    *both* ``narration`` and ``visual_prompt``. On the
+    ``Two_Sentenced_Horror_Stories`` run that quietly lost most beats, leaving
+    the storyboard with a single placeholder scene which the T2V model then
+    repeated. Synthesizing here keeps the script intact and lets the
+    scene-prompt builder enrich it later (Phase 4).
+    """
+    base = (narration or "").strip()
+    cap = 220
+    if len(base) > cap:
+        base = base[:cap].rsplit(" ", 1)[0] + "…"
+    bits: list[str] = []
+    vf = (video_format or "").strip().lower()
+    if vf == "creepypasta":
+        bits.append("cinematic vertical 9:16 horror still, dim moody lighting, atmospheric dread")
+    elif vf == "cartoon":
+        bits.append("expressive 9:16 cartoon scene, bold linework, dynamic composition")
+    elif vf == "unhinged":
+        bits.append("vivid 9:16 satirical animation still, exaggerated character expressions")
+    elif vf == "health_advice":
+        bits.append("clean vertical 9:16 explainer scene, friendly clear infographic feel")
+    elif vf == "news":
+        bits.append("vertical 9:16 news-style frame, sharp focus, clear subject framing")
+    elif vf == "explainer":
+        bits.append("vertical 9:16 explainer frame, clean composition, readable subject")
+    else:
+        bits.append("vertical 9:16 short video frame, cinematic composition")
+    if base:
+        bits.append(f"depicting: {base}")
+    if on_screen_text:
+        cap2 = 80
+        ost = on_screen_text.strip()
+        if ost:
+            bits.append(f"in-scene text/title cue: \"{ost[:cap2]}\"")
+    if title and not base.lower().startswith(title.lower()[:10]):
+        tcap = title.strip()[:80]
+        if tcap:
+            bits.append(f"thematic anchor: {tcap}")
+    return ", ".join(b for b in bits if b)
+
+
+def _synthesize_narration_from_visual(visual: str) -> str:
+    v = (visual or "").strip()
+    if not v:
+        return ""
+    if len(v) > 240:
+        v = v[:240].rsplit(" ", 1)[0] + "…"
+    return v
+
+
+def _to_package(data: dict[str, Any], *, video_format: str = "") -> VideoPackage:
     title = str(data.get("title", "")).strip() or "Short video"
     description = str(data.get("description", "")).strip()
     if not description:
@@ -420,11 +479,27 @@ def _to_package(data: dict[str, Any]) -> VideoPackage:
             visual = str(s.get("visual_prompt", "")).strip()
             on_screen = s.get("on_screen_text", None)
             on_screen_text = str(on_screen).strip() if isinstance(on_screen, str) and on_screen.strip() else None
+            if not narration and not visual:
+                continue
+            if not visual:
+                visual = _synthesize_visual_prompt(
+                    narration=narration,
+                    on_screen_text=on_screen_text,
+                    title=title,
+                    video_format=video_format,
+                )
+            elif not narration:
+                narration = _synthesize_narration_from_visual(visual)
             if narration and visual:
-                segments.append(ScriptSegment(narration=narration, visual_prompt=visual, on_screen_text=on_screen_text))
+                segments.append(
+                    ScriptSegment(
+                        narration=narration,
+                        visual_prompt=visual,
+                        on_screen_text=on_screen_text,
+                    )
+                )
 
     if not segments:
-        # Minimal fallback structure
         segments = [
             ScriptSegment(
                 narration="Here’s what people are talking about—and why it’s worth your attention.",
@@ -443,9 +518,15 @@ def _to_package(data: dict[str, Any]) -> VideoPackage:
     )
 
 
-def video_package_from_llm_output(text: str) -> VideoPackage:
-    """Parse model output (JSON, possibly fenced) into a VideoPackage."""
-    return _to_package(_extract_json(text))
+def video_package_from_llm_output(text: str, *, video_format: str = "") -> VideoPackage:
+    """Parse model output (JSON, possibly fenced) into a VideoPackage.
+
+    ``video_format`` is forwarded into :func:`_to_package` so the
+    visual-prompt synthesis in Phase 3 produces format-aware fallbacks for
+    segments where the LLM omitted ``visual_prompt``. Older callers that omit
+    ``video_format`` get a generic 9:16 short framing.
+    """
+    return _to_package(_extract_json(text), video_format=video_format)
 
 
 def _supplement_context_block(text: str) -> str:
@@ -607,6 +688,11 @@ def _prompt_for_creepypasta_items(
         "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
         "Constraints:\n"
         f"- narration total {_SCRIPT_WORDS}\n"
+        "- EVERY segment MUST include BOTH `narration` (1–3 spoken sentences) AND a vivid "
+        "`visual_prompt` (concrete subject + setting + lighting + camera framing for a 9:16 still). "
+        "Empty or missing `visual_prompt` makes the segment unusable for the video model — do not skip it.\n"
+        "- `visual_prompt` is for an image / T2V model: describe what we SEE, not what we hear; "
+        "no quoted dialog inside `visual_prompt`.\n"
         "- title <= 80 chars\n"
         "- hashtags: 15-30 items (horror fiction, creepypasta, scary shorts, urban legend — match the story)\n"
         "- avoid markdown except optional ```json fence\n"
@@ -2178,7 +2264,7 @@ def generate_script(
                 inference_settings=inference_settings,
             )
             data = _extract_json(raw)
-            pkg = _to_package(data)
+            pkg = _to_package(data, video_format=str(video_format or ""))
             dprint("brain", "generate_script ok (transformers)", f"title={pkg.title[:100]!r}")
             return pkg
         except Exception:

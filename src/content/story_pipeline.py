@@ -396,7 +396,7 @@ def _maybe_elaboration(
             inference_settings=app_settings,
         )
         try:
-            return video_package_from_llm_output(raw)
+            return video_package_from_llm_output(raw, video_format=vf)
         except (json.JSONDecodeError, ValueError):
             repair_prompt = _REFINEMENT_JSON_REPAIR_PREFIX + raw.strip()[:14000]
             raw_fix = _generate_with_loaded_causal_lm(
@@ -408,7 +408,7 @@ def _maybe_elaboration(
                 max_new_tokens=2048,
                 inference_settings=app_settings,
             )
-            return video_package_from_llm_output(raw_fix)
+            return video_package_from_llm_output(raw_fix, video_format=vf)
     except Exception as e:
         dprint("story_pipeline", "elaboration failed", str(e))
         return pkg
@@ -493,7 +493,7 @@ def run_multistage_refinement(
                     inference_settings=app_settings,
                 )
                 try:
-                    cur = video_package_from_llm_output(raw)
+                    cur = video_package_from_llm_output(raw, video_format=video_format)
                 except (json.JSONDecodeError, ValueError):
                     repair_prompt = _REFINEMENT_JSON_REPAIR_PREFIX + raw.strip()[:14000]
                     raw_fix = _generate_with_loaded_causal_lm(
@@ -505,7 +505,7 @@ def run_multistage_refinement(
                         max_new_tokens=2048,
                         inference_settings=app_settings,
                     )
-                    cur = video_package_from_llm_output(raw_fix)
+                    cur = video_package_from_llm_output(raw_fix, video_format=video_format)
             except (json.JSONDecodeError, ValueError) as e:
                 dprint("story_pipeline", f"stage {spec.id} failed", str(e))
                 if not refinement_json_notice_sent:
