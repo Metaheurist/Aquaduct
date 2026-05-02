@@ -14,6 +14,7 @@ from src.content.characters_store import (
     character_context_for_brain,
     character_selected_in_settings,
     fallback_cast_for_show,
+    merge_cast_into_store,
     resolve_character_for_pipeline,
 )
 from src.content.crawler import (
@@ -363,6 +364,15 @@ def run_once_api(
                     json.dumps({"video_format": vf_cast2, "characters": cast}, indent=2, ensure_ascii=False),
                     encoding="utf-8",
                 )
+                if bool(getattr(app, "auto_save_generated_cast", True)):
+                    try:
+                        merge_cast_into_store(
+                            cast=cast,
+                            video_format=vf_cast2,
+                            headline_seed=str(_head_seed or ""),
+                        )
+                    except Exception:
+                        pass
         except Exception:
             pass
 

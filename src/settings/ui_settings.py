@@ -322,6 +322,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         if isinstance(data, dict)
         else "balanced",
         active_character_id=str(data.get("active_character_id", "")) if isinstance(data, dict) else "",
+        auto_save_generated_cast=bool(data.get("auto_save_generated_cast", True))
+        if isinstance(data, dict)
+        else True,
         run_content_mode=_norm_run_content_mode(data.get("run_content_mode")) if isinstance(data, dict) else "preset",  # type: ignore[arg-type]
         custom_video_instructions=_sanitize_custom_instructions(data.get("custom_video_instructions"))
         if isinstance(data, dict)

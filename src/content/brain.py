@@ -2644,7 +2644,8 @@ def generate_cast_from_storyline_llm(
         '      "role": string,\n'
         '      "identity": string,\n'
         '      "visual_style": string,\n'
-        '      "negatives": string\n'
+        '      "negatives": string,\n'
+        '      "voice_instruction": string\n'
         "    }\n"
         "  ]\n"
         "}\n"
@@ -2653,6 +2654,9 @@ def generate_cast_from_storyline_llm(
         "- Do not imitate real celebrities or copyrighted characters.\n"
         "- For news/explainer: keep it a single narrator/host.\n"
         "- For cartoon/unhinged: make the story playable as dialogue between the cast.\n"
+        "- voice_instruction: a short free-form TTS direction describing timbre, age range, energy, "
+        "  and pacing for this character (e.g. 'mid-30s male, gravelly, slow campfire delivery'). "
+        "  Keep under 200 chars. Used by MOSS-VoiceGenerator and ElevenLabs. Skip celebrity comparisons.\n"
         "- Output ONLY valid JSON (no markdown fences, no extra text).\n"
     )
 
@@ -2682,6 +2686,7 @@ def generate_cast_from_storyline_llm(
         identity = str(c.get("identity") or "").strip()
         visual_style = str(c.get("visual_style") or "").strip()
         negatives = str(c.get("negatives") or "").strip()
+        voice_instruction = str(c.get("voice_instruction") or "").strip()
         if not name:
             continue
         out.append(
@@ -2691,6 +2696,7 @@ def generate_cast_from_storyline_llm(
                 "identity": identity[:8000],
                 "visual_style": visual_style[:8000],
                 "negatives": negatives[:8000],
+                "voice_instruction": voice_instruction[:8000],
             }
         )
         if len(out) >= 6:

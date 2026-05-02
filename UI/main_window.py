@@ -1757,6 +1757,11 @@ class MainWindow(QMainWindow):
                 else str(getattr(self.settings, "art_style_preset_id", "balanced") or "balanced")
             ),
             active_character_id=str(self.character_combo.currentData()) if hasattr(self, "character_combo") else str(getattr(self.settings, "active_character_id", "") or ""),
+            auto_save_generated_cast=(
+                bool(self.auto_save_generated_cast_check.isChecked())
+                if hasattr(self, "auto_save_generated_cast_check")
+                else bool(getattr(self.settings, "auto_save_generated_cast", True))
+            ),
             run_content_mode=(
                 "custom"
                 if hasattr(self, "run_content_custom_radio") and self.run_content_custom_radio.isChecked()

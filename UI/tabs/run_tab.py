@@ -322,6 +322,23 @@ def attach_run_tab(win) -> None:
     c_row.addWidget(win.character_combo, 1)
     c_row.addStretch(1)
     sc_lay.addLayout(c_row)
+
+    from PyQt6.QtWidgets import QCheckBox  # local import — avoid changing module top imports
+
+    win.auto_save_generated_cast_check = QCheckBox("Save generated cast to Characters tab")
+    win.auto_save_generated_cast_check.setChecked(
+        bool(getattr(win.settings, "auto_save_generated_cast", True))
+    )
+    win.auto_save_generated_cast_check.setToolTip(
+        help_tooltip_rich(
+            "When (None) is selected above, the LLM invents a cast for each run. With this on (default), "
+            "those characters are upserted into the Characters tab so you can re-use or edit them later. "
+            "Names are deduplicated per video format.",
+            "run",
+            slide=2,
+        )
+    )
+    sc_lay.addWidget(win.auto_save_generated_cast_check)
     lay.addWidget(sc_card)
 
     add_section_spacing(lay)

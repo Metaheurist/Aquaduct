@@ -283,6 +283,10 @@ class AppSettings:
     elevenlabs_api_key: str = ""  # optional cloud TTS; see docs/integrations/elevenlabs.md
     personality_id: str = "auto"
     active_character_id: str = ""  # empty = no character; see data/characters.json
+    #: When True (default), auto-generated casts are promoted to ``data/characters.json`` so they
+    #: appear in the Characters tab for re-use; deduplicated by name + video_format. See
+    #: ``docs/pipeline/character-persistence.md``.
+    auto_save_generated_cast: bool = True
     #: Visual diffusion style (see ``src.settings.art_style_presets``); img2img continuity uses last frames.
     art_style_preset_id: str = "balanced"
     run_content_mode: RunContentMode = "preset"  # preset = news cache + topics; custom = user instructions
