@@ -90,6 +90,23 @@ def attach_my_pc_tab(win) -> None:
     policy_row.addStretch(1)
     sys_lay.addLayout(policy_row)
 
+    shard_row = QHBoxLayout()
+    shard_row.addWidget(QLabel("VRAM-first sharding"))
+    win.multi_gpu_shard_combo = NoWheelComboBox()
+    win.multi_gpu_shard_combo.setToolTip(
+        help_tooltip_rich(
+            "Experimental intra-model splitting: lowers peak VRAM per GPU when Auto routing is enabled "
+            "and two or more CUDA devices exist (Accelerate-balanced LLMs and diffusers text-encoder splits). "
+            "Expect slower runs; BitsAndBytes quant paths stay pinned to one GPU.",
+            "my_pc",
+            slide=0,
+        )
+    )
+    win.multi_gpu_shard_combo.addItem("Off", "off")
+    win.multi_gpu_shard_combo.addItem("VRAM-first multi-GPU", "vram_first_auto")
+    shard_row.addWidget(win.multi_gpu_shard_combo, 1)
+    sys_lay.addLayout(shard_row)
+
     dev_wrap = QWidget()
     dev_row = QHBoxLayout(dev_wrap)
     dev_row.setContentsMargins(0, 0, 0, 0)
@@ -162,6 +179,12 @@ def attach_my_pc_tab(win) -> None:
                     win.gpu_device_combo.setCurrentIndex(i)
                     break
         win.gpu_device_combo.blockSignals(False)
+        win.multi_gpu_shard_combo.blockSignals(True)
+        mgsm = str(getattr(s, "multi_gpu_shard_mode", "off") or "off").strip().lower()
+        if mgsm not in ("off", "vram_first_auto"):
+            mgsm = "off"
+        win.multi_gpu_shard_combo.setCurrentIndex(1 if mgsm == "vram_first_auto" else 0)
+        win.multi_gpu_shard_combo.blockSignals(False)
         _update_device_row_visibility()
 
     def _update_device_row_visibility() -> None:
@@ -179,7 +202,15 @@ def attach_my_pc_tab(win) -> None:
         if callable(u):
             u()
 
-    def _on_gpu_device_changed(_i: int = 0) -> None:
+    def _on_multi_gpu_shard_changed(_i: int = 0) -> None:
+        if hasattr(win, "_save_settings"):
+            win._save_settings()
+        win.settings = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
+        _fill_model_table()
+        u = getattr(win, "_update_model_fit_badges", None)
+        if callable(u):
+            u()
+
         if hasattr(win, "_save_settings"):
             win._save_settings()
         win.settings = win._collect_settings_from_ui() if hasattr(win, "_collect_settings_from_ui") else win.settings
@@ -195,6 +226,7 @@ def attach_my_pc_tab(win) -> None:
 
     win.gpu_policy_toggle.currentIndexChanged.connect(_on_gpu_policy_changed)
     win.gpu_device_combo.currentIndexChanged.connect(_on_gpu_device_changed)
+    win.multi_gpu_shard_combo.currentIndexChanged.connect(_on_multi_gpu_shard_changed)
 
     add_section_spacing(lay)
     fit_f, fit_lay = section_card()

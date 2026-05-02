@@ -6,13 +6,33 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
 
 # Wall clock + cumulative CPU seconds (user+system) for this process and all children, for delta-%CPU.
 _cpu_tree_prev: tuple[float, float] | None = None
 
 # Short-lived cache so split-view (N GPUs) does not spawn N ``nvidia-smi`` calls per second when Torch fails.
 _smi_vram_pct_cache: tuple[float, dict[int, float]] | None = None
+
+
+def vram_sparkline_y_axis_cap(samples: Sequence[float]) -> float:
+    """
+    Cap for the resource graph VRAM sparkline vertical scale (percent of VRAM).
+
+    Uses a fixed 0–100% axis, low percentages sit on the visual floor beside CPU/RAM
+    charts that use most of the height; widen the scale when utilization is modest.
+    """
+    if len(samples) < 2:
+        return 100.0
+    mx = float(max(samples))
+    mn = float(min(samples))
+    span = mx - mn
+    pad = max(6.0, span * 1.5, mx * 0.06)
+    cap = mx + pad
+    return max(25.0, min(100.0, cap))
 
 
 def _tree_cpu_rss_and_children(proc) -> tuple[float, int, int]:
@@ -52,6 +72,8 @@ class ResourceSample:
     system_memory_used_pct: float | None = None  # machine-wide RAM use (psutil virtual_memory().percent)
     host_used_mb: float | None = None  # psutil virtual_memory().used (MB), for app vs “other” split in UI
     tree_child_count: int = 0  # descendant processes (FFmpeg workers, etc.)
+    # System-wide utilization per logical CPU (0–100 each), from ``psutil.cpu_percent(percpu=True)``.
+    host_cpu_per_core_pct: tuple[float, ...] = ()
 
 
 def sample_aquaduct_resources() -> ResourceSample:
@@ -60,6 +82,9 @@ def sample_aquaduct_resources() -> ResourceSample:
     main process before, which stays near 0% while FFmpeg does the encode.
 
     RAM is **RSS sum** of main + children (still an underestimate vs peak; shared pages may be double-counted).
+
+    ``host_cpu_per_core_pct`` lists **system-wide** CPU % per logical processor (``psutil.cpu_percent(percpu=True)``),
+    for per-core sparklines in the resource graph; unrelated to the headline process-tree average.
 
     GPU VRAM: fraction of total used on the current CUDA device (drops after each GPU stage finishes).
     """
@@ -71,6 +96,7 @@ def sample_aquaduct_resources() -> ResourceSample:
     sys_used_pct: float | None = None
     host_used_mb: float | None = None
     n_children = 0
+    host_per_core: tuple[float, ...] = ()
     try:
         import psutil
 
@@ -105,6 +131,12 @@ def sample_aquaduct_resources() -> ResourceSample:
             sys_used_pct = max(0.0, min(100.0, float(vm.percent)))
         except Exception:
             sys_used_pct = None
+        try:
+            raw_per = psutil.cpu_percent(percpu=True, interval=None)
+            if raw_per:
+                host_per_core = tuple(max(0.0, min(100.0, float(x))) for x in raw_per)
+        except Exception:
+            host_per_core = ()
     except Exception:
         cpu_pct, ram_pct = 0.0, 0.0
         rss_mb = 0.0
@@ -112,12 +144,13 @@ def sample_aquaduct_resources() -> ResourceSample:
         sys_used_pct = None
         host_used_mb = None
         n_children = 0
+        host_per_core = ()
 
     gpu_pct: float | None = None
     try:
         import torch
 
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             gpu_pct = sample_gpu_mem_pct(int(torch.cuda.current_device()))
     except Exception:
         gpu_pct = None
@@ -131,6 +164,7 @@ def sample_aquaduct_resources() -> ResourceSample:
         system_memory_used_pct=sys_used_pct,
         host_used_mb=host_used_mb,
         tree_child_count=n_children,
+        host_cpu_per_core_pct=host_per_core,
     )
 
 
@@ -138,7 +172,7 @@ def _torch_gpu_mem_pct(device_index: int) -> float | None:
     try:
         import torch
 
-        if not torch.cuda.is_available():
+        if not cuda_device_reported_by_torch():
             return None
         n = int(torch.cuda.device_count())
         if device_index < 0 or device_index >= n:

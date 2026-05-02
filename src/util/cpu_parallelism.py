@@ -71,7 +71,9 @@ def configure_cpu_parallelism() -> None:
 def _accelerator_available(torch) -> bool:
     """True when CUDA or Apple MPS is available (work is mostly off the host CPU)."""
     try:
-        if torch.cuda.is_available():
+        from src.util.cuda_capabilities import cuda_device_reported_by_torch
+
+        if cuda_device_reported_by_torch():
             return True
     except Exception:
         pass

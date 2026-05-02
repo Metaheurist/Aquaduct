@@ -40,6 +40,7 @@ remains **simple OR** for developer experience.
 - ``inference_profile`` — VRAM band / profile report logging
 - ``story_context`` — Firecrawl / web context for scripts
 - ``memory_budget`` — stage boundaries / RAM–VRAM cleanup between pipeline phases
+- ``gpu_plan`` — multi-GPU intra-stage placement summaries (VRAM-first shard mode / device maps — no secrets)
 
 CLI (merged with env):
 
@@ -81,6 +82,7 @@ DEBUG_CATEGORIES: Final[tuple[str, ...]] = (
     "inference_profile",
     "story_context",
     "memory_budget",
+    "gpu_plan",
 )
 
 # Flip to True to enable that category without AQUADUCT_DEBUG (union with env/CLI).

@@ -21,7 +21,7 @@ from src.settings.api_model_catalog import (
     providers_for_role,
     uses_openai_chat_protocol_for_llm,
 )
-from UI.help.tutorial_links import help_tooltip_rich
+from UI.help.tutorial_links import help_tooltip_rich, help_tooltip_rich_unless_already
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 
 
@@ -100,7 +100,7 @@ def _sync_api_model_combo_tip(model_combo: QComboBox, provider_id: str) -> None:
         return
     tip = model_combo.itemData(idx, Qt.ItemDataRole.ToolTipRole)
     if tip is not None and str(tip).strip():
-        model_combo.setToolTip(help_tooltip_rich(str(tip), "api_social", slide=1))
+        model_combo.setToolTip(help_tooltip_rich_unless_already(str(tip), "api_social", slide=1))
         return
     mid = str(model_combo.itemData(idx) or model_combo.currentText() or "").strip()
     if not mid:

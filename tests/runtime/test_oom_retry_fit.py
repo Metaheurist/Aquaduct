@@ -10,11 +10,56 @@ from src.runtime import oom_retry
 from src.runtime.oom_retry import (
     QuantDowngradeExhaustedError,
     higher_vram_gpu_index,
+    is_dependency_setup_error,
     is_oom_error,
     next_lower_quant_mode,
     pick_next_gpu_index_after_oom,
     retry_stage,
 )
+
+
+def test_is_dependency_setup_error_tiktoken() -> None:
+    err = ValueError("`tiktoken` is required to read a `tiktoken` file. Install it with `pip install tiktoken`.")
+    assert is_dependency_setup_error(err)
+    assert not is_oom_error(err)
+
+
+def test_is_dependency_setup_error_sentencepiece_chain() -> None:
+    inner = ImportError(
+        "SentencePieceExtractor requires the SentencePiece library but it was not found in your environment."
+    )
+    try:
+        raise ValueError("tokenizer convert failed") from inner
+    except ValueError as e:
+        assert is_dependency_setup_error(e)
+
+
+def test_retry_stage_dependency_error_skips_quant_downgrade(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oom_retry, "_persist_quant_settings", lambda _s: None)
+    s0 = replace(
+        AppSettings(),
+        video_quant_mode="bf16",
+        auto_quant_downgrade_on_failure=True,
+    )
+    g0 = GpuDevice(index=0, name="A", total_vram_bytes=8 * (1024**3))
+
+    def _bad(_s: AppSettings, _idx: int | None) -> str:
+        raise ValueError("`tiktoken` is required — pip install tiktoken")
+
+    with pytest.raises(ValueError, match="tiktoken"):
+        retry_stage(
+            stage_name="t2v",
+            role="video",
+            repo_id="THUDM/CogVideoX-5b",
+            settings=s0,
+            cuda_device_index=0,
+            gpus=[g0],
+            clear_cb=lambda: None,
+            run_cb=_bad,
+            max_quant_downgrades=5,
+            preempt_high_vram=False,
+        )
+    assert str(getattr(s0, "video_quant_mode")) == "bf16"
 
 
 def test_is_oom_error_stringy() -> None:

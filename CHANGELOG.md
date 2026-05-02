@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Multi-GPU VRAM-first intra-model splitting
+- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `multi_gpu_shard_mode` — **`off`** (default) or **`vram_first_auto`**; persisted in **`ui_settings.json`**.
+- **My PC** ([`UI/tabs/my_pc_tab.py`](UI/tabs/my_pc_tab.py), [`UI/main_window.py`](UI/main_window.py)): **VRAM-first sharding** combo (Off \| VRAM-first multi-GPU); collected into **`AppSettings`** like other GPU fields.
+- **Module** [`src/gpu/multi_device/`](src/gpu/multi_device/): **`registry.py`** — lookup + normalized Hub keys; one row per curated **`model_options()`** repo plus per-kind **`__fallback__`** unknown IDs; **`hardware_budget.py`** — `torch.cuda.mem_get_info` estimates + **`max_memory`** dict for Accelerate; **`gates.py`** — master toggle (`Auto`, ≥2 CUDA, no **`AQUADUCT_CUDA_DEVICE`**); **`validators.py`**; **`runtime.py`** — LLM **`device_map="balanced"`** + **`max_memory`** when BF16/FP16 and registry allows; optional diffusers **peer-GPU** submodule moves (`text_encoder`, …) after full-GPU placement.
+- **CUDA env API** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): public **`cuda_env_override_device_index()`** ( **`AQUADUCT_CUDA_DEVICE`** ); **`resolve_voice_cuda_device_index()`** for TTS routing.
+- **LLM** ([`src/content/brain.py`](src/content/brain.py)): **`load_causal_lm_from_pretrained(..., inference_settings=, hub_model_id=)`**; resolves **`auto`** quant before placement; BitsAndBytes paths stay **`{"": llm_index}`**; float paths may use Accelerate-balanced + **`max_memory`** when gates pass. **`_load_causal_lm_pair`** passes **`model_id`** + settings.
+- **Factcheck** ([`src/content/factcheck.py`](src/content/factcheck.py), [`main.py`](main.py)): **`rewrite_with_uncertainty`** threads **`inference_settings`** and **`llm_cuda_device_index`** into the loader.
+- **Diffusion** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): optional **`inference_settings`** into **`resolve_diffusion_offload_mode`** — with VRAM-first + Auto + ≥2 GPUs + ≥**~8 GiB** free host RAM, **`auto`** offload may prefer **`none`** so peer submodule moves can run; **`place_diffusion_pipeline(..., model_repo_id=, placement_role=, quant_mode=)`**; post-load **`_maybe_apply_vram_first_peer_modules`** (effective quant includes resolved **`auto`**).
+- **Image / video** ([`src/render/artist.py`](src/render/artist.py), [`src/render/clips.py`](src/render/clips.py)): **`_place_pipe_on_device`** / T2V paths pass **`inference_settings`**, repo id, and role into placement.
+- **Voice** ([`src/speech/tts_kokoro_moss.py`](src/speech/tts_kokoro_moss.py), [`src/speech/voice.py`](src/speech/voice.py), [`main.py`](main.py), [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py)): **MOSS** uses explicit **`cuda:N`** + **`torch.cuda.set_device`** when a voice CUDA index is resolved; **`synthesize`** / **`synthesize_unhinged_moss`** accept **`voice_cuda_device_index`**.
+- **Debug** ([`debug/debug_log.py`](debug/debug_log.py)): **`gpu_plan`** category for placement breadcrumbs; [`debug/gpu_plan/README.md`](debug/gpu_plan/README.md).
+- **Docs**: [`docs/reference/hardware.md`](docs/reference/hardware.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/ui/ui.md`](docs/ui/ui.md).
+- **Tests**: [`tests/gpu/test_multi_device.py`](tests/gpu/test_multi_device.py).
+
+### CUDA / PyTorch host UX + tokenizer deps
+- **CUDA helpers** ([`src/util/cuda_capabilities.py`](src/util/cuda_capabilities.py)): shared **`torch_cuda_kernels_work`**, **`cuda_device_reported_by_torch`** (centralized probes used across placement / loaders).
+- **CPU-only PyTorch prompt** ([`UI/dialogs/cuda_torch_prompt_dialog.py`](UI/dialogs/cuda_torch_prompt_dialog.py)): modal when an NVIDIA GPU is visible but the active wheel is CPU-only; ties into install-deps flow.
+- **Torch install / deps UI** ([`src/models/torch_install.py`](src/models/torch_install.py), [`UI/dialogs/install_deps_dialog.py`](UI/dialogs/install_deps_dialog.py), [`main.py`](main.py)): improved CUDA wheel guidance and install wiring.
+- **Requirements** ([`requirements.txt`](requirements.txt)): **`sentencepiece`**, **`tiktoken`** for tokenizer paths used by some video / transformers stacks (e.g. CogVideoX).
+- **Tests**: [`tests/models/test_torch_install_gate.py`](tests/models/test_torch_install_gate.py).
+
+### Resource usage dialog (expanded)
+- **UI** ([`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): substantial refresh — metrics, layout, and interaction updates for the title-bar **Resource usage** window.
+
+### Pipeline / observability (incremental)
+- **OOM recovery** ([`src/runtime/oom_retry.py`](src/runtime/oom_retry.py), [`tests/runtime/test_oom_retry_fit.py`](tests/runtime/test_oom_retry_fit.py)): broader edge-case handling and tests.
+- **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py), [`tests/runtime/test_preflight.py`](tests/runtime/test_preflight.py)): extended coverage.
+- **Resource sampling** ([`src/util/resource_sample.py`](src/util/resource_sample.py), [`tests/models/test_resource_sample.py`](tests/models/test_resource_sample.py)): sampling adjustments + tests.
+- **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): minor probing refinements.
+- **VRAM utilities** ([`src/util/utils_vram.py`](src/util/utils_vram.py), [`src/util/vram_watchdog.py`](src/util/vram_watchdog.py), [`src/util/cpu_parallelism.py`](src/util/cpu_parallelism.py)): alignment with shared CUDA helpers.
+- **Quant loader tests** ([`tests/models/test_quant_loader_chain.py`](tests/models/test_quant_loader_chain.py)): updates for **`load_causal_lm_from_pretrained`** signature / kwargs.
+
+### UI / help
+- **Tutorial tooltips** ([`UI/help/tutorial_links.py`](UI/help/tutorial_links.py), [`tests/ui/test_help_tooltip_rich.py`](tests/ui/test_help_tooltip_rich.py)): content and test updates.
+- **Settings / API widgets** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/services/api_model_widgets.py`](UI/services/api_model_widgets.py)): small adjustments.
+
 ### Pipeline memory boundaries (host RAM / VRAM staging)
 - **`src/util/memory_budget.py`**: `release_between_stages` orchestrates stage transitions by calling **`cleanup_vram`** or **`prepare_for_next_model`** only (no duplicate CUDA cache logic).
 - **`main.py`**: boundaries after script LLM, voice, polish, Pro img2vid/T2V transitions, slideshow diffusion→mux, motion keyframes→clips, and encode-adjacent cheap drops; **`src/runtime/pipeline_api.py`** parity after script and voice polish (cheap clears).

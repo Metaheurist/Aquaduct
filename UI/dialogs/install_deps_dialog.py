@@ -28,7 +28,7 @@ _PIP_ACK_WARN_AFTER_MS = 120_000
 
 
 class DepsInstallWorker(QThread):
-    """Runs PyTorch pip step then requirements.txt in a background thread."""
+    """Runs PyTorch pip step then optionally requirements.txt in a background thread."""
 
     phase = pyqtSignal(str)
     hint = pyqtSignal(str)
@@ -37,9 +37,10 @@ class DepsInstallWorker(QThread):
     pip_ack = pyqtSignal(str)
     finished_ex = pyqtSignal(int, str)
 
-    def __init__(self, pip_ref: PipSubprocessRef) -> None:
+    def __init__(self, pip_ref: PipSubprocessRef, *, pytorch_only: bool = False) -> None:
         super().__init__()
         self._pip_ref = pip_ref
+        self._pytorch_only = pytorch_only
 
     def run(self) -> None:
         def on_line(line: str) -> None:
@@ -55,7 +56,7 @@ class DepsInstallWorker(QThread):
             self.pip_ack.emit(seg[:400])
 
         try:
-            self.phase.emit("Step 1/2 — PyTorch (torch, torchvision, torchaudio)")
+            self.phase.emit("PyTorch: torch, torchvision, torchaudio")
             c1, o1 = install_pytorch_for_hardware(
                 upgrade=True,
                 force_cuda_if_applicable=True,
@@ -66,8 +67,11 @@ class DepsInstallWorker(QThread):
             if c1 != 0:
                 self.finished_ex.emit(c1, o1)
                 return
+            if self._pytorch_only:
+                self.finished_ex.emit(0, o1)
+                return
 
-            self.phase.emit("Step 2/2 — requirements.txt (transformers, accelerate, …)")
+            self.phase.emit("requirements.txt - transformers, accelerate, ...")
             c2, o2 = install_requirements_runtime(
                 on_line=on_line,
                 on_first_pip_output=on_first_pip_output,
@@ -79,9 +83,10 @@ class DepsInstallWorker(QThread):
 
 
 class InstallDepsDialog(FramelessDialog):
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent, title="Installing dependencies")
+    def __init__(self, parent=None, *, pytorch_only: bool = False) -> None:
+        super().__init__(parent, title="Installing PyTorch (CUDA)" if pytorch_only else "Installing dependencies")
         self.setMinimumSize(560, 420)
+        self._pytorch_only = pytorch_only
         self._worker: DepsInstallWorker | None = None
         self._pip_ref = PipSubprocessRef()
         self._cancel_requested = False
@@ -89,18 +94,21 @@ class InstallDepsDialog(FramelessDialog):
         self._last_full_log = ""
 
         intro = QLabel(
-            "PyTorch is installed first (CUDA wheels if an NVIDIA GPU is detected, otherwise CPU), "
+            "Installing CUDA-enabled PyTorch (torch, torchvision, torchaudio). Uninstalls CPU-only builds when needed, "
+            "then reinstalls from the correct wheel index (can take several minutes - watch the log below)."
+            if pytorch_only
+            else "PyTorch is installed first (CUDA wheels if an NVIDIA GPU is detected, otherwise CPU), "
             "then every package in requirements.txt. This can take several minutes."
         )
         intro.setWordWrap(True)
         intro.setStyleSheet("color: #B7B7C2; font-size: 12px;")
         self.body_layout.addWidget(intro)
 
-        self._phase_lbl = QLabel("Starting…")
+        self._phase_lbl = QLabel("Starting...")
         self._phase_lbl.setStyleSheet("color: #FFFFFF; font-weight: 700; font-size: 13px;")
         self.body_layout.addWidget(self._phase_lbl)
 
-        self._hint_lbl = QLabel("—")
+        self._hint_lbl = QLabel("-")
         self._hint_lbl.setWordWrap(True)
         self._hint_lbl.setStyleSheet("color: #25F4EE; font-size: 12px;")
         self.body_layout.addWidget(self._hint_lbl)
@@ -118,7 +126,7 @@ class InstallDepsDialog(FramelessDialog):
         self._bar.setRange(0, 0)
         self._bar.setTextVisible(True)
         # Indeterminate mode: %p% is meaningless; show a label so the bar does not look "empty".
-        self._bar.setFormat("Working…")
+        self._bar.setFormat("Working...")
         self._bar.setMinimumHeight(16)
         self._bar.setStyleSheet(
             "QProgressBar { border: 1px solid #3A3A44; border-radius: 6px; background: #1e1e24; color: #B7B7C2; }"
@@ -128,7 +136,7 @@ class InstallDepsDialog(FramelessDialog):
 
         self._log = QTextEdit()
         self._log.setReadOnly(True)
-        self._log.setPlaceholderText("pip output will appear here…")
+        self._log.setPlaceholderText("pip output will appear here...")
         self._log.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; color: #D0D0D8;")
         self._log.setMinimumHeight(200)
         self.body_layout.addWidget(self._log, 1)
@@ -175,15 +183,15 @@ class InstallDepsDialog(FramelessDialog):
         self._cancel_requested = True
         self._ack_timer.stop()
         self._pip_ref.kill()
-        self._phase_lbl.setText("Cancelling…")
-        self._hint_lbl.setText("Stopping pip…")
+        self._phase_lbl.setText("Cancelling...")
+        self._hint_lbl.setText("Stopping pip...")
         self._ok.setEnabled(False)
         self._set_close_enabled(False)
 
     def start_install(self) -> None:
         self._cancel_requested = False
         self._reset_pip_ack_ui()
-        self._worker = DepsInstallWorker(self._pip_ref)
+        self._worker = DepsInstallWorker(self._pip_ref, pytorch_only=self._pytorch_only)
         self._worker.phase.connect(self._on_phase)
         self._worker.hint.connect(self._hint_lbl.setText)
         self._worker.line.connect(self._append_log_line)
@@ -241,7 +249,7 @@ class InstallDepsDialog(FramelessDialog):
     def _on_phase(self, text: str) -> None:
         self._phase_lbl.setText(text)
         self._bar.setRange(0, 0)
-        self._bar.setFormat("Working…")
+        self._bar.setFormat("Working...")
         self._reset_pip_ack_ui()
 
     def _on_download_percent(self, pct: int) -> None:
@@ -289,7 +297,11 @@ class InstallDepsDialog(FramelessDialog):
             self._hint_lbl.setText(f"Exit code {code}. See log below.")
         else:
             self._hint_lbl.setStyleSheet("color: #5DFFB0; font-size: 12px;")
-            self._hint_lbl.setText("All dependency steps completed.")
+            self._hint_lbl.setText(
+                "PyTorch install finished."
+                if getattr(self, "_pytorch_only", False)
+                else "All dependency steps completed."
+            )
         self._ok.setText("Close")
         self._ok.setEnabled(True)
         self._set_close_enabled(True)
@@ -305,7 +317,7 @@ def install_dependencies_with_dialog(parent) -> tuple[int, str]:
     Show modal install progress; returns (exit_code, full pip log text).
     Writes a copy under ``logs/install-dependencies-<timestamp>.log``.
     """
-    d = InstallDepsDialog(parent)
+    d = InstallDepsDialog(parent, pytorch_only=False)
     d._last_full_log = ""
     d._last_exit_code = 1
     d.start_install()
@@ -315,6 +327,23 @@ def install_dependencies_with_dialog(parent) -> tuple[int, str]:
         from src.util.repo_logs import write_install_dependencies_log
 
         write_install_dependencies_log(log)
+    except Exception:
+        pass
+    return code, log
+
+
+def install_pytorch_only_with_dialog(parent) -> tuple[int, str]:
+    """CUDA/CPU-aware PyTorch wheel install only — same streaming UI, no requirements.txt pass."""
+    d = InstallDepsDialog(parent, pytorch_only=True)
+    d._last_full_log = ""
+    d._last_exit_code = 1
+    d.start_install()
+    d.exec()
+    code, log = d.result_payload()
+    try:
+        from src.util.repo_logs import write_install_dependencies_log
+
+        write_install_dependencies_log(log, prefix="install-pytorch-cuda")
     except Exception:
         pass
     return code, log

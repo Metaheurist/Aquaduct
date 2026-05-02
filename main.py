@@ -84,7 +84,12 @@ from src.runtime.model_backend import is_api_mode
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.runtime.preflight import preflight_check
 from src.models.inference_profiles import log_inference_profiles_for_run
-from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index, resolve_llm_cuda_device_index
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
+from src.util.cuda_device_policy import (
+    resolve_diffusion_cuda_device_index,
+    resolve_llm_cuda_device_index,
+    resolve_voice_cuda_device_index,
+)
 from src.settings.ui_settings import load_settings, save_settings
 from src.models.hardware import list_cuda_gpus
 from src.runtime.oom_retry import retry_stage
@@ -142,7 +147,7 @@ def _clear_after_oom() -> None:
     try:
         import torch
 
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             try:
                 torch.cuda.synchronize()
             except Exception:
@@ -494,6 +499,7 @@ def run_once(
         gpus = list_cuda_gpus()
         _diffusion_cuda_idx = resolve_diffusion_cuda_device_index(app)
         _llm_cuda_idx = resolve_llm_cuda_device_index(app)
+        _voice_cuda_idx = resolve_voice_cuda_device_index(app)
 
         # Ensure base dirs exist
         paths.news_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -836,6 +842,8 @@ def run_once(
                         model_id=llm_id,
                         try_llm_4bit=try_llm_4bit,
                         quant_mode=str(getattr(app, "script_quant_mode", "auto") or "auto"),
+                        inference_settings=app,
+                        llm_cuda_device_index=_llm_cuda_idx,
                     )
                 dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
                 _run_stage("script_llm", "Script package ready (preset mode)")
@@ -1091,6 +1099,7 @@ def run_once(
                     out_wav_path=voice_wav,
                     out_captions_json=captions_json,
                     voice_quant_mode=_voice_qm,
+                    voice_cuda_device_index=_voice_cuda_idx,
                 )
             elif is_kokoro_repo(voice_id):
                 synthesize_unhinged_rotating_kokoro(
@@ -1128,6 +1137,7 @@ def run_once(
                 elevenlabs_api_key=el_key,
                 ffmpeg_executable=ffmpeg_exe,
                 voice_quant_mode=str(getattr(app, "voice_quant_mode", "auto") or "auto"),
+                voice_cuda_device_index=_voice_cuda_idx,
             )
     
         _pipe_progress(on_progress, 58, -1, "Voice track ready")

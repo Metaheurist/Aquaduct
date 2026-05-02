@@ -48,6 +48,8 @@ Requires repo root on `PYTHONPATH` (running from repo root as above is fine).
 | Settings | `config` | [config/README.md](config/README.md) |
 | OpenAI-compat HTTP | `openai` | [openai/README.md](openai/README.md) |
 | Inference / VRAM report | `inference_profile` | [inference_profile/README.md](inference_profile/README.md) |
+| Stage cleanup / RAM–VRAM | `memory_budget` | [memory_budget/README.md](memory_budget/README.md) |
+| Multi-GPU placement | `gpu_plan` | [gpu_plan/README.md](gpu_plan/README.md) |
 | Web context | `story_context` | [story_context/README.md](story_context/README.md) |
 
 Aliases (see `debug_log.py`): `run→pipeline`, `llm→brain`, `hf→models`, `api→openai`, etc.

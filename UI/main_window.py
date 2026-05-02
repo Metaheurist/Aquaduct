@@ -583,9 +583,85 @@ class MainWindow(QMainWindow):
             title = "Cannot run yet"
         aquaduct_warning(self, title, "\n".join(pf.errors))
 
+    def _maybe_prompt_cuda_torch_mismatch(self) -> None:
+        """
+        If local mode sees an NVIDIA GPU but PyTorch is CPU-only, offer the streaming PyTorch installer
+        (CUDA wheels with live pip progress — same stack as Model → Install dependencies → PyTorch step).
+        """
+        try:
+            if str(getattr(self.settings, "model_execution_mode", "local") or "").strip().lower() != "local":
+                return
+            if bool(getattr(self.settings, "skip_cuda_cpu_torch_mismatch_prompt", False)):
+                return
+            env_allow = (
+                os.environ.get("AQUADUCT_ALLOW_CPU_TORCH_WITH_NVIDIA", "").strip().lower()
+                in ("1", "true", "yes", "on")
+            )
+            if env_allow:
+                return
+            from src.models.torch_install import (
+                cuda_torch_required_message_for_nvidia_host,
+                pytorch_cpu_wheel_with_nvidia_gpu_present,
+            )
+
+            if not pytorch_cpu_wheel_with_nvidia_gpu_present():
+                return
+
+            from UI.dialogs.cuda_torch_prompt_dialog import prompt_cuda_torch_mismatch_choice
+            from UI.dialogs.install_deps_dialog import install_pytorch_only_with_dialog
+
+            choice = prompt_cuda_torch_mismatch_choice(
+                self,
+                suggestion=cuda_torch_required_message_for_nvidia_host(),
+            )
+            if choice == "never":
+                try:
+                    self.settings = replace(self.settings, skip_cuda_cpu_torch_mismatch_prompt=True)
+                    save_settings(self.settings)
+                except Exception:
+                    pass
+                return
+            if choice != "install":
+                return
+
+            self._append_log("Opening CUDA PyTorch installer (from GPU mismatch prompt)…")
+            code, out = install_pytorch_only_with_dialog(self)
+            if hasattr(self, "deps_status"):
+                try:
+                    self.deps_status.setPlainText((out or "")[:16000] + ("…" if len(out or "") > 16000 else ""))
+                except Exception:
+                    if out:
+                        self._append_log(out[:8000] + ("…" if len(out) > 8000 else ""))
+            elif out:
+                self._append_log(out[:4000] + ("…" if len(out) > 4000 else ""))
+            self._append_log(
+                "PyTorch CUDA install finished OK — restart Aquaduct to load the new build."
+                if code == 0
+                else f"PyTorch CUDA install exited with code {code}."
+            )
+            if code == 0:
+                aquaduct_information(
+                    self,
+                    "Restart recommended",
+                    "CUDA-enabled PyTorch was installed successfully. Quit and reopen Aquaduct so this process "
+                    "loads the new GPU build (imports stay tied to the running interpreter until restart).",
+                )
+            else:
+                aquaduct_warning(
+                    self,
+                    "PyTorch install had errors",
+                    f"pip exited with code {code}. Check logs under the project logs folder for details.",
+                )
+        except Exception as e:
+            try:
+                dprint("ui", "_maybe_prompt_cuda_torch_mismatch", repr(e))
+            except Exception:
+                pass
+
     def _maybe_prompt_hf_token(self) -> None:
         """
         If no token is available (env or saved settings), prompt user to paste one.
+        After this returns (including modal), schedule a one-shot CUDA PyTorch mismatch check.
         """
         try:
             if not bool(getattr(self.settings, "hf_api_enabled", True)):
@@ -596,26 +672,30 @@ class MainWindow(QMainWindow):
             if saved:
                 os.environ["HF_TOKEN"] = saved
                 return
-        except Exception:
-            pass
 
-        accepted, token = show_hf_token_dialog(self)
-        if not accepted:
-            return
-        token = str(token or "").strip()
-        if not token:
-            return
+            accepted, token = show_hf_token_dialog(self)
+            if not accepted:
+                return
+            token = str(token or "").strip()
+            if not token:
+                return
 
-        # Persist to ui_settings.json + env for current session
-        try:
-            self.settings = replace(self.settings, hf_token=token, hf_api_enabled=True)
-            save_settings(self.settings)
+            # Persist to ui_settings.json + env for current session
+            try:
+                self.settings = replace(self.settings, hf_token=token, hf_api_enabled=True)
+                save_settings(self.settings)
+            except Exception:
+                pass
+            try:
+                os.environ["HF_TOKEN"] = token
+            except Exception:
+                pass
         except Exception:
             pass
-        try:
-            os.environ["HF_TOKEN"] = token
-        except Exception:
-            pass
+        finally:
+            if not getattr(self, "_cuda_torch_startup_check_scheduled", False):
+                self._cuda_torch_startup_check_scheduled = True
+                QTimer.singleShot(550, self._maybe_prompt_cuda_torch_mismatch)
 
     def _reset_run_session_state(self) -> None:
         """
@@ -1580,6 +1660,12 @@ class MainWindow(QMainWindow):
             if hasattr(self, "gpu_device_combo") and self.gpu_device_combo.currentData() is not None
             else int(getattr(self.settings, "gpu_device_index", 0) or 0)
         )
+        if hasattr(self, "multi_gpu_shard_combo") and self.multi_gpu_shard_combo.currentData() is not None:
+            _mgsm = str(self.multi_gpu_shard_combo.currentData() or "off").strip().lower()
+        else:
+            _mgsm = str(getattr(self.settings, "multi_gpu_shard_mode", "off") or "off").strip().lower()
+        if _mgsm not in ("off", "vram_first_auto"):
+            _mgsm = "off"
         _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
         _rg_split = bool(getattr(self.settings, "resource_graph_split_view", False))
         _rg_compact = bool(getattr(self.settings, "resource_graph_compact", True))
@@ -1658,6 +1744,7 @@ class MainWindow(QMainWindow):
             tutorial_completed=bool(getattr(self.settings, "tutorial_completed", False)),
             gpu_selection_mode=_gpu_mode,  # type: ignore[arg-type]
             gpu_device_index=_gpu_dev_idx,
+            multi_gpu_shard_mode=_mgsm,  # type: ignore[arg-type]
             resource_graph_monitor_gpu_index=_rg_mon,
             resource_graph_split_view=_rg_split,
             resource_graph_compact=_rg_compact,

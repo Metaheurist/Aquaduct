@@ -57,7 +57,7 @@ from UI.widgets.model_execution_toggle import ModelExecutionModeToggle
 from UI.widgets.models_storage_toggle import ModelsStorageModeToggle
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSlider, QuantAccentSlider
 from UI.widgets.tab_sections import add_section_spacing, section_title
-from UI.help.tutorial_links import help_tooltip_rich
+from UI.help.tutorial_links import help_tooltip_rich, help_tooltip_rich_unless_already
 from UI.workers import ModelSizePingWorker
 
 
@@ -69,7 +69,7 @@ def _models_help_tip(body: str, *, slide: int = 0) -> str:
     t = (body or "").strip()
     if not t:
         t = "See Help for models & storage."
-    return help_tooltip_rich(t, "models", slide=slide)
+    return help_tooltip_rich_unless_already(t, "models", slide=slide)
 
 
 def _my_pc_help_tip(body: str) -> str:
@@ -1034,7 +1034,7 @@ def attach_settings_tab(win) -> None:
         midx = combo.model().index(idx, 0)
         t = midx.data(Qt.ItemDataRole.ToolTipRole)
         if t is not None and str(t).strip():
-            combo.setToolTip(_models_help_tip(str(t), slide=0))
+            combo.setToolTip(help_tooltip_rich_unless_already(str(t), "models", slide=0))
         else:
             ct = (combo.currentText() or "").strip()
             combo.setToolTip(_models_help_tip(ct, slide=0) if ct else _models_help_tip("", slide=0))

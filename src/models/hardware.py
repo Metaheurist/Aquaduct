@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.models.model_manager import ModelOption
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
 
 
 @dataclass(frozen=True)
@@ -125,7 +126,7 @@ def list_cuda_gpus() -> list[GpuDevice]:
     try:
         import torch
 
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             n = int(torch.cuda.device_count())
             out: list[GpuDevice] = []
             for i in range(max(0, n)):
@@ -194,7 +195,7 @@ def _torch_cuda_info() -> tuple[str | None, float | None]:
     try:
         import torch
 
-        if not torch.cuda.is_available():
+        if not cuda_device_reported_by_torch():
             return None, None
         idx = torch.cuda.current_device()
         name = torch.cuda.get_device_name(idx)
@@ -915,8 +916,8 @@ def rank_models_for_auto_fit(
         try:
             from src.models.quantization import pick_auto_mode
 
-            # best-effort: hardware list implies CUDA exists; if VRAM unknown, treat as not OK.
-            cuda_ok = vram is not None and vram > 0
+            # CUDA device visible or VRAM heuristic from hardware probes.
+            cuda_ok = cuda_device_reported_by_torch() or (vram is not None and vram > 0)
             return str(pick_auto_mode(role=kind, repo_id=rid, vram_gb=vram, cuda_ok=cuda_ok))
         except Exception:
             return "auto"

@@ -33,7 +33,7 @@ class DevicePlan:
     use_model_parallel_llm: bool = False
 
 
-def _env_override_device_index() -> int | None:
+def cuda_env_override_device_index() -> int | None:
     raw = (os.environ.get("AQUADUCT_CUDA_DEVICE") or "").strip()
     if raw.isdigit():
         return int(raw)
@@ -44,7 +44,7 @@ def _env_override_device_index() -> int | None:
 
 def resolve_device_plan(gpus: list[GpuDevice], settings: AppSettings) -> DevicePlan:
     """Map GPU policy to concrete device indices (best-effort if list empty)."""
-    env_idx = _env_override_device_index()
+    env_idx = cuda_env_override_device_index()
     if not gpus:
         return DevicePlan(0, 0, 0)
     valid = {g.index for g in gpus}
@@ -123,3 +123,11 @@ def resolve_diffusion_cuda_device_index(settings: AppSettings) -> int | None:
     if not gpus:
         return None
     return resolve_device_plan(gpus, settings).diffusion_device_index
+
+
+def resolve_voice_cuda_device_index(settings: AppSettings) -> int | None:
+    """CUDA device index pinned for MOSS/Kokoro when local voice uses CUDA weights."""
+    gpus = list_cuda_gpus()
+    if not gpus:
+        return None
+    return resolve_device_plan(gpus, settings).voice_device_index

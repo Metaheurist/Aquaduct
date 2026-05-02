@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -166,6 +167,8 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
             "transformers",
             "accelerate",
             "diffusers",
+            "sentencepiece",
+            "tiktoken",
         ]
         # Video motion (scene) mode needs imageio writer in our implementation
         if not v.use_image_slideshow:
@@ -174,6 +177,18 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
     missing = _check_imports(core_mods)
     if missing:
         errors.append("Missing Python packages: " + ", ".join(missing))
+
+    allow_cpu_torch = (
+        os.environ.get("AQUADUCT_ALLOW_CPU_TORCH_WITH_NVIDIA", "").strip().lower() in ("1", "true", "yes", "on")
+    )
+    if strict and not is_api_mode(settings) and "torch" not in missing and not allow_cpu_torch:
+        try:
+            from src.models import torch_install as ti
+
+            if ti.pytorch_cpu_wheel_with_nvidia_gpu_present():
+                errors.append(ti.cuda_torch_required_message_for_nvidia_host())
+        except Exception:
+            pass
 
     # FFmpeg must be present. (We do NOT auto-download during preflight to avoid hanging the UI.)
     try:
@@ -188,8 +203,6 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
             )
     except Exception as e:
         errors.append(f"FFmpeg not available: {e}")
-
-    import os
 
     # Optional host RAM hint for local runs (large checkpoint loads).
     if os.environ.get("AQUADUCT_HOST_RAM_PREFLIGHT", "").strip().lower() in ("1", "true", "yes", "on"):

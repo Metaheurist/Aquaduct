@@ -3,6 +3,8 @@ from __future__ import annotations
 import gc
 from contextlib import contextmanager
 
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
+
 
 def cleanup_vram() -> None:
     """
@@ -15,7 +17,7 @@ def cleanup_vram() -> None:
     try:
         import torch
 
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
@@ -43,7 +45,7 @@ def purge_process_memory_aggressive() -> None:
         return
 
     try:
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             try:
                 torch.cuda.synchronize()
             except Exception:

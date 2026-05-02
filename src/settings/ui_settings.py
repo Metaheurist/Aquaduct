@@ -17,6 +17,7 @@ from src.core.config import (
     BrandingSettings,
     GpuSelectionMode,
     ModelExecutionMode,
+    MultiGpuShardMode,
     PictureSettings,
     VideoSettings,
     VIDEO_FORMATS,
@@ -74,6 +75,11 @@ def _norm_models_storage_mode(s: Any) -> str:
 def _norm_gpu_selection_mode(s: Any) -> GpuSelectionMode:
     t = str(s or "auto").strip().lower()
     return t if t in ("auto", "single") else "auto"
+
+
+def _norm_multi_gpu_shard_mode(s: Any) -> MultiGpuShardMode:
+    t = str(s or "off").strip().lower()
+    return t if t in ("off", "vram_first_auto") else "off"
 
 
 def _norm_quant_mode(s: Any) -> str:
@@ -364,6 +370,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         tutorial_completed=bool(data.get("tutorial_completed", False)) if isinstance(data, dict) else False,
         gpu_selection_mode=_norm_gpu_selection_mode(data.get("gpu_selection_mode")) if isinstance(data, dict) else "auto",
         gpu_device_index=int(data.get("gpu_device_index", 0)) if isinstance(data, dict) else 0,
+        multi_gpu_shard_mode=(
+            _norm_multi_gpu_shard_mode(data.get("multi_gpu_shard_mode")) if isinstance(data, dict) else "off"
+        ),
         resource_graph_monitor_gpu_index=(
             int(data["resource_graph_monitor_gpu_index"])
             if isinstance(data, dict)
@@ -373,6 +382,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         ),
         resource_graph_split_view=bool(data.get("resource_graph_split_view", False)) if isinstance(data, dict) else False,
         resource_graph_compact=bool(data.get("resource_graph_compact", True)) if isinstance(data, dict) else True,
+        skip_cuda_cpu_torch_mismatch_prompt=bool(data.get("skip_cuda_cpu_torch_mismatch_prompt", False))
+        if isinstance(data, dict)
+        else False,
     )
 
 

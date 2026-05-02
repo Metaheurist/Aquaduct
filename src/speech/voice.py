@@ -106,6 +106,7 @@ def _synthesize_tts_to_wav(
     ffmpeg_executable: Path | None = None,
     only_pyttsx3: bool = False,
     voice_quant_mode: str | None = None,
+    voice_cuda_device_index: int | None = None,
 ) -> None:
     """
     Write speech-only WAV using the same backend order as ``synthesize`` (ElevenLabs → Kokoro → pyttsx3).
@@ -145,6 +146,7 @@ def _synthesize_tts_to_wav(
                         instruction=inst,
                         out_wav=out_wav_path,
                         quant_mode=voice_quant_mode,
+                        cuda_voice_device_index=voice_cuda_device_index,
                     ):
                         _pyttsx3_tts(text, out_wav_path, pyttsx3_voice_id=pyttsx3_voice_id)
                 elif is_kokoro_repo(vid):
@@ -212,6 +214,7 @@ def synthesize(
     elevenlabs_api_key: str | None = None,
     ffmpeg_executable: Path | None = None,
     voice_quant_mode: str | None = None,
+    voice_cuda_device_index: int | None = None,
 ) -> list[WordTimestamp]:
     """
     Generates `out_wav_path` and `out_captions_json` (word-level timestamps).
@@ -233,6 +236,7 @@ def synthesize(
         ffmpeg_executable=ffmpeg_executable,
         only_pyttsx3=False,
         voice_quant_mode=voice_quant_mode,
+        voice_cuda_device_index=voice_cuda_device_index,
     )
 
     dur_s = _duration_seconds(out_wav_path)
@@ -452,6 +456,7 @@ def synthesize_unhinged_moss(
     out_wav_path: Path,
     out_captions_json: Path,
     voice_quant_mode: str | None = None,
+    voice_cuda_device_index: int | None = None,
 ) -> list[WordTimestamp]:
     """Unhinged: synthesize each segment with the same MOSS *instruction* + segment text, then concat."""
     from debug import dprint
@@ -477,6 +482,7 @@ def synthesize_unhinged_moss(
                     instruction=inst,
                     out_wav=tmp,
                     quant_mode=voice_quant_mode,
+                    cuda_voice_device_index=voice_cuda_device_index,
                 )
                 if not ok:
                     _pyttsx3_tts(t, tmp, None)
@@ -494,6 +500,7 @@ def synthesize_unhinged_moss(
                     instruction=inst,
                     out_wav=out_wav_path,
                     quant_mode=voice_quant_mode,
+                    cuda_voice_device_index=voice_cuda_device_index,
                 ):
                     _pyttsx3_tts(" ", out_wav_path, None)
             combined = _simple_word_timestamps(text=" ", total_s=_duration_seconds(out_wav_path))

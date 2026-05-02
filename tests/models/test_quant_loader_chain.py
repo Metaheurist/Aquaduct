@@ -1,8 +1,8 @@
 """
 Mocked loader tests for ``load_causal_lm_from_pretrained`` quant chain.
 
-We monkeypatch ``causal_lm_stack`` and ``torch_cuda_kernels_work`` to verify
-which BitsAndBytesConfig (if any) is requested for each quant mode without
+We monkeypatch ``causal_lm_stack`` and ``src.util.cuda_capabilities.torch_cuda_kernels_work``
+to verify which BitsAndBytesConfig (if any) is requested for each quant mode without
 importing ``transformers``/``bitsandbytes`` runtimes.
 """
 from __future__ import annotations
@@ -46,9 +46,9 @@ def _patch_brain(monkeypatch: pytest.MonkeyPatch, *, cuda_ok: bool = True) -> No
         lambda: (_FakeAutoModel, object(), _FakeBnB),
     )
     monkeypatch.setattr("src.models.torch_dtypes.torch_float16", lambda: "fp16-marker")
-    import src.content.brain as brain
+    import src.util.cuda_capabilities as cc
 
-    monkeypatch.setattr(brain, "torch_cuda_kernels_work", lambda: cuda_ok)
+    monkeypatch.setattr(cc, "torch_cuda_kernels_work", lambda: cuda_ok)
 
 
 def test_loader_quant_mode_nf4_4bit_invokes_bnb_4bit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,6 +99,13 @@ def test_loader_legacy_try_4bit_true_uses_4bit(monkeypatch: pytest.MonkeyPatch) 
 
 def test_loader_no_cuda_loads_on_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_brain(monkeypatch, cuda_ok=False)
+    import src.util.cuda_capabilities as cc
+
+    monkeypatch.setattr(cc, "cuda_device_reported_by_torch", lambda: False)
+    monkeypatch.setattr(
+        "src.models.torch_install.pytorch_cpu_wheel_with_nvidia_gpu_present",
+        lambda: False,
+    )
     from src.content.brain import load_causal_lm_from_pretrained
 
     load_causal_lm_from_pretrained("/tmp/fake-model", quant_mode="nf4_4bit")
