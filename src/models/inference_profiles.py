@@ -388,12 +388,24 @@ def merge_t2v_kwargs(base: dict[str, Any], repo_id: str, vram_gb: float | None) 
 
 def merge_t2i_from_settings(model_id: str, base: dict[str, Any], settings: AppSettings) -> dict[str, Any]:
     v = resolve_effective_vram_gb(kind="image", settings=settings)
-    return merge_t2i_kwargs(base, model_id, v)
+    out = merge_t2i_kwargs(base, model_id, v)
+    try:
+        from src.runtime.resource_ladder import apply_inference_profile_scales
+
+        return apply_inference_profile_scales(out, settings)
+    except Exception:
+        return out
 
 
 def merge_t2v_from_settings(model_id: str, base: dict[str, Any], settings: AppSettings) -> dict[str, Any]:
     v = resolve_effective_vram_gb(kind="video", settings=settings)
-    return merge_t2v_kwargs(base, model_id, v)
+    out = merge_t2v_kwargs(base, model_id, v)
+    try:
+        from src.runtime.resource_ladder import apply_inference_profile_scales
+
+        return apply_inference_profile_scales(out, settings)
+    except Exception:
+        return out
 
 
 def format_inference_profile_report(settings: AppSettings) -> str:

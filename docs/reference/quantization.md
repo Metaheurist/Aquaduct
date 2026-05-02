@@ -8,7 +8,7 @@ Aquaduct exposes per-row **quantization** controls on the **Settings → Model**
 - **Video** (T2V / I2V diffusion)
 - **Voice** (TTS, MOSS / Kokoro)
 
-The selection is persisted in [`AppSettings`](config.md#local-llm-inference-vram) as `script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode` and feeds the loaders, the **VRAM** label, the **fit** badge, and the **Auto-fit for this PC** ranking. Implementation lives in [`src/models/quantization.py`](../../src/models/quantization.py).
+The selection is persisted in [`AppSettings`](config.md#local-llm-inference-vram) as `script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode` and feeds the loaders, the **VRAM** label, the **fit** badge, and the **Auto-fit for this PC** ranking. **`auto_quant_downgrade_on_failure`** (default **on** via settings normalization) gates whether failed loads attempt **automatic quant step-down** through [`retry_stage`](../../src/runtime/oom_retry.py) before escalating to resolution / variant ladders — see [Crash resilience](../pipeline/crash-resilience.md). Implementation lives in [`src/models/quantization.py`](../../src/models/quantization.py).
 
 ## Modes
 | Mode | Meaning |

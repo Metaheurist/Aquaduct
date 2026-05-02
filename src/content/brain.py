@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -1201,6 +1201,7 @@ def expand_custom_video_instructions(
     try_llm_4bit: bool = True,
     llm_cuda_device_index: int | None = None,
     inference_settings: AppSettings | None = None,
+    llm_holder: MutableMapping[str, Any] | None = None,
 ) -> str:
     """
     First LLM pass for custom Run mode: expand the user's rough notes into a structured creative brief (plain text).
@@ -1340,9 +1341,10 @@ def expand_custom_video_instructions(
             "Keep it tight and actionable.\n"
         )
     with vram_guard():
-        raw = _generate_with_transformers(
-            model_id=model_id,
-            prompt=prompt,
+        raw = _infer_text_with_optional_holder(
+            model_id,
+            prompt,
+            llm_holder=llm_holder,
             on_llm_task=on_llm_task,
             max_new_tokens=1200,
             try_llm_4bit=try_llm_4bit,
@@ -1673,6 +1675,15 @@ def load_causal_lm_from_pretrained(
         extra_kw: dict[str, Any] = {}
         if max_memory is not None:
             extra_kw["max_memory"] = max_memory
+            if isinstance(max_memory, dict) and "disk" in max_memory:
+                try:
+                    from src.core.config import get_paths
+
+                    od = get_paths().cache_dir / "accelerate_offload"
+                    od.mkdir(parents=True, exist_ok=True)
+                    extra_kw["offload_folder"] = str(od)
+                except Exception:
+                    pass
         if quantization_config is not None:
             try:
                 return AutoModelForCausalLM.from_pretrained(
@@ -2003,6 +2014,83 @@ def _generate_with_loaded_causal_lm(
     return raw_new
 
 
+def _infer_text_with_optional_holder(
+    model_id: str,
+    prompt: str,
+    *,
+    llm_holder: MutableMapping[str, Any] | None,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 650,
+    try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
+    quant_mode: str | None = None,
+) -> str:
+    """
+    Run one causal-LM inference. If ``llm_holder`` is provided, reuse or swap weights in-place;
+    otherwise load, infer, dispose (legacy one-shot behaviour).
+    """
+    mid = str(model_id or "").strip()
+    if not mid:
+        raise RuntimeError("_infer_text_with_optional_holder requires model_id.")
+
+    qm = quant_mode
+    if qm is None and inference_settings is not None:
+        qm = str(getattr(inference_settings, "script_quant_mode", "") or "") or None
+
+    if llm_holder is None:
+        tokenizer, model = _load_causal_lm_pair(
+            mid,
+            on_llm_task=on_llm_task,
+            try_llm_4bit=try_llm_4bit,
+            llm_cuda_device_index=llm_cuda_device_index,
+            inference_settings=inference_settings,
+            quant_mode=qm,
+        )
+        try:
+            return _generate_with_loaded_causal_lm(
+                model,
+                tokenizer,
+                mid,
+                prompt,
+                on_llm_task=on_llm_task,
+                max_new_tokens=max_new_tokens,
+                inference_settings=inference_settings,
+            )
+        finally:
+            _dispose_causal_lm_pair(model, tokenizer)
+
+    prev_id = str(llm_holder.get("hub_model_id") or "").strip()
+    if llm_holder.get("model") is not None and prev_id and prev_id != mid:
+        _dispose_causal_lm_pair(llm_holder["model"], llm_holder.get("tokenizer"))
+        llm_holder["model"] = None
+        llm_holder["tokenizer"] = None
+        llm_holder["hub_model_id"] = ""
+
+    if llm_holder.get("model") is None:
+        tok, mod = _load_causal_lm_pair(
+            mid,
+            on_llm_task=on_llm_task,
+            try_llm_4bit=try_llm_4bit,
+            llm_cuda_device_index=llm_cuda_device_index,
+            inference_settings=inference_settings,
+            quant_mode=qm,
+        )
+        llm_holder["tokenizer"] = tok
+        llm_holder["model"] = mod
+        llm_holder["hub_model_id"] = mid
+
+    return _generate_with_loaded_causal_lm(
+        llm_holder["model"],
+        llm_holder["tokenizer"],
+        mid,
+        prompt,
+        on_llm_task=on_llm_task,
+        max_new_tokens=max_new_tokens,
+        inference_settings=inference_settings,
+    )
+
+
 def _generate_with_transformers(
     model_id: str,
     prompt: str,
@@ -2014,26 +2102,17 @@ def _generate_with_transformers(
     inference_settings: AppSettings | None = None,
     quant_mode: str | None = None,
 ) -> str:
-    tokenizer, model = _load_causal_lm_pair(
+    return _infer_text_with_optional_holder(
         model_id,
+        prompt,
+        llm_holder=None,
         on_llm_task=on_llm_task,
+        max_new_tokens=max_new_tokens,
         try_llm_4bit=try_llm_4bit,
         llm_cuda_device_index=llm_cuda_device_index,
         inference_settings=inference_settings,
         quant_mode=quant_mode,
     )
-    try:
-        return _generate_with_loaded_causal_lm(
-            model,
-            tokenizer,
-            model_id,
-            prompt,
-            on_llm_task=on_llm_task,
-            max_new_tokens=max_new_tokens,
-            inference_settings=inference_settings,
-        )
-    finally:
-        _dispose_causal_lm_pair(model, tokenizer)
 
 
 def generate_script(
@@ -2052,6 +2131,7 @@ def generate_script(
     supplement_context: str = "",
     llm_cuda_device_index: int | None = None,
     inference_settings: AppSettings | None = None,
+    llm_holder: MutableMapping[str, Any] | None = None,
 ) -> VideoPackage:
     """
     Generates a structured video package from scraped headlines/links, or from a pre-expanded custom creative brief.
@@ -2087,9 +2167,10 @@ def generate_script(
 
     with vram_guard():
         try:
-            raw = _generate_with_transformers(
-                model_id=model_id,
-                prompt=prompt,
+            raw = _infer_text_with_optional_holder(
+                model_id,
+                prompt,
+                llm_holder=llm_holder,
                 on_llm_task=on_llm_task,
                 max_new_tokens=2048,
                 try_llm_4bit=try_llm_4bit,
@@ -2441,6 +2522,9 @@ def generate_cast_from_storyline_llm(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 1200,
     try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
+    llm_holder: MutableMapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Generate an ephemeral per-run cast (not saved to global characters.json).
@@ -2487,12 +2571,15 @@ def generate_cast_from_storyline_llm(
     )
 
     with vram_guard():
-        raw = _generate_with_transformers(
+        raw = _infer_text_with_optional_holder(
             model_id,
             prompt,
+            llm_holder=llm_holder,
             on_llm_task=on_llm_task,
             max_new_tokens=max_new_tokens,
             try_llm_4bit=try_llm_4bit,
+            llm_cuda_device_index=llm_cuda_device_index,
+            inference_settings=inference_settings,
         )
     blob = extract_first_json_object(raw or "")
     if not isinstance(blob, dict):

@@ -18,11 +18,12 @@ def test_expand_custom_field_text_strips_code_fence(monkeypatch):
 def test_expand_custom_video_instructions_returns_trimmed_text(monkeypatch):
     from src.content import brain as b
 
-    def fake_gen(model_id: str, prompt: str, **kwargs):
+    def fake_infer(model_id: str, prompt: str, **kwargs):
         assert "User's raw notes" in prompt
+        assert "Rough notes about my video" in prompt
         return "  \nExpanded creative brief.\n"
 
-    monkeypatch.setattr(b, "_generate_with_transformers", fake_gen)
+    monkeypatch.setattr(b, "_infer_text_with_optional_holder", fake_infer)
     out = b.expand_custom_video_instructions(
         model_id="dummy/Dummy",
         raw_instructions="Rough notes about my video",

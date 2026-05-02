@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import src.content.brain as brain_mod
 from src.content.brain import _extract_json, _llm_max_input_tokens_cap, enforce_arc, generate_script
 
 
@@ -9,6 +10,7 @@ def test_llm_max_input_tokens_cap_respects_env(monkeypatch):
     class _Tok:
         model_max_length = 8192
 
+    monkeypatch.setattr(brain_mod, "_llm_max_input_tokens_cap_from_vram", lambda: None)
     monkeypatch.delenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", raising=False)
     assert _llm_max_input_tokens_cap(_Tok()) == 4096
 
@@ -20,6 +22,7 @@ def test_llm_max_input_tokens_cap_min_with_tokenizer_max(monkeypatch):
     class _Tok:
         model_max_length = 2048
 
+    monkeypatch.setattr(brain_mod, "_llm_max_input_tokens_cap_from_vram", lambda: None)
     monkeypatch.delenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", raising=False)
     assert _llm_max_input_tokens_cap(_Tok()) == 2048
 
@@ -36,18 +39,16 @@ def test_extract_json_from_fenced_block():
 
 
 def test_generate_script_custom_brief_uses_creative_prompt(monkeypatch):
-    import src.content.brain as brain_mod
-
     captured: dict[str, str] = {}
 
-    def fake_gen(model_id: str, prompt: str, **kwargs):
+    def fake_infer(model_id: str, prompt: str, **kwargs):
         captured["prompt"] = prompt
         return (
             '{"title":"T","description":"D","hashtags":["#A"],"hook":"H",'
             '"segments":[{"narration":"N","visual_prompt":"V","on_screen_text":"O"}],"cta":"C"}'
         )
 
-    monkeypatch.setattr(brain_mod, "_generate_with_transformers", fake_gen)
+    monkeypatch.setattr(brain_mod, "_infer_text_with_optional_holder", fake_infer)
     pkg = brain_mod.generate_script(
         model_id="x",
         items=[{"title": "Synthetic", "url": "", "source": "custom"}],

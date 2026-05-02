@@ -10,6 +10,10 @@ def cleanup_vram() -> None:
     """
     Release references and return GPU memory to the allocator.
     Call between major stages (LLM → TTS → diffusion) to reduce peak VRAM; slightly slower.
+
+    On multi-GPU machines, empties the CUDA cache on **each** device — a single
+    ``empty_cache()`` only targeted the current device in some configurations, which could
+    leave several GB reserved before the next large load (e.g. Wan T2V after LLM/TTS on another card).
     """
     # Multiple GC passes helps release large graphs sooner (CPU RAM + VRAM).
     gc.collect()
@@ -18,9 +22,27 @@ def cleanup_vram() -> None:
         import torch
 
         if cuda_device_reported_by_torch():
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
+            try:
+                torch.cuda.synchronize()
+            except Exception:
+                pass
+            try:
+                n = int(torch.cuda.device_count())
+                for di in range(n):
+                    try:
+                        with torch.cuda.device(di):
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
+            except Exception:
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+            try:
+                torch.cuda.ipc_collect()
+            except Exception:
+                pass
     except Exception:
         # Best-effort cleanup; never crash the pipeline on cleanup.
         return
@@ -85,12 +107,24 @@ def prepare_for_next_model(cuda_device_index: int | None = None) -> None:
     that device after cleanup (warn UI / abort if critically low).
     """
     cleanup_vram()
-    if cuda_device_index is None:
-        return
     try:
         from src.util.vram_watchdog import check_cuda_headroom
 
-        check_cuda_headroom(int(cuda_device_index), stage="between pipeline stages (before next GPU load)")
+        if cuda_device_index is not None:
+            check_cuda_headroom(int(cuda_device_index), stage="between pipeline stages (before next GPU load)")
+            return
+        # When the active CUDA index is unknown (e.g. generic OOM cleanup), still check every device.
+        try:
+            import torch
+
+            if cuda_device_reported_by_torch():
+                n = int(torch.cuda.device_count())
+                for di in range(n):
+                    check_cuda_headroom(di, stage="between pipeline stages (VRAM cleanup, all devices)")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
     except RuntimeError:
         raise
     except Exception:

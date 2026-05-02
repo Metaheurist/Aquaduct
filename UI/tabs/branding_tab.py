@@ -67,7 +67,7 @@ def attach_branding_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     content_lay.addWidget(header)
 
-    sub = QLabel("Optional — enable a row to apply it.")
+    sub = QLabel("Each section below is optional—turn on what you want.")
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setToolTip(
         help_tooltip_rich(
@@ -230,7 +230,7 @@ def attach_branding_tab(win) -> None:
     content_lay.addWidget(divider)
 
     # ---- Video style section (palette affects prompts + captions) ----
-    vs_header = QLabel("Video style (palette → prompts + captions)")
+    vs_header = QLabel("Video look (colors also steer prompts and captions)")
     vs_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
     win.brand_video_style_section_header = vs_header
     content_lay.addWidget(vs_header)

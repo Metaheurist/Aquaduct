@@ -37,11 +37,11 @@ def attach_api_tab(win) -> None:
     il = QVBoxLayout(inner)
     il.setContentsMargins(0, 0, 0, 0)
 
-    header = QLabel("API keys (Hugging Face + optional Firecrawl)")
+    header = QLabel("Keys & social accounts")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     il.addWidget(header)
 
-    sub = QLabel("Keys are saved in ui_settings.json on this machine (env vars can override — see each section).")
+    sub = QLabel("Saved on this computer. Environment variables override what you type here when both are set.")
     sub.setWordWrap(True)
     sub.setStyleSheet("color: #B7B7C2; font-size: 12px;")
     sub.setToolTip(
@@ -63,14 +63,14 @@ def attach_api_tab(win) -> None:
     hf_card, hf_lay = section_card()
     hf_lay.addWidget(section_title("Hugging Face", emphasis=True))
 
-    win.api_hf_enabled_chk = QCheckBox("Use Hugging Face token for Hub (downloads + model checks)")
+    win.api_hf_enabled_chk = QCheckBox("Use my Hugging Face sign-in for downloads and size checks")
     win.api_hf_enabled_chk.setChecked(bool(getattr(win.settings, "hf_api_enabled", True)))
     hf_lay.addWidget(win.api_hf_enabled_chk)
 
     hf_hint = QLabel(
-        "Create a read token at "
-        '<a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a>. '
-        "Gated models and accurate remote size checks need a token."
+        "Get a (read) token at "
+        '<a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a> — '
+        "needed for some models and live file sizes."
     )
     hf_hint.setTextFormat(Qt.TextFormat.RichText)
     hf_hint.setOpenExternalLinks(True)
@@ -97,14 +97,13 @@ def attach_api_tab(win) -> None:
     fc_card, fc_lay = section_card()
     fc_lay.addWidget(section_title("Firecrawl (optional)", emphasis=True))
 
-    win.api_fc_enabled_chk = QCheckBox("Use Firecrawl for headlines + article text (when a key is available)")
+    win.api_fc_enabled_chk = QCheckBox("Use Firecrawl for web search & page text (when a key is set)")
     win.api_fc_enabled_chk.setChecked(bool(getattr(win.settings, "firecrawl_enabled", False)))
     fc_lay.addWidget(win.api_fc_enabled_chk)
 
     fc_doc = QLabel(
-        "Dashboard / docs: "
-        '<a href="https://www.firecrawl.dev/">firecrawl.dev</a> — searches and scrapes use the HTTP API. '
-        "If disabled or no key, Aquaduct uses the built-in free crawler (Google News RSS + fallbacks)."
+        '<a href="https://www.firecrawl.dev/">firecrawl.dev</a> — optional paid API for richer web results. '
+        "Without it, Aquaduct falls back to free feeds (e.g. Google News RSS)."
     )
     fc_doc.setTextFormat(Qt.TextFormat.RichText)
     fc_doc.setOpenExternalLinks(True)
@@ -141,10 +140,9 @@ def attach_api_tab(win) -> None:
     el_lay.addWidget(win.api_el_enabled_chk)
 
     el_doc = QLabel(
-        "API keys: "
-        '<a href="https://elevenlabs.io/docs/api-reference/">elevenlabs.io/docs</a>. '
-        "You can set <b>ELEVENLABS_API_KEY</b> in the environment instead of saving here (env wins). "
-        "Requires internet; on failure narration falls back to local TTS. See docs/integrations/elevenlabs.md."
+        '<a href="https://elevenlabs.io/docs/api-reference/">ElevenLabs docs</a>. '
+        "Cloud voices need internet; if the API fails, narration falls back to local TTS. "
+        "You can also set ELEVENLABS_API_KEY in the environment instead of pasting here."
     )
     el_doc.setTextFormat(Qt.TextFormat.RichText)
     el_doc.setOpenExternalLinks(True)
@@ -154,6 +152,7 @@ def attach_api_tab(win) -> None:
         "QLabel a { color: #25F4EE; text-decoration: none; } "
         "QLabel a:hover { text-decoration: underline; }"
     )
+    el_doc.setToolTip(help_tooltip_rich("Step-by-step: docs/integrations/elevenlabs.md in the Aquaduct repo.", "api_social", slide=0))
     el_lay.addWidget(el_doc)
 
     form_el = QFormLayout()
@@ -176,9 +175,9 @@ def attach_api_tab(win) -> None:
     tt_lay.addWidget(win.api_tt_enabled_chk)
 
     tt_doc = QLabel(
-        "Register an app at "
-        '<a href="https://developers.tiktok.com/">developers.tiktok.com</a>, add this redirect URI to Login Kit, '
-        "then connect. Uses OAuth + inbox upload (open TikTok app to finish posting). See docs/integrations/tiktok.md."
+        "Create an app at "
+        '<a href="https://developers.tiktok.com/">developers.tiktok.com</a>, add the redirect URI below, then Connect. '
+        "Posts usually finish inside the TikTok app (inbox flow)."
     )
     tt_doc.setTextFormat(Qt.TextFormat.RichText)
     tt_doc.setOpenExternalLinks(True)
@@ -188,6 +187,7 @@ def attach_api_tab(win) -> None:
         "QLabel a { color: #25F4EE; text-decoration: none; } "
         "QLabel a:hover { text-decoration: underline; }"
     )
+    tt_doc.setToolTip(help_tooltip_rich("Full setup: docs/integrations/tiktok.md in the Aquaduct repo.", "api_social", slide=0))
     tt_lay.addWidget(tt_doc)
 
     form_tt = QFormLayout()
@@ -215,8 +215,8 @@ def attach_api_tab(win) -> None:
     form_tt.addRow("OAuth port", win.api_tt_oauth_port)
 
     win.api_tt_pub_mode = NoWheelComboBox()
-    win.api_tt_pub_mode.addItem("Inbox (finish in TikTok app) — video.upload", "inbox")
-    win.api_tt_pub_mode.addItem("Direct post (video.publish — needs app review)", "direct")
+    win.api_tt_pub_mode.addItem("Inbox — finish in TikTok app (usual)", "inbox")
+    win.api_tt_pub_mode.addItem("Direct post — needs TikTok app review", "direct")
     pm = str(getattr(win.settings, "tiktok_publishing_mode", "inbox") or "inbox")
     idxp = win.api_tt_pub_mode.findData(pm)
     win.api_tt_pub_mode.setCurrentIndex(idxp if idxp >= 0 else 0)
@@ -257,10 +257,9 @@ def attach_api_tab(win) -> None:
     yt_lay.addWidget(win.api_yt_enabled_chk)
 
     yt_doc = QLabel(
-        "Create OAuth credentials (Desktop) in Google Cloud, enable YouTube Data API v3, "
-        "and add the redirect URI to the client. "
-        'Guide: <a href="https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps">Google OAuth</a> — '
-        "see docs/integrations/youtube.md in this repo."
+        "In Google Cloud: enable YouTube Data API v3, create OAuth “Desktop” credentials, "
+        "and add this redirect URI. "
+        '<a href="https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps">Google’s OAuth guide</a>.'
     )
     yt_doc.setTextFormat(Qt.TextFormat.RichText)
     yt_doc.setOpenExternalLinks(True)
@@ -270,6 +269,7 @@ def attach_api_tab(win) -> None:
         "QLabel a { color: #25F4EE; text-decoration: none; } "
         "QLabel a:hover { text-decoration: underline; }"
     )
+    yt_doc.setToolTip(help_tooltip_rich("Full walkthrough: docs/integrations/youtube.md in the Aquaduct repo.", "api_social", slide=0))
     yt_lay.addWidget(yt_doc)
 
     form_yt = QFormLayout()

@@ -339,6 +339,14 @@ def attach_video_tab(win) -> None:
     )
     lay.addWidget(win.story_refimg_chk)
 
+    win.resume_partial_chk = QCheckBox("Resume partial pipeline after crashes (checkpoint file in assets/)")
+    win.resume_partial_chk.setChecked(bool(getattr(win.settings.video, "resume_partial_pipeline", False)))
+    win.resume_partial_chk.setToolTip(
+        "Writes run_checkpoint.json in each run's assets folder when stages finish. "
+        "Enable if a crash wastes long LLM/script work; rerun with similar models and this option to accumulate checkpoints."
+    )
+    lay.addWidget(win.resume_partial_chk)
+
     info = QLabel("Tip: On 8GB VRAM, the app loads/unloads models per stage to reduce OOM risk. Motion, transitions, and audio mix live on the Effects tab.")
     info.setStyleSheet("color: #B7B7C2; margin-top: 6px;")
     lay.addWidget(info)

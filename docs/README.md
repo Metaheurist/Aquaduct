@@ -3,7 +3,7 @@
 | Folder | Contents |
 |--------|----------|
 | [reference](reference/) | Config, CLI, [model + tier + VRAM inventory](reference/model_inventory.md), models, hardware (incl. multi-GPU VRAM-first notes), VRAM, [quantization](reference/quantization.md), [inference profiles](reference/inference_profiles.md) |
-| [pipeline](pipeline/) | Main loop, brain, artist, voice, editor, FFmpeg, performance |
+| [pipeline](pipeline/) | Main loop, brain, artist, voice, editor, FFmpeg, performance, [**crash resilience** (checkpoints / resume / heartbeat)](pipeline/crash-resilience.md) |
 | [ui](ui/) | Desktop UI, branding, characters |
 | [integrations](integrations/) | API mode (Gemini, SiliconFlow, Magic Hour, Inworld, OpenAI, Replicate, …), crawler, ElevenLabs, TikTok, YouTube |
 | [review](review/) | QA / review checklists (e.g. [API mode](review/api_mode_checklist.md)) |

@@ -12,6 +12,8 @@ from pathlib import Path
 # Hub ids (must match Model tab / settings)
 KOKORO_HUB = "hexgrad/Kokoro-82M"
 MOSS_VG_HUB = "OpenMOSS-Team/MOSS-VoiceGenerator"
+# Sentinel repo id — :mod:`src.speech.voice` routes this to offline pyttsx3 (crash-resilience ladder).
+PYTTSX3_FALLBACK_REPO = "aquaduct/system-tts-pyttsx3"
 
 # Well-known social presets (per VOICES / Kokoro community naming)
 KOKORO_SOCIAL_PRESETS: tuple[str, ...] = ("af_bella", "af_nicole", "am_adam")
@@ -35,6 +37,10 @@ def is_kokoro_repo(model_id: str) -> bool:
 
 def is_moss_vg_repo(model_id: str) -> bool:
     return (model_id or "").strip() == MOSS_VG_HUB
+
+
+def is_pyttsx3_fallback_repo(model_id: str) -> bool:
+    return (model_id or "").strip() == PYTTSX3_FALLBACK_REPO
 
 
 def normalize_kokoro_speaker(raw: str | None) -> str | None:

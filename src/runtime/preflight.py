@@ -223,9 +223,64 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
     warnings.extend(preflight_heavy_repo_ram_warnings(settings))
     warnings.extend(preflight_cpu_busy_warnings())
 
-    # HF token isn't strictly required, but downloads can be rate-limited
-    if not os.environ.get("HF_TOKEN") and not os.environ.get("HUGGINGFACEHUB_API_TOKEN"):
-        warnings.append("No HF_TOKEN set (downloads may be slower / rate-limited).")
+    if not is_api_mode(settings):
+        try:
+            from src.runtime.memory_budget_preflight import check_stage_memory_budget
+
+            m = get_models()
+            llm = (settings.llm_model_id or "").strip() or m.llm_id
+            img = (settings.image_model_id or "").strip() or m.sdxl_turbo_id
+            vid = (getattr(settings, "video_model_id", "") or "").strip()
+            warnings.extend(
+                check_stage_memory_budget(stage_label="Script load", role="script", repo_id=llm, settings=settings)
+            )
+            warnings.extend(
+                check_stage_memory_budget(stage_label="Image load", role="image", repo_id=img, settings=settings)
+            )
+            if vid:
+                warnings.extend(
+                    check_stage_memory_budget(stage_label="Video load", role="video", repo_id=vid, settings=settings)
+                )
+        except Exception:
+            pass
+
+    # HF token: not always required, but large/gated repos need it.
+    def _hf_token_effective() -> str:
+        tok = str(getattr(settings, "hf_token", "") or "").strip()
+        if tok and bool(getattr(settings, "hf_api_enabled", True)):
+            return tok
+        return str(os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN") or "").strip()
+
+    ht = _hf_token_effective()
+    if not is_api_mode(settings) and not ht:
+        models = get_models()
+        llm = (settings.llm_model_id or "").strip() or models.llm_id
+        img = (settings.image_model_id or "").strip() or models.sdxl_turbo_id
+        vid = (getattr(settings, "video_model_id", "") or "").strip()
+
+        def _maybe_gated(rid: str) -> bool:
+            r = (rid or "").lower()
+            needles = (
+                "meta-llama",
+                "llama-3",
+                "llama-2",
+                "black-forest-labs/flux.1-dev",
+                "wan-ai",
+                "gpt-oss",
+                "moonshotai",
+                "deepseek",
+            )
+            return any(n in r for n in needles)
+
+        if any(_maybe_gated(x) for x in (llm, img, vid)):
+            warnings.append(
+                "Hugging Face token is not set — some frontier/gated checkpoints (Llama/Wan/FLUX gated families, …) "
+                "may fail to download. Add your HF token on the Settings → API tab or set HF_TOKEN in the environment."
+            )
+        else:
+            warnings.append(
+                "No HF token configured (optional) — downloads can be slower or rate limited. Set HF_TOKEN env or paste on Settings → API."
+            )
 
     if strict:
         result = PreflightResult(ok=(len(errors) == 0), errors=errors, warnings=warnings)

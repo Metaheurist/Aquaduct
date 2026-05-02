@@ -148,6 +148,13 @@ def place_diffusion_pipeline(
     """
     import torch
 
+    try:
+        if inference_settings is not None and bool(getattr(inference_settings, "_force_cpu_diffusion", False)):
+            pipe.to("cpu")
+            return
+    except Exception:
+        pass
+
     if not cuda_device_reported_by_torch():
         pipe.to("cpu")
         return

@@ -6,7 +6,7 @@ import math
 from collections import deque
 
 from PyQt6.QtCore import QPointF, QTimer, Qt
-from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -32,6 +32,10 @@ _SPLIT_GPU_COLORS = ("#A78BFA", "#F472B6", "#34D399", "#FB923C", "#38BDF8", "#E8
 _MONITOR_COMBO_SPLIT_SENTINEL = -1
 # Metrics row: at most this many columns (CPU / RAM / single GPU).
 _RESOURCE_GRAPH_GRID_MAX_COLS = 3
+# Sparklines request this minimum width; three columns need ~3× this plus gaps (see `_adjust_resource_window_geometry`).
+_SPARKLINE_MIN_WIDTH = 260
+# Expanded chart mode: floor width so CPU/RAM/GPU columns are not squeezed below mins (avoids clipped graphs/labels).
+_RESOURCE_GRAPH_EXPANDED_MIN_WIDTH = 1000
 
 # Minimal/summary layout: narrow windows crush the Monitor combo + purge/expand/close row.
 _RESOURCE_GRAPH_COMPACT_MIN_WIDTH = 660
@@ -49,6 +53,7 @@ class _SparklineChart(QWidget):
         y_label: str = "0–100%",
         show_footer: bool = True,
         vram_auto_y: bool = False,
+        footer_help: str = "",
     ) -> None:
         super().__init__()
         self._data: deque[float] = deque(maxlen=_HISTORY)
@@ -56,8 +61,11 @@ class _SparklineChart(QWidget):
         self._y_label = y_label
         self._show_footer = show_footer
         self._vram_auto_y = vram_auto_y
+        fh = (footer_help or "").strip()
+        if fh:
+            self.setToolTip(fh)
         self.setMinimumHeight(128)
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(_SPARKLINE_MIN_WIDTH)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_expanded_metrics(self, *, show_footer: bool | None = None, min_h: int | None = None) -> None:
@@ -67,7 +75,7 @@ class _SparklineChart(QWidget):
             self.setMinimumHeight(max(72, min_h))
         else:
             self.setMinimumHeight(128)
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(_SPARKLINE_MIN_WIDTH)
         self.update()
 
     def push(self, value: float) -> None:
@@ -84,7 +92,7 @@ class _SparklineChart(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         w, h = float(self.width()), float(self.height())
-        pad_b = 8.0 if not self._show_footer else 22.0
+        pad_b = 8.0 if not self._show_footer else 18.0
         pad_l, pad_r, pad_t = 44.0, 8.0, 8.0
         inner_w = max(1.0, w - pad_l - pad_r)
         inner_h = max(1.0, h - pad_t - pad_b)
@@ -161,10 +169,18 @@ class _SparklineChart(QWidget):
 
         if self._show_footer:
             painter.setPen(QColor("#B7B7C2"))
-            foot = f"{self._y_label}  •  window: last {n}s"
+            # One short line; full detail is on widget tooltip (see footer_help in __init__).
             if self._vram_auto_y:
-                foot += f"  •  Y-axis 0–{y_cap:.0f}% VRAM"
-            painter.drawText(int(pad_l), int(h - 4), foot)
+                foot = f"last {n}s · 0–{y_cap:.0f}%"
+            else:
+                foot = f"last {n}s"
+            avail = max(48, int(inner_w))
+            elided = QFontMetrics(painter.font()).elidedText(
+                foot,
+                Qt.TextElideMode.ElideRight,
+                avail,
+            )
+            painter.drawText(int(pad_l), int(h - 4), elided)
 
 
 class _MiniCpuCoreSparkline(QWidget):
@@ -280,11 +296,11 @@ class _CpuPerCoreChartArea(QWidget):
         self._grid.setSpacing(4)
         lay.addWidget(self._grid_host, 1)
         self._footer = QLabel("")
-        self._footer.setWordWrap(True)
+        self._footer.setWordWrap(False)
         self._footer.setStyleSheet("color: #B7B7C2; font-size: 11px;")
         lay.addWidget(self._footer)
         self.setMinimumHeight(128)
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(_SPARKLINE_MIN_WIDTH)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_expanded_metrics(self, *, show_footer: bool | None = None, min_h: int | None = None) -> None:
@@ -293,7 +309,7 @@ class _CpuPerCoreChartArea(QWidget):
             self._footer.setVisible(show_footer)
         mh = 128 if min_h is None else max(72, min_h)
         self.setMinimumHeight(mh)
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(_SPARKLINE_MIN_WIDTH)
 
     def clear_data(self) -> None:
         for t in self._tiles:
@@ -335,9 +351,10 @@ class _CpuPerCoreChartArea(QWidget):
                 self._tiles[i].push(v)
             span = self._tiles[0].history_len() if self._tiles else 0
             if self._show_footer:
-                self._footer.setText(
-                    "Host per-logical-CPU % (system-wide); grid is row-major (0 top-left). • "
-                    f"window: last {span}s  •  Aquaduct process tree (÷ cores): {s.process_cpu_pct:.1f}%"
+                self._footer.setText(f"last {span}s · app {s.process_cpu_pct:.1f}%")
+                self._footer.setToolTip(
+                    "Each cell: system-wide CPU % on that logical core (grid row-major; 0 = top-left). "
+                    f"“App” = Aquaduct process tree as % of one full core. Sample window: last {span}s at 1 Hz."
                 )
         else:
             self.rebuild_if_needed(1)
@@ -350,8 +367,10 @@ class _CpuPerCoreChartArea(QWidget):
             )
             span = self._tiles[0].history_len()
             if self._show_footer:
-                self._footer.setText(
-                    f"Process-tree CPU % (÷ logical cores); per-core host sampling unavailable. • window: last {span}s"
+                self._footer.setText(f"last {span}s · per-core N/A")
+                self._footer.setToolTip(
+                    "Per-core host samples unavailable; showing process-tree CPU only. "
+                    f"Aquaduct app ≈ {s.process_cpu_pct:.1f}% of one logical CPU (÷ cores in headline)."
                 )
 
 
@@ -365,22 +384,27 @@ class ResourceGraphDialog(FramelessDialog):
         self._compact_mode = self._compact_mode_from_parent()
 
         self._cpu_lbl = QLabel("CPU — —%")
+        self._cpu_lbl.setWordWrap(True)
         self._cpu_lbl.setStyleSheet("color: #25F4EE; font-weight: 700; font-size: 12px;")
         self._cpu_chart = _CpuPerCoreChartArea(accent="#25F4EE")
         self._ram_lbl = QLabel("RAM — —%")
+        self._ram_lbl.setWordWrap(True)
         self._ram_lbl.setStyleSheet("color: #FFB703; font-weight: 700; font-size: 12px;")
         self._ram_chart = _SparklineChart(
             color="#FFB703",
-            y_label="RAM % of system",
+            y_label="RAM",
             show_footer=True,
+            footer_help="Yellow trace: Aquaduct process-tree RSS as % of total physical RAM (1 Hz).",
         )
         self._gpu_lbl = QLabel("GPU VRAM —")
+        self._gpu_lbl.setWordWrap(True)
         self._gpu_lbl.setStyleSheet("color: #A78BFA; font-weight: 700; font-size: 12px;")
         self._gpu_chart = _SparklineChart(
             color="#A78BFA",
-            y_label="VRAM % (CUDA)",
+            y_label="VRAM",
             show_footer=True,
             vram_auto_y=True,
+            footer_help="Purple trace: whole-GPU VRAM in use (all apps). Y-axis auto-scales to recent peak.",
         )
 
         self._metrics_host = QWidget()
@@ -540,6 +564,10 @@ class ResourceGraphDialog(FramelessDialog):
         self._purge_status_lbl.setStyleSheet("color: #8A96A3; font-size: 11px;")
         self._purge_status_lbl.setWordWrap(True)
         self.body_layout.addWidget(self._purge_status_lbl)
+        self._load_hb_footer = QLabel("")
+        self._load_hb_footer.setStyleSheet("color: #6FB7FF; font-size: 11px;")
+        self._load_hb_footer.setWordWrap(True)
+        self.body_layout.addWidget(self._load_hb_footer)
         self._sync_purge_status_visibility()
 
         self._gpu_monitor_combo.currentIndexChanged.connect(self._on_monitor_gpu_changed)
@@ -560,7 +588,8 @@ class ResourceGraphDialog(FramelessDialog):
             self._title_lbl.setMinimumWidth(118)
         else:
             self._gpu_monitor_combo.setMinimumWidth(180)
-            self._gpu_monitor_combo.setMaximumWidth(320)
+            # Expanded charts need a wide dialog; allow long GPU names without crushing the Monitor field.
+            self._gpu_monitor_combo.setMaximumWidth(560)
             self._title_lbl.setMinimumWidth(0)
 
     def _compact_mode_from_parent(self) -> bool:
@@ -593,9 +622,9 @@ class ResourceGraphDialog(FramelessDialog):
         self._cpu_cell_lay.insertWidget(0, self._cpu_lbl)
         self._ram_cell_lay.insertWidget(0, self._ram_lbl)
         self._gpu_single_cell_lay.insertWidget(0, self._gpu_lbl)
-        self._cpu_lbl.setWordWrap(False)
-        self._ram_lbl.setWordWrap(False)
-        self._gpu_lbl.setWordWrap(False)
+        self._cpu_lbl.setWordWrap(True)
+        self._ram_lbl.setWordWrap(True)
+        self._gpu_lbl.setWordWrap(True)
 
     def _reparent_labels_into_compact_list(self) -> None:
         """Minimal mode: vertical list — CPU, RAM, then each GPU line."""
@@ -790,16 +819,18 @@ class ResourceGraphDialog(FramelessDialog):
             col_w = 120
             min_w_floor = _RESOURCE_GRAPH_COMPACT_MIN_WIDTH
             n_lines = 2 + (n_gpu if split_visible else 1)
-            base_h = 44 + n_lines * 26
+            # Naive line-based height can be below the frameless shell + font/DPI minimum; Qt then
+            # raises setGeometry warnings (e.g. requested 122px, effective min ~138px on Windows).
+            base_h = max(140, 44 + n_lines * 26)
             req_w = min_w_floor
         else:
             split_row = 118
             split_cap = 560
-            col_w = 200
-            base_h = 460
-            min_w_floor = 500
-            min_w = 72 + nc * col_w
-            req_w = max(min_w_floor, min_w)
+            hgap = int(self._metrics_grid.horizontalSpacing())
+            # Width must satisfy each chart's minimum plus grid gaps (same math as split GPU rows).
+            min_w = 48 + nc * _SPARKLINE_MIN_WIDTH + max(0, nc - 1) * hgap
+            base_h = 480
+            req_w = max(_RESOURCE_GRAPH_EXPANDED_MIN_WIDTH, min_w)
         split_h = min(split_cap, max(80, split_rows * split_row + (24 if compact else 36)))
         if split_visible and not compact:
             self._gpu_split_scroll.setMinimumHeight(split_h)
@@ -852,6 +883,7 @@ class ResourceGraphDialog(FramelessDialog):
                 global_i = row_start + i
                 color = _SPLIT_GPU_COLORS[global_i % len(_SPLIT_GPU_COLORS)]
                 lbl = QLabel(f"{title} — VRAM …")
+                lbl.setWordWrap(True)
                 lbl.setStyleSheet(f"color: {color}; font-weight: 700; font-size: 11px;")
                 lbl.setToolTip(
                     help_tooltip_rich(
@@ -862,9 +894,10 @@ class ResourceGraphDialog(FramelessDialog):
                 )
                 chart = _SparklineChart(
                     color=color,
-                    y_label=f"GPU {ix} VRAM %",
+                    y_label=f"GPU {ix}",
                     show_footer=not compact,
                     vram_auto_y=True,
+                    footer_help=f"CUDA {ix} ({title}): whole-GPU VRAM %; Y-axis matches recent peak.",
                 )
                 if compact:
                     chart.set_expanded_metrics(show_footer=False, min_h=72)
@@ -1135,6 +1168,15 @@ class ResourceGraphDialog(FramelessDialog):
             if s.available_ram_mb is not None:
                 ram_body_parts.append(f"Available (reclaimable incl. cache): ~{s.available_ram_mb:.0f} MB.")
             self._ram_lbl.setToolTip(help_tooltip_rich("\n\n".join(ram_body_parts), "welcome", slide=2))
+
+            try:
+                from src.runtime.load_heartbeat import get_load_heartbeat_footer_text
+
+                hb = get_load_heartbeat_footer_text(max_age_s=240.0)
+                self._load_hb_footer.setVisible(bool(hb))
+                self._load_hb_footer.setText(("Model load heartbeat: " + hb) if hb else "")
+            except Exception:
+                pass
 
             if self._monitor_combo_is_split_view():
                 for ix, title, lbl, chart in self._gpu_split_track:

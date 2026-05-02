@@ -1,16 +1,21 @@
 from __future__ import annotations
+
 import argparse
-from collections.abc import Callable
-from dataclasses import replace
-from datetime import datetime, timezone
 import json
 import os
 import re
-from pathlib import Path
-import sys
 import shutil
+import sys
 import tempfile
 import time
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Safer CUDA allocator defaults before optional torch import via other modules.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:128")
+os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
 
 try:
     from src.util.cpu_parallelism import configure_cpu_parallelism
@@ -51,7 +56,7 @@ from src.content.prompt_conditioning import (
 )
 from src.content.story_context import build_script_context
 from src.content.topic_research_assets import topic_research_digest_for_script
-from src.content.story_pipeline import run_multistage_refinement
+from src.content.llm_session import dispose_llm_holder, new_llm_holder
 from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
 from src.content.topics import effective_topic_tags, news_cache_mode_for_run, video_format_skips_seen_url_disk_cache
 from src.core.config import (
@@ -83,6 +88,7 @@ from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import is_api_mode
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
 from src.runtime.preflight import preflight_check
+from src.runtime import run_checkpoint as run_ckpt
 from src.models.inference_profiles import log_inference_profiles_for_run
 from src.util.cuda_capabilities import cuda_device_reported_by_torch
 from src.util.cuda_device_policy import (
@@ -109,7 +115,7 @@ from src.speech.elevenlabs_tts import (
     elevenlabs_available_for_app,
 )
 from src.speech.tts_text import merge_moss_character_and_run_personality, shape_tts_text
-from src.speech.tts_kokoro_moss import is_kokoro_repo, is_moss_vg_repo
+from src.speech.tts_kokoro_moss import is_kokoro_repo, is_moss_vg_repo, is_pyttsx3_fallback_repo
 from src.speech.voice import (
     synthesize,
     synthesize_unhinged_moss,
@@ -210,6 +216,31 @@ def _pipe_progress(
 
 # Last coarse stage label for failure reporting (``run_once`` only).
 _PIPELINE_RUN_STAGE: list[str] = ["(before_run)"]
+
+# Optional run checkpoint routing (resume partial pipeline).
+# ``staging``: per-run workspace under runs/<id>/assets; ``project``: durable folder under videos/.../assets.
+_PIPELINE_CKPT_BOX: dict[str, object] = {}
+
+
+def _ckpt_target_assets() -> Path | None:
+    proj = _PIPELINE_CKPT_BOX.get("project")
+    if isinstance(proj, Path):
+        return proj
+    st = _PIPELINE_CKPT_BOX.get("staging")
+    return st if isinstance(st, Path) else None
+
+
+def _pipeline_checkpoint(stage_id: str) -> None:
+    """Record coarse milestone ``stage_id`` in ``run_checkpoint.json`` when enabled."""
+    try:
+        assets_dir = _ckpt_target_assets()
+        st = _PIPELINE_CKPT_BOX.get("settings")
+        if isinstance(assets_dir, Path) and isinstance(st, AppSettings):
+            v = getattr(getattr(st, "video", None), "resume_partial_pipeline", False)
+            if bool(v):
+                run_ckpt.mark_stage_complete(assets_dir, st, str(stage_id))
+    except Exception:
+        pass
 
 
 def _run_stage(stage: str, detail: str = "") -> None:
@@ -472,6 +503,18 @@ def run_once(
             run_control=run_control,
             on_progress=on_progress,
         )
+    try:
+        app = replace(
+            app,
+            resource_retry_resolution_scale=1.0,
+            resource_retry_frames_scale=1.0,
+            _force_cpu_diffusion=False,
+            recovery_swapped_voice_model_id="",
+            recovery_swapped_video_model_id="",
+            recovery_swapped_image_model_id="",
+        )
+    except Exception:
+        pass
     video_settings = app.video
     # Video mode always runs Pro (scene-by-scene). Even if settings/CLI payloads contain older values,
     # force the effective settings here so the pipeline stays predictable.
@@ -506,6 +549,8 @@ def run_once(
         paths.runs_dir.mkdir(parents=True, exist_ok=True)
         paths.videos_dir.mkdir(parents=True, exist_ok=True)
         paths.pictures_dir.mkdir(parents=True, exist_ok=True)
+        _PIPELINE_CKPT_BOX.clear()
+
         _mm_out = str(getattr(app, "media_mode", "video") or "video").strip().lower()
         _projects_root = media_output_root(paths, _mm_out)
         _projects_root.mkdir(parents=True, exist_ok=True)
@@ -621,6 +666,9 @@ def run_once(
         run_dir = paths.runs_dir / run_id
         run_assets = run_dir / "assets"
         run_assets.mkdir(parents=True, exist_ok=True)
+        _PIPELINE_CKPT_BOX["staging"] = run_assets
+        _PIPELINE_CKPT_BOX["project"] = None
+        _PIPELINE_CKPT_BOX["settings"] = app
         _run_stage("workspace", f"Run workspace: {run_dir} (intermediate assets under assets/)")
 
         article_text = ""
@@ -656,8 +704,47 @@ def run_once(
     
         personality_pick: AutoPickResult | None = None
     
+        resume_skip_script = False
+        resume_pkg_early: VideoPackage | None = None
+        _rsp_ck = str(getattr(app, "resume_partial_project_directory", "") or "").strip()
+        if _rsp_ck and bool(getattr(video_settings, "resume_partial_pipeline", False)) and prebuilt_pkg is None:
+            try:
+                _rd = Path(_rsp_ck).expanduser().resolve()
+                _r_assets = _rd / "assets"
+                if _r_assets.is_dir():
+                    _stg_rp = run_ckpt.stages_done(_r_assets, app)
+                    if "script_pkg" in _stg_rp or "script_llm" in _stg_rp:
+                        _rp_try = run_ckpt.load_script_package(_r_assets)
+                        if _rp_try is not None:
+                            resume_pkg_early = _rp_try
+                            resume_skip_script = True
+                            _PIPELINE_CKPT_BOX["project"] = _r_assets
+                            pipeline_console(
+                                f"Resume: reloading script package from {_r_assets} (fingerprint matched)",
+                                stage="script_llm",
+                            )
+            except Exception:
+                resume_skip_script = False
+                resume_pkg_early = None
+    
         # Brain
-        if prebuilt_pkg is None:
+        if prebuilt_pkg is None and resume_skip_script:
+            pkg = resume_pkg_early
+            if pkg is None:
+                raise RuntimeError("resume_partial_project_directory is set but pipeline_script_package.json could not be loaded.")
+            llm_sess = None
+            _tags_resume = list(effective_topic_tags(app))
+            personality_pick = auto_pick_personality(
+                requested_id=getattr(app, "personality_id", "auto"),
+                llm_model_id=llm_id,
+                titles=[str(pkg.title or "Resume")],
+                topic_tags=_tags_resume,
+                extra_scoring_text="",
+            )
+            _run_stage("script_llm", "Script package restored from checkpoint (skipped LLM)")
+            dprint("pipeline", "resume checkpoint script", f"title={pkg.title[:100]!r}")
+        elif prebuilt_pkg is None:
+            llm_sess: dict | None = None if is_api_mode(app) else new_llm_holder()
             tags = list(effective_topic_tags(app))
             vf = str(getattr(app, "video_format", "news") or "news")
             try_llm_4bit = bool(getattr(app, "try_llm_4bit", True))
@@ -727,6 +814,7 @@ def run_once(
                     on_llm_task=_ms_llm,
                     app_settings=app,
                     llm_cuda_device_index=_llm_cuda_idx,
+                    llm_holder=llm_sess,
                 )
     
             if str(getattr(app, "run_content_mode", "preset")) == "custom" and str(getattr(app, "custom_video_instructions", "") or "").strip():
@@ -759,6 +847,7 @@ def run_once(
                     try_llm_4bit=try_llm_4bit,
                     llm_cuda_device_index=_llm_cuda_idx,
                     inference_settings=app,
+                    llm_holder=llm_sess,
                 )
                 _pipe_progress(on_progress, 22, -1, "Writing script (LLM)…")
                 _run_stage("script_llm", f"Custom run: LLM generating script ({llm_id!r})…")
@@ -777,6 +866,7 @@ def run_once(
                         try_llm_4bit=try_llm_4bit,
                         article_excerpt=clip_article_excerpt(article_text),
                         supplement_context=script_digest,
+                        llm_holder=llm_sess,
                     )
 
                 pkg, app, _llm_cuda_idx = retry_stage(
@@ -794,6 +884,8 @@ def run_once(
                 personality_pick = picked
                 dprint("pipeline", "script ready (custom)", f"title={pkg.title[:100]!r}")
                 _run_stage("script_llm", "Script package ready (custom mode)")
+                run_ckpt.save_script_package(_ckpt_target_assets(), pkg)
+                _pipeline_checkpoint("script_pkg")
             else:
                 titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
                 picked = auto_pick_personality(
@@ -819,6 +911,7 @@ def run_once(
                         try_llm_4bit=try_llm_4bit,
                         article_excerpt=clip_article_excerpt(article_text),
                         supplement_context=script_digest,
+                        llm_holder=llm_sess,
                     )
 
                 pkg, app, _llm_cuda_idx = retry_stage(
@@ -844,12 +937,16 @@ def run_once(
                         quant_mode=str(getattr(app, "script_quant_mode", "auto") or "auto"),
                         inference_settings=app,
                         llm_cuda_device_index=_llm_cuda_idx,
+                        llm_holder=llm_sess,
                     )
                 dprint("pipeline", "script ready", f"title={pkg.title[:100]!r}")
                 _run_stage("script_llm", "Script package ready (preset mode)")
                 personality_pick = picked
+                run_ckpt.save_script_package(_ckpt_target_assets(), pkg)
+                _pipeline_checkpoint("script_pkg")
         else:
             pkg = prebuilt_pkg
+            llm_sess = None
             dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")
             tags_voice = list(effective_topic_tags(app))
             personality_pick = auto_pick_personality(
@@ -868,38 +965,67 @@ def run_once(
             vf_cast2 = str(getattr(app, "video_format", "news") or "news")
             storyline = pkg.narration_text()
             cast: list[dict] | None = None
-            _run_stage("cast_llm", "No fixed character: generating ephemeral cast via LLM (or fallback)")
-            try:
-    
-                def _cast_llm(task: str, pct: int, msg: str) -> None:
-                    inner = max(0, min(100, int(pct)))
-                    _pipe_progress(on_progress, 34, inner, msg or "Generating cast…")
-    
-                cast = generate_cast_from_storyline_llm(
-                    model_id=llm_id,
-                    video_format=vf_cast2,
-                    storyline_title=str(pkg.title or ""),
-                    storyline_text=storyline,
-                    topic_tags=list(effective_topic_tags(app)),
-                    on_llm_task=_cast_llm,
-                    try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
-                )
-            except Exception:
-                cast = fallback_cast_for_show(video_format=vf_cast2, topic_tags=list(effective_topic_tags(app)), headline_seed=_head_seed)
-    
+            _ck_assets_cast = _ckpt_target_assets()
+            _reuse_cast_fp = (_ck_assets_cast / "generated_cast.json") if _ck_assets_cast is not None else None
+            _cast_loaded = False
+            if (
+                bool(getattr(video_settings, "resume_partial_pipeline", False))
+                and _reuse_cast_fp is not None
+                and _reuse_cast_fp.is_file()
+                and _ck_assets_cast is not None
+            ):
+                stcz = run_ckpt.stages_done(_ck_assets_cast, app)
+                if "cast_pkg" in stcz or "cast_llm" in stcz:
+                    try:
+                        blob = json.loads(_reuse_cast_fp.read_text(encoding="utf-8"))
+                        ch = blob.get("characters") if isinstance(blob, dict) else None
+                        if isinstance(ch, list) and ch:
+                            cast = ch  # type: ignore[assignment]
+                            _cast_loaded = True
+                            _run_stage("cast_llm", "Reusing ephemeral cast from checkpoint…")
+                    except Exception:
+                        cast = None
+
+            if not _cast_loaded:
+                _run_stage("cast_llm", "No fixed character: generating ephemeral cast via LLM (or fallback)")
+                try:
+
+                    def _cast_llm(task: str, pct: int, msg: str) -> None:
+                        inner = max(0, min(100, int(pct)))
+                        _pipe_progress(on_progress, 34, inner, msg or "Generating cast…")
+
+                    cast = generate_cast_from_storyline_llm(
+                        model_id=llm_id,
+                        video_format=vf_cast2,
+                        storyline_title=str(pkg.title or ""),
+                        storyline_text=storyline,
+                        topic_tags=list(effective_topic_tags(app)),
+                        on_llm_task=_cast_llm,
+                        try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
+                        llm_cuda_device_index=_llm_cuda_idx,
+                        inference_settings=app,
+                        llm_holder=llm_sess,
+                    )
+                except Exception:
+                    cast = fallback_cast_for_show(
+                        video_format=vf_cast2, topic_tags=list(effective_topic_tags(app)), headline_seed=_head_seed
+                    )
+
             try:
                 assert cast is not None
                 active_character = cast_to_ephemeral_character(cast=cast, video_format=vf_cast2)
                 char_ctx = character_context_for_brain(active_character)
-    
+
                 safe_dir_cast = safe_title_to_dirname(pkg.title)
                 video_dir_cast = _projects_root / safe_dir_cast
                 assets_dir_cast = video_dir_cast / "assets"
                 assets_dir_cast.mkdir(parents=True, exist_ok=True)
-                (assets_dir_cast / "generated_cast.json").write_text(
-                    json.dumps({"video_format": vf_cast2, "characters": cast}, indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
+                if not _cast_loaded:
+                    (assets_dir_cast / "generated_cast.json").write_text(
+                        json.dumps({"video_format": vf_cast2, "characters": cast}, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    _pipeline_checkpoint("cast_pkg")
             except Exception:
                 pass
         effective_personality_id = personality_pick.preset.id
@@ -916,7 +1042,9 @@ def run_once(
             f"Script ready — tone: {personality_pick.preset.label} ({personality_pick.reason})",
         )
         _rc(run_control)
-    
+
+        dispose_llm_holder(llm_sess)
+
         # Free LLM weights before TTS / diffusion so peak VRAM stays lower (slower overall).
         release_between_stages(
             "after_script_llm_before_voice_or_photo",
@@ -925,9 +1053,19 @@ def run_once(
         )
 
         safe_dir = safe_title_to_dirname(pkg.title)
-        video_dir = _projects_root / safe_dir
+        _rsp_vd = str(getattr(app, "resume_partial_project_directory", "") or "").strip()
+        if _rsp_vd and bool(getattr(video_settings, "resume_partial_pipeline", False)):
+            _vd_try = Path(_rsp_vd).expanduser().resolve()
+            video_dir = _vd_try if _vd_try.is_dir() else (_projects_root / safe_dir)
+        else:
+            video_dir = _projects_root / safe_dir
         assets_dir = video_dir / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
+        _stg = _PIPELINE_CKPT_BOX.get("staging")
+        if isinstance(_stg, Path) and _stg != assets_dir:
+            run_ckpt.merge_checkpoint_into_project(staging_assets=_stg, project_assets=assets_dir, settings=app)
+            run_ckpt.copy_script_package_between_assets(_stg, assets_dir)
+        _PIPELINE_CKPT_BOX["project"] = assets_dir
 
         # Photo mode: generate stills and optional layouts (no voice/captions, no mp4).
         try:
@@ -1038,7 +1176,6 @@ def run_once(
     
         # Voice
         _pipe_progress(on_progress, 50, -1, "Generating voice / captions…")
-        _run_stage("voice_tts", f"Synthesizing narration ({voice_id!r}); writing voice.wav + captions.json")
         voice_wav = assets_dir / "voice.wav"
         captions_json = assets_dir / "captions.json"
         vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
@@ -1073,7 +1210,8 @@ def run_once(
             (active_character.voice_instruction or "").strip() if active_character is not None else None
         )
         voice_inst = merge_moss_character_and_run_personality(char_moss, pid_voice)
-    
+
+        texts_uh: list[str] = []
         if rotate_unhinged:
             parts: list[str] = []
             if pkg.hook.strip():
@@ -1083,46 +1221,33 @@ def run_once(
                     parts.append(_scrub_spoken_text(seg.narration.strip(), video_format=vf_voice))
             if pkg.cta.strip():
                 parts.append(_scrub_spoken_text(pkg.cta.strip(), video_format=vf_voice))
-            texts_uh: list[str] = []
             for raw in parts:
                 st = shape_tts_text(raw, personality_id=pid_voice)
                 texts_uh.append(st if st else raw)
             if not texts_uh:
                 st_full = shape_tts_text(narration, personality_id=pid_voice)
                 texts_uh = [st_full if st_full else narration]
-            _voice_qm = str(getattr(app, "voice_quant_mode", "auto") or "auto")
-            if is_moss_vg_repo(voice_id):
-                synthesize_unhinged_moss(
-                    kokoro_model_id=voice_id,
-                    voice_instruction=voice_inst,
-                    segment_texts=texts_uh,
-                    out_wav_path=voice_wav,
-                    out_captions_json=captions_json,
-                    voice_quant_mode=_voice_qm,
-                    voice_cuda_device_index=_voice_cuda_idx,
-                )
-            elif is_kokoro_repo(voice_id):
-                synthesize_unhinged_rotating_kokoro(
-                    kokoro_model_id=voice_id,
-                    segment_texts=texts_uh,
-                    out_wav_path=voice_wav,
-                    out_captions_json=captions_json,
-                    kokoro_speaker=kokoro_sp,
-                    voice_quant_mode=_voice_qm,
-                )
-            else:
-                synthesize_unhinged_rotating_pyttsx3(
-                    kokoro_model_id=voice_id,
-                    segment_texts=texts_uh,
-                    out_wav_path=voice_wav,
-                    out_captions_json=captions_json,
-                )
-        else:
-            shaped = shape_tts_text(narration, personality_id=pid_voice)
-            if shaped:
+
+        _voice_qm = str(getattr(app, "voice_quant_mode", "auto") or "auto")
+        _resume_voice = bool(getattr(video_settings, "resume_partial_pipeline", False))
+        _vstage = run_ckpt.stages_done(assets_dir, app)
+        _voice_cached = (
+            _resume_voice
+            and "voice_wav" in _vstage
+            and voice_wav.is_file()
+            and voice_wav.stat().st_size > 1024
+            and captions_json.is_file()
+        )
+
+        if _voice_cached:
+            _run_stage("voice_tts", "Reusing cached voice.wav + captions.json from checkpoint")
+        elif use_el:
+            _run_stage("voice_tts", f"Synthesizing narration ({voice_id!r}); writing voice.wav + captions.json")
+            shaped_el = shape_tts_text(narration, personality_id=pid_voice)
+            if shaped_el:
                 try:
-                    (assets_dir / "narration_shaped.txt").write_text(shaped, encoding="utf-8")
-                    narration = shaped
+                    (assets_dir / "narration_shaped.txt").write_text(shaped_el, encoding="utf-8")
+                    narration = shaped_el
                 except Exception:
                     pass
             synthesize(
@@ -1136,12 +1261,88 @@ def run_once(
                 elevenlabs_voice_id=el_vid,
                 elevenlabs_api_key=el_key,
                 ffmpeg_executable=ffmpeg_exe,
-                voice_quant_mode=str(getattr(app, "voice_quant_mode", "auto") or "auto"),
+                voice_quant_mode=_voice_qm,
                 voice_cuda_device_index=_voice_cuda_idx,
             )
-    
+        else:
+            _run_stage("voice_tts", f"Synthesizing narration ({voice_id!r}); writing voice.wav + captions.json")
+
+            def _voice_run(s: AppSettings, cuda_ix: int | None) -> bool:
+                vid = (s.voice_model_id or "").strip() or models.kokoro_id
+                if rotate_unhinged:
+                    if is_moss_vg_repo(vid):
+                        synthesize_unhinged_moss(
+                            kokoro_model_id=vid,
+                            voice_instruction=voice_inst,
+                            segment_texts=texts_uh,
+                            out_wav_path=voice_wav,
+                            out_captions_json=captions_json,
+                            voice_quant_mode=_voice_qm,
+                            voice_cuda_device_index=cuda_ix,
+                        )
+                    elif is_kokoro_repo(vid):
+                        synthesize_unhinged_rotating_kokoro(
+                            kokoro_model_id=vid,
+                            segment_texts=texts_uh,
+                            out_wav_path=voice_wav,
+                            out_captions_json=captions_json,
+                            kokoro_speaker=kokoro_sp,
+                            voice_quant_mode=_voice_qm,
+                        )
+                    elif is_pyttsx3_fallback_repo(vid):
+                        synthesize_unhinged_rotating_pyttsx3(
+                            kokoro_model_id=vid,
+                            segment_texts=texts_uh,
+                            out_wav_path=voice_wav,
+                            out_captions_json=captions_json,
+                        )
+                    else:
+                        synthesize_unhinged_rotating_pyttsx3(
+                            kokoro_model_id=vid,
+                            segment_texts=texts_uh,
+                            out_wav_path=voice_wav,
+                            out_captions_json=captions_json,
+                        )
+                else:
+                    narr_local = narration
+                    shaped2 = shape_tts_text(narr_local, personality_id=pid_voice)
+                    if shaped2:
+                        try:
+                            (assets_dir / "narration_shaped.txt").write_text(shaped2, encoding="utf-8")
+                            narr_local = shaped2
+                        except Exception:
+                            pass
+                    synthesize(
+                        kokoro_model_id=vid,
+                        text=narr_local,
+                        out_wav_path=voice_wav,
+                        out_captions_json=captions_json,
+                        pyttsx3_voice_id=py_tts_voice,
+                        kokoro_speaker=kokoro_sp,
+                        voice_instruction=voice_inst,
+                        elevenlabs_voice_id=None,
+                        elevenlabs_api_key=None,
+                        ffmpeg_executable=None,
+                        voice_quant_mode=str(getattr(s, "voice_quant_mode", "auto") or "auto"),
+                        voice_cuda_device_index=cuda_ix,
+                    )
+                return True
+
+            _, app, _voice_cuda_idx = retry_stage(
+                stage_name="voice_tts",
+                role="voice",
+                repo_id=str((app.voice_model_id or "").strip() or models.kokoro_id),
+                settings=app,
+                cuda_device_index=_voice_cuda_idx,
+                gpus=gpus,
+                clear_cb=_clear_after_oom,
+                run_cb=_voice_run,
+                max_quant_downgrades=6,
+            )
+
         _pipe_progress(on_progress, 58, -1, "Voice track ready")
         _run_stage("voice_tts", "Voice track + captions ready")
+        _pipeline_checkpoint("voice_wav")
         _rc(run_control)
 
         release_between_stages(
@@ -2033,7 +2234,13 @@ def run_once(
         _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
         _pipe_progress(on_progress, 100, 100, "Done")
         dprint("pipeline", "run_once done", f"video_dir={video_dir}")
+        try:
+            if out_final.exists() and out_final.stat().st_size > 10_000:
+                _pipeline_checkpoint("encode_mux")
+        except Exception:
+            pass
         _run_stage("done", f"Run finished successfully → {video_dir}")
+        _pipeline_checkpoint("done")
         try:
             if app != app_in:
                 save_settings(app)

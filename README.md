@@ -171,6 +171,7 @@ Example:
 - [API execution mode](docs/integrations/api_generation.md)
 - [Build & verify Windows EXE](docs/build/building_windows_exe.md)
 - [Performance (import / cold start, CPU threads)](docs/pipeline/performance.md)
+- [Crash resilience (checkpoints, resume, load heartbeat, recovery ladders)](docs/pipeline/crash-resilience.md)
 - [Crawler](docs/integrations/crawler.md)
 - [Brain (LLM scripting)](docs/pipeline/brain.md)
 - [Voice (TTS + captions)](docs/pipeline/voice.md)

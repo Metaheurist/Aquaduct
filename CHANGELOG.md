@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Crash-resilience & “run-on-anything” mode
+- **CUDA / Hub env** ([`main.py`](main.py)): `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128`; `HF_HUB_ENABLE_HF_TRANSFER=0`.
+- **Quant default** ([`src/core/config.py`](src/core/config.py), [`src/models/quantization.py`](src/models/quantization.py)): **`auto_quant_downgrade_on_failure`** default **on**.
+- **Resume checkpoints** ([`src/runtime/run_checkpoint.py`](src/runtime/run_checkpoint.py), [`main.py`](main.py), [`UI/main_window.py`](UI/main_window.py)): `run_checkpoint.json` milestones + `pipeline_script_package.json`; optional resume of latest incomplete project under **`videos/`**; ephemeral **`resume_partial_project_directory`** (stripped from disk saves).
+- **Voice** ([`main.py`](main.py), [`src/speech/voice.py`](src/speech/voice.py), [`src/runtime/variant_fallback.py`](src/runtime/variant_fallback.py)): local voice path uses **`retry_stage`**; pyttsx3-only sentinel repo `aquaduct/system-tts-pyttsx3`; MOSS → Kokoro → pyttsx3 style mapping in variant table.
+- **Load heartbeat UI** ([`src/runtime/load_heartbeat.py`](src/runtime/load_heartbeat.py), [`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): Resource graph footer shows recent model-load heartbeat; **`AQUADUCT_LOAD_TIMEOUT_S`** mirrors **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** for the stalled-load watchdog.
+- **Preflight HF** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): token guidance for gated/frontier Hub ids when no token is configured.
+- **Settings** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): **Use lighter Motion / Video checkpoint** when the video fit badge is red/amber (curated downgrade list).
+- **Tests**: [`tests/runtime/test_resource_and_deps.py`](tests/runtime/test_resource_and_deps.py), [`tests/runtime/test_load_heartbeat.py`](tests/runtime/test_load_heartbeat.py), [`tests/content/test_llm_session.py`](tests/content/test_llm_session.py), [`tests/content/test_factcheck_pkg_roundtrip.py`](tests/content/test_factcheck_pkg_roundtrip.py).
+- **Docs**: consolidated guide **[`docs/pipeline/crash-resilience.md`](docs/pipeline/crash-resilience.md)** (checkpoints/resume, heartbeat, RAM preflight, LLM holder, HF token); touches **[`README.md`](README.md)**, **[`docs/README.md`](docs/README.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md), [`docs/reference/quantization.md`](docs/reference/quantization.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/pipeline/main.md`](docs/pipeline/main.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/pipeline/voice.md`](docs/pipeline/voice.md), [`docs/ui/ui.md`](docs/ui/ui.md)**.
+
 ### Multi-GPU VRAM-first intra-model splitting
 - **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `multi_gpu_shard_mode` — **`off`** (default) or **`vram_first_auto`**; persisted in **`ui_settings.json`**.
 - **My PC** ([`UI/tabs/my_pc_tab.py`](UI/tabs/my_pc_tab.py), [`UI/main_window.py`](UI/main_window.py)): **VRAM-first sharding** combo (Off \| VRAM-first multi-GPU); collected into **`AppSettings`** like other GPU fields.

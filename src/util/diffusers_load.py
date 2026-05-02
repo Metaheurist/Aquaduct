@@ -44,12 +44,24 @@ def diffusers_from_pretrained(pipe_cls: Callable[..., T], load_path: str | Path,
         prev = cur
 
     last_err: BaseException | None = None
-    for cur in attempts:
-        try:
-            return pipe_cls.from_pretrained(lp, **cur)
-        except TypeError as e:
-            last_err = e
-            continue
+    hb_label = getattr(pipe_cls, "__name__", "diffusers_pipeline")
+    try:
+        from src.runtime.load_heartbeat import diffusion_load_watch
+
+        with diffusion_load_watch(label=f"{hb_label}:{lp}"):
+            for cur in attempts:
+                try:
+                    return pipe_cls.from_pretrained(lp, **cur)
+                except TypeError as e:
+                    last_err = e
+                    continue
+    except Exception:
+        for cur in attempts:
+            try:
+                return pipe_cls.from_pretrained(lp, **cur)
+            except TypeError as e:
+                last_err = e
+                continue
     if last_err is not None:
         raise last_err
     raise RuntimeError("diffusers_from_pretrained: no attempts")

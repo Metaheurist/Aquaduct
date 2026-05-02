@@ -56,7 +56,12 @@ def _strip_debug_args() -> None:
 
 
 def _maybe_attach_debug_console() -> None:
-    """Frozen Windows EXE: allocate a console only when launched with -debug/--debug."""
+    """Frozen Windows EXE: route -debug/--debug output to a console.
+
+    Prefer the **parent terminal** (cmd/PowerShell) via ``AttachConsole`` so logs are not
+    forced into a separate window. Fall back to ``AllocConsole`` only when there is no
+    parent console (e.g. double-click from Explorer).
+    """
     if not getattr(sys, "frozen", False) or os.name != "nt":
         return
     if not _debug_flags_present():
@@ -65,7 +70,11 @@ def _maybe_attach_debug_console() -> None:
         import ctypes
 
         kernel32 = ctypes.windll.kernel32
-        if kernel32.GetConsoleWindow() == 0:
+        if kernel32.GetConsoleWindow() != 0:
+            return
+        # ATTACH_PARENT_PROCESS: reuse the console of the process that started us (if any).
+        attached = bool(kernel32.AttachConsole(0xFFFFFFFF))
+        if not attached:
             kernel32.AllocConsole()
         con = open(  # noqa: SIM115
             "CONOUT$",
