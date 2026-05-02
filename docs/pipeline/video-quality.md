@@ -1,0 +1,142 @@
+# Video quality, native FPS, and clip-duration alignment
+
+This page documents the rendering-side fixes shipped in the
+**Video quality & tab redesign** track. It supersedes the FPS / clip-length
+discussion that previously lived inside [`docs/pipeline/main.md`](main.md) and
+[`docs/pipeline/editor.md`](editor.md).
+
+## Why the old output looked like a flashing slideshow
+
+A trace of the `Two_Sentenced_Horror_Stories` Pro run showed:
+
+- T2V model: `THUDM/CogVideoX-5b` (trained for **8 fps** playback, 49-frame
+  cap on the diffusers pipeline).
+- User export FPS: **30** (from the Video tab spinner).
+- Clip pipeline: encoded the 49 returned frames at 30 fps, so each clip is
+  ~1.6 s of motion crammed into the user-fps file. After per-clip equal-T
+  audio chunking, the visible motion was a fraction of a second long with
+  static padding — i.e. the "stitched motion pictures" effect.
+
+We now fix this with a small native-FPS registry plus a per-clip metadata
+sidecar that downstream stages trust.
+
+## `src/models/native_fps.py`
+
+```python
+from src.models.native_fps import (
+    native_fps_for, encoded_fps_for,
+    write_clip_meta, read_clip_meta, clip_duration_seconds,
+)
+
+native_fps_for("THUDM/CogVideoX-5b")          # -> 8
+native_fps_for("Wan-AI/Wan2.2-T2V-A14B-Diffusers")  # -> 16
+native_fps_for("genmo/mochi-1.5-final")       # -> 30
+native_fps_for("Lightricks/LTX-2")            # -> 24
+native_fps_for("tencent/HunyuanVideo")        # -> 24
+native_fps_for("cerspense/zeroscope_v2_576w") # -> None  (use user fps)
+```
+
+`encoded_fps_for(model_id, *, user_fps, frame_rate_kw)` resolves the actual
+fps used when writing the clip mp4. Precedence:
+
+1. Explicit pipeline kwarg `frame_rate` (e.g. LTX-2 sets this in
+   [`src/render/clips.py::_video_pipe_kwargs`](../../src/render/clips.py)).
+2. Native-fps registry.
+3. User export fps.
+
+Override per model with environment variable
+`AQUADUCT_NATIVE_FPS_OVERRIDE_<UPPER_SNAKE_REPO>` (e.g.
+`AQUADUCT_NATIVE_FPS_OVERRIDE_THUDM__COGVIDEOX_5B=12`).
+
+## Clip metadata sidecar
+
+For every clip mp4 that the T2V/I2V code writes, we now also persist
+`<clip>.mp4.meta.json` with the trustworthy timing info:
+
+```json
+{
+  "model_id": "THUDM/CogVideoX-5b",
+  "encoded_fps": 8,
+  "num_frames": 49,
+  "duration_s": 6.125,
+  "native_fps": 8,
+  "user_fps": 30,
+  "role": "t2v",
+  "prompt": "..."
+}
+```
+
+Both `_try_text_to_video` and `_try_image_to_video` write this sidecar; the
+LTX-2 audio-aware export path (`encode_video(...)`) also writes it.
+
+## Editor: per-clip duration alignment (no more equal-T chunking)
+
+`src/render/editor.py::assemble_generated_clips_then_concat` accepts a new
+optional kwarg:
+
+```python
+assemble_generated_clips_then_concat(
+    ...,
+    clip_durations=[6.125, 5.0, 6.125, ...],
+)
+```
+
+When provided, each entry sets the slice length for both the corresponding
+video clip and the matching audio chunk. When omitted (or any entry is
+`<= 0`), the editor falls back in this order:
+
+1. `clip_durations[i]` (caller-supplied, in seconds).
+2. `read_clip_meta(clip).duration_s` (sidecar written by the T2V/I2V step).
+3. `VideoFileClip.duration` (decoded from the mp4 itself).
+4. `total_dur / clip_count` (legacy equal chunk — only if everything above
+   fails).
+
+The audio cursor advances by the resolved per-clip duration, so a 6.125 s
+CogVideoX clip and a 5.0 s Mochi clip get exactly 6.125 s and 5.0 s of audio
+each — captions stay aligned and the final video stops feeling like static
+keyframes with a soundtrack glued on top.
+
+## Audio-track length is now `sum(actual_durations)`
+
+[`main.py`](../../main.py) used to align the narration to
+`pro_clip_seconds * len(clips)`; with native FPS this drifts whenever the
+model honors its trained timing instead of the user's `T`. The Pro
+T2V / I2V branch now does:
+
+```python
+from src.models.native_fps import clip_duration_seconds
+
+clip_durations = [
+    float(clip_duration_seconds(c, fallback=float(T)) or T)
+    for c in clip_paths
+]
+total_T = max(0.5, sum(clip_durations))
+```
+
+`total_T` is the value passed to `_ffmpeg_align_wav_to_duration`, and the
+same `clip_durations` list is forwarded into
+`assemble_generated_clips_then_concat`. The pipeline log line at this stage
+now reads e.g. `timeline ≈ 23.50s across 4 clips`, which is the actual
+duration users will see in the final mp4.
+
+## Caption closure hygiene
+
+The per-clip caption overlay used to capture the loop variable `t0` by
+reference, which produced a subtle late-binding bug whenever clip durations
+differed. The new code uses an explicit factory:
+
+```python
+def _caption_overlay_factory(t_start, fn):
+    def caption_overlay(local_t):
+        return fn(t_start + local_t)
+    return caption_overlay
+```
+
+so each clip's overlay is bound to its own start time.
+
+## See also
+
+- [`docs/pipeline/editor.md`](editor.md) — overall mux and overlay pipeline.
+- [`docs/pipeline/main.md`](main.md) — Pro-mode call sites for T2V / I2V.
+- `tests/render/test_native_fps_encode.py`
+- `tests/render/test_audio_alignment_real_durations.py`

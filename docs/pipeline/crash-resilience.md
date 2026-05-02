@@ -40,13 +40,18 @@ Details: [performance.md — Resource graph](performance.md).
 
 ## Host RAM heuristic before heavy loads
 
-[`check_stage_memory_budget`](../../src/runtime/memory_budget_preflight.py) compares **approximate Hub snapshot size** (from **`hf_model_sizes.json`**) vs **available host RAM**, and returns **warnings** (never hard errors).
+[`analyze_stage_memory_budget`](../../src/runtime/memory_budget_preflight.py) compares **approximate Hub snapshot size** (from **`hf_model_sizes.json`**) vs **available host RAM**. Matches become **preflight warnings**; **catastrophic** gaps (default: **video** models with very large snapshot estimates vs very little free RAM — e.g. **Wan** on a ~21 GiB free host) produce **preflight errors** so the run does not proceed to a load that often ends in a **silent Windows OOM kill**.
 
 | Variable | Default | Role |
 |----------|---------|------|
-| `AQUADUCT_MEMORY_PREFLIGHT` | effective **on** (`1`) | Set `0` / `false` / `no` / `off` to skip these warnings. |
-| `AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR` | **2.0** | Multiply cached model GiB estimate (buffer unzip / mmap spikes). |
-| `AQUADUCT_HOST_RAM_FLOOR_GIB` | **5.0** | Minimum free RAM expectation (GiB) before warning. |
+| `AQUADUCT_MEMORY_PREFLIGHT` | **on** (`1`) | `0` / `false` / `off` — skip warnings **and** fatal host-RAM gates for this heuristic. |
+| `AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR` | **2.0** | Multiply cached model GiB estimate (buffer / mmap spikes). |
+| `AQUADUCT_HOST_RAM_FLOOR_GIB` | **5.0** | Floor (GiB) combined with scaled snapshot for threshold. |
+| `AQUADUCT_MEMORY_PREFLIGHT_FAIL` | unset | `1`/`on` — treat **every** RAM shortfall warning as a **hard** preflight error. |
+| `AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES` | **`video`** | Comma roles eligible for catastrophic blocking; **empty** disables auto-block (warnings only). |
+| `AQUADUCT_MEMORY_SEVERE_SHORTFALL_FRAC` | **0.35** | If free RAM `<` this × heuristic threshold, catastrophic path can fire. |
+
+Full table: [Config — stage memory budget](../reference/config.md#stage-memory-budget-host-ram-heuristic).
 
 ## LLM holder (fewer reloads across steps)
 

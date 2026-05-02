@@ -169,6 +169,7 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
             "diffusers",
             "sentencepiece",
             "tiktoken",
+            "google.protobuf",  # required by transformers' SentencePieceExtractor (CogVideoX / T5-class video tokenizers)
         ]
         # Video motion (scene) mode needs imageio writer in our implementation
         if not v.use_image_slideshow:
@@ -225,21 +226,27 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
 
     if not is_api_mode(settings):
         try:
-            from src.runtime.memory_budget_preflight import check_stage_memory_budget
+            from src.runtime.memory_budget_preflight import (
+                check_stage_memory_budget,
+                check_stage_memory_hard_blocks,
+            )
 
             m = get_models()
             llm = (settings.llm_model_id or "").strip() or m.llm_id
             img = (settings.image_model_id or "").strip() or m.sdxl_turbo_id
             vid = (getattr(settings, "video_model_id", "") or "").strip()
-            warnings.extend(
-                check_stage_memory_budget(stage_label="Script load", role="script", repo_id=llm, settings=settings)
-            )
-            warnings.extend(
-                check_stage_memory_budget(stage_label="Image load", role="image", repo_id=img, settings=settings)
-            )
+            stages: list[tuple[str, str, str]] = [
+                ("Script load", llm, "script"),
+                ("Image load", img, "image"),
+            ]
             if vid:
+                stages.append(("Video load", vid, "video"))
+            for lbl, rid, rol in stages:
                 warnings.extend(
-                    check_stage_memory_budget(stage_label="Video load", role="video", repo_id=vid, settings=settings)
+                    check_stage_memory_budget(stage_label=lbl, role=rol, repo_id=rid or None, settings=settings)
+                )
+                errors.extend(
+                    check_stage_memory_hard_blocks(stage_label=lbl, role=rol, repo_id=rid or None, settings=settings)
                 )
         except Exception:
             pass

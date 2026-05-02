@@ -55,6 +55,7 @@ from src.content.prompt_conditioning import (
     default_negative_prompt,
 )
 from src.content.story_context import build_script_context
+from src.content.story_pipeline import run_multistage_refinement
 from src.content.topic_research_assets import topic_research_digest_for_script
 from src.content.llm_session import dispose_llm_holder, new_llm_holder
 from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
@@ -1588,21 +1589,33 @@ def run_once(
 
             release_between_stages("pro_after_video_diffusion_before_timeline_align", variant="cheap")
 
-            # Align narration to the total Pro timeline so captions and audio match the generated clip duration.
-            total_T = float(T) * float(len(clip_paths))
+            # Each T2V/I2V model is encoded at its **native** fps (CogVideoX 8, Wan 16, Mochi 30, LTX 24,
+            # Hunyuan 24); duration_s = num_frames / native_fps and is recorded in
+            # ``<clip>.mp4.meta.json`` by ``src.models.native_fps.write_clip_meta``. Equal-T chunking
+            # would mis-align audio whenever the model honored its trained timing instead of T.
+            from src.models.native_fps import clip_duration_seconds
+
+            clip_durations: list[float] = []
+            for cp in clip_paths:
+                d = clip_duration_seconds(cp, fallback=float(T))
+                clip_durations.append(float(d) if d and d > 0 else float(T))
+            total_T = max(0.5, sum(clip_durations))
             mix_wav = final_voice_wav
             try:
                 ffmpeg_bin = Path(ensure_ffmpeg(paths.ffmpeg_dir))
                 aligned = assets_dir / "voice_pro_timeline.wav"
                 from src.render.editor import _ffmpeg_align_wav_to_duration  # type: ignore
-    
+
                 _ffmpeg_align_wav_to_duration(ffmpeg_bin, final_voice_wav, aligned, total_T)
                 mix_wav = aligned
             except Exception:
                 mix_wav = final_voice_wav
-    
+
             _pipe_progress(on_progress, 91, -1, "Rendering Pro video & final MP4…")
-            _run_stage("encode", "FFmpeg/MoviePy: mux clips + captions + audio → final.mp4")
+            _run_stage(
+                "encode",
+                f"FFmpeg/MoviePy: mux clips + captions + audio (timeline ≈ {total_T:.2f}s across {len(clip_paths)} clips) → final.mp4",
+            )
             _rc(run_control)
             assemble_generated_clips_then_concat(
                 ffmpeg_dir=paths.ffmpeg_dir,
@@ -1617,6 +1630,7 @@ def run_once(
                 article_text=article_text,
                 topic_tags=list(effective_topic_tags(app)),
                 video_format=str(getattr(app, "video_format", "news") or "news"),
+                clip_durations=clip_durations,
             )
             _pipe_progress(on_progress, 93, -1, "Encode complete")
             try:

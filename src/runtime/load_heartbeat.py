@@ -105,7 +105,18 @@ def diffusion_load_watch(
                 import psutil
 
                 rss = psutil.Process().memory_info().rss / (1024**3)
-                msg_fn(f"Still loading {label!r} — {elapsed:.0f}s elapsed; host RSS≈{rss:.1f} GiB …")
+                vm = psutil.virtual_memory()
+                free_gib = vm.available / (1024**3)
+                pct = float(vm.percent or 0.0)
+                tail = ""
+                try:
+                    if free_gib < 6.0 or pct >= 93.0:
+                        tail = f" ⚠ host free RAM low (~{free_gib:.1f} GiB free, ~{pct:.0f}% used)"
+                except Exception:
+                    pass
+                msg_fn(
+                    f"Still loading {label!r} — {elapsed:.0f}s elapsed; host RSS≈{rss:.1f} GiB{tail} …"
+                )
             except Exception:
                 msg_fn(f"Still loading {label!r} — {elapsed:.0f}s elapsed …")
             if fatal > 0 and elapsed >= fatal:

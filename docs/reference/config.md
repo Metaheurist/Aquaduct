@@ -39,13 +39,17 @@ Before most CUDA-heavy work begins, **`main`** applies **`setdefault`** so you c
 
 ## Stage memory budget (host RAM heuristic)
 
-[`check_stage_memory_budget`](../../src/runtime/memory_budget_preflight.py) logs **warnings** when free host RAM may be tight versus **`hf_model_sizes.json`** footprint (with a buffer factor):
+[`analyze_stage_memory_budget`](../../src/runtime/memory_budget_preflight.py) drives **warnings** (`check_stage_memory_budget`). When free RAM is **dramatically** below the heuristic vs **large** checkpoints (defaults: **video** footprints ≥ ~30 GiB Hub snapshot estimate), startup **preflight** surfaces a matching **fatal error** instead of letting Windows OOM‑kill Python mid‑`from_pretrained`.
 
 | Variable | Meaning |
 |----------|---------|
-| **`AQUADUCT_MEMORY_PREFLIGHT`** | **`0`** / **`false`** / **`no`** / **`off`** disables these warnings (**default**: enabled unless set off). |
+| **`AQUADUCT_MEMORY_PREFLIGHT`** | **`0`** / **`false`** / **`no`** / **`off`** disables warnings **and** fatal host‑RAM gates (**default**: enabled unless set off). |
 | **`AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR`** | Float multiplier on cached Hub GiB (**default **2.0**) — unzip / transient spike headroom. |
-| **`AQUADUCT_HOST_RAM_FLOOR_GIB`** | Absolute floor (GiB) free RAM (**default **5.0**) used with the scaled model estimate. |
+| **`AQUADUCT_HOST_RAM_FLOOR_GIB`** | Absolute floor (GiB) free RAM (**default **5.0**) combined with the scaled model estimate (`max(floor, snapshot×factor)`). |
+| **`AQUADUCT_MEMORY_PREFLIGHT_FAIL`** | **`1`** / **`true`** / **`on`** — every host‑RAM shortfall line becomes a **hard** preflight error (strict operator mode). |
+| **`AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES`** | Comma roles for **catastrophic** auto‑block (default **`video`**). Set to **empty** (`AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES=`) to disable fatal shortfall gating while keeping warnings (**not** recommended for frontier T2V on low‑RAM PCs). |
+| **`AQUADUCT_MEMORY_SEVERE_SHORTFALL_FRAC`** | If free RAM **&lt;** this fraction × heuristic threshold, treat as catastrophic for gated roles (default **0.35**). |
+| **`AQUADUCT_MEMORY_BLOCK_MIN_VIDEO_GIB`** / **`…_IMAGE_GIB`** / **`…_SCRIPT_GIB`** | Minimum Hub snapshot estimate (GiB) before catastrophic rules apply per role (defaults **30** / **20** / **20**). |
 
 See [Crash resilience — host RAM heuristic](../pipeline/crash-resilience.md).
 

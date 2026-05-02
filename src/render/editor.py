@@ -578,10 +578,17 @@ def assemble_generated_clips_then_concat(
     article_text: str | None = None,
     topic_tags: list[str] | None = None,
     video_format: str | None = None,
+    clip_durations: list[float] | None = None,
 ) -> None:
     """
     Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
     and syncing each clip to a slice of the narration audio.
+
+    ``clip_durations`` (in seconds, parallel to ``clips``) is preferred when provided; the editor uses
+    each entry to slice both the video and the matching audio chunk. When omitted or any entry is
+    missing/<=0, the editor reads the per-clip ``.meta.json`` sidecar (written by
+    ``src.models.native_fps.write_clip_meta``) and finally falls back to ``VideoFileClip.duration``.
+    Equal-chunk slicing is no longer used unless every source above fails.
     """
     from debug import dprint
 
@@ -622,24 +629,57 @@ def assemble_generated_clips_then_concat(
         raise ValueError("No clips provided to editor.")
 
     clip_count = len(src)
-    chunk = total_dur / clip_count
+
+    def _resolve_duration(idx: int, clip_path: Path, vsrc_dur: float) -> float:
+        if clip_durations and idx < len(clip_durations):
+            try:
+                v = float(clip_durations[idx])
+                if v > 0:
+                    return v
+            except (TypeError, ValueError):
+                pass
+        try:
+            from src.models.native_fps import clip_duration_seconds
+
+            v = clip_duration_seconds(clip_path)
+            if v and v > 0:
+                return float(v)
+        except Exception:  # pragma: no cover — meta layer best-effort
+            pass
+        if vsrc_dur and vsrc_dur > 0:
+            return float(vsrc_dur)
+        return max(0.25, total_dur / max(1, clip_count))
+
+    resolved_durs: list[float] = []
 
     out_clips = []
+    cursor = 0.0
     for idx, clip_path in enumerate(src, start=1):
-        t0 = (idx - 1) * chunk
-        t1 = min(total_dur, idx * chunk)
-        dur = max(0.25, t1 - t0)
-
         vsrc = VideoFileClip(str(clip_path))
-        base = vsrc.subclip(0, min(dur, float(vsrc.duration)))
+        v_dur = float(getattr(vsrc, "duration", 0.0) or 0.0)
+        dur = _resolve_duration(idx - 1, clip_path, v_dur)
+        dur = max(0.25, dur)
+        resolved_durs.append(dur)
+
+        t0 = cursor
+        if t0 + dur > total_dur:
+            dur = max(0.25, total_dur - t0)
+        cursor = t0 + dur
+
+        base = vsrc.subclip(0, min(dur, v_dur if v_dur > 0 else dur))
         base = base.resize((settings.width, settings.height)).fl_image(_rgb_u8_for_moviepy_imageclip)
 
         a_seg = audio.subclip(t0, t0 + dur)
 
-        def caption_overlay(local_t: float) -> np.ndarray:
-            return overlay_fn(float(t0 + local_t))
+        def _caption_overlay_factory(t_start: float, fn: Callable[[float], np.ndarray]) -> Callable[[float], np.ndarray]:
+            def caption_overlay(local_t: float) -> np.ndarray:
+                return fn(float(t_start + local_t))
 
-        cap = _video_clip_from_rgba_overlay_fn(caption_overlay, duration=dur).set_position(("center", "center"))
+            return caption_overlay
+
+        cap = _video_clip_from_rgba_overlay_fn(
+            _caption_overlay_factory(t0, overlay_fn), duration=dur
+        ).set_position(("center", "center"))
 
         wm = _make_watermark_clip(branding=branding, out_w=settings.width, out_h=settings.height, duration=dur)
         layers = [base, cap] + ([wm] if wm is not None else [])

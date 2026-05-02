@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Video quality & tab redesign (in progress)
+
+This is an in-flight track; bullets land per phase as they ship.
+
+- **Phase 1 — native FPS + per-clip duration alignment**: every T2V / I2V
+  clip is encoded at the model's trained playback fps (CogVideoX **8**,
+  Wan **16**, Mochi **30**, LTX **24**, Hunyuan **24**) instead of the user's
+  export fps; LTX-2 keeps its `frame_rate` kwarg. Each clip mp4 now ships
+  with a `<clip>.mp4.meta.json` sidecar (`model_id`, `encoded_fps`,
+  `num_frames`, `duration_s`, `native_fps`, `user_fps`, `role`, `prompt`).
+  [`src/render/editor.py`](src/render/editor.py)'s
+  `assemble_generated_clips_then_concat` accepts a new
+  **`clip_durations=`** kwarg and, when omitted, derives per-clip lengths
+  from the sidecar (then `VideoFileClip.duration`, then legacy equal-T
+  chunking). [`main.py`](main.py)'s Pro branch now sums the real per-clip
+  durations into `total_T` before voice alignment so audio, captions, and
+  video share one timeline. Per-clip caption overlays no longer leak `t0`
+  via a closure (factory binds each `t_start` explicitly).
+  Files: [`src/models/native_fps.py`](src/models/native_fps.py) (new),
+  [`src/render/clips.py`](src/render/clips.py),
+  [`src/render/editor.py`](src/render/editor.py), [`main.py`](main.py).
+  Docs: **[`docs/pipeline/video-quality.md`](docs/pipeline/video-quality.md)**
+  (new). Tests:
+  [`tests/render/test_native_fps_encode.py`](tests/render/test_native_fps_encode.py),
+  [`tests/render/test_audio_alignment_real_durations.py`](tests/render/test_audio_alignment_real_durations.py).
+  Override: `AQUADUCT_NATIVE_FPS_OVERRIDE_<REPO>` (e.g.
+  `AQUADUCT_NATIVE_FPS_OVERRIDE_THUDM__COGVIDEOX_5B=12`).
+
 ### Crash-resilience & “run-on-anything” mode
 - **CUDA / Hub env** ([`main.py`](main.py)): `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128`; `HF_HUB_ENABLE_HF_TRANSFER=0`.
 - **Quant default** ([`src/core/config.py`](src/core/config.py), [`src/models/quantization.py`](src/models/quantization.py)): **`auto_quant_downgrade_on_failure`** default **on**.

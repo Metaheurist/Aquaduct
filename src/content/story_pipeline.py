@@ -395,7 +395,20 @@ def _maybe_elaboration(
             max_new_tokens=2048,
             inference_settings=app_settings,
         )
-        return video_package_from_llm_output(raw)
+        try:
+            return video_package_from_llm_output(raw)
+        except (json.JSONDecodeError, ValueError):
+            repair_prompt = _REFINEMENT_JSON_REPAIR_PREFIX + raw.strip()[:14000]
+            raw_fix = _generate_with_loaded_causal_lm(
+                llm_holder["model"],
+                llm_holder["tokenizer"],
+                model_id,
+                repair_prompt,
+                on_llm_task=_emit,
+                max_new_tokens=2048,
+                inference_settings=app_settings,
+            )
+            return video_package_from_llm_output(raw_fix)
     except Exception as e:
         dprint("story_pipeline", "elaboration failed", str(e))
         return pkg
