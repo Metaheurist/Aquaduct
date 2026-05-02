@@ -194,6 +194,15 @@ class VideoSettings:
     #: Target encoded fps for the smoothing pass (output fps). Capped at 60.
     smoothness_target_fps: int = 24
 
+    # Video tab v2 (Phase 5): named knobs that drive the legacy spinners
+    # below them. Empty string = the user picked Custom in the Advanced
+    # disclosure and the spinner values should be honoured verbatim. See
+    # ``src/render/video_quality_presets.py``.
+    video_length_preset_id: str = "medium"
+    video_scene_preset_id: str = "balanced"
+    video_fps_preset_id: str = "standard_30"
+    video_resolution_preset_id: str = "vertical_1080p"
+
     # Last selected platform template id (empty = Custom); see `src/video_platform_presets.py`
     platform_preset_id: str = ""
     # Last selected Effects tab template id (empty = Custom); see `src/effects_presets.py`

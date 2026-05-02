@@ -8,6 +8,35 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 5 — Video tab v2 quality presets**: new
+  [`src/render/video_quality_presets.py`](src/render/video_quality_presets.py)
+  introduces four named knobs (Length / Scene / FPS / Resolution) plus
+  the existing Smoothness mode. Replaces five raw spinners on the Video
+  tab with `LENGTH_PRESETS` (`short` ≈ 10–15 s, `medium` ≈ 25–35 s,
+  `long` ≈ 50–70 s + matching `length_factor` 0.85 / 1.0 / 1.25),
+  `SCENE_PRESETS` (`punchy` 3 s / `balanced` 5 s / `cinematic` 7 s),
+  `FPS_PRESETS` (`cinematic_24` / `standard_30` / `smooth_60` — keeps
+  `smoothness_target_fps` in sync), and `RESOLUTION_PRESETS`
+  (`vertical_1080p` / `vertical_720p` / `square_1080`).
+  `migrate_legacy_video_settings(...)` is invoked on every settings load
+  so existing installs land on the closest preset for each knob, and
+  `apply_video_presets(...)` overrides the raw spinner values when a
+  preset id is set so the rest of the pipeline (which still reads
+  `width`/`height`/`fps`/`clips_per_video`/`pro_clip_seconds`) sees a
+  coherent configuration. `merge_t2v_from_settings` now scales T2V
+  `num_frames` by `length_factor_for(settings.video)` after the per-model
+  VRAM profile, with an 8-frame floor. New
+  `VideoSettings.video_length_preset_id` /
+  `video_scene_preset_id` / `video_fps_preset_id` /
+  `video_resolution_preset_id` (all with `medium` / `balanced` /
+  `standard_30` / `vertical_1080p` defaults). Video tab gains a
+  "Quality presets (v2)" form with five combo boxes; picking a preset
+  snaps the matching legacy spinners through the existing
+  `_applying_video_template` mutex. Tests:
+  [`tests/render/test_video_quality_presets.py`](tests/render/test_video_quality_presets.py)
+  (19 cases). Docs:
+  [`docs/ui/video-tab-v2.md`](docs/ui/video-tab-v2.md).
+
 - **Phase 4 — diversified scene-prompt builder**: new
   [`src/render/scene_prompts.py`](src/render/scene_prompts.py) replaces
   the inline scene splitting in `main.py`. Drops the legacy

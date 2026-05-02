@@ -145,6 +145,135 @@ def attach_video_tab(win) -> None:
     lay.addWidget(preset_hint)
 
     add_section_spacing(lay, px=14)
+    lay.addWidget(section_title("Quality presets (v2)", emphasis=True))
+    lay.addSpacing(2)
+
+    from src.render.video_quality_presets import (
+        FPS_PRESETS,
+        LENGTH_PRESETS,
+        RESOLUTION_PRESETS,
+        SCENE_PRESETS,
+    )
+
+    presets_form = QFormLayout()
+    presets_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    presets_form.setVerticalSpacing(10)
+    presets_form.setHorizontalSpacing(18)
+    presets_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    win.video_length_preset_combo = NoWheelComboBox()
+    for lp in LENGTH_PRESETS.values():
+        win.video_length_preset_combo.addItem(lp.label, lp.id)
+        win.video_length_preset_combo.setItemData(
+            win.video_length_preset_combo.count() - 1, lp.description, Qt.ItemDataRole.ToolTipRole
+        )
+    _prep_combo(win.video_length_preset_combo, min_w=240)
+    cur_lp = str(getattr(win.settings.video, "video_length_preset_id", "medium") or "medium")
+    idx_lp = win.video_length_preset_combo.findData(cur_lp)
+    if idx_lp >= 0:
+        win.video_length_preset_combo.setCurrentIndex(idx_lp)
+    win.video_length_preset_combo.setToolTip(
+        help_tooltip_rich(
+            "Length preset drives total video duration: short ≈ 10–15 s, medium ≈ 25–35 s (default), long ≈ 50–70 s. "
+            "Also rescales T2V num_frames so the model spends its budget on more or fewer scenes.",
+            "video",
+            slide=0,
+        )
+    )
+    presets_form.addRow("Length", win.video_length_preset_combo)
+
+    win.video_scene_preset_combo = NoWheelComboBox()
+    for sp in SCENE_PRESETS.values():
+        win.video_scene_preset_combo.addItem(sp.label, sp.id)
+        win.video_scene_preset_combo.setItemData(
+            win.video_scene_preset_combo.count() - 1, sp.description, Qt.ItemDataRole.ToolTipRole
+        )
+    _prep_combo(win.video_scene_preset_combo, min_w=240)
+    cur_sp = str(getattr(win.settings.video, "video_scene_preset_id", "balanced") or "balanced")
+    idx_sp = win.video_scene_preset_combo.findData(cur_sp)
+    if idx_sp >= 0:
+        win.video_scene_preset_combo.setCurrentIndex(idx_sp)
+    win.video_scene_preset_combo.setToolTip(
+        help_tooltip_rich(
+            "Scene length controls per-clip pacing: punchy ≈ 3 s/clip, balanced ≈ 5 s (default), cinematic ≈ 7 s.",
+            "video",
+            slide=0,
+        )
+    )
+    presets_form.addRow("Scene length", win.video_scene_preset_combo)
+
+    win.video_fps_preset_combo = NoWheelComboBox()
+    for fp in FPS_PRESETS.values():
+        win.video_fps_preset_combo.addItem(fp.label, fp.id)
+        win.video_fps_preset_combo.setItemData(
+            win.video_fps_preset_combo.count() - 1, fp.description, Qt.ItemDataRole.ToolTipRole
+        )
+    _prep_combo(win.video_fps_preset_combo, min_w=240)
+    cur_fp = str(getattr(win.settings.video, "video_fps_preset_id", "standard_30") or "standard_30")
+    idx_fp = win.video_fps_preset_combo.findData(cur_fp)
+    if idx_fp >= 0:
+        win.video_fps_preset_combo.setCurrentIndex(idx_fp)
+    win.video_fps_preset_combo.setToolTip(
+        help_tooltip_rich(
+            "FPS preset: 24 (cinematic film look), 30 (default short-form), 60 (smooth — needs Smoothness ≥ ffmpeg).",
+            "video",
+            slide=0,
+        )
+    )
+    presets_form.addRow("Frame rate", win.video_fps_preset_combo)
+
+    win.video_resolution_preset_combo = NoWheelComboBox()
+    for rp in RESOLUTION_PRESETS.values():
+        win.video_resolution_preset_combo.addItem(rp.label, rp.id)
+        win.video_resolution_preset_combo.setItemData(
+            win.video_resolution_preset_combo.count() - 1, rp.description, Qt.ItemDataRole.ToolTipRole
+        )
+    _prep_combo(win.video_resolution_preset_combo, min_w=240)
+    cur_rp = str(
+        getattr(win.settings.video, "video_resolution_preset_id", "vertical_1080p") or "vertical_1080p"
+    )
+    idx_rp = win.video_resolution_preset_combo.findData(cur_rp)
+    if idx_rp >= 0:
+        win.video_resolution_preset_combo.setCurrentIndex(idx_rp)
+    win.video_resolution_preset_combo.setToolTip(
+        help_tooltip_rich(
+            "Resolution preset: 1080×1920 (default), 720×1280 (lighter render), or square 1080×1080.",
+            "video",
+            slide=0,
+        )
+    )
+    presets_form.addRow("Resolution", win.video_resolution_preset_combo)
+
+    win.video_smoothness_combo = NoWheelComboBox()
+    win.video_smoothness_combo.addItem("Off — encode at native fps", "off")
+    win.video_smoothness_combo.addItem("FFmpeg minterpolate (CPU)", "ffmpeg")
+    win.video_smoothness_combo.addItem("RIFE (optional, GPU)", "rife")
+    _prep_combo(win.video_smoothness_combo, min_w=240)
+    cur_sm = str(getattr(win.settings.video, "smoothness_mode", "off") or "off")
+    idx_sm = win.video_smoothness_combo.findData(cur_sm)
+    if idx_sm >= 0:
+        win.video_smoothness_combo.setCurrentIndex(idx_sm)
+    win.video_smoothness_combo.setToolTip(
+        help_tooltip_rich(
+            "Optional motion-aware upsampling after T2V (Phase 2). 'rife' falls back to ffmpeg if the package "
+            "isn't installed or VRAM is short. See docs/pipeline/video-quality.md.",
+            "video",
+            slide=0,
+        )
+    )
+    presets_form.addRow("Smoothness", win.video_smoothness_combo)
+
+    lay.addLayout(presets_form)
+
+    presets_hint = QLabel(
+        "Pick the four knobs above for typical workflows. Edit individual spinners under Output & timing "
+        "for full manual control — that switches the matching preset to the closest legacy match."
+    )
+    presets_hint.setWordWrap(True)
+    presets_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    lay.addWidget(presets_hint)
+
+    add_section_spacing(lay, px=14)
     lay.addWidget(section_title("Output & timing", emphasis=True))
 
     # --- Form 1: core video output
@@ -451,6 +580,68 @@ def attach_video_tab(win) -> None:
     win._video_platform_preset_id = ""
 
     win._platform_preset_tile_group.buttonClicked.connect(_on_preset_tile_clicked)
+
+    # Phase 5: live wiring for the four-knob v2 presets — picking a preset
+    # snaps the legacy spinners to its values so the rest of the pipeline
+    # (which reads width/height/fps/clips_per_video/pro_clip_seconds) sees
+    # a coherent configuration.
+    def _apply_v2_length_preset(*_args: object) -> None:
+        if getattr(win, "_applying_video_template", False):
+            return
+        from src.render.video_quality_presets import length_preset
+
+        pid = str(win.video_length_preset_combo.currentData() or "medium")
+        lp = length_preset(pid)
+        win._applying_video_template = True
+        try:
+            win.clips_spin.setValue(int(lp.clips_per_video))
+            win.pro_clip_seconds_spin.setValue(float(lp.pro_clip_seconds))
+        finally:
+            win._applying_video_template = False
+
+    def _apply_v2_scene_preset(*_args: object) -> None:
+        if getattr(win, "_applying_video_template", False):
+            return
+        from src.render.video_quality_presets import scene_preset
+
+        pid = str(win.video_scene_preset_combo.currentData() or "balanced")
+        sp = scene_preset(pid)
+        win._applying_video_template = True
+        try:
+            win.pro_clip_seconds_spin.setValue(float(sp.target_clip_seconds))
+        finally:
+            win._applying_video_template = False
+
+    def _apply_v2_fps_preset(*_args: object) -> None:
+        if getattr(win, "_applying_video_template", False):
+            return
+        from src.render.video_quality_presets import fps_preset
+
+        pid = str(win.video_fps_preset_combo.currentData() or "standard_30")
+        fp = fps_preset(pid)
+        win._applying_video_template = True
+        try:
+            win.fps_spin.setValue(int(fp.fps))
+        finally:
+            win._applying_video_template = False
+
+    def _apply_v2_resolution_preset(*_args: object) -> None:
+        if getattr(win, "_applying_video_template", False):
+            return
+        from src.render.video_quality_presets import resolution_preset
+
+        pid = str(win.video_resolution_preset_combo.currentData() or "vertical_1080p")
+        rp = resolution_preset(pid)
+        win._applying_video_template = True
+        try:
+            _ensure_resolution_row(rp.width, rp.height)
+        finally:
+            win._applying_video_template = False
+
+    win.video_length_preset_combo.currentIndexChanged.connect(_apply_v2_length_preset)
+    win.video_scene_preset_combo.currentIndexChanged.connect(_apply_v2_scene_preset)
+    win.video_fps_preset_combo.currentIndexChanged.connect(_apply_v2_fps_preset)
+    win.video_resolution_preset_combo.currentIndexChanged.connect(_apply_v2_resolution_preset)
 
     win.format_combo.currentIndexChanged.connect(lambda *_: _mark_video_template_custom())
     win.bitrate_combo.currentIndexChanged.connect(lambda *_: _mark_video_template_custom())
