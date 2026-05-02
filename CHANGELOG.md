@@ -8,6 +8,30 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 8 — auto-cast parity & persistence**: the LLM cast generator
+  ([`generate_cast_from_storyline_llm`](src/content/brain.py)) now also
+  emits a per-character `voice_instruction`, and
+  [`fallback_cast_for_show`](src/content/characters_store.py) mirrors the
+  same field for every supported `video_format` (incl. a dedicated
+  `creepypasta` narrator branch). Two new helpers,
+  `cast_to_characters` and `merge_cast_into_store`, build full
+  `Character` instances with deterministic IDs derived from
+  `(name, video_format, headline_seed)` and upsert them into
+  `data/characters.json`, so auto-generated casts now show up in the
+  Characters tab and are deduplicated across re-runs.
+  `cast_to_ephemeral_character` aggregates `voice_instruction` for
+  multi-character formats (cartoon/unhinged) and propagates the single
+  narrator instruction for news/explainer/creepypasta/health_advice.
+  New `AppSettings.auto_save_generated_cast: bool = True` controls the
+  promotion; a checkbox **"Save generated cast to Characters tab"** is
+  added under the Character dropdown in the Run tab. Both `main.run_once`
+  and `src.runtime.pipeline_api.run_once_api` call
+  `merge_cast_into_store` after writing
+  `assets/generated_cast.json`. Tests:
+  [`tests/content/test_cast_persistence.py`](tests/content/test_cast_persistence.py)
+  (18 cases). Docs:
+  [`docs/pipeline/character-persistence.md`](docs/pipeline/character-persistence.md).
+
 - **Phase 9 — fused prompt context**: new
   [`src/content/prompt_context.py`](src/content/prompt_context.py)
   resolves `video_format`, `personality`, `art_style`, and `branding`

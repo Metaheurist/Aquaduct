@@ -326,6 +326,9 @@ def fallback_cast_for_show(*, video_format: str, topic_tags: list[str] | None, h
                     else "Clean infographic-adjacent visuals, diagrams, readable labels, 9:16"
                 ),
                 "negatives": neg,
+                "voice_instruction": (
+                    "Late-20s/30s host, neutral accent, clear and steady mid-pace delivery, slight curiosity"
+                ),
             }
         ]
 
@@ -344,6 +347,30 @@ def fallback_cast_for_show(*, video_format: str, topic_tags: list[str] | None, h
                     "Medical education vertical: soft clinic light, diagrams, stylized charts, 9:16 — no gore, no real patients"
                 ),
                 "negatives": neg,
+                "voice_instruction": (
+                    "Warm clinical educator, mid-pace delivery, reassuring but factual, no fear-mongering"
+                ),
+            }
+        ]
+
+    if vf == "creepypasta":
+        narrator = _nm()
+        return [
+            {
+                "name": narrator,
+                "role": "First-person narrator",
+                "identity": (
+                    f"{narrator}: calm, intimate first-person storyteller — measured campfire delivery; "
+                    f"topic vibe: {tag_hint}. Stay in fiction; do not claim real crimes or real people."
+                ),
+                "visual_style": (
+                    "Cinematic low-key horror stills — fog, silhouettes, liminal hallways, moonlight, grain, "
+                    "implied dread; 9:16 vertical, no splatter"
+                ),
+                "negatives": neg,
+                "voice_instruction": (
+                    "Late-night narrator, hushed, slow campfire pace, occasional pause for tension, no shouting"
+                ),
             }
         ]
 
@@ -358,6 +385,9 @@ def fallback_cast_for_show(*, video_format: str, topic_tags: list[str] | None, h
             if vf == "cartoon"
             else "Flat 2D adult-animation satire, exaggerated expressions, 9:16 vertical",
             "negatives": neg,
+            "voice_instruction": (
+                "Energetic, playful, slightly unhinged, fast pace, leans into punchlines"
+            ),
         },
         {
             "name": b,
@@ -367,6 +397,9 @@ def fallback_cast_for_show(*, video_format: str, topic_tags: list[str] | None, h
             if vf == "cartoon"
             else "Flat 2D adult-animation satire, exaggerated expressions, 9:16 vertical",
             "negatives": neg,
+            "voice_instruction": (
+                "Deadpan, flat affect, a beat slower than the lead, occasional sigh"
+            ),
         },
     ]
 
@@ -410,7 +443,7 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
     if not safe:
         return _ephemeral_character_for_show(video_format=vf, topic_tags=None, headline_seed="")
 
-    if vf in ("news", "explainer"):
+    if vf in ("news", "explainer", "creepypasta", "health_advice"):
         c0 = safe[0]
         name = str(c0.get("name") or "Narrator").strip()[:_MAX_NAME]
         identity = str(c0.get("identity") or "").strip()
@@ -418,6 +451,7 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
             identity = "Narrator/host: clear, credible, plain language; avoids speculation; hedges uncertainty."
         visual = str(c0.get("visual_style") or "").strip()
         negatives = str(c0.get("negatives") or "").strip()
+        voice_instruction = str(c0.get("voice_instruction") or "").strip()
         return Character(
             id=uuid.uuid4().hex,
             name=name or "Narrator",
@@ -428,7 +462,7 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
             use_default_voice=True,
             pyttsx3_voice_id="",
             kokoro_voice="",
-            voice_instruction="",
+            voice_instruction=_clip(voice_instruction, _MAX_FIELD),
             elevenlabs_voice_id="",
         )
 
@@ -440,12 +474,14 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
     cast_lines: list[str] = []
     visual_bits: list[str] = []
     neg_bits: list[str] = []
+    voice_lines: list[str] = []
     for c in safe[:4]:
         nm = str(c.get("name") or "").strip()
         role = str(c.get("role") or "").strip()
         ident = str(c.get("identity") or "").strip()
         vis = str(c.get("visual_style") or "").strip()
         neg = str(c.get("negatives") or "").strip()
+        vinst = str(c.get("voice_instruction") or "").strip()
         if nm:
             head = f"- {nm}" + (f" ({role})" if role else "")
             body = f"{head}\n  {ident}" if ident else head
@@ -454,6 +490,8 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
             visual_bits.append(vis)
         if neg:
             neg_bits.append(neg)
+        if nm and vinst:
+            voice_lines.append(f"- {nm}: {vinst}")
 
     identity_block = (
         "Cast (mandatory):\n"
@@ -465,6 +503,10 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
     if not negatives:
         negatives = "Slurs, hate, harassment, real-person cruelty; do not copy real shows or characters."
 
+    voice_instruction = (
+        ("Cast voice directions (per character):\n" + "\n".join(voice_lines)) if voice_lines else ""
+    )
+
     return Character(
         id=uuid.uuid4().hex,
         name=disp or "Cast",
@@ -475,9 +517,100 @@ def cast_to_ephemeral_character(*, cast: list[dict[str, Any]], video_format: str
         use_default_voice=True,
         pyttsx3_voice_id="",
         kokoro_voice="",
-        voice_instruction="",
+        voice_instruction=_clip(voice_instruction, _MAX_FIELD),
         elevenlabs_voice_id="",
     )
+
+
+def _deterministic_character_id(*, name: str, video_format: str, headline_seed: str = "") -> str:
+    """
+    Stable per-(name, format) hex id used so re-running the same generated cast
+    upserts existing entries instead of duplicating them in the global store.
+    """
+    seed = f"{(name or '').strip().lower()}|{normalize_video_format(video_format)}|{(headline_seed or '').strip()}"
+    digest = zlib.adler32(seed.encode("utf-8", errors="ignore")) & 0xFFFFFFFF
+    base = uuid.uuid5(uuid.NAMESPACE_DNS, seed).hex
+    return f"{digest:08x}{base[:24]}"
+
+
+def cast_to_characters(
+    *,
+    cast: list[dict[str, Any]],
+    video_format: str,
+    headline_seed: str = "",
+) -> list[Character]:
+    """
+    Convert a generated cast list into one full :class:`Character` per cast member.
+
+    Mirrors the Characters tab schema (identity, visual_style, negatives, voice_instruction)
+    so the auto-generated cast reaches feature parity with hand-authored characters.
+
+    Stable IDs are derived from ``(name, video_format, headline_seed)`` so the same generated
+    cast does not duplicate on subsequent runs.
+    """
+    out: list[Character] = []
+    seen_ids: set[str] = set()
+    vf = normalize_video_format(video_format)
+    for c in cast:
+        if not isinstance(c, dict):
+            continue
+        name = _clip(str(c.get("name") or ""), _MAX_NAME)
+        if not name:
+            continue
+        identity_raw = str(c.get("identity") or "").strip()
+        role = str(c.get("role") or "").strip()
+        if role and identity_raw and not identity_raw.lower().startswith(role.lower()):
+            identity = f"{role}: {identity_raw}"
+        elif role and not identity_raw:
+            identity = role
+        else:
+            identity = identity_raw
+        cid = _deterministic_character_id(name=name, video_format=vf, headline_seed=headline_seed)
+        if cid in seen_ids:
+            continue
+        seen_ids.add(cid)
+        out.append(
+            Character(
+                id=cid,
+                name=name,
+                identity=_clip(identity, _MAX_FIELD),
+                visual_style=_clip(str(c.get("visual_style") or ""), _MAX_FIELD),
+                negatives=_clip(str(c.get("negatives") or ""), _MAX_FIELD),
+                reference_image_rel="",
+                use_default_voice=True,
+                pyttsx3_voice_id="",
+                kokoro_voice="",
+                voice_instruction=_clip(str(c.get("voice_instruction") or ""), _MAX_FIELD),
+                elevenlabs_voice_id="",
+            )
+        )
+    return out
+
+
+def merge_cast_into_store(
+    *,
+    cast: list[dict[str, Any]],
+    video_format: str,
+    headline_seed: str = "",
+) -> list[Character]:
+    """
+    Upsert auto-generated cast members into the global ``characters.json`` store.
+
+    Returns the list of :class:`Character` objects that ended up persisted (the cast members
+    themselves; the rest of the store is untouched). Idempotent — calling twice with the same
+    inputs results in updates, not duplicates, because IDs are deterministic.
+    """
+    new_chars = cast_to_characters(
+        cast=cast, video_format=video_format, headline_seed=headline_seed
+    )
+    if not new_chars:
+        return []
+    existing = load_all()
+    by_id = {c.id: c for c in existing}
+    for ch in new_chars:
+        by_id[ch.id] = ch
+    save_all(sorted(by_id.values(), key=lambda x: x.name.lower()))
+    return new_chars
 
 
 def character_context_for_brain(ch: Character) -> str:

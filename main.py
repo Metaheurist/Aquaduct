@@ -37,6 +37,7 @@ from src.content.characters_store import (
     character_context_for_brain,
     character_selected_in_settings,
     fallback_cast_for_show,
+    merge_cast_into_store,
     resolve_character_for_pipeline,
 )
 from src.content.crawler import (
@@ -1112,6 +1113,21 @@ def run_once(
                         json.dumps({"video_format": vf_cast2, "characters": cast}, indent=2, ensure_ascii=False),
                         encoding="utf-8",
                     )
+                    if bool(getattr(app, "auto_save_generated_cast", True)):
+                        try:
+                            persisted = merge_cast_into_store(
+                                cast=cast or [],
+                                video_format=vf_cast2,
+                                headline_seed=str(_head_seed or ""),
+                            )
+                            if persisted:
+                                names = ", ".join(ch.name for ch in persisted)
+                                _run_stage(
+                                    "cast_persist",
+                                    f"Saved {len(persisted)} generated character(s) to Characters tab: {names}",
+                                )
+                        except Exception:
+                            dprint("pipeline", "auto-save generated cast failed (non-fatal)")
                     _pipeline_checkpoint("cast_pkg")
             except Exception:
                 pass
