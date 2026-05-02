@@ -8,6 +8,26 @@ All notable changes to this project will be documented in this file.
 
 This is an in-flight track; bullets land per phase as they ship.
 
+- **Phase 2 — optional temporal smoothing**: new
+  [`src/render/temporal_smooth.py`](src/render/temporal_smooth.py)
+  adds a post-generation motion-aware upsampling pass with three modes —
+  `off` (default no-op), `ffmpeg` (bundled binary, `minterpolate=mci:aobmc`),
+  and `rife` (lazy import of `rife_ncnn_vulkan_python`, gated on
+  `RIFE_VRAM_BUDGET_MB ≥ 1500` and falling back to `ffmpeg` otherwise).
+  `target_fps` is clamped to `[12, 60]`; smoothing is a no-op when the
+  target is ≤ the clip's encoded fps. The pass replaces the original
+  mp4 atomically and rewrites the `.mp4.meta.json` sidecar so the editor
+  and audio aligner pick up the new fps and frame count without any
+  further changes. `src/render/clips.py::generate_clips` now calls
+  `_maybe_smooth_clips(...)` after the T2V/I2V batch and
+  `src/runtime/preflight.py` adds RIFE-resource warnings (package
+  missing, low VRAM, API-mode noise). New
+  `VideoSettings.smoothness_mode: Literal["off", "ffmpeg", "rife"]` and
+  `smoothness_target_fps: int = 24`. Tests:
+  [`tests/render/test_temporal_smooth.py`](tests/render/test_temporal_smooth.py)
+  (16 cases). Docs updated:
+  [`docs/pipeline/video-quality.md`](docs/pipeline/video-quality.md).
+
 - **Phase 8 — auto-cast parity & persistence**: the LLM cast generator
   ([`generate_cast_from_storyline_llm`](src/content/brain.py)) now also
   emits a per-character `voice_instruction`, and

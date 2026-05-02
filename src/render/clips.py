@@ -897,6 +897,71 @@ def generate_clips(
                 f"Video model {video_model_id!r} produced no clips. "
                 "Check the Model tab, GPU/CUDA, and that the repo downloaded completely (e.g. unet/vae weights)."
             )
+        _maybe_smooth_clips(r, video_model_id=video_model_id, settings=inference_settings)
         dprint("clips", "generate_clips done", f"count={len(r)}")
         return r
+
+
+def _maybe_smooth_clips(
+    clips: list[GeneratedClip],
+    *,
+    video_model_id: str,
+    settings: AppSettings | None,
+) -> None:
+    """Apply the optional temporal-smoothing pass to *clips* in place.
+
+    A no-op when ``inference_settings.video.smoothness_mode == "off"``. Errors
+    are swallowed: smoothing must never break a successful render.
+    """
+    if settings is None:
+        return
+    video_settings = getattr(settings, "video", None)
+    mode = str(getattr(video_settings, "smoothness_mode", "off") or "off").strip().lower()
+    if mode == "off":
+        return
+    target_fps = int(getattr(video_settings, "smoothness_target_fps", 24) or 24)
+
+    free_vram_mb: int | None = None
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            free_b, _total_b = torch.cuda.mem_get_info()  # type: ignore[no-untyped-call]
+            free_vram_mb = int(free_b) // (1024 * 1024)
+    except Exception:
+        free_vram_mb = None
+
+    try:
+        from src.render.temporal_smooth import smooth_clips
+    except Exception as exc:  # pragma: no cover
+        from debug import dprint as _dp
+
+        _dp("clips", f"temporal_smooth import failed: {exc}")
+        return
+
+    paths = [Path(c.path) for c in clips]
+    try:
+        results = smooth_clips(
+            paths,
+            mode=mode,  # type: ignore[arg-type]
+            model_id=video_model_id,
+            target_fps=target_fps,
+            free_vram_mb=free_vram_mb,
+        )
+    except Exception as exc:
+        from debug import dprint as _dp
+
+        _dp("clips", f"smooth_clips failed: {exc}")
+        return
+
+    from debug import dprint as _dp
+
+    used = {r.mode_used for r in results}
+    _dp(
+        "clips",
+        "temporal smoothing done",
+        f"mode_requested={mode}",
+        f"mode_used={','.join(sorted(used))}",
+        f"target_fps={target_fps}",
+    )
 

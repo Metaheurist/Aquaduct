@@ -182,6 +182,18 @@ class VideoSettings:
     facts_card_position: Literal["top_left", "top_right"] = "top_left"
     facts_card_duration: Literal["short", "long"] = "short"
 
+    # Temporal smoothing applied to T2V clips after generation (Phase 2). See
+    # ``src/render/temporal_smooth.py`` and ``docs/pipeline/video-quality.md``.
+    # ``off``    -- no smoothing (default; identical to legacy behaviour).
+    # ``ffmpeg`` -- FFmpeg ``minterpolate`` motion-compensated re-encode (CPU,
+    #               cheap, no extra weights). Doubles encoded fps when native fps
+    #               is below ``smoothness_target_fps``; otherwise no-op.
+    # ``rife``   -- Optional ML interpolator (lazy import). Falls back to
+    #               ``ffmpeg`` if the package or VRAM budget is missing.
+    smoothness_mode: Literal["off", "ffmpeg", "rife"] = "off"
+    #: Target encoded fps for the smoothing pass (output fps). Capped at 60.
+    smoothness_target_fps: int = 24
+
     # Last selected platform template id (empty = Custom); see `src/video_platform_presets.py`
     platform_preset_id: str = ""
     # Last selected Effects tab template id (empty = Custom); see `src/effects_presets.py`
