@@ -19,6 +19,8 @@ huggingface_hub>=0.24.0
 # Tokenizers (CogVideoX and others load spiece / tiktoken conversion paths via transformers).
 sentencepiece>=0.2.0
 tiktoken>=0.7.0
+# Required by transformers' SentencePieceExtractor for some checkpoints (falls back if missing — slower/weirder loads).
+protobuf>=4.25.0,<6
 
 # Media
 moviepy>=1.0.3,<2

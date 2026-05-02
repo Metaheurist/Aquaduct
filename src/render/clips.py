@@ -11,6 +11,7 @@ import numpy as np
 from src.core.config import AppSettings
 from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
+from src.models.native_fps import encoded_fps_for, write_clip_meta
 from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
 from src.util.diffusion_placement import place_diffusion_pipeline
@@ -625,6 +626,17 @@ def _try_text_to_video(
                     )
                     fr_ltx = int(vkw.get("frame_rate", fps) or fps)
                     encode_video(vframes, fr_ltx, aud, sr, str(out_path))
+                    try:
+                        write_clip_meta(
+                            out_path,
+                            model_id=model_id,
+                            encoded_fps=fr_ltx,
+                            num_frames=len(vframes) if hasattr(vframes, "__len__") else int(vkw.get("num_frames", 0) or 0),
+                            user_fps=int(fps),
+                            extra={"role": "t2v_ltx2_av", "prompt": p, "has_audio": True},
+                        )
+                    except OSError:
+                        pass
                     results.append(GeneratedClip(path=out_path, prompt=p))
                     continue
             except Exception:
@@ -643,7 +655,21 @@ def _try_text_to_video(
             raise RuntimeError("Video pipeline returned no frames.")
 
         frames = [np.array(fr.convert("RGB")) for fr in pil_frames]
-        _write_mp4_from_frames(frames, out_path, fps=int(vkw.get("frame_rate", fps) or fps) if mid_run == "lightricks/ltx-2" else fps)
+        enc_fps = encoded_fps_for(
+            model_id, user_fps=int(fps), frame_rate_kw=vkw.get("frame_rate")
+        )
+        _write_mp4_from_frames(frames, out_path, fps=enc_fps)
+        try:
+            write_clip_meta(
+                out_path,
+                model_id=model_id,
+                encoded_fps=enc_fps,
+                num_frames=len(frames),
+                user_fps=int(fps),
+                extra={"role": "t2v", "prompt": p},
+            )
+        except OSError:
+            pass
         results.append(GeneratedClip(path=out_path, prompt=p))
 
     del pipe
@@ -736,7 +762,21 @@ def _try_image_to_video(
             raise RuntimeError("Video pipeline returned no frames.")
         frames = [np.array(fr.convert("RGB")) for fr in pil_frames]
         out_path = out_dir / f"clip_{i:03d}.mp4"
-        _write_mp4_from_frames(frames, out_path, fps=fps)
+        enc_fps = encoded_fps_for(
+            model_id, user_fps=int(fps), frame_rate_kw=vkw.get("frame_rate")
+        )
+        _write_mp4_from_frames(frames, out_path, fps=enc_fps)
+        try:
+            write_clip_meta(
+                out_path,
+                model_id=model_id,
+                encoded_fps=enc_fps,
+                num_frames=len(frames),
+                user_fps=int(fps),
+                extra={"role": "i2v", "prompt": p},
+            )
+        except OSError:
+            pass
         results.append(GeneratedClip(path=out_path, prompt=p))
 
     del pipe

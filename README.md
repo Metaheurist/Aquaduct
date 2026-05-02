@@ -17,6 +17,7 @@ This project builds **Aquaduct**, a **local-first** tool (with optional **API ex
 - [Performance notes](docs/pipeline/performance.md)
 - [Docs](#docs)
 - [Changelog](CHANGELOG.md)
+- [Acknowledgments](#acknowledgments)
 - [Dependencies](DEPENDENCIES.md)
 
 ## Starter guide
@@ -190,6 +191,9 @@ Example:
 - [YouTube upload (Tasks + API)](docs/integrations/youtube.md)
 - [Characters (Character Builder)](docs/ui/characters.md)
 - [ElevenLabs TTS (optional)](docs/integrations/elevenlabs.md)
+
+## Acknowledgments
+Parts of Aquaduct (including crash‑resilience work, docs, and fixes) benefit from **[Cursor Composer](https://cursor.com)** — AI coding assistance integrated with the Cursor editor.
 
 ## Notes
 - First run will download models from Hugging Face (can be large).

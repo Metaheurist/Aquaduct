@@ -38,6 +38,90 @@ def hf_cache_size_estimate_gib(repo_id: str | None, *, hf_cache_root: Path | Non
     return None
 
 
+def analyze_stage_memory_budget(
+    *,
+    stage_label: str,
+    role: str,
+    repo_id: str | None,
+    settings: Any,  # noqa: ARG001
+    hf_cache_root: Path | None = None,
+) -> tuple[str | None, str | None]:
+    """
+    Returns ``(warning, hard_block_message)``.
+    Warn when free RAM is below heuristic peak; optionally emit ``hard_block_message`` when
+    the deficit is catastrophic (frontier checkpoints on tight hosts — avoids silent OS kills).
+    """
+    if os.environ.get("AQUADUCT_MEMORY_PREFLIGHT", "1").strip().lower() in ("0", "false", "no", "off"):
+        return None, None
+    try:
+        import psutil
+
+        avail_gb = psutil.virtual_memory().available / (1024**3)
+    except Exception:
+        avail_gb = None
+    sz = hf_cache_size_estimate_gib(repo_id, hf_cache_root=hf_cache_root)
+    if avail_gb is None or sz is None:
+        return None, None
+    need = sz * float(os.environ.get("AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR", "2.0"))
+    floor = float(os.environ.get("AQUADUCT_HOST_RAM_FLOOR_GIB", "5.0"))
+    threshold_gib = max(floor, need)
+    hard_env = os.environ.get("AQUADUCT_MEMORY_PREFLIGHT_FAIL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+    warn: str | None = None
+    if avail_gb + 1e-6 < threshold_gib:
+        warn = (
+            f"{stage_label} ({role}): low host RAM (~{avail_gb:.1f} GiB available) versus rough model footprint "
+            f"~{sz:.1f} GiB (+temp buffers). Prefer a lighter model variant, enable CPU offload, or close apps."
+        )
+
+    block: str | None = None
+    if warn is None:
+        return None, None
+    roles_force: set[str]
+    raw_roles_raw = os.environ.get("AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES", "video")
+    raw_roles = str(raw_roles_raw or "").strip().lower()
+    if raw_roles == "":
+        roles_force = set()
+    else:
+        roles_force = {r.strip() for r in raw_roles.replace(";", ",").split(",") if r.strip()}
+        if not roles_force:
+            roles_force = {"video"}
+
+    if hard_env:
+        block = warn
+        return warn, block
+
+    min_vid = float(os.environ.get("AQUADUCT_MEMORY_BLOCK_MIN_VIDEO_GIB", "30"))
+    min_img = float(os.environ.get("AQUADUCT_MEMORY_BLOCK_MIN_IMAGE_GIB", "20"))
+    min_script = float(os.environ.get("AQUADUCT_MEMORY_BLOCK_MIN_SCRIPT_GIB", "20"))
+    frac = float(os.environ.get("AQUADUCT_MEMORY_SEVERE_SHORTFALL_FRAC", "0.35"))
+    r = role.strip().lower()
+    tier_ok = False
+    if r == "video" and sz >= min_vid:
+        tier_ok = True
+    elif r == "image" and sz >= min_img:
+        tier_ok = True
+    elif r == "script" and sz >= min_script:
+        tier_ok = True
+    catastrophic = tier_ok and (r in roles_force) and (avail_gb + 1e-6) < frac * threshold_gib
+    if catastrophic:
+        block = (
+            f"{stage_label}: refusing run — catastrophic host RAM shortfall (~{avail_gb:.1f} GiB free vs "
+            f"~{threshold_gib:.1f} GiB heuristic threshold for footprint ~{sz:.1f} GiB snapshot). Loading this "
+            "checkpoint can exhaust Windows RAM and terminate Python with no traceback. Pick a lighter model, "
+            "raise free RAM (close apps), use video quantization CPU offload where supported, "
+            "or see docs/pipeline/crash-resilience.md. Escape hatch (not recommended): set "
+            'AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES="" to disable fatal shortfall gating.'
+        )
+
+    return warn, block
+
+
 def check_stage_memory_budget(
     *,
     stage_label: str,
@@ -46,28 +130,31 @@ def check_stage_memory_budget(
     settings: Any,
     hf_cache_root: Path | None = None,
 ) -> list[str]:
-    """
-    Emit human-readable warnings (no hard abort) comparing required vs available host RAM.
+    """Backward-compatible list of warnings (empty when none)."""
+    w, _b = analyze_stage_memory_budget(
+        stage_label=stage_label,
+        role=role,
+        repo_id=repo_id,
+        settings=settings,
+        hf_cache_root=hf_cache_root,
+    )
+    return [w] if w else []
 
-    Required model bytes are heuristic; complements VRAM watchdogs that run nearer torch loads.
-    """
-    warns: list[str] = []
-    if os.environ.get("AQUADUCT_MEMORY_PREFLIGHT", "1").strip().lower() in ("0", "false", "no", "off"):
-        return warns
-    try:
-        import psutil
 
-        avail_gb = psutil.virtual_memory().available / (1024**3)
-    except Exception:
-        avail_gb = None
-    sz = hf_cache_size_estimate_gib(repo_id, hf_cache_root=hf_cache_root)
-    if avail_gb is not None and sz is not None:
-        # Large safetensors reads can spike 1–2× archive size transiently — leave headroom factor.
-        need = sz * float(os.environ.get("AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR", "2.0"))
-        floor = float(os.environ.get("AQUADUCT_HOST_RAM_FLOOR_GIB", "5.0"))
-        if avail_gb + 1e-6 < max(floor, need):
-            warns.append(
-                f"{stage_label} ({role}): low host RAM (~{avail_gb:.1f} GiB available) versus rough model footprint "
-                f"~{sz:.1f} GiB (+temp buffers). Prefer a lighter model variant, enable CPU offload, or close apps."
-            )
-    return warns
+def check_stage_memory_hard_blocks(
+    *,
+    stage_label: str,
+    role: str,
+    repo_id: str | None,
+    settings: Any,
+    hf_cache_root: Path | None = None,
+) -> list[str]:
+    """Fatal preflight strings — same heuristics as :func:`analyze_stage_memory_budget`."""
+    _w, b = analyze_stage_memory_budget(
+        stage_label=stage_label,
+        role=role,
+        repo_id=repo_id,
+        settings=settings,
+        hf_cache_root=hf_cache_root,
+    )
+    return [b] if b else []
