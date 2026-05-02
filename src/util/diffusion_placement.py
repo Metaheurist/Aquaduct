@@ -11,12 +11,17 @@ Override with environment variables when needed (see ``resolve_diffusion_offload
 from __future__ import annotations
 
 import os
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
+
+if TYPE_CHECKING:
+    from src.core.config import AppSettings
 
 OffloadMode = Literal["none", "model", "sequential"]
 
 
-def resolve_diffusion_offload_mode() -> OffloadMode:
+def resolve_diffusion_offload_mode(settings: AppSettings | None = None) -> OffloadMode:
     """
     Choose how to stage diffusion weights between CPU RAM and GPU VRAM.
 
@@ -54,7 +59,7 @@ def resolve_diffusion_offload_mode() -> OffloadMode:
     if legacy_seq and raw in ("", "auto"):
         return "sequential"
 
-    return _resolve_auto_offload_mode()
+    return _resolve_auto_offload_mode(settings)
 
 
 def _avail_ram_gb() -> float | None:
@@ -70,14 +75,14 @@ def _cuda_device_count() -> int:
     try:
         import torch
 
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             return int(torch.cuda.device_count())
     except Exception:
         pass
     return 0
 
 
-def _resolve_auto_offload_mode() -> OffloadMode:
+def _resolve_auto_offload_mode(settings: AppSettings | None = None) -> OffloadMode:
     vram_gb: float | None = None
     try:
         from src.models.hardware import get_hardware_info
@@ -92,9 +97,17 @@ def _resolve_auto_offload_mode() -> OffloadMode:
         # No GPU info: sequential offload is the safest default when CUDA still works but VRAM unknown
         return "sequential"
 
-    # Multiple GPUs: keep peak VRAM low on the diffusion GPU so we never rely on two heavy models
-    # occupying the same device (LLM vs diffusion are split by cuda_device_policy).
+    # Multiple GPUs: default to sequential offload unless VRAM-first intra-shard mode is enabled —
+    # that path prefers resident GPU weights so peer submodule moves can distribute work.
     if _cuda_device_count() >= 2:
+        try:
+            from src.gpu.multi_device.gates import vram_first_master_enabled
+
+            if settings is not None and vram_first_master_enabled(settings):
+                if avail_gb is None or avail_gb >= 8.0:
+                    return "none"
+        except Exception:
+            pass
         return "sequential"
 
     # Very little free host RAM: avoid aggressive CPU staging (offload copies weights through RAM).
@@ -119,6 +132,10 @@ def place_diffusion_pipeline(
     cuda_device_index: int | None = None,
     *,
     force_offload: OffloadMode | None = None,
+    inference_settings: AppSettings | None = None,
+    model_repo_id: str | None = None,
+    placement_role: Literal["image", "video"] | None = None,
+    quant_mode: str | None = None,
 ) -> None:
     """
     Move a diffusers ``pipe`` to CPU, or CUDA with none/model/sequential offload per
@@ -131,15 +148,24 @@ def place_diffusion_pipeline(
     """
     import torch
 
-    if not torch.cuda.is_available():
+    if not cuda_device_reported_by_torch():
         pipe.to("cpu")
         return
 
     dev = f"cuda:{int(cuda_device_index)}" if cuda_device_index is not None else "cuda"
 
-    mode = force_offload if force_offload is not None else resolve_diffusion_offload_mode()
+    mode = force_offload if force_offload is not None else resolve_diffusion_offload_mode(inference_settings)
     if mode == "none":
         pipe.to(dev)
+        _maybe_apply_vram_first_peer_modules(
+            pipe,
+            inference_settings=inference_settings,
+            cuda_device_index=cuda_device_index,
+            model_repo_id=model_repo_id,
+            placement_role=placement_role,
+            quant_mode=quant_mode,
+            offload_mode=mode,
+        )
         return
 
     if mode == "model":
@@ -160,6 +186,15 @@ def place_diffusion_pipeline(
         if _try_sequential_cpu_offload(pipe, cuda_device_index):
             return
         pipe.to(dev)
+        _maybe_apply_vram_first_peer_modules(
+            pipe,
+            inference_settings=inference_settings,
+            cuda_device_index=cuda_device_index,
+            model_repo_id=model_repo_id,
+            placement_role=placement_role,
+            quant_mode=quant_mode,
+            offload_mode="none",
+        )
         return
 
     # sequential
@@ -174,6 +209,54 @@ def place_diffusion_pipeline(
     except Exception:
         pass
     pipe.to(dev)
+    _maybe_apply_vram_first_peer_modules(
+        pipe,
+        inference_settings=inference_settings,
+        cuda_device_index=cuda_device_index,
+        model_repo_id=model_repo_id,
+        placement_role=placement_role,
+        quant_mode=quant_mode,
+        offload_mode="none",
+    )
+
+
+def _maybe_apply_vram_first_peer_modules(
+    pipe,
+    *,
+    inference_settings: AppSettings | None,
+    cuda_device_index: int | None,
+    model_repo_id: str | None,
+    placement_role: Literal["image", "video"] | None,
+    quant_mode: str | None,
+    offload_mode: OffloadMode,
+) -> None:
+    if not model_repo_id or not placement_role:
+        return
+    try:
+        from src.gpu.multi_device.gates import effective_diffusion_quant
+        from src.gpu.multi_device.runtime import maybe_apply_diffusion_peer_modules
+
+        qm = effective_diffusion_quant(
+            role=placement_role,
+            settings=inference_settings,
+            quant_mode_raw=str(quant_mode or "auto"),
+            repo_id=str(model_repo_id),
+        )
+        ok, note = maybe_apply_diffusion_peer_modules(
+            pipe,
+            settings=inference_settings,
+            model_id=str(model_repo_id),
+            cuda_device_index=cuda_device_index,
+            role=placement_role,
+            resolved_quant_mode=qm,
+            offload_mode=str(offload_mode),
+        )
+        from debug import debug_enabled, dprint
+
+        if debug_enabled("gpu_plan"):
+            dprint("gpu_plan", "diffusion_placement", f"peer_modules={ok}", note, f"repo={model_repo_id!r}")
+    except Exception:
+        pass
 
 
 def _try_sequential_cpu_offload(pipe, cuda_device_index: int | None) -> bool:

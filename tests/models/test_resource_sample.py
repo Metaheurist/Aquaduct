@@ -17,6 +17,8 @@ def test_resource_sample_returns_dataclass() -> None:
     assert s.available_ram_mb is None or s.available_ram_mb >= 0.0
     assert s.system_memory_used_pct is None or 0.0 <= s.system_memory_used_pct <= 100.0
     assert s.host_used_mb is None or s.host_used_mb >= 0.0
+    for x in s.host_cpu_per_core_pct:
+        assert 0.0 <= x <= 100.0
 
 
 def test_sample_gpu_mem_pct_invalid_index_returns_none() -> None:
@@ -37,6 +39,20 @@ def test_parse_nvidia_smi_gpu_mem_pct() -> None:
     got = rs._parse_nvidia_smi_gpu_mem_pct(s)
     assert got[0] == pytest.approx(12.5)
     assert got[1] == pytest.approx(50.0)
+
+
+def test_vram_sparkline_y_axis_cap_low_usage_zooms() -> None:
+    cap = rs.vram_sparkline_y_axis_cap([10.5, 10.2, 11.0])
+    assert 25.0 <= cap < 100.0
+
+
+def test_vram_sparkline_y_axis_cap_high_usage_stays_full_scale() -> None:
+    cap = rs.vram_sparkline_y_axis_cap([95.0, 94.5, 96.0])
+    assert cap == 100.0
+
+
+def test_vram_sparkline_y_axis_cap_few_samples() -> None:
+    assert rs.vram_sparkline_y_axis_cap([50.0]) == 100.0
 
 
 def test_sample_gpu_mem_pct_smi_fallback_when_torch_raises(monkeypatch) -> None:

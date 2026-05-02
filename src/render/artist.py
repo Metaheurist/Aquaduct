@@ -15,6 +15,7 @@ from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
 from src.render.clips import _maybe_enable_slice_inference
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
 from src.util.diffusion_placement import place_diffusion_pipeline
 from src.util.diffusers_load import diffusers_from_pretrained
 from src.util.memory_budget import release_between_stages
@@ -117,6 +118,8 @@ def _place_pipe_on_device(
     cuda_device_index: int | None = None,
     *,
     quant_mode: str | None = None,
+    inference_settings: AppSettings | None = None,
+    model_repo_id: str | None = None,
 ) -> None:
     """Move pipeline to GPU/CPU using shared heuristics (VRAM, RAM, optional offload).
 
@@ -126,7 +129,14 @@ def _place_pipe_on_device(
     if qm == "cpu_offload":
         place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index, force_offload="model")
     else:
-        place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index)
+        place_diffusion_pipeline(
+            pipe,
+            cuda_device_index=cuda_device_index,
+            inference_settings=inference_settings,
+            model_repo_id=model_repo_id,
+            placement_role="image",
+            quant_mode=qm,
+        )
     try:
         from debug import debug_enabled, dprint
 
@@ -235,7 +245,7 @@ def _load_auto_t2i_pipeline(
 
     # Resolve dtype: explicit quant_mode takes priority; else legacy frontier/non-frontier defaults.
     qdt = _diffusion_dtype_for_quant(quant_mode, _fp16)
-    default_dt = (torch.bfloat16 if torch.cuda.is_available() else _fp16) if is_frontier else _fp16
+    default_dt = (torch.bfloat16 if cuda_device_reported_by_torch() else _fp16) if is_frontier else _fp16
     dt = qdt if qdt is not None else default_dt
 
     # Attempt experimental quant only when explicitly requested AND diffusers supports it.
@@ -296,7 +306,7 @@ def _load_auto_i2i_pipeline(
     is_frontier = _is_frontier_t2i_repo(mid)
 
     qdt = _diffusion_dtype_for_quant(quant_mode, _fp16)
-    default_dt = (torch.bfloat16 if torch.cuda.is_available() else _fp16) if is_frontier else _fp16
+    default_dt = (torch.bfloat16 if cuda_device_reported_by_torch() else _fp16) if is_frontier else _fp16
     dt = qdt if qdt is not None else default_dt
 
     quant_cfg = _try_diffusers_quant_config(quant_mode)
@@ -535,7 +545,13 @@ def _try_sdxl_turbo(
     qm = _image_quant_mode_from_settings(app_settings)
     pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _place_pipe_on_device(
+        pipe,
+        cuda_device_index=cuda_device_index,
+        quant_mode=qm,
+        inference_settings=app_settings,
+        model_repo_id=model_id,
+    )
     _maybe_enable_slice_inference(pipe)
 
     n = len(prompts)
@@ -581,7 +597,13 @@ def _try_sdxl_turbo_seeded(
     qm = _image_quant_mode_from_settings(app_settings)
     pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _place_pipe_on_device(
+        pipe,
+        cuda_device_index=cuda_device_index,
+        quant_mode=qm,
+        inference_settings=app_settings,
+        model_repo_id=model_id,
+    )
     _maybe_enable_slice_inference(pipe)
 
     n = len(prompts)
@@ -637,7 +659,13 @@ def _try_sdxl_reference_chain(
     qm = _image_quant_mode_from_settings(app_settings)
     pipe = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _place_pipe_on_device(
+        pipe,
+        cuda_device_index=cuda_device_index,
+        quant_mode=qm,
+        inference_settings=app_settings,
+        model_repo_id=model_id,
+    )
     _maybe_enable_slice_inference(pipe)
 
     kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
@@ -711,7 +739,13 @@ def _try_external_ref_then_txt2img(
     qm = _image_quant_mode_from_settings(app_settings)
     pipe_i2i = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe_i2i, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe_i2i, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _place_pipe_on_device(
+        pipe_i2i,
+        cuda_device_index=cuda_device_index,
+        quant_mode=qm,
+        inference_settings=app_settings,
+        model_repo_id=model_id,
+    )
     _maybe_enable_slice_inference(pipe_i2i)
     kw_base = _t2i_call_kw(model_id, steps=steps, app_settings=app_settings)
     w = int(kw_base.get("width", 1024))
@@ -767,7 +801,13 @@ def _try_external_ref_then_txt2img(
 
     pipe_txt = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
     _maybe_disable_safety_checker(pipe_txt, allow_nsfw=allow_nsfw)
-    _place_pipe_on_device(pipe_txt, cuda_device_index=cuda_device_index, quant_mode=qm)
+    _place_pipe_on_device(
+        pipe_txt,
+        cuda_device_index=cuda_device_index,
+        quant_mode=qm,
+        inference_settings=app_settings,
+        model_repo_id=model_id,
+    )
     _maybe_enable_slice_inference(pipe_txt)
     dev = "cuda" if str(pipe_txt.device).startswith("cuda") else "cpu"
 

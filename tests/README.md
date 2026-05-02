@@ -15,6 +15,7 @@ Run the suite from the repository root; `pytest` collects everything under this 
 | [`social/`](social/) | Upload tasks, TikTok/TikTok-style posting helpers |
 | [`core/`](core/) | App paths, media library FS |
 | [`debug/`](debug/) | `dprint` category registry, `MODULE_DEBUG_FLAGS` / `AQUADUCT_DEBUG` merge, `active_categories` cache |
+| [`gpu/`](gpu/) | Multi-GPU sharding registry / gates ([`src/gpu/multi_device/`](../src/gpu/multi_device/)) |
 
 Shared fixtures: [`conftest.py`](conftest.py).
 

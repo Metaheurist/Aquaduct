@@ -23,6 +23,9 @@ MediaMode = Literal["video", "photo"]
 # Local CUDA: Auto = LLM on compute-heuristic GPU, diffusion on max VRAM; Single = pin one GPU.
 GpuSelectionMode = Literal["auto", "single"]
 
+# Intra-stage multi-GPU (requires Auto policy + optional toggle; favors lower peak VRAM per card).
+MultiGpuShardMode = Literal["off", "vram_first_auto"]
+
 PictureOutputType = Literal["single_image", "image_set", "layouted"]
 PictureFormat = Literal["poster", "newspaper", "comic"]
 
@@ -324,6 +327,8 @@ class AppSettings:
     tutorial_completed: bool = False
     #: Multi-GPU: ``auto`` uses max-VRAM GPU for diffusion and heuristic-fast GPU for LLM; ``single`` pins ``gpu_device_index``.
     gpu_selection_mode: GpuSelectionMode = "auto"
+    #: Experimental: intra-model VRAM-first sharding with Auto + ``>=`` 2 CUDA devices (honors curated registry + quant gates).
+    multi_gpu_shard_mode: MultiGpuShardMode = "off"
     #: Used when ``gpu_selection_mode == "single"`` (CUDA ordinal, must exist).
     gpu_device_index: int = 0
     #: Resource graph: which GPU index to chart (None = default 0).
@@ -332,6 +337,8 @@ class AppSettings:
     resource_graph_split_view: bool = False
     #: Resource graph: compact (mini) title-bar layout and smaller sparklines; ``False`` = expanded detail.
     resource_graph_compact: bool = True
+    #: When True, skip the startup dialog that offers CUDA PyTorch if the user chose "Don't ask again".
+    skip_cuda_cpu_torch_mismatch_prompt: bool = False
 
 
 def safe_title_to_dirname(title: str) -> str:

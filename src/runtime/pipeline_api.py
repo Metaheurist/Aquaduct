@@ -31,6 +31,7 @@ from src.core.config import AppSettings, VideoSettings, get_models, get_paths, m
 from src.render.branding_video import apply_palette_to_prompts
 from src.render.editor import assemble_generated_clips_then_concat, assemble_microclips_then_concat
 from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
+from src.util.cuda_device_policy import resolve_voice_cuda_device_index
 from src.runtime.api_generation import cloud_video_mp4_paths, generate_still_png_bytes
 from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import assert_api_runtime_ready, is_api_mode
@@ -499,6 +500,7 @@ def run_once_api(
     voice_inst = merge_moss_character_and_run_personality(char_moss, pid_voice)
 
     _pipe_progress(on_progress, 50, -1, "Voice (API / local)…")
+    _voice_cuda_idx = resolve_voice_cuda_device_index(app)
     if vprov == "openai" and vmodel:
         from src.platform.openai_client import build_openai_client_from_settings
 
@@ -559,6 +561,7 @@ def run_once_api(
                 out_wav_path=voice_wav,
                 out_captions_json=captions_json,
                 voice_quant_mode=_voice_qm,
+                voice_cuda_device_index=_voice_cuda_idx,
             )
         elif is_kokoro_repo(v_mid):
             synthesize_unhinged_rotating_kokoro(
@@ -592,6 +595,7 @@ def run_once_api(
             elevenlabs_api_key=el_key,
             ffmpeg_executable=ffmpeg_exe,
             voice_quant_mode=str(getattr(app, "voice_quant_mode", "auto") or "auto"),
+            voice_cuda_device_index=_voice_cuda_idx,
         )
 
     _pipe_progress(on_progress, 58, -1, "Voice track ready")

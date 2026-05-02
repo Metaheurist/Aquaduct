@@ -6,6 +6,8 @@ import os
 from typing import Any
 
 from debug import pipeline_console
+
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
 from src.runtime.pipeline_notice import emit_pipeline_notice
 
 
@@ -65,7 +67,7 @@ def check_cuda_headroom(device_index: int | None, *, stage: str) -> None:
     try:
         import torch
 
-        if not torch.cuda.is_available():
+        if not cuda_device_reported_by_torch():
             return
         ix = int(device_index)
         n = int(torch.cuda.device_count())
@@ -113,7 +115,7 @@ def cuda_mem_snapshot(device_index: int | None) -> dict[str, Any] | None:
     try:
         import torch
 
-        if not torch.cuda.is_available():
+        if not cuda_device_reported_by_torch():
             return None
         ix = int(device_index)
         if ix < 0 or ix >= int(torch.cuda.device_count()):

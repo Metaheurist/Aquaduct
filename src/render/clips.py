@@ -15,6 +15,7 @@ from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
 from src.util.diffusion_placement import place_diffusion_pipeline
 from src.util.diffusers_load import diffusers_from_pretrained
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
 from src.util.memory_budget import release_between_stages
 from src.util.utils_vram import cleanup_vram, vram_guard
 
@@ -379,7 +380,7 @@ def _load_text_to_video_pipeline(
         vae = diffusers_from_pretrained(
             AutoencoderKLWan, load_path, subfolder="vae", torch_dtype=torch.float32
         )
-        default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        default_dt = torch.bfloat16 if cuda_device_reported_by_torch() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         pipeline_console(
             "Wan T2V: loading main pipeline (diffusers 'Loading pipeline components…' may take several minutes)",
@@ -422,7 +423,7 @@ def _load_text_to_video_pipeline(
     if "ltx-2" in mid:
         from diffusers import LTX2Pipeline
 
-        default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        default_dt = torch.bfloat16 if cuda_device_reported_by_torch() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         return diffusers_from_pretrained(
             LTX2Pipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
@@ -430,7 +431,7 @@ def _load_text_to_video_pipeline(
     if "ltx-video" in mid or mid.startswith("lightricks/ltx"):
         from diffusers import LTXPipeline
 
-        default_dt = torch.bfloat16 if torch.cuda.is_available() else _fp16
+        default_dt = torch.bfloat16 if cuda_device_reported_by_torch() else _fp16
         dt = _video_quant_dtype(quant_mode, default_dt, _fp16)
         return diffusers_from_pretrained(
             LTXPipeline, load_path, torch_dtype=dt, low_cpu_mem_usage=True
@@ -550,6 +551,10 @@ def _try_text_to_video(
         pipe,
         cuda_device_index=cuda_device_index,
         force_offload="model" if qm == "cpu_offload" else None,
+        inference_settings=inference_settings,
+        model_repo_id=model_id,
+        placement_role="video",
+        quant_mode=qm,
     )
     try:
         from debug import debug_enabled, dprint
@@ -673,6 +678,10 @@ def _try_image_to_video(
         pipe,
         cuda_device_index=cuda_device_index,
         force_offload="model" if qm == "cpu_offload" else None,
+        inference_settings=inference_settings,
+        model_repo_id=model_id,
+        placement_role="video",
+        quant_mode=qm,
     )
     try:
         from debug import debug_enabled, dprint

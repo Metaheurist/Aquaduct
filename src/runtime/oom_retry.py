@@ -14,6 +14,7 @@ from src.models.quantization import (
     resolve_quant_mode,
 )
 from src.runtime.pipeline_control import PipelineCancelled
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
 
 T = TypeVar("T")
 
@@ -56,6 +57,32 @@ def _persist_quant_settings(settings: AppSettings) -> None:
         save_settings(settings)
     except Exception:
         pass
+
+
+def is_dependency_setup_error(exc: BaseException) -> bool:
+    """
+    True when the failure is missing optional-but-required pip packages or similar setup issues.
+
+    Quant downgrades and VRAM tweaks cannot fix these; retrying only burns steps and confusing messages.
+    """
+    parts: list[str] = []
+    cur: BaseException | None = exc
+    seen: set[int] = set()
+    while cur is not None and len(parts) < 8:
+        i = id(cur)
+        if i in seen:
+            break
+        seen.add(i)
+        parts.append(f"{type(cur).__name__}: {cur}")
+        cur = cur.__cause__ or cur.__context__
+    blob = "\n".join(parts).lower()
+    if "pip install tiktoken" in blob or "`tiktoken` is required" in blob or "no module named 'tiktoken'" in blob:
+        return True
+    if "sentencepiece" in blob and (
+        "not found in your environment" in blob or "requires the sentencepiece" in blob or "pip install sentencepiece" in blob
+    ):
+        return True
+    return False
 
 
 def is_oom_error(exc: BaseException) -> bool:
@@ -151,7 +178,7 @@ def gpu_mem_used_fraction(device_index: int | None) -> float | None:
     try:
         import torch
 
-        if not torch.cuda.is_available():
+        if not cuda_device_reported_by_torch():
             return None
         if device_index is None:
             return None
@@ -323,6 +350,8 @@ def retry_stage(
             if isinstance(e, (KeyboardInterrupt, SystemExit)):
                 raise
             if isinstance(e, PipelineCancelled):
+                raise
+            if is_dependency_setup_error(e):
                 raise
             if not is_oom_error(e):
                 downgrade = bool(getattr(cur_settings, "auto_quant_downgrade_on_failure", False))

@@ -113,6 +113,7 @@ def try_moss_voicegenerator_tts(
     instruction: str,
     out_wav: Path,
     quant_mode: str | None = None,
+    cuda_voice_device_index: int | None = None,
 ) -> bool:
     """
     MOSS-VoiceGenerator: free-form *instruction* (voice design) + *text* (words to speak).
@@ -141,19 +142,30 @@ def try_moss_voicegenerator_tts(
     try:
         qm = (quant_mode or "auto").strip().lower()
         if qm == "cpu_offload":
-            device = "cpu"
+            device: str = "cpu"
         else:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            from src.util.cuda_capabilities import cuda_device_reported_by_torch
+
+            device = "cuda" if cuda_device_reported_by_torch() else "cpu"
+            if device == "cuda" and cuda_voice_device_index is not None:
+                try:
+                    dv = int(cuda_voice_device_index)
+                    torch.cuda.set_device(dv)
+                    device = f"cuda:{dv}"
+                except Exception:
+                    device = "cuda"
+
+        on_cuda = str(device).startswith("cuda")
 
         if qm == "fp16":
-            dtype = torch.float16 if device == "cuda" else torch.float32
+            dtype = torch.float16 if on_cuda else torch.float32
         elif qm == "bf16":
-            dtype = torch.bfloat16 if device == "cuda" else torch.float32
+            dtype = torch.bfloat16 if on_cuda else torch.float32
         else:
-            dtype = torch.bfloat16 if device == "cuda" else torch.float32
+            dtype = torch.bfloat16 if on_cuda else torch.float32
 
         def _attn_impl() -> str:
-            if device == "cuda":
+            if on_cuda:
                 if importlib.util.find_spec("flash_attn") is not None and dtype in (torch.float16, torch.bfloat16):
                     major, _ = torch.cuda.get_device_capability()
                     if major >= 8:
@@ -161,7 +173,7 @@ def try_moss_voicegenerator_tts(
                 return "sdpa"
             return "eager"
 
-        if device == "cuda":
+        if on_cuda:
             try:
                 torch.backends.cuda.enable_cudnn_sdp(False)  # type: ignore[attr-defined]
             except Exception:
@@ -176,7 +188,7 @@ def try_moss_voicegenerator_tts(
 
         # Experimental: try bnb quant config on CUDA when explicitly requested.
         bnb_cfg = None
-        if device == "cuda" and qm in ("int8", "nf4_4bit"):
+        if on_cuda and qm in ("int8", "nf4_4bit"):
             try:
                 from transformers import BitsAndBytesConfig as _BnB
 

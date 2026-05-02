@@ -2,7 +2,8 @@
 HTML tooltips with clickable links that open the in-app Help dialog on a topic/slide.
 
 Native Qt tooltips cannot reliably receive clicks; RichHelpTooltipFilter intercepts
-ToolTip events for widgets whose toolTip() is HTML containing topic:// URLs and
+ToolTip events when the effective tooltip text is HTML containing topic:// URLs
+(including QAbstractItemView rows where the text lives on ``ToolTipRole``) and
 shows a small QTextBrowser popup instead.
 """
 
@@ -12,9 +13,10 @@ import html
 from collections.abc import Callable
 
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt, QUrl, QUrlQuery
-from PyQt6.QtGui import QHelpEvent, QKeySequence, QShortcut
+from PyQt6.QtGui import QCursor, QHelpEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
+    QAbstractItemView,
     QFrame,
     QTextBrowser,
     QToolTip,
@@ -56,6 +58,63 @@ def help_tooltip_rich(
         f'<a href="{href}" style="color:#6EC8FF;text-decoration:none;">{lbl}</a>'
         f"</body></html>"
     )
+
+
+def help_tooltip_rich_unless_already(
+    base_plain: str,
+    topic_id: str,
+    *,
+    link_label: str = "Open in Help →",
+    slide: int | None = None,
+) -> str:
+    """
+    Build ``help_tooltip_rich(...)`` for plain text, or return ``base_plain`` unchanged if it is
+    already a wrapped help tooltip.
+
+    Use when copying ``Qt.ItemDataRole.ToolTipRole`` from a model item onto a widget: those items
+    often already store the full ``<html>…topic://…`` string; wrapping again escapes the inner HTML
+    so the user sees literal tags in the tooltip.
+    """
+    t = (base_plain or "").strip()
+    tl = t.lower()
+    if tl.startswith("<html") and "topic://" in t:
+        return t
+    return help_tooltip_rich(t, topic_id, link_label=link_label, slide=slide)
+
+
+def _rich_help_tooltip_text(widget: QWidget, event: QEvent) -> str:
+    """
+    Return tooltip HTML for ``widget`` + ``event``.
+
+    ``QComboBox`` list rows (and similar views) store rich text on the model's ``ToolTipRole`` while
+    the hover target is often the *viewport* with an empty ``QWidget.toolTip()`` — resolve that here.
+    """
+    direct = (widget.toolTip() or "").strip()
+    if direct:
+        return widget.toolTip()
+
+    if isinstance(event, QHelpEvent):
+        gpos = event.globalPos()
+    else:
+        gpos = QCursor.pos()
+
+    view: QAbstractItemView | None = widget if isinstance(widget, QAbstractItemView) else None
+    p = widget.parentWidget()
+    while p is not None and view is None:
+        if isinstance(p, QAbstractItemView):
+            view = p
+            break
+        p = p.parentWidget()
+    if view is None:
+        return ""
+
+    vp = view.viewport()
+    local = vp.mapFromGlobal(gpos)
+    idx = view.indexAt(local)
+    if not idx.isValid():
+        return ""
+    data = idx.data(Qt.ItemDataRole.ToolTipRole)
+    return str(data) if data else ""
 
 
 def _parse_topic_url(url: QUrl) -> tuple[str, int] | None:
@@ -120,7 +179,7 @@ class _RichHelpTooltipPopup(QFrame):
 
 class RichHelpTooltipFilter(QObject):
     """
-    Install on QApplication. For widgets whose toolTip is HTML containing topic://,
+    Install on QApplication. When the effective tooltip is HTML containing topic://,
     suppress the native tooltip and show a clickable popup instead.
     """
 
@@ -134,7 +193,7 @@ class RichHelpTooltipFilter(QObject):
             return False
         if not isinstance(obj, QWidget):
             return False
-        tip = obj.toolTip()
+        tip = _rich_help_tooltip_text(obj, event)
         if not tip:
             return False
         stripped = tip.strip()
@@ -142,10 +201,12 @@ class RichHelpTooltipFilter(QObject):
             return False
         if "topic://" not in tip:
             return False
-        if not isinstance(event, QHelpEvent):
-            return False
+        if isinstance(event, QHelpEvent):
+            gpos = event.globalPos()
+        else:
+            gpos = QCursor.pos()
         QToolTip.hideText()
-        self._show_popup(tip, event.globalPos(), obj)
+        self._show_popup(tip, gpos, obj)
         return True
 
     def _show_popup(self, html_body: str, global_pos: QPoint, anchor: QWidget) -> None:

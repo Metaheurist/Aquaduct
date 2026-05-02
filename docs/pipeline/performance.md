@@ -57,7 +57,9 @@ Local **image** and **video** diffusion use a shared placement helper ([`src/uti
 | `AQUADUCT_DIFFUSION_CPU_OFFLOAD` | `auto` (default), `off` / `none` / `0` (full GPU when CUDA works), `model`, `sequential` |
 | `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true` — legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
 
-**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** chooses **sequential** offload so only one diffusers submodule at a time uses the **diffusion** GPU’s VRAM (pair with **Auto** device routing so **LLM** and **diffusion** use different CUDA ordinals; see [hardware.md](../reference/hardware.md)). **Single-GPU** **`auto`** still uses **`off`** (full pipeline on GPU) only when detected VRAM is **≥16 GiB** (with host-RAM exceptions); otherwise **`model`** or **`sequential`** heuristics apply.
+**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** normally chooses **sequential** offload so only one diffusers submodule at a time uses the diffusion GPU’s VRAM. Enabling **My PC → VRAM-first sharding** under **Auto** policy (and sufficient host RAM) can steer **`auto`** toward **`off`** offload so **`src/gpu/multi_device`** submodule moves remain viable — expect transient higher peak VRAM while weights first populate the primary CUDA device.
+
+**Laboratory CUDA checklist** (manual, GPU workstation): toggle **VRAM-first**, keep **two** GPUs under **Auto** routing, render one curated diffusion still plus a BF16 causal LLM branch with **`AQUADUCT_DEBUG` including `gpu_plan`**; stderr should emit **`accelerate_balanced`** / **`diffusion_placement`** breadcrumbs when the gated path engages.
 
 Sequential and model offload both pass the resolved **diffusion CUDA index** into Diffusers as **`gpu_id`** where supported so the active weights move on the intended GPU.
 

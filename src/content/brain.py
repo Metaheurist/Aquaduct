@@ -18,6 +18,11 @@ from src.core.config import AppSettings, ARTICLE_EXCERPT_MAX_CHARS, BrandingSett
 from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 from src.render.branding_video import palette_prompt_suffix, video_style_strength
+from src.util.cuda_capabilities import (
+    cuda_device_reported_by_torch,
+    cuda_ok_for_llm_load,
+    torch_cuda_kernels_work,
+)
 from debug import dprint
 
 # Spoken script targets for preset + custom brief paths (longer, data-rich shorts)
@@ -1488,32 +1493,6 @@ def _emit_llm(
         on_llm_task(task, max(0, min(100, int(pct))), msg)
 
 
-def torch_cuda_kernels_work() -> bool:
-    """
-    True only if basic CUDA tensor ops run on device 0.
-
-    PyTorch wheels omit SASS for some newer (or unusual) GPUs; ``cuda.is_available()``
-    can still be True while every kernel fails with "no kernel image is available".
-    """
-    import torch
-
-    try:
-        from src.util.cpu_parallelism import apply_torch_cpu_settings
-
-        apply_torch_cpu_settings(torch)
-    except Exception:
-        pass
-
-    if not torch.cuda.is_available():
-        return False
-    try:
-        x = torch.tensor([0, 1], device="cuda", dtype=torch.long)
-        torch.isin(x, x)
-        return True
-    except RuntimeError:
-        return False
-
-
 def _llm_max_input_tokens_cap_from_vram() -> int | None:
     """
     When VRAM is tight, lower the tokenizer cap so prefill (attention) does not OOM.
@@ -1528,7 +1507,7 @@ def _llm_max_input_tokens_cap_from_vram() -> int | None:
     try:
         import torch
 
-        if not torch.cuda.is_available():
+        if not cuda_device_reported_by_torch():
             return None
         total = int(torch.cuda.get_device_properties(0).total_memory)
     except Exception:
@@ -1596,6 +1575,8 @@ def load_causal_lm_from_pretrained(
     on_status: Callable[[str], None] | None = None,
     cuda_device_index: int | None = None,
     quant_mode: str | None = None,
+    inference_settings: AppSettings | None = None,
+    hub_model_id: str | None = None,
 ) -> Any:
     """
     Load ``AutoModelForCausalLM`` from disk or Hub id with an explicit quantization mode.
@@ -1603,14 +1584,20 @@ def load_causal_lm_from_pretrained(
     ``quant_mode`` (preferred): ``auto`` | ``bf16`` | ``fp16`` | ``int8`` | ``nf4_4bit`` | ``cpu_offload``.
     When unset, falls back to legacy ``try_4bit`` boolean (``nf4_4bit`` if True else ``fp16``).
 
+    ``inference_settings`` + ``hub_model_id`` enable optional VRAM-first multi-GPU sharding via Accelerate
+    when ``multi_gpu_shard_mode`` is enabled (see docs).
+
     Each mode falls back to fp16 / CPU on failure with a status message.
     """
+    import torch
+
     from src.models.hf_transformers_imports import causal_lm_stack
     from src.models.torch_dtypes import torch_float16
 
     AutoModelForCausalLM, _, BitsAndBytesConfig = causal_lm_stack()
     _fp16 = torch_float16()
-    cuda_ok = torch_cuda_kernels_work()
+    probe_cuda = torch_cuda_kernels_work()
+    cuda_ok = cuda_ok_for_llm_load()
 
     def _status(msg: str) -> None:
         if on_status:
@@ -1623,82 +1610,16 @@ def load_causal_lm_from_pretrained(
     if qm not in ("auto", "bf16", "fp16", "int8", "nf4_4bit", "cpu_offload"):
         qm = "auto"
 
-    def _device_map_for_load() -> Any:
+    def _legacy_single_gpu_device_map() -> dict[str, int]:
         if cuda_device_index is not None and cuda_ok:
             try:
                 torch.cuda.set_device(int(cuda_device_index))
             except Exception:
                 pass
             return {"": int(cuda_device_index)}
-        return "auto"
+        return {"": 0}
 
-    def _bf16_dtype() -> Any:
-        try:
-            return torch.bfloat16
-        except Exception:
-            return _fp16
-
-    def _from_pretrained(*, quantization_config: Any | None, device_map: Any, dtype: Any) -> Any:
-        if quantization_config is not None:
-            try:
-                return AutoModelForCausalLM.from_pretrained(
-                    load_path,
-                    quantization_config=quantization_config,
-                    device_map=device_map,
-                    dtype=dtype,
-                    low_cpu_mem_usage=True,
-                    trust_remote_code=True,
-                )
-            except TypeError:
-                try:
-                    return AutoModelForCausalLM.from_pretrained(
-                        load_path,
-                        quantization_config=quantization_config,
-                        device_map=device_map,
-                        torch_dtype=dtype,
-                        low_cpu_mem_usage=True,
-                        trust_remote_code=True,
-                    )
-                except TypeError:
-                    return AutoModelForCausalLM.from_pretrained(
-                        load_path,
-                        quantization_config=quantization_config,
-                        device_map=device_map,
-                        torch_dtype=dtype,
-                        trust_remote_code=True,
-                    )
-        try:
-            return AutoModelForCausalLM.from_pretrained(
-                load_path,
-                device_map=device_map,
-                dtype=dtype,
-                low_cpu_mem_usage=True,
-                trust_remote_code=True,
-            )
-        except TypeError:
-            try:
-                return AutoModelForCausalLM.from_pretrained(
-                    load_path,
-                    device_map=device_map,
-                    torch_dtype=dtype,
-                    low_cpu_mem_usage=True,
-                    trust_remote_code=True,
-                )
-            except TypeError:
-                return AutoModelForCausalLM.from_pretrained(
-                    load_path,
-                    device_map=device_map,
-                    torch_dtype=dtype,
-                    trust_remote_code=True,
-                )
-
-    if not cuda_ok:
-        _status("CUDA unusable for this GPU/driver build; loading LLM on CPU (slower)…")
-        return _from_pretrained(quantization_config=None, device_map="cpu", dtype=_fp16)
-
-    dm = _device_map_for_load()
-
-    # Map "auto" using effective VRAM heuristic (best-effort; no settings here means default policy).
+    # Resolve ``auto`` before placement so Accelerate slicing matches the quantization chain.
     if qm == "auto":
         try:
             from src.models.hardware import list_cuda_gpus
@@ -1717,6 +1638,122 @@ def load_causal_lm_from_pretrained(
         except Exception:
             qm = "nf4_4bit"
 
+    legacy_dm = _legacy_single_gpu_device_map()
+
+    from src.gpu.multi_device.runtime import resolve_llm_device_map_and_max_memory
+
+    float_dm, float_mm, plan_note = resolve_llm_device_map_and_max_memory(
+        settings=inference_settings,
+        hub_model_id=str(hub_model_id or "").strip(),
+        cuda_device_index=cuda_device_index,
+        effective_quant=qm,
+    )
+    try:
+        from debug import debug_enabled as _dbg_en
+        from debug import dprint as _dprt
+
+        if _dbg_en("gpu_plan"):
+            _dprt("gpu_plan", "llm_placement", plan_note, f"quant_resolved={qm!r}", f"device_map_hint={float_dm!r}")
+    except Exception:
+        pass
+
+    def _bf16_dtype() -> Any:
+        try:
+            return torch.bfloat16
+        except Exception:
+            return _fp16
+
+    def _from_pretrained(
+        *,
+        quantization_config: Any | None,
+        device_map: Any,
+        dtype: Any,
+        max_memory: dict[int | str, str] | None = None,
+    ) -> Any:
+        extra_kw: dict[str, Any] = {}
+        if max_memory is not None:
+            extra_kw["max_memory"] = max_memory
+        if quantization_config is not None:
+            try:
+                return AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    quantization_config=quantization_config,
+                    device_map=device_map,
+                    dtype=dtype,
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True,
+                    **extra_kw,
+                )
+            except TypeError:
+                try:
+                    return AutoModelForCausalLM.from_pretrained(
+                        load_path,
+                        quantization_config=quantization_config,
+                        device_map=device_map,
+                        torch_dtype=dtype,
+                        low_cpu_mem_usage=True,
+                        trust_remote_code=True,
+                        **extra_kw,
+                    )
+                except TypeError:
+                    return AutoModelForCausalLM.from_pretrained(
+                        load_path,
+                        quantization_config=quantization_config,
+                        device_map=device_map,
+                        torch_dtype=dtype,
+                        trust_remote_code=True,
+                        **extra_kw,
+                    )
+        try:
+            return AutoModelForCausalLM.from_pretrained(
+                load_path,
+                device_map=device_map,
+                dtype=dtype,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+                **extra_kw,
+            )
+        except TypeError:
+            try:
+                return AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    device_map=device_map,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True,
+                    **extra_kw,
+                )
+            except TypeError:
+                return AutoModelForCausalLM.from_pretrained(
+                    load_path,
+                    device_map=device_map,
+                    torch_dtype=dtype,
+                    trust_remote_code=True,
+                    **extra_kw,
+                )
+
+    if not cuda_ok:
+        import os
+
+        _allow_cpu = (os.environ.get("AQUADUCT_ALLOW_CPU_TORCH_WITH_NVIDIA", "").strip().lower() in ("1", "true", "yes", "on"))
+        if not _allow_cpu:
+            try:
+                from src.models import torch_install as ti
+
+                if ti.pytorch_cpu_wheel_with_nvidia_gpu_present():
+                    raise RuntimeError(ti.cuda_torch_required_message_for_nvidia_host())
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+        _status("CUDA not available; loading LLM on CPU (slower)…")
+        return _from_pretrained(quantization_config=None, device_map="cpu", dtype=_fp16)
+    if cuda_ok and not probe_cuda:
+        _status(
+            "CUDA device detected — using GPU despite failed kernel probe; "
+            "if load errors, reinstall PyTorch for your CUDA/driver build."
+        )
+
     def _try_bnb_4bit() -> Any:
         bnb = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -1725,20 +1762,20 @@ def load_causal_lm_from_pretrained(
             bnb_4bit_compute_dtype=_fp16,
         )
         _status("Loading model (NF4 4-bit)…")
-        return _from_pretrained(quantization_config=bnb, device_map=dm, dtype=_fp16)
+        return _from_pretrained(quantization_config=bnb, device_map=legacy_dm, dtype=_fp16)
 
     def _try_bnb_8bit() -> Any:
         bnb = BitsAndBytesConfig(load_in_8bit=True)
         _status("Loading model (INT8 / 8-bit)…")
-        return _from_pretrained(quantization_config=bnb, device_map=dm, dtype=_fp16)
+        return _from_pretrained(quantization_config=bnb, device_map=legacy_dm, dtype=_fp16)
 
     def _try_bf16() -> Any:
         _status("Loading model (BF16)…")
-        return _from_pretrained(quantization_config=None, device_map=dm, dtype=_bf16_dtype())
+        return _from_pretrained(quantization_config=None, device_map=float_dm, dtype=_bf16_dtype(), max_memory=float_mm)
 
     def _try_fp16() -> Any:
         _status("Loading model (FP16)…")
-        return _from_pretrained(quantization_config=None, device_map=dm, dtype=_fp16)
+        return _from_pretrained(quantization_config=None, device_map=float_dm, dtype=_fp16, max_memory=float_mm)
 
     def _try_cpu() -> Any:
         _status("Loading model on CPU offload (FP16)…")
@@ -1779,7 +1816,7 @@ def _prepare_torch_for_llm_load() -> None:
         pass
 
     try:
-        if torch.cuda.is_available():
+        if cuda_device_reported_by_torch():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
     except Exception:
@@ -1833,6 +1870,8 @@ def _load_causal_lm_pair(
         on_status=_load_status,
         cuda_device_index=llm_cuda_device_index,
         quant_mode=_qmode,
+        inference_settings=inference_settings,
+        hub_model_id=model_id,
     )
     _emit_llm(on_llm_task, "llm_load", 100, "Model loaded")
     return tokenizer, model
@@ -1887,7 +1926,7 @@ def _generate_with_loaded_causal_lm(
         truncation=True,
         max_length=_cap,
     ).to(model.device)
-    if torch.cuda.is_available():
+    if cuda_device_reported_by_torch():
         torch.cuda.empty_cache()
 
     _emit_llm(on_llm_task, "llm_generate", 0, "Starting generation…")
@@ -1917,7 +1956,7 @@ def _generate_with_loaded_causal_lm(
 
         def _run_gen() -> None:
             with torch.inference_mode():
-                if torch.cuda.is_available():
+                if cuda_device_reported_by_torch():
                     torch.cuda.empty_cache()
                 model.generate(**generation_kwargs)
 
@@ -1942,7 +1981,7 @@ def _generate_with_loaded_causal_lm(
         dprint("brain", "streamed generation failed, falling back", str(e))
         _emit_llm(on_llm_task, "llm_generate", 10, "Fallback: one-shot generate…")
         with torch.inference_mode():
-            if torch.cuda.is_available():
+            if cuda_device_reported_by_torch():
                 torch.cuda.empty_cache()
             out = model.generate(
                 **inputs,

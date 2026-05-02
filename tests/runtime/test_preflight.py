@@ -15,6 +15,15 @@ def _local_hf_snapshots_present(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_no_cpu_torch_gpu_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CI/dev machines may have NVIDIA drivers + CPU-only torch; unrelated tests stub that mismatch off."""
+    monkeypatch.setattr(
+        "src.models.torch_install.pytorch_cpu_wheel_with_nvidia_gpu_present",
+        lambda: False,
+    )
+
+
 def test_preflight_invalid_fps(monkeypatch):
     # Pretend ffmpeg exists
     import src.runtime.preflight as pf
@@ -72,6 +81,36 @@ def test_preflight_pro_disables_slideshow(monkeypatch):
     r = preflight_check(settings=s, strict=True)
     assert not r.ok
     assert any("disables slideshow" in e.lower() for e in r.errors)
+
+
+def test_preflight_strict_blocks_cpu_torch_when_nvidia_and_cpu_wheel(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr("src.models.torch_install.pytorch_cpu_wheel_with_nvidia_gpu_present", lambda: True)
+    monkeypatch.setattr(
+        "src.models.torch_install.cuda_torch_required_message_for_nvidia_host",
+        lambda: "TEST_BLOCK_NEED_CUDA_TORCH",
+    )
+    r = preflight_check(settings=AppSettings(), strict=True)
+    assert not r.ok
+    assert any("TEST_BLOCK_NEED_CUDA_TORCH" in e for e in r.errors)
+
+
+def test_preflight_cpu_torch_block_skipped_with_env_allow(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.runtime.preflight as pf
+
+    monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
+    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr("src.models.torch_install.pytorch_cpu_wheel_with_nvidia_gpu_present", lambda: True)
+    monkeypatch.setenv("AQUADUCT_ALLOW_CPU_TORCH_WITH_NVIDIA", "1")
+    r = preflight_check(
+        settings=AppSettings(model_execution_mode="local", video_model_id="dummy/video-repo-for-test"),
+        strict=True,
+    )
+    assert r.ok
+    assert not any("CPU-only PyTorch" in e for e in r.errors)
 
 
 def test_preflight_local_explicit_matches_default(monkeypatch):

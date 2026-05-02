@@ -19,8 +19,10 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from src.util.cuda_capabilities import cuda_device_reported_by_torch
+
 # CUDA wheel repos (see https://pytorch.org/get-started/locally/).
-# cu124: most NVIDIA GPUs through Ada (sm Ôëñ 9.x).
+# cu124: most NVIDIA GPUs through Ada (sm <= 9.x).
 # cu128: CUDA 12.8+ builds with Blackwell (sm 12.x) kernels, e.g. RTX 50-series.
 _PYTORCH_CUDA_INDEX_CU124 = "https://download.pytorch.org/whl/cu124"
 _PYTORCH_CUDA_INDEX_CU128 = "https://download.pytorch.org/whl/cu128"
@@ -94,7 +96,8 @@ def _torch_reports_blackwell_or_newer() -> bool | None:
         import torch
     except Exception:
         return None
-    if not torch.cuda.is_available():
+
+    if not cuda_device_reported_by_torch():
         return None
     try:
         major, _minor = torch.cuda.get_device_capability(0)
@@ -206,7 +209,7 @@ def _windows_branded_interpreter(role: str) -> str:
     Windows Task Manager labels processes by the ``.exe`` file name, so every child
     ``python.exe`` looks identical. Copy the real interpreter to
     ``aquaduct-pip-<role>.exe`` in the same directory (e.g. venv ``Scripts/``) and use
-    that for pip subprocesses ÔÇö each role gets a distinct name in Task Manager.
+    that for pip subprocesses so each role gets a distinct name in Task Manager.
     """
     exe = Path(sys.executable).resolve()
     safe = re.sub(r"[^a-zA-Z0-9_-]+", "", role).strip() or "pip"
@@ -247,12 +250,12 @@ def build_pytorch_install_cmd(
     if sys.platform == "darwin":
         # Apple Silicon / Intel: official builds on PyPI (MPS when available).
         cmd = base + _TORCH_PKGS
-        return cmd, "PyPI (macOS ÔÇö Metal/MPS when supported)"
+        return cmd, "PyPI (macOS - Metal/MPS when supported)"
 
     if nvidia_gpu_likely_available():
         idx = pytorch_cuda_wheel_index_url()
         if "cu128" in idx:
-            hint = "NVIDIA CUDA 12.8+ wheels (cu128 ÔÇö Blackwell / RTX 50-series when detected)"
+            hint = "NVIDIA CUDA 12.8+ wheels (cu128 - Blackwell / RTX 50-series when detected)"
         elif "cu124" in idx:
             hint = "NVIDIA CUDA (cu124)"
         else:
@@ -262,6 +265,44 @@ def build_pytorch_install_cmd(
 
     cmd = base + ["--index-url", _PYTORCH_CPU_INDEX] + _TORCH_PKGS
     return cmd, f"CPU-only (index {_PYTORCH_CPU_INDEX})"
+
+
+def format_pytorch_pip_cli(cmd: list[str]) -> str:
+    """Shell-friendly single string for logging / error text (Windows-aware)."""
+    if sys.platform == "win32":
+        return subprocess.list2cmdline(cmd)
+    import shlex
+
+    return shlex.join(cmd)
+
+
+def pytorch_cpu_wheel_with_nvidia_gpu_present() -> bool:
+    """
+    True when the machine reports an NVIDIA GPU (driver) but the installed
+    ``torch`` wheel is CPU-only (no ``torch.version.cuda``).
+
+    macOS is excluded — Aquaduct uses PyPI Metal builds there, not NVIDIA CUDA wheels.
+    """
+    if sys.platform == "darwin":
+        return False
+    if not nvidia_gpu_likely_available():
+        return False
+    built = _installed_torch_is_cuda_build()
+    return built is False
+
+
+def cuda_torch_required_message_for_nvidia_host() -> str:
+    """User-facing blocker text + example ``pip`` line for CPU-only PyTorch on NVIDIA PCs."""
+    cmd, hint = build_pytorch_install_cmd(upgrade=True)
+    cli = format_pytorch_pip_cli(cmd)
+    return (
+        "An NVIDIA GPU was detected on this PC, but the active Python environment has "
+        "CPU-only PyTorch (no CUDA). Local inference will not use the GPU.\n\n"
+        f"Install the CUDA-enabled build ({hint}). Example:\n  {cli}\n\n"
+        "You can also use **Help → Install dependencies** (or reinstall torch with the CUDA index).\n\n"
+        "Advanced: set AQUADUCT_ALLOW_CPU_TORCH_WITH_NVIDIA=1 to suppress this block and "
+        "allow intentionally slow CPU runs."
+    )
 
 
 def run_subprocess(cmd: list[str]) -> tuple[int, str]:
@@ -370,7 +411,7 @@ def run_subprocess_streaming(
         if on_line:
             shown = " ".join(cmd)
             if len(shown) > 480:
-                shown = shown[:477] + "ÔÇª"
+                shown = shown[:477] + "..."
             on_line(f"$ {shown}")
     except Exception:
         pass
@@ -393,7 +434,7 @@ def run_subprocess_streaming(
         try:
             if on_line:
                 on_line(
-                    "# pip process started ÔÇö resolving the index and downloading wheels can take many minutes; "
+                    "# pip process started - resolving the index and downloading wheels can take many minutes; "
                     "new lines may appear only after metadata resolves or a chunk finishes."
                 )
             while True:
@@ -428,7 +469,7 @@ def run_subprocess_streaming(
 
 def pip_download_percent(line: str) -> int | None:
     """
-    Best-effort: parse a 0ÔÇô100 download/install percentage from a pip or tqdm-style line.
+    Best-effort: parse a 0-100 download/install percentage from a pip or tqdm-style line.
     Returns None if no percentage is found.
     """
     s = (line or "").strip()
@@ -455,23 +496,23 @@ def pip_line_hint(line: str) -> str | None:
     if not s or s.startswith("WARNING:") and len(s) > 220:
         return None
     if s.startswith("# pip process started"):
-        return "pip is running ÔÇö CUDA wheels are large; the log may stay quiet for a long time"
+        return "pip is running - CUDA wheels are large; the log may stay quiet for a long time"
     if s.startswith("# Preparing PyTorch install"):
-        return "Preparing PyTorch installÔÇª"
+        return "Preparing PyTorch install..."
     if s.startswith("# Checking whether an existing torch"):
-        return "Checking torch build (import can take a while)ÔÇª"
+        return "Checking torch build (import can take a while)..."
     if s.startswith("# Installing packages from requirements"):
-        return "Installing requirements.txtÔÇª"
+        return "Installing requirements.txt..."
     # Collecting package==1.2 or Collecting package
     m = re.match(r"Collecting\s+(\S+)", s)
     if m:
         pkg = m.group(1).split("[", 1)[0].strip()
         return f"Collecting {pkg}"
-    # e.g. "Downloading https://.../torch-....whl (2532.3 MB)" ÔÇö huge wheels; log often goes quiet for a long time
+    # e.g. "Downloading https://.../torch-....whl (2532.3 MB)" - huge wheels; log often goes quiet for a long time
     m = re.search(r"Downloading\s+\S+\s+\(([\d.]+)\s*(MB|GB)\)\s*$", s)
     if m:
         return (
-            f"Downloading ~{m.group(1)} {m.group(2)} ÔÇö active; pip may print nothing for many minutes on large files"
+            f"Downloading ~{m.group(1)} {m.group(2)} - active; pip may print nothing for many minutes on large files"
         )
     m = re.match(r"Downloading\s+(\S+)", s)
     if m:
@@ -481,7 +522,7 @@ def pip_line_hint(line: str) -> str | None:
         return f"Using cached {m.group(1).split()[0][:80]}"
     if s.startswith("Installing collected packages:"):
         tail = s.replace("Installing collected packages:", "").strip()
-        return f"Installing {tail[:100]}{'ÔÇª' if len(tail) > 100 else ''}"
+        return f"Installing {tail[:100]}{'...' if len(tail) > 100 else ''}"
     m = re.search(r"Requirement already satisfied:\s*(\S+)", s)
     if m:
         return f"Already satisfied: {m.group(1).split()[0][:60]}"
@@ -530,21 +571,35 @@ def install_pytorch_for_hardware(
     ``subprocess_ref`` tracks the active pip process for UI cancellation.
     """
     if on_line:
-        on_line("# Preparing PyTorch installÔÇª")
+        on_line("# Preparing PyTorch install...")
     if sys.platform != "darwin" and nvidia_gpu_likely_available() and force_cuda_if_applicable:
         if on_line:
-            on_line("# Checking whether an existing torch is CUDA or CPU-only (may import torch; first load can take a while)ÔÇª")
+            on_line("# Checking whether an existing torch is CUDA or CPU-only (may import torch; first load can take a while)...")
         built = _installed_torch_is_cuda_build()
         if built is False:
             exe = pip_python(python_exe, role="uninstall")
-            uninstall = exe + ["-m", "pip", "uninstall", "-y"] + _TORCH_PKGS
-            code, out = _run_pip(uninstall, on_line, on_first_pip_output, subprocess_ref)
-            if code != 0:
-                return code, out
+            if on_line:
+                on_line(
+                    "# Removing any existing torch / torchvision / torchaudio "
+                    "(separate uninstall per package; 'Skipping' means it was not installed - "
+                    "we still install all three together next)."
+                )
+            for pkg in _TORCH_PKGS:
+                uninstall_one = exe + ["-m", "pip", "uninstall", "-y", pkg]
+                if on_line:
+                    on_line(f"# pip uninstall -y {pkg}")
+                code_u, _frag = _run_pip(uninstall_one, on_line, on_first_pip_output, subprocess_ref)
+                if code_u != 0 and on_line:
+                    on_line(
+                        f"# Uninstall exited {code_u} for {pkg}; continuing - "
+                        "install step still requests torch, torchvision, and torchaudio."
+                    )
+            if on_line:
+                on_line("# pip install torch torchvision torchaudio together (explicit - none omitted)")
 
     cmd, desc = build_pytorch_install_cmd(python_exe=python_exe, upgrade=upgrade)
     if on_line:
-        on_line(f"# PyTorch install ÔÇö {desc}")
+        on_line(f"# PyTorch install - {desc}")
     code, out = _run_pip(cmd, on_line, on_first_pip_output, subprocess_ref)
     header = f"# PyTorch install ({desc})\n# Command: {' '.join(cmd)}\n\n"
     return code, header + out
@@ -558,13 +613,13 @@ def install_requirements_runtime(
     on_first_pip_output: Callable[[str], None] | None = None,
     subprocess_ref: PipSubprocessRef | None = None,
 ) -> tuple[int, str]:
-    """pip install -r requirements.txt (no ``torch`` line ÔÇö torch installed separately)."""
+    """pip install -r requirements.txt (no ``torch`` line - torch installed separately)."""
     root = repo_root()
     req = requirements_path or (root / "requirements.txt")
     if not req.is_file():
         return 1, f"Missing {req}"
     if on_line:
-        on_line("# Installing packages from requirements.txtÔÇª")
+        on_line("# Installing packages from requirements.txt...")
     exe = pip_python(python_exe, role="reqs")
     cmd = exe + ["-m", "pip", "install", "-r", str(req)]
     return _run_pip(cmd, on_line, on_first_pip_output, subprocess_ref)
@@ -614,7 +669,7 @@ def download_all_windows_torch_wheels(
             "on",
         ] + _TORCH_PKGS
         if on_line:
-            on_line(f"# pip download ÔåÆ {sub} ({index_url})")
+            on_line(f"# pip download -> {sub} ({index_url})")
         code, out = _run_pip(cmd, on_line, None, None)
         header = f"# Variant {name}\n# {' '.join(cmd)}\n\n"
         chunks.append(header + out)
@@ -699,7 +754,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "Windows only: pip download torch torchvision torchaudio wheels into "
-            "DEST/cu128, cu124, ÔÇª (relative paths resolve under the repo root). "
+            "DEST/cu128, cu124, ... (relative paths resolve under the repo root). "
             "If the flag is given with no path, uses ./torch_wheels. "
             "Does not run --with-rest."
         ),
@@ -744,8 +799,8 @@ def main(argv: list[str] | None = None) -> int:
             print(out, flush=True)
         if code == 0:
             print(
-                f"\n# Done. Wheels under {dest.resolve()} ÔÇö use the variant that matches your GPU "
-                f"(cu128 Ôëê Blackwell / RTX 50-series; cu124 Ôëê most older NVIDIA GPUs), e.g.\n"
+                f"\n# Done. Wheels under {dest.resolve()} - use the variant that matches your GPU "
+                f"(cu128 ~ Blackwell / RTX 50-series; cu124 ~ most older NVIDIA GPUs), e.g.\n"
                 f"#   py -m pip install --no-index --find-links \"{dest.resolve()}\\cu128\" torch torchvision torchaudio\n",
                 flush=True,
             )

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .brain import VideoPackage, ScriptSegment, _extract_json, load_causal_lm_from_pretrained
+from src.core.config import AppSettings
 from src.core.models_dir import get_models_dir
 from src.models.model_manager import resolve_pretrained_load_path
 
@@ -88,6 +89,8 @@ def rewrite_with_uncertainty(
     model_id: str,
     try_llm_4bit: bool = True,
     quant_mode: str | None = None,
+    inference_settings: AppSettings | None = None,
+    llm_cuda_device_index: int | None = None,
 ) -> VideoPackage:
     """
     LLM-assisted safety rewrite: attribute numeric/strong claims when article text is thin,
@@ -120,6 +123,9 @@ def rewrite_with_uncertainty(
             try_4bit=bool(try_llm_4bit),
             on_status=None,
             quant_mode=quant_mode,
+            cuda_device_index=llm_cuda_device_index,
+            inference_settings=inference_settings,
+            hub_model_id=model_id,
         )
 
         src_line = json.dumps(sources[:3], ensure_ascii=False)
