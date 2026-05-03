@@ -16,7 +16,7 @@ from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
 from src.render.clips import _maybe_enable_slice_inference
 from src.util.cuda_capabilities import cuda_device_reported_by_torch
-from src.util.diffusion_placement import place_diffusion_pipeline
+from src.util.diffusion_placement import dispose_diffusion_pipeline, place_diffusion_pipeline
 from src.util.diffusers_load import diffusers_from_pretrained
 from src.util.memory_budget import release_between_stages
 from src.util.utils_vram import vram_guard
@@ -572,6 +572,7 @@ def _try_sdxl_turbo(
         if on_image_progress:
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
+    dispose_diffusion_pipeline(pipe)
     del pipe
     release_between_stages("after_sdxl_turbo_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
@@ -626,6 +627,7 @@ def _try_sdxl_turbo_seeded(
         if on_image_progress:
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
+    dispose_diffusion_pipeline(pipe)
     del pipe
     release_between_stages("after_sdxl_turbo_seeded_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
@@ -708,6 +710,7 @@ def _try_sdxl_reference_chain(
         if on_image_progress:
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
+    dispose_diffusion_pipeline(pipe)
     del pipe
     release_between_stages("after_sdxl_reference_chain_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
@@ -755,6 +758,7 @@ def _try_external_ref_then_txt2img(
     results: list[GeneratedImage] = []
     n = len(prompts)
     if n < 1:
+        dispose_diffusion_pipeline(pipe_i2i)
         del pipe_i2i
         release_between_stages(
             "after_external_ref_empty_batch",
@@ -768,6 +772,7 @@ def _try_external_ref_then_txt2img(
     try:
         init = Image.open(external_reference).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
     except Exception:
+        dispose_diffusion_pipeline(pipe_i2i)
         del pipe_i2i
         release_between_stages(
             "after_external_ref_load_fail",
@@ -787,6 +792,7 @@ def _try_external_ref_then_txt2img(
     out0 = out_dir / "img_001.png"
     img0.save(out0)
     results.append(GeneratedImage(path=out0, prompt=p0))
+    dispose_diffusion_pipeline(pipe_i2i)
     del pipe_i2i
     release_between_stages(
         "after_external_ref_img2img_stage",
@@ -829,6 +835,7 @@ def _try_external_ref_then_txt2img(
         if on_image_progress:
             on_image_progress(int(100 * i / max(1, n)), f"Image {i}/{n} saved")
 
+    dispose_diffusion_pipeline(pipe_txt)
     del pipe_txt
     release_between_stages(
         "after_external_ref_txt2img_batch",

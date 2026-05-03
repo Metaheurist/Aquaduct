@@ -214,3 +214,18 @@ def test_place_sequential_passes_gpu_id(monkeypatch: pytest.MonkeyPatch, clear_o
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     dp.place_diffusion_pipeline(p, cuda_device_index=1)
     assert p.gpu_id == 1
+
+
+def test_dispose_diffusion_pipeline_calls_maybe_free_hooks() -> None:
+    calls: list[str] = []
+
+    class DummyPipe:
+        def maybe_free_model_hooks(self) -> None:
+            calls.append("ok")
+
+    dp.dispose_diffusion_pipeline(DummyPipe())
+    assert calls == ["ok"]
+
+
+def test_dispose_diffusion_pipeline_ok_without_hooks() -> None:
+    dp.dispose_diffusion_pipeline(object())

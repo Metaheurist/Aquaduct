@@ -146,6 +146,25 @@ def _resolve_auto_offload_mode(
     return "sequential"
 
 
+def dispose_diffusion_pipeline(pipe: object) -> None:
+    """
+    Detach diffusers offload hooks before deleting a pipeline reference.
+
+    ``enable_model_cpu_offload`` / ``enable_sequential_cpu_offload`` register accelerate hooks;
+    without clearing them first, dangling references often keep weights in heap memory until the
+    process exits—even after Python ``gc`` and ``torch.cuda.empty_cache``.
+
+    Older diffusers without ``maybe_free_model_hooks`` are a no-op.
+    """
+
+    try:
+        fn = getattr(pipe, "maybe_free_model_hooks", None)
+        if callable(fn):
+            fn()
+    except Exception:
+        pass
+
+
 def place_diffusion_pipeline(
     pipe,
     cuda_device_index: int | None = None,

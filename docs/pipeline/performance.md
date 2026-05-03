@@ -50,6 +50,8 @@ After **`import torch`**, the same helper applies **`torch.set_num_threads`** to
 
 Local **image** and **video** diffusion use a shared placement helper ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)) so weights can stay mostly in **system RAM** and move to the GPU per module/step (**Diffusers** `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`), instead of loading the full pipeline into VRAM at once. This is **not** Windows paging to disk; it trades **speed** for **lower peak VRAM**.
 
+When a job finishes, render code calls **`dispose_diffusion_pipeline()`** in the same module right before **`del pipe`**. That invokes diffusers **`maybe_free_model_hooks()`** when available so offload hooks are not left attached; otherwise weights can remain reachable and **tree RSS** stays inflated even after **Resource usage → Purge memory** (extra `gc` + CUDA cache flush). Allocator pools may still moderate how much RSS falls on Windows — see [VRAM utilities](../reference/vram.md).
+
 **Automatic policy** uses detected **GPU VRAM** ([`get_hardware_info()`](../../src/models/hardware.py)) and **available RAM** (`psutil.virtual_memory().available`). Override anytime with environment variables:
 
 | Variable | Values |
