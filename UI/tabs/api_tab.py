@@ -69,7 +69,7 @@ def attach_api_tab(win) -> None:
 
     hf_hint = QLabel(
         "Get a (read) token at "
-        '<a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a> — '
+        '<a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a> - '
         "needed for some models and live file sizes."
     )
     hf_hint.setTextFormat(Qt.TextFormat.RichText)
@@ -102,7 +102,7 @@ def attach_api_tab(win) -> None:
     fc_lay.addWidget(win.api_fc_enabled_chk)
 
     fc_doc = QLabel(
-        '<a href="https://www.firecrawl.dev/">firecrawl.dev</a> — optional paid API for richer web results. '
+        '<a href="https://www.firecrawl.dev/">firecrawl.dev</a> - optional paid API for richer web results. '
         "Without it, Aquaduct falls back to free feeds (e.g. Google News RSS)."
     )
     fc_doc.setTextFormat(Qt.TextFormat.RichText)
@@ -215,8 +215,8 @@ def attach_api_tab(win) -> None:
     form_tt.addRow("OAuth port", win.api_tt_oauth_port)
 
     win.api_tt_pub_mode = NoWheelComboBox()
-    win.api_tt_pub_mode.addItem("Inbox — finish in TikTok app (usual)", "inbox")
-    win.api_tt_pub_mode.addItem("Direct post — needs TikTok app review", "direct")
+    win.api_tt_pub_mode.addItem("Inbox - finish in TikTok app (usual)", "inbox")
+    win.api_tt_pub_mode.addItem("Direct post - needs TikTok app review", "direct")
     pm = str(getattr(win.settings, "tiktok_publishing_mode", "inbox") or "inbox")
     idxp = win.api_tt_pub_mode.findData(pm)
     win.api_tt_pub_mode.setCurrentIndex(idxp if idxp >= 0 else 0)
@@ -240,7 +240,7 @@ def attach_api_tab(win) -> None:
     win.api_tt_status_lbl.setWordWrap(True)
     win.api_tt_status_lbl.setStyleSheet("color: #8A96A3; font-size: 12px;")
     if str(getattr(win.settings, "tiktok_refresh_token", "") or "").strip():
-        win.api_tt_status_lbl.setText("Status: tokens on file — connect again to refresh.")
+        win.api_tt_status_lbl.setText("Status: tokens on file - connect again to refresh.")
     else:
         win.api_tt_status_lbl.setText("Status: not connected")
     tt_lay.addWidget(win.api_tt_status_lbl)
@@ -327,7 +327,7 @@ def attach_api_tab(win) -> None:
     win.api_yt_status_lbl.setWordWrap(True)
     win.api_yt_status_lbl.setStyleSheet("color: #8A96A3; font-size: 12px;")
     if str(getattr(win.settings, "youtube_refresh_token", "") or "").strip():
-        win.api_yt_status_lbl.setText("Status: tokens on file — connect again to refresh.")
+        win.api_yt_status_lbl.setText("Status: tokens on file - connect again to refresh.")
     else:
         win.api_yt_status_lbl.setText("Status: not connected")
     yt_lay.addWidget(win.api_yt_status_lbl)

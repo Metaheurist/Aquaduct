@@ -82,6 +82,7 @@ Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@py
 - **transformers / accelerate / bitsandbytes**: local LLM inference (4-bit where supported)
 - **diffusers / safetensors**: SDXL Turbo image generation
 - **huggingface_hub**: “zero-touch” model download on first run; also used by the desktop **verify checksums** action (compare local `models/` snapshots to the Hub)
+- **hnswlib** (≥ 0.8.0): optional **approximate nearest neighbors** for title-bar **LLM chat** retrieval when the doc+tooltip corpus is large ([`src/content/llm_chat_rag.py`](src/content/llm_chat_rag.py)); if the package is missing or the corpus is below the threshold, cosine similarity stays full scan
 - **cryptography** (Fernet): encrypts title-loaded **LLM chat** transcript files on disk ([`src/util/llm_chat_transcript_store.py`](src/util/llm_chat_transcript_store.py)); bundled in [`requirements.txt`](requirements.txt) with the desktop UI stack
 
 ## Media

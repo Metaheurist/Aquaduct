@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from src.core.config import AppSettings
-from src.models.hardware import HardwareInfo
+from src.models.hardware import GpuDevice, HardwareInfo
 from src.util import diffusion_placement as dp
 
 
@@ -133,6 +133,84 @@ def test_auto_multi_gpu_vram_first_image_prefers_model(
     )
     monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
     assert dp.resolve_diffusion_offload_mode(settings, placement_role="image") == "model"
+
+
+def test_auto_multi_gpu_vram_first_image_heavy_repo_small_diffusion_gpu_sequential(
+    monkeypatch: pytest.MonkeyPatch, clear_offload_env: None
+) -> None:
+    """SD3-class image on the actual diffusion GPU (e.g. 12 GiB) must not stop at model offload."""
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    settings = replace(
+        AppSettings(),
+        multi_gpu_shard_mode="vram_first_auto",
+        gpu_selection_mode="auto",
+    )
+    monkeypatch.setattr(
+        "src.gpu.multi_device.gates.vram_first_master_enabled",
+        lambda s: isinstance(s, AppSettings),
+    )
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 2)
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=24.0),
+    )
+    monkeypatch.setattr(
+        "src.models.hardware.list_cuda_gpus",
+        lambda: [
+            GpuDevice(0, "A", int(24 * 1024**3), 0),
+            GpuDevice(1, "B", int(12 * 1024**3), 0),
+        ],
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
+    assert (
+        dp.resolve_diffusion_offload_mode(
+            settings,
+            placement_role="image",
+            cuda_device_index=1,
+            model_repo_id="stabilityai/stable-diffusion-3.5-medium",
+        )
+        == "sequential"
+    )
+
+
+def test_single_gpu_12gb_heavy_image_prefers_sequential(
+    monkeypatch: pytest.MonkeyPatch, clear_offload_env: None
+) -> None:
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=12.0),
+    )
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 8.0)
+    assert (
+        dp.resolve_diffusion_offload_mode(
+            None,
+            placement_role="image",
+            model_repo_id="stabilityai/stable-diffusion-3.5-medium",
+        )
+        == "sequential"
+    )
+
+
+def test_single_gpu_12gb_non_heavy_image_still_model(
+    monkeypatch: pytest.MonkeyPatch, clear_offload_env: None
+) -> None:
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=12.0),
+    )
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 1)
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 8.0)
+    assert (
+        dp.resolve_diffusion_offload_mode(
+            None,
+            placement_role="image",
+            model_repo_id="runwayml/stable-diffusion-v1-5",
+        )
+        == "model"
+    )
 
 
 def test_auto_multi_gpu_vram_first_image_tight_ram_prefers_sequential(

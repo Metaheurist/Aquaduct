@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
 from src.util.utils_vram import cleanup_vram, vram_guard
 from src.content.topic_constraints import parse_topic_grounding_llm_json
 from .personalities import PersonalityPreset, get_personality_by_id
@@ -320,44 +321,6 @@ class VideoPackage:
         return " ".join(parts).strip()
 
 
-def _slice_first_balanced_json_object(text: str) -> str | None:
-    """Return the first top-level `{ ... }` span, respecting JSON string quotes and escapes."""
-    n = len(text)
-    i = 0
-    while i < n:
-        if text[i] != "{":
-            i += 1
-            continue
-        depth = 0
-        j = i
-        in_str = False
-        escape = False
-        while j < n:
-            ch = text[j]
-            if in_str:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_str = False
-                j += 1
-                continue
-            if ch == '"':
-                in_str = True
-                j += 1
-                continue
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[i : j + 1]
-            j += 1
-        i += 1
-    return None
-
-
 def _extract_json(text: str) -> dict[str, Any]:
     """
     Best-effort JSON extraction from a model response that may include prose.
@@ -365,40 +328,10 @@ def _extract_json(text: str) -> dict[str, Any]:
     raw = (text or "").strip()
     if not raw:
         raise ValueError("No JSON object found in model output.")
-
-    # Prefer fenced ```json ... ```
-    m = re.search(r"```json\s*([\s\S]+?)\s*```", raw, flags=re.IGNORECASE)
-    if m:
-        blob = m.group(1).strip()
-        try:
-            return json.loads(blob)
-        except json.JSONDecodeError:
-            sliced = _slice_first_balanced_json_object(blob)
-            if sliced:
-                return json.loads(sliced)
-
-    # Generic fenced block (model may omit the "json" tag)
-    m2 = re.search(r"```\s*([\s\S]+?)\s*```", raw)
-    if m2:
-        blob2 = m2.group(1).strip()
-        try:
-            return json.loads(blob2)
-        except json.JSONDecodeError:
-            sliced = _slice_first_balanced_json_object(blob2)
-            if sliced:
-                return json.loads(sliced)
-
-    sliced3 = _slice_first_balanced_json_object(raw)
-    if sliced3:
-        return json.loads(sliced3)
-
-    # Legacy: naive outer braces (may fail on braces inside strings — prefer balanced slice above)
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return json.loads(raw[start : end + 1])
-
-    raise ValueError("No JSON object found in model output.")
+    parsed = parse_first_json_dict_from_llm_text(raw)
+    if parsed is None:
+        raise ValueError("No JSON object found in model output.")
+    return parsed
 
 
 def _normalize_hashtags(tags: list[Any]) -> list[str]:
@@ -2047,6 +1980,42 @@ def _dispose_causal_lm_pair(model: Any, tokenizer: Any) -> None:
     cleanup_vram()
 
 
+def _script_generation_max_new_tokens(
+    requested: int,
+    *,
+    model_id: str,
+    inference_settings: AppSettings | None,
+    relax_short_json_batch: bool = False,
+) -> int:
+    """Clamp completion length by script VRAM profile; optional headroom for compact multi-key JSON."""
+    req = max(1, int(requested))
+    if inference_settings is None:
+        return min(req, 4096)
+    try:
+        from src.models.inference_profiles import pick_script_profile, resolve_effective_vram_gb
+
+        v = resolve_effective_vram_gb(kind="script", settings=inference_settings)
+        sp = pick_script_profile((model_id or "").strip(), v)
+        cap = int(sp.max_new_tokens)
+    except Exception:
+        return min(req, 4096)
+    if relax_short_json_batch:
+        relaxed = min(2048, max(cap, min(req, cap * 4)))
+        return min(req, relaxed)
+    return min(req, cap)
+
+
+def _pipeline_prompt_body_for_chat_template(prompt: str) -> str:
+    """Strip legacy Alpaca wrappers so chat_template sees a single user turn body only."""
+    s = str(prompt or "").strip()
+    if "### Response:" in s:
+        head = s.split("### Response:", 1)[0].strip()
+        if "### Instruction:" in head:
+            return head.split("### Instruction:", 1)[-1].strip()
+        return head
+    return s
+
+
 def _generate_with_loaded_causal_lm(
     model: Any,
     tokenizer: Any,
@@ -2057,8 +2026,11 @@ def _generate_with_loaded_causal_lm(
     max_new_tokens: int = 650,
     inference_settings: AppSettings | None = None,
     cancel_event: Any | None = None,
+    relax_short_json_batch: bool = False,
 ) -> str:
     """Single decode pass using an already-loaded causal LM (multistage refinement session)."""
+    import os
+
     import torch
 
     def _stderr(msg: str) -> None:
@@ -2067,26 +2039,59 @@ def _generate_with_loaded_causal_lm(
 
             print(f"[Aquaduct] {msg}", file=sys.stderr, flush=True)
 
-    full = f"### Instruction:\n{prompt}\n\n### Response:\n"
     _cap = _llm_max_input_tokens_cap(tokenizer, model_id=model_id, inference_settings=inference_settings)
-    max_new_use = int(max_new_tokens)
-    if inference_settings is not None:
+    max_new_use = _script_generation_max_new_tokens(
+        max_new_tokens,
+        model_id=model_id,
+        inference_settings=inference_settings,
+        relax_short_json_batch=relax_short_json_batch,
+    )
+    force_alpaca = os.environ.get("AQUADUCT_PIPELINE_FORCE_ALPACA", "").strip() == "1"
+    template = getattr(tokenizer, "chat_template", None)
+    use_chat_template = bool(template) and not force_alpaca
+    if use_chat_template:
+        msgs = [{"role": "user", "content": _pipeline_prompt_body_for_chat_template(prompt)}]
         try:
-            from src.models.inference_profiles import pick_script_profile, resolve_effective_vram_gb
+            enc = tokenizer.apply_chat_template(
+                msgs,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt",
+                truncation=True,
+                max_length=_cap,
+            )
+        except TypeError:
+            enc = tokenizer.apply_chat_template(
+                msgs,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_tensors="pt",
+                truncation=True,
+                max_length=_cap,
+            )
+            if not isinstance(enc, dict):
+                enc = {"input_ids": enc}
+        if not isinstance(enc, dict):
+            enc = dict(enc)
+        inputs = {k: v.to(model.device) for k, v in enc.items()}
+    else:
+        full = f"### Instruction:\n{prompt}\n\n### Response:\n"
+        inputs = tokenizer(
+            full,
+            return_tensors="pt",
+            truncation=True,
+            max_length=_cap,
+        ).to(model.device)
+    prompt_len = int(inputs["input_ids"].shape[1])
 
-            v = resolve_effective_vram_gb(kind="script", settings=inference_settings)
-            sp = pick_script_profile((model_id or "").strip(), v)
-            max_new_use = min(max_new_use, int(sp.max_new_tokens))
-        except Exception:
-            pass
-    inputs = tokenizer(
-        full,
-        return_tensors="pt",
-        truncation=True,
-        max_length=_cap,
-    ).to(model.device)
     if cuda_device_reported_by_torch():
         torch.cuda.empty_cache()
+
+    eos_ids = _eos_token_id_candidates(tokenizer)
+    if not eos_ids:
+        e = getattr(tokenizer, "eos_token_id", None)
+        if isinstance(e, int):
+            eos_ids = [e]
 
     _emit_llm(on_llm_task, "llm_generate", 0, "Starting generation…")
     _stderr("LLM inference starting (streamed progress when supported).")
@@ -2102,7 +2107,7 @@ def _generate_with_loaded_causal_lm(
         TextIteratorStreamer = text_iterator_streamer_cls()
 
         streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-        generation_kwargs = {
+        generation_kwargs: dict[str, Any] = {
             **inputs,
             "streamer": streamer,
             "max_new_tokens": max_new_use,
@@ -2110,8 +2115,9 @@ def _generate_with_loaded_causal_lm(
             "temperature": 0.7,
             "top_p": 0.9,
             "repetition_penalty": 1.08,
-            "eos_token_id": tokenizer.eos_token_id,
         }
+        if eos_ids:
+            generation_kwargs["eos_token_id"] = eos_ids[0] if len(eos_ids) == 1 else eos_ids
 
         def _run_gen() -> None:
             with torch.inference_mode():
@@ -2146,27 +2152,238 @@ def _generate_with_loaded_causal_lm(
         _emit_llm(on_llm_task, "llm_generate", 10, "Fallback: one-shot generate…")
         if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
             return (raw_new or "").strip()
+        gen_fallback: dict[str, Any] = {
+            **inputs,
+            "max_new_tokens": max_new_use,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "repetition_penalty": 1.08,
+        }
+        if eos_ids:
+            gen_fallback["eos_token_id"] = eos_ids[0] if len(eos_ids) == 1 else eos_ids
         with torch.inference_mode():
             if cuda_device_reported_by_torch():
                 torch.cuda.empty_cache()
-            out = model.generate(
-                **inputs,
-                max_new_tokens=max_new_use,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.08,
-                eos_token_id=tokenizer.eos_token_id,
-            )
+            out = model.generate(**gen_fallback)
         _emit_llm(on_llm_task, "llm_generate", 100, "Decoding…")
-        text_full = tokenizer.decode(out[0], skip_special_tokens=True)
-        if "### Response:" in text_full:
-            raw_new = text_full.split("### Response:", 1)[1].strip()
+        if use_chat_template:
+            raw_new = tokenizer.decode(out[0][prompt_len:], skip_special_tokens=True)
         else:
-            raw_new = text_full
+            text_full = tokenizer.decode(out[0], skip_special_tokens=True)
+            if "### Response:" in text_full:
+                raw_new = text_full.split("### Response:", 1)[1].strip()
+            else:
+                raw_new = text_full
 
     assert raw_new is not None
     return raw_new
+
+
+def _eos_token_id_candidates(tokenizer: Any) -> list[int]:
+    out: list[int] = []
+    base = getattr(tokenizer, "eos_token_id", None)
+    if isinstance(base, int):
+        out.append(base)
+    for tok in ("<|eot_id|>", "<|im_end|>"):
+        try:
+            tid = tokenizer.convert_tokens_to_ids(tok)
+            if isinstance(tid, int) and tid >= 0 and tid not in out:
+                out.append(tid)
+        except Exception:
+            continue
+    if not out and base is not None:
+        return [int(base)]
+    return out
+
+
+def _generate_chat_with_loaded_causal_lm(
+    model: Any,
+    tokenizer: Any,
+    model_id: str,
+    messages: list[dict[str, str]],
+    *,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 256,
+    inference_settings: AppSettings | None = None,
+    cancel_event: Any | None = None,
+    relax_short_json_batch: bool = False,
+) -> str:
+    """Chat-template decode when available; otherwise fall back to Alpaca-style flat prompt."""
+    import torch
+
+    msgs = [m for m in messages if str(m.get("content", "")).strip()]
+    if not msgs:
+        return ""
+
+    template = getattr(tokenizer, "chat_template", None)
+    if not template:
+        lines = []
+        for m in msgs:
+            role = str(m.get("role", "user")).upper()
+            body = str(m.get("content", "")).strip()
+            lines.append(f"{role}: {body}")
+        prompt = "\n\n".join(lines)
+        return _generate_with_loaded_causal_lm(
+            model,
+            tokenizer,
+            model_id,
+            prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=max_new_tokens,
+            inference_settings=inference_settings,
+            cancel_event=cancel_event,
+            relax_short_json_batch=relax_short_json_batch,
+        )
+
+    _cap = _llm_max_input_tokens_cap(tokenizer, model_id=model_id, inference_settings=inference_settings)
+    max_new_use = _script_generation_max_new_tokens(
+        max_new_tokens,
+        model_id=model_id,
+        inference_settings=inference_settings,
+        relax_short_json_batch=relax_short_json_batch,
+    )
+
+    try:
+        enc = tokenizer.apply_chat_template(
+            msgs,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+            truncation=True,
+            max_length=_cap,
+        )
+    except TypeError:
+        enc = tokenizer.apply_chat_template(
+            msgs,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_tensors="pt",
+            truncation=True,
+            max_length=_cap,
+        )
+        if not isinstance(enc, dict):
+            enc = {"input_ids": enc}
+
+    if not isinstance(enc, dict):
+        enc = dict(enc)
+    inputs = {k: v.to(model.device) for k, v in enc.items()}
+
+    _emit_llm(on_llm_task, "llm_generate", 0, "Starting generation…")
+    if cuda_device_reported_by_torch():
+        torch.cuda.empty_cache()
+
+    prompt_len = int(inputs["input_ids"].shape[1])
+    eos_ids = _eos_token_id_candidates(tokenizer)
+    if not eos_ids:
+        e = getattr(tokenizer, "eos_token_id", None)
+        if isinstance(e, int):
+            eos_ids = [e]
+
+    class _StopUserPrefix:
+        def __init__(self, tok: Any, start_len: int) -> None:
+            self._tok = tok
+            self._start = start_len
+
+        def __call__(self, input_ids, scores, **kwargs) -> bool:
+            _seq = input_ids[0]
+            if _seq.shape[-1] <= self._start:
+                return False
+            tail = self._tok.decode(_seq[self._start :], skip_special_tokens=True)
+            return "\nUser:" in tail
+
+    try:
+        from transformers import StoppingCriteria, StoppingCriteriaList
+
+        class _PyStop(StoppingCriteria):
+            def __init__(self, fn) -> None:  # type: ignore[no-untyped-def]
+                self._fn = fn
+
+            def __call__(self, input_ids, scores, **kwargs) -> bool:  # type: ignore[no-untyped-def]
+                return bool(self._fn(input_ids, scores, **kwargs))
+
+        stop_list = StoppingCriteriaList([_PyStop(_StopUserPrefix(tokenizer, prompt_len))])
+    except Exception:
+        stop_list = None
+
+    raw_new: str | None = None
+    try:
+        from threading import Thread
+
+        from src.models.hf_transformers_imports import text_iterator_streamer_cls
+
+        TextIteratorStreamer = text_iterator_streamer_cls()
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        gen_kw: dict[str, Any] = {
+            **inputs,
+            "streamer": streamer,
+            "max_new_tokens": max_new_use,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "repetition_penalty": 1.08,
+        }
+        if eos_ids:
+            gen_kw["eos_token_id"] = eos_ids[0] if len(eos_ids) == 1 else eos_ids
+        if stop_list is not None:
+            gen_kw["stopping_criteria"] = stop_list
+
+        def _run_gen() -> None:
+            with torch.inference_mode():
+                if cuda_device_reported_by_torch():
+                    torch.cuda.empty_cache()
+                model.generate(**gen_kw)
+
+        th = Thread(target=_run_gen, daemon=True)
+        th.start()
+        chunks: list[str] = []
+        n_tok = 0
+        for text in streamer:
+            if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+                break
+            chunks.append(text)
+            n_tok += 1
+            pct = min(99, int(100 * n_tok / max(1, max_new_use)))
+            _emit_llm(
+                on_llm_task,
+                "llm_generate",
+                pct,
+                f"Generating tokens ({n_tok}/{max_new_use})",
+            )
+        th.join(timeout=7200)
+        raw_new = "".join(chunks)
+        if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+            _emit_llm(on_llm_task, "llm_generate", 100, "Cancelled")
+            return raw_new
+        _emit_llm(on_llm_task, "llm_generate", 100, "Generation finished")
+    except Exception as e:
+        dprint("brain", "chat streamed generation failed, falling back", str(e))
+        _emit_llm(on_llm_task, "llm_generate", 10, "Fallback: one-shot generate…")
+        if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+            return (raw_new or "").strip()
+        gen_kw2: dict[str, Any] = {
+            **inputs,
+            "max_new_tokens": max_new_use,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "repetition_penalty": 1.08,
+        }
+        if eos_ids:
+            gen_kw2["eos_token_id"] = eos_ids[0] if len(eos_ids) == 1 else eos_ids
+        if stop_list is not None:
+            gen_kw2["stopping_criteria"] = stop_list
+        with torch.inference_mode():
+            if cuda_device_reported_by_torch():
+                torch.cuda.empty_cache()
+            out = model.generate(**gen_kw2)
+        _emit_llm(on_llm_task, "llm_generate", 100, "Decoding…")
+        text_full = tokenizer.decode(out[0][prompt_len:], skip_special_tokens=True)
+        raw_new = text_full
+
+    assert raw_new is not None
+    return raw_new.strip()
 
 
 def _infer_text_with_optional_holder(
@@ -2174,6 +2391,7 @@ def _infer_text_with_optional_holder(
     prompt: str,
     *,
     llm_holder: MutableMapping[str, Any] | None,
+    messages: list[dict[str, str]] | None = None,
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 650,
     try_llm_4bit: bool = True,
@@ -2181,14 +2399,23 @@ def _infer_text_with_optional_holder(
     inference_settings: AppSettings | None = None,
     quant_mode: str | None = None,
     cancel_event: Any | None = None,
+    relax_short_json_batch: bool = False,
 ) -> str:
     """
     Run one causal-LM inference. If ``llm_holder`` is provided, reuse or swap weights in-place;
     otherwise load, infer, dispose (legacy one-shot behaviour).
+
+    When ``messages`` is set (chat template path), ``prompt`` is ignored.
     """
     mid = str(model_id or "").strip()
     if not mid:
         raise RuntimeError("_infer_text_with_optional_holder requires model_id.")
+    use_chat = messages is not None
+    if use_chat:
+        if not isinstance(messages, list) or not messages:
+            raise RuntimeError("messages must be a non-empty list when provided.")
+    elif not str(prompt or "").strip():
+        raise RuntimeError("_infer_text_with_optional_holder requires prompt or messages.")
 
     qm = quant_mode
     if qm is None and inference_settings is not None:
@@ -2204,6 +2431,18 @@ def _infer_text_with_optional_holder(
             quant_mode=qm,
         )
         try:
+            if use_chat:
+                return _generate_chat_with_loaded_causal_lm(
+                    model,
+                    tokenizer,
+                    mid,
+                    messages,  # type: ignore[arg-type]
+                    on_llm_task=on_llm_task,
+                    max_new_tokens=max_new_tokens,
+                    inference_settings=inference_settings,
+                    cancel_event=cancel_event,
+                    relax_short_json_batch=relax_short_json_batch,
+                )
             return _generate_with_loaded_causal_lm(
                 model,
                 tokenizer,
@@ -2213,6 +2452,7 @@ def _infer_text_with_optional_holder(
                 max_new_tokens=max_new_tokens,
                 inference_settings=inference_settings,
                 cancel_event=cancel_event,
+                relax_short_json_batch=relax_short_json_batch,
             )
         finally:
             _dispose_causal_lm_pair(model, tokenizer)
@@ -2237,6 +2477,18 @@ def _infer_text_with_optional_holder(
         llm_holder["model"] = mod
         llm_holder["hub_model_id"] = mid
 
+    if use_chat:
+        return _generate_chat_with_loaded_causal_lm(
+            llm_holder["model"],
+            llm_holder["tokenizer"],
+            mid,
+            messages,  # type: ignore[arg-type]
+            on_llm_task=on_llm_task,
+            max_new_tokens=max_new_tokens,
+            inference_settings=inference_settings,
+            cancel_event=cancel_event,
+            relax_short_json_batch=relax_short_json_batch,
+        )
     return _generate_with_loaded_causal_lm(
         llm_holder["model"],
         llm_holder["tokenizer"],
@@ -2246,6 +2498,7 @@ def _infer_text_with_optional_holder(
         max_new_tokens=max_new_tokens,
         inference_settings=inference_settings,
         cancel_event=cancel_event,
+        relax_short_json_batch=relax_short_json_batch,
     )
 
 
@@ -2841,6 +3094,29 @@ def expand_custom_field_text(
     return out
 
 
+_TOPIC_GROUNDING_SYSTEM_MESSAGE = (
+    "You configure short vertical-video topic tags. "
+    'Your entire reply must be exactly one JSON object: first character "{", last character "}". '
+    "No markdown code fences, no bullet lists, no section headers like Example, no commentary before or after the JSON."
+)
+
+# Small batches keep chat-template inputs under truncation caps and completion JSON bounded per forward.
+TOPIC_GROUNDING_MAX_TAGS_PER_CHUNK = 6
+
+
+def topic_grounding_pair_chunks(
+    pairs: Sequence[tuple[str, str]],
+    *,
+    chunk_size: int | None = None,
+) -> list[list[tuple[str, str]]]:
+    """Split normalized ``(norm, display)`` pairs into fixed-size chunks (always at least one chunk)."""
+    sz = max(1, int(chunk_size or TOPIC_GROUNDING_MAX_TAGS_PER_CHUNK))
+    lst = list(pairs)
+    if not lst:
+        return []
+    return [lst[i : i + sz] for i in range(0, len(lst), sz)]
+
+
 def _prompt_topic_tag_grounding_batch(
     tag_pairs: Sequence[tuple[str, str]],
     video_format: str,
@@ -2848,31 +3124,34 @@ def _prompt_topic_tag_grounding_batch(
     sibling_displays: Sequence[str],
     seed_notes_by_norm: Mapping[str, str] | None,
 ) -> str:
+    """User-turn body for topic grounding (JSON contract first so input truncation keeps instructions)."""
     vf = str(video_format or "news").strip() or "news"
     siblings = ", ".join(x.strip() for x in sibling_displays if str(x or "").strip())[:900]
-    tag_lines = []
+    rows: list[str] = []
     for norm, disp in tag_pairs:
         cur = ((seed_notes_by_norm or {}).get(norm) or "").strip()
-        suffix = (' current note: "' + cur[:220] + ('…"' if len(cur) > 220 else '"')) if cur else ""
-        tag_lines.append(f'  • json key EXACTLY `{norm}` (display label: "{disp}"){suffix}')
-    joined = "\n".join(tag_lines)
+        disp_safe = str(disp or "").replace("\t", " ").replace("\r", " ").replace("\n", " ")
+        row = f"{norm}\t{disp_safe}"
+        if cur:
+            cur_s = cur.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+            row += f"\t{cur_s[:220]}{'…' if len(cur_s) > 220 else ''}"
+        rows.append(row)
+    joined = "\n".join(rows)
     sibling_block = ""
     if siblings.strip():
-        sibling_block = f"\nAll topic tags this mode (for consistency; do not merge into one note): {siblings}\n"
+        sibling_block = (
+            f"\nOther tags in this mode (for consistency only; still emit one note per requested key): {siblings}\n"
+        )
 
     return (
-        "You help configure per-tag GROUNDING lines for short-form VERTICAL VIDEO (9:16) scripts.\n"
-        "The script generator treats topic tags as HARD anchors; each grounding line guides tone, angles, bans, genre facts.\n\n"
-        f'Video format / mode bucket: "{vf}" — match idioms audiences expect for this mode.\n'
-        f"{sibling_block}\n"
-        "Write ONE grounding line each for ONLY the tags listed below:\n\n"
-        f"{joined}\n\n"
-        "Output RULES:\n"
-        '- Return ONLY valid JSON.\n'
-        '- Shape: {\"notes\": {\"exact_lowercase_tag_key\": \"single line note\", ...}}.\n'
-        "- Each inner object key MUST match the backtick-enclosed ``json key`` above character-for-character (normalized lowercase).\n"
-        '- Each note: one concise line under 240 characters, plain text.\n'
-        "- No Markdown, no preamble, no code fences.\n"
+        "JSON schema (fill every key from column 1 below; values are grounding lines for the script engine):\n"
+        '{"notes": {<tag_norm_ascii_lowercase>: "<one line, plain text, max 240 chars>", ...}}\n\n'
+        'Example shape only: {"notes": {"climate_policy": "Science explainers; stay factual; no panic hooks."}}\n\n'
+        f'Mode bucket: "{vf}" — match idioms audiences expect for this mode.{sibling_block}\n'
+        "Each grounding line: tone, angles, hard bans, genre facts the script must respect.\n\n"
+        "Tag rows (tab-separated). Column 1 is the JSON object key you must use exactly; "
+        "column 2 is the display label for context; column 3, if present, is the existing note to refine or replace.\n"
+        f"{joined}\n"
     )
 
 
@@ -2893,26 +3172,57 @@ def generate_topic_tag_grounding_notes_llm(
         return {}, ()
 
     siblings = sibling_displays if sibling_displays is not None else [d for _, d in pairs]
-    prompt = _prompt_topic_tag_grounding_batch(
-        pairs,
-        video_format,
-        sibling_displays=siblings,
-        seed_notes_by_norm=seed_notes_by_norm,
-    )
+    chunks = topic_grounding_pair_chunks(pairs)
+    n_chunks = len(chunks)
+    allowed_all = frozenset(n for n, _ in pairs)
+    merged_notes: dict[str, str] = {}
 
-    nt = max_new_tokens
-    if nt is None:
-        nt = min(4096, 256 + len(pairs) * 140)
+    def _scale_llm_progress(chunk_idx: int, task: str, inner_pct: int, msg: str) -> None:
+        if on_llm_task is None:
+            return
+        inner_f = max(0.0, min(1.0, inner_pct / 100.0))
+        overall = int(100 * (chunk_idx + inner_f) / n_chunks)
+        if chunk_idx >= n_chunks - 1 and inner_pct >= 100:
+            overall = 100
+        overall = max(0, min(100, overall))
+        on_llm_task(task, overall, f"Tags batch {chunk_idx + 1}/{n_chunks}: {msg}")
 
-    allowed = frozenset(n for n, _ in pairs)
     with vram_guard():
-        raw = _generate_with_transformers(
-            model_id,
-            prompt,
-            on_llm_task=on_llm_task,
-            max_new_tokens=nt,
-            try_llm_4bit=try_llm_4bit,
-            inference_settings=inference_settings,
-        )
-    return parse_topic_grounding_llm_json(raw or "", allowed_normalized_tags=allowed)
+        for idx, chunk_pairs in enumerate(chunks):
+            prompt = _prompt_topic_tag_grounding_batch(
+                chunk_pairs,
+                video_format,
+                sibling_displays=siblings,
+                seed_notes_by_norm=seed_notes_by_norm,
+            )
+            nt = max_new_tokens
+            if nt is None:
+                nt = min(4096, 320 + len(chunk_pairs) * 220)
+
+            def _on_chunk(task: str, pct: int, msg: str) -> None:
+                _scale_llm_progress(idx, task, pct, msg)
+
+            raw = _infer_text_with_optional_holder(
+                model_id,
+                "",
+                llm_holder=None,
+                messages=[
+                    {"role": "system", "content": _TOPIC_GROUNDING_SYSTEM_MESSAGE},
+                    {"role": "user", "content": prompt},
+                ],
+                on_llm_task=_on_chunk,
+                max_new_tokens=nt,
+                try_llm_4bit=try_llm_4bit,
+                inference_settings=inference_settings,
+                relax_short_json_batch=True,
+            )
+            allowed_chunk = frozenset(n for n, _ in chunk_pairs)
+            notes, _missing = parse_topic_grounding_llm_json(
+                raw or "",
+                allowed_normalized_tags=allowed_chunk,
+            )
+            merged_notes.update(notes)
+
+    missing_final = tuple(sorted(t for t in allowed_all if t not in merged_notes))
+    return merged_notes, missing_final
 

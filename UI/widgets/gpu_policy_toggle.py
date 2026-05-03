@@ -157,5 +157,5 @@ class GpuPolicyToggle(QWidget):
         if want != prev:
             self.currentIndexChanged.emit(want)
 
-    def currentData(self, role: int | None = None) -> str:  # noqa: ARG002 — match QComboBox
+    def currentData(self, role: int | None = None) -> str:  # noqa: ARG002 - match QComboBox
         return "auto" if self._auto.isChecked() else "single"

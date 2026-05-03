@@ -41,7 +41,7 @@ def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min
 
 
 def attach_video_tab(win) -> None:
-    # Scroll: window height is capped (~980px) but this tab is taller — without a scroll area
+    # Scroll: window height is capped (~980px) but this tab is taller - without a scroll area
     # QFormLayout rows get vertically compressed and overlap.
     content = QWidget()
     lay = QVBoxLayout(content)
@@ -215,7 +215,7 @@ def attach_video_tab(win) -> None:
         win.video_fps_preset_combo.setCurrentIndex(idx_fp)
     win.video_fps_preset_combo.setToolTip(
         help_tooltip_rich(
-            "FPS preset: 24 (cinematic film look), 30 (default short-form), 60 (smooth — needs Smoothness ≥ ffmpeg).",
+            "FPS preset: 24 (cinematic film look), 30 (default short-form), 60 (smooth - needs Smoothness ≥ ffmpeg).",
             "video",
             slide=0,
         )
@@ -245,7 +245,7 @@ def attach_video_tab(win) -> None:
     presets_form.addRow("Resolution", win.video_resolution_preset_combo)
 
     win.video_smoothness_combo = NoWheelComboBox()
-    win.video_smoothness_combo.addItem("Off — encode at native fps", "off")
+    win.video_smoothness_combo.addItem("Off - encode at native fps", "off")
     win.video_smoothness_combo.addItem("FFmpeg minterpolate (CPU)", "ffmpeg")
     win.video_smoothness_combo.addItem("RIFE (optional, GPU)", "rife")
     _prep_combo(win.video_smoothness_combo, min_w=240)
@@ -264,8 +264,8 @@ def attach_video_tab(win) -> None:
     presets_form.addRow("Smoothness", win.video_smoothness_combo)
 
     win.video_spatial_upscale_combo = NoWheelComboBox()
-    win.video_spatial_upscale_combo.addItem("Off — Lanczos resize in editor", "off")
-    win.video_spatial_upscale_combo.addItem("Auto — PyTorch CUDA, else NCNN Vulkan", "auto")
+    win.video_spatial_upscale_combo.addItem("Off - Lanczos resize in editor", "off")
+    win.video_spatial_upscale_combo.addItem("Auto - PyTorch CUDA, else NCNN Vulkan", "auto")
     _prep_combo(win.video_spatial_upscale_combo, min_w=240)
     cur_su = str(getattr(win.settings.video, "spatial_upscale_mode", "off") or "off")
     idx_su = win.video_spatial_upscale_combo.findData(cur_su)
@@ -286,7 +286,7 @@ def attach_video_tab(win) -> None:
 
     presets_hint = QLabel(
         "Pick the four knobs above for typical workflows. Edit individual spinners under Output & timing "
-        "for full manual control — that switches the matching preset to the closest legacy match."
+        "for full manual control - that switches the matching preset to the closest legacy match."
     )
     presets_hint.setWordWrap(True)
     presets_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
@@ -311,7 +311,7 @@ def attach_video_tab(win) -> None:
     if idx >= 0:
         win.format_combo.setCurrentIndex(idx)
     else:
-        win.format_combo.insertItem(0, f"Custom — {cur[0]}×{cur[1]}", cur)
+        win.format_combo.insertItem(0, f"Custom - {cur[0]}×{cur[1]}", cur)
         win.format_combo.setCurrentIndex(0)
     _prep_combo(win.format_combo)
     win.format_combo.setToolTip(
@@ -551,7 +551,7 @@ def attach_video_tab(win) -> None:
         if fi >= 0:
             win.format_combo.setCurrentIndex(fi)
             return
-        win.format_combo.insertItem(0, f"Custom — {data[0]}×{data[1]}", data)
+        win.format_combo.insertItem(0, f"Custom - {data[0]}×{data[1]}", data)
         win.format_combo.setCurrentIndex(0)
 
     def _apply_platform_preset(preset_id: str) -> None:
@@ -600,7 +600,7 @@ def attach_video_tab(win) -> None:
 
     win._platform_preset_tile_group.buttonClicked.connect(_on_preset_tile_clicked)
 
-    # Phase 5: live wiring for the four-knob v2 presets — picking a preset
+    # Phase 5: live wiring for the four-knob v2 presets - picking a preset
     # snaps the legacy spinners to its values so the rest of the pipeline
     # (which reads width/height/fps/clips_per_video/pro_clip_seconds) sees
     # a coherent configuration.

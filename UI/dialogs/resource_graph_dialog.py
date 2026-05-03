@@ -1,4 +1,4 @@
-"""Modal-less frameless window: CPU/RAM/GPU usage — compact text summary or expanded live charts."""
+"""Modal-less frameless window: CPU/RAM/GPU usage - compact text summary or expanded live charts."""
 
 from __future__ import annotations
 
@@ -362,7 +362,7 @@ class _CpuPerCoreChartArea(QWidget):
                 s.process_cpu_pct,
                 tip_suffix=(
                     "Aquaduct process tree (Python + children), as % of one full logical CPU.\n"
-                    f"Current: {s.process_cpu_pct:.1f}% — per-core host graph unavailable on this tick."
+                    f"Current: {s.process_cpu_pct:.1f}% - per-core host graph unavailable on this tick."
                 ),
             )
             span = self._tiles[0].history_len()
@@ -383,11 +383,11 @@ class ResourceGraphDialog(FramelessDialog):
         self._gpu_split_track: list[tuple[int, str, QLabel, _SparklineChart]] = []
         self._compact_mode = self._compact_mode_from_parent()
 
-        self._cpu_lbl = QLabel("CPU — —%")
+        self._cpu_lbl = QLabel("CPU - -%")
         self._cpu_lbl.setWordWrap(True)
         self._cpu_lbl.setStyleSheet("color: #25F4EE; font-weight: 700; font-size: 12px;")
         self._cpu_chart = _CpuPerCoreChartArea(accent="#25F4EE")
-        self._ram_lbl = QLabel("RAM — —%")
+        self._ram_lbl = QLabel("RAM - -%")
         self._ram_lbl.setWordWrap(True)
         self._ram_lbl.setStyleSheet("color: #FFB703; font-weight: 700; font-size: 12px;")
         self._ram_chart = _SparklineChart(
@@ -396,7 +396,7 @@ class ResourceGraphDialog(FramelessDialog):
             show_footer=True,
             footer_help="Yellow trace: Aquaduct process-tree RSS as % of total physical RAM (1 Hz).",
         )
-        self._gpu_lbl = QLabel("GPU VRAM —")
+        self._gpu_lbl = QLabel("GPU VRAM -")
         self._gpu_lbl.setWordWrap(True)
         self._gpu_lbl.setStyleSheet("color: #A78BFA; font-weight: 700; font-size: 12px;")
         self._gpu_chart = _SparklineChart(
@@ -474,11 +474,11 @@ class ResourceGraphDialog(FramelessDialog):
         self._purge_btn.setAccessibleName("Purge memory")
         self._purge_btn.setToolTip(
             help_tooltip_rich(
-                "Purge memory — runs aggressive Python garbage collection and clears the PyTorch CUDA cache "
+                "Purge memory - runs aggressive Python garbage collection and clears the PyTorch CUDA cache "
                 "for this Aquaduct process on all GPUs (and MPS cache on Apple Silicon). Frees unreachable objects "
                 "and returns caching-allocator memory to the driver.\n\n"
                 "VRAM % in these charts is whole-GPU utilization (desktop compositor, other apps, leftover driver "
-                "pools)—not Aquaduct alone—so percentages often stay above zero after purge. Purge cannot unload "
+                "pools)-not Aquaduct alone-so percentages often stay above zero after purge. Purge cannot unload "
                 "models still referenced or free memory owned by other programs. It does not force-unload weights "
                 "held by a running pipeline job.",
                 "welcome",
@@ -490,7 +490,7 @@ class ResourceGraphDialog(FramelessDialog):
         self._monitor_lbl.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: 600;")
         self._monitor_lbl.setToolTip(
             help_tooltip_rich(
-                "Which CUDA GPU to plot VRAM for in the single-GPU chart (ignored when Split view — all GPUs "
+                "Which CUDA GPU to plot VRAM for in the single-GPU chart (ignored when Split view - all GPUs "
                 "is selected). Pipeline device policy is configured on Model → My PC; this dropdown only picks "
                 "what the monitor graphs.",
                 "welcome",
@@ -503,9 +503,9 @@ class ResourceGraphDialog(FramelessDialog):
         self._gpu_monitor_combo.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._gpu_monitor_combo.setToolTip(
             help_tooltip_rich(
-                "Pick one CUDA device to chart VRAM %, or choose “Split view — all GPUs” for a separate "
+                "Pick one CUDA device to chart VRAM %, or choose “Split view - all GPUs” for a separate "
                 "sparkline per GPU (scroll when many devices). In Auto GPU policy, script (LLM) and "
-                "diffusion may use different cards — switch devices to compare. ~70–90% on the active GPU "
+                "diffusion may use different cards - switch devices to compare. ~70–90% on the active GPU "
                 "during a run is normal.",
                 "welcome",
                 slide=2,
@@ -627,7 +627,7 @@ class ResourceGraphDialog(FramelessDialog):
         self._gpu_lbl.setWordWrap(True)
 
     def _reparent_labels_into_compact_list(self) -> None:
-        """Minimal mode: vertical list — CPU, RAM, then each GPU line."""
+        """Minimal mode: vertical list - CPU, RAM, then each GPU line."""
         self._clear_compact_list_layout_keep_widgets()
         self._cpu_cell_lay.removeWidget(self._cpu_lbl)
         self._ram_cell_lay.removeWidget(self._ram_lbl)
@@ -762,7 +762,7 @@ class ResourceGraphDialog(FramelessDialog):
             self._layout_toggle_btn.set_icon_kind("resource_compress")
             self._layout_toggle_btn.setToolTip(
                 help_tooltip_rich(
-                    "Summary mode (default): numbers only — no charts — compact window. Purge status stays "
+                    "Summary mode (default): numbers only - no charts - compact window. Purge status stays "
                     "hidden until you purge or expand. Your choice is remembered.",
                     "welcome",
                     slide=2,
@@ -882,7 +882,7 @@ class ResourceGraphDialog(FramelessDialog):
             for i, (ix, title) in enumerate(chunk):
                 global_i = row_start + i
                 color = _SPLIT_GPU_COLORS[global_i % len(_SPLIT_GPU_COLORS)]
-                lbl = QLabel(f"{title} — VRAM …")
+                lbl = QLabel(f"{title} - VRAM …")
                 lbl.setWordWrap(True)
                 lbl.setStyleSheet(f"color: {color}; font-weight: 700; font-size: 11px;")
                 lbl.setToolTip(
@@ -934,7 +934,7 @@ class ResourceGraphDialog(FramelessDialog):
         def _gpu_choice_tip(index: int, label: str) -> str:
             return help_tooltip_rich(
                 f"Chart VRAM % for CUDA device {index}: {label}.\n\n"
-                "Hover other rows to compare. Choose Split view — all GPUs for one sparkline per card.",
+                "Hover other rows to compare. Choose Split view - all GPUs for one sparkline per card.",
                 "welcome",
                 slide=2,
             )
@@ -950,11 +950,11 @@ class ResourceGraphDialog(FramelessDialog):
                 self._gpu_monitor_combo.setItemData(row_ix, _gpu_choice_tip(g.index, g.name), tip_role)
 
         split_ix = self._gpu_monitor_combo.count()
-        self._gpu_monitor_combo.addItem("Split view — all GPUs", _MONITOR_COMBO_SPLIT_SENTINEL)
+        self._gpu_monitor_combo.addItem("Split view - all GPUs", _MONITOR_COMBO_SPLIT_SENTINEL)
         self._gpu_monitor_combo.setItemData(
             split_ix,
             help_tooltip_rich(
-                "One VRAM sparkline per CUDA GPU in a scrollable area — best when LLM and diffusion sit on "
+                "One VRAM sparkline per CUDA GPU in a scrollable area - best when LLM and diffusion sit on "
                 "different cards. The single-GPU column is hidden in this mode.",
                 "welcome",
                 slide=2,
@@ -1134,7 +1134,7 @@ class ResourceGraphDialog(FramelessDialog):
             self._cpu_lbl.setToolTip(
                 help_tooltip_rich(
                     "Headline: Aquaduct process-tree CPU as % of capacity (÷ logical cores).\n\n"
-                    "Expanded chart: a grid of mini sparklines — each cell is system-wide utilization on one "
+                    "Expanded chart: a grid of mini sparklines - each cell is system-wide utilization on one "
                     "logical CPU (not per-process allocation). FFmpeg and other children roll into the headline.\n\n"
                     f"Child processes (recursive): {s.tree_child_count}.",
                     "welcome",
@@ -1146,7 +1146,7 @@ class ResourceGraphDialog(FramelessDialog):
             if used_mb is not None and used_mb >= 0.0:
                 other_mb = max(0.0, used_mb - app_mb)
                 self._ram_lbl.setText(
-                    f"RAM · {app_mb:.0f} / {used_mb:.0f} MB — {app_mb:.0f} by app, {other_mb:.0f} by other"
+                    f"RAM · {app_mb:.0f} / {used_mb:.0f} MB - {app_mb:.0f} by app, {other_mb:.0f} by other"
                 )
             else:
                 self._ram_lbl.setText(f"RAM · {app_mb:.0f} MB by app")
@@ -1160,7 +1160,7 @@ class ResourceGraphDialog(FramelessDialog):
             ]
             if used_mb is not None:
                 ram_body_parts.append(
-                    f"Other ≈ psutil used RAM ({used_mb:.0f} MB) minus tree RSS — OS/file cache and "
+                    f"Other ≈ psutil used RAM ({used_mb:.0f} MB) minus tree RSS - OS/file cache and "
                     "other apps; not exact accounting."
                 )
             if s.system_memory_used_pct is not None:
@@ -1184,9 +1184,9 @@ class ResourceGraphDialog(FramelessDialog):
                     if pct is not None:
                         if show_charts:
                             chart.push(pct)
-                        lbl.setText(f"{title} — VRAM {pct:5.1f}%")
+                        lbl.setText(f"{title} - VRAM {pct:5.1f}%")
                     else:
-                        lbl.setText(f"{title} — VRAM —")
+                        lbl.setText(f"{title} - VRAM -")
             else:
                 gpu_pct = sample_gpu_mem_pct(self._monitor_gpu_index)
                 if gpu_pct is not None:
@@ -1203,10 +1203,10 @@ class ResourceGraphDialog(FramelessDialog):
                         )
                     )
                 else:
-                    self._gpu_lbl.setText("GPU VRAM —")
+                    self._gpu_lbl.setText("GPU VRAM -")
                     self._gpu_lbl.setToolTip(
                         help_tooltip_rich(
-                            f"VRAM for CUDA device {self._monitor_gpu_index} — sample unavailable "
+                            f"VRAM for CUDA device {self._monitor_gpu_index} - sample unavailable "
                             "(no CUDA or driver query failed).",
                             "welcome",
                             slide=2,

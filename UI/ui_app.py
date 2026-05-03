@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 def _apply_debug_categories_from_argv() -> None:
-    """``--debug pipeline,ui`` or ``--debug=all`` — merged with env (see ``debug.debug_log``)."""
+    """``--debug pipeline,ui`` or ``--debug=all`` - merged with env (see ``debug.debug_log``)."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--debug", type=str, default="")
     args, rest = p.parse_known_args(sys.argv[1:])
@@ -123,7 +123,7 @@ def _maybe_import_smoke_and_exit() -> None:
         "src.runtime.generation_facade",
         "UI.workers",
         "UI.services.api_model_widgets",
-        # Pulls PyQt6, MainWindow, and tab graph — catches missing frozen deps early.
+        # Pulls PyQt6, MainWindow, and tab graph - catches missing frozen deps early.
         "UI.app",
     ):
         importlib.import_module(mod)

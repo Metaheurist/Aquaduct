@@ -35,10 +35,10 @@ def attach_picture_tab(win) -> None:
     lay.addLayout(form)
 
     win.picture_template_combo = QComboBox()
-    win.picture_template_combo.addItem("Vertical 9:16 — 1080×1920 (default)", ("vertical_1080", 1080, 1920))
-    win.picture_template_combo.addItem("Vertical 9:16 — 720×1280", ("vertical_720", 720, 1280))
-    win.picture_template_combo.addItem("Square 1:1 — 1080×1080", ("square_1080", 1080, 1080))
-    win.picture_template_combo.addItem("Landscape 16:9 — 1920×1080", ("landscape_1080", 1920, 1080))
+    win.picture_template_combo.addItem("Vertical 9:16 - 1080×1920 (default)", ("vertical_1080", 1080, 1920))
+    win.picture_template_combo.addItem("Vertical 9:16 - 720×1280", ("vertical_720", 720, 1280))
+    win.picture_template_combo.addItem("Square 1:1 - 1080×1080", ("square_1080", 1080, 1080))
+    win.picture_template_combo.addItem("Landscape 16:9 - 1920×1080", ("landscape_1080", 1920, 1080))
     win.picture_template_combo.setToolTip(
         help_tooltip_rich("Canvas size and aspect for photo-mode outputs.", "run", slide=2)
     )

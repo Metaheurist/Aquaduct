@@ -140,6 +140,6 @@ class MediaModeToggle(QWidget):
         if want != prev:
             self.currentIndexChanged.emit(want)
 
-    def currentData(self, role: int | None = None) -> str:  # noqa: ARG002 — match QComboBox signature
+    def currentData(self, role: int | None = None) -> str:  # noqa: ARG002 - match QComboBox signature
         return "photo" if self._photo.isChecked() else "video"
 

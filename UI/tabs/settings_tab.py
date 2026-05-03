@@ -79,7 +79,7 @@ def _my_pc_help_tip(body: str) -> str:
 
 
 def _api_help_tip(body: str, *, slide: int = 1) -> str:
-    return help_tooltip_rich((body or "API generation — see Help.").strip(), "api_social", slide=slide)
+    return help_tooltip_rich((body or "API generation - see Help.").strip(), "api_social", slide=slide)
 
 
 def _fit_badge_style(marker: str) -> str:
@@ -100,7 +100,7 @@ def attach_settings_tab(win) -> None:
     lay = QVBoxLayout(w)
 
     title_row = QHBoxLayout()
-    header = QLabel("Models — pick weights and downloads")
+    header = QLabel("Models - pick weights and downloads")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     title_row.addWidget(header)
     title_row.addStretch(1)
@@ -109,8 +109,8 @@ def attach_settings_tab(win) -> None:
     win.model_execution_mode_combo.setCurrentIndex(1 if _mem == "api" else 0)
     win.model_execution_mode_combo.setToolTip(
         help_tooltip_rich(
-            "Local — Hugging Face weights on this PC (downloads, verify checksums, Auto-fit, VRAM fit badges).\n\n"
-            "API — cloud script, stills, and voice; configure providers in the panel below (same as the API tab).\n\n"
+            "Local - Hugging Face weights on this PC (downloads, verify checksums, Auto-fit, VRAM fit badges).\n\n"
+            "API - cloud script, stills, and voice; configure providers in the panel below (same as the API tab).\n\n"
             "Fit badges use the same GPU policy and effective VRAM per role as the My PC tab.",
             "models",
             slide=1,
@@ -162,7 +162,7 @@ def attach_settings_tab(win) -> None:
     _a.triggered.connect(win._import_models_from_folder)
     dl_menu.addAction(_a)
     dl_menu.addSeparator()
-    _a = QAction("Verify checksums — selected models (on disk)", win)
+    _a = QAction("Verify checksums - selected models (on disk)", win)
     _a.setToolTip(
         _models_help_tip(
             "Compare local files to Hugging Face Hub (SHA-256 for LFS weights, git blob ids for small files). "
@@ -172,7 +172,7 @@ def attach_settings_tab(win) -> None:
     )
     _a.triggered.connect(win._verify_models_checksums_selected)
     dl_menu.addAction(_a)
-    _a = QAction("Verify checksums — all folders in models/", win)
+    _a = QAction("Verify checksums - all folders in models/", win)
     _a.setToolTip(_models_help_tip("Same as above, for every model-sized folder under models/.", slide=2))
     _a.triggered.connect(win._verify_models_checksums_all)
     dl_menu.addAction(_a)
@@ -188,7 +188,7 @@ def attach_settings_tab(win) -> None:
     win.install_deps_btn.setToolTip(
         _models_help_tip(
             "Install PyTorch for this PC (CUDA if an NVIDIA GPU is detected, else CPU; macOS uses PyPI), "
-            "then pip install -r requirements.txt — same as: python scripts/install_pytorch.py --with-rest",
+            "then pip install -r requirements.txt - same as: python scripts/install_pytorch.py --with-rest",
             slide=2,
         )
     )
@@ -533,10 +533,10 @@ def attach_settings_tab(win) -> None:
     _apply_saved_model_combo(win.voice_combo, win.settings.voice_model_id, default_repo=_defaults.kokoro_id)
 
     # Required VRAM (typical; heuristic) between combo and fit badge
-    win.llm_vram_lbl = QLabel("—")
-    win.img_vram_lbl = QLabel("—")
-    win.vid_vram_lbl = QLabel("—")
-    win.voice_vram_lbl = QLabel("—")
+    win.llm_vram_lbl = QLabel("-")
+    win.img_vram_lbl = QLabel("-")
+    win.vid_vram_lbl = QLabel("-")
+    win.voice_vram_lbl = QLabel("-")
     for _lbl in (win.llm_vram_lbl, win.img_vram_lbl, win.vid_vram_lbl, win.voice_vram_lbl):
         _lbl.setStyleSheet(_vram_label_style())
         _lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -812,7 +812,7 @@ def attach_settings_tab(win) -> None:
                 lbl.setToolTip(
                     _models_help_tip(
                         f"Downloaded in models/: {sizes_tooltip()}\n\n"
-                        "Checksum status unknown — use Download → Verify checksums to confirm files.",
+                        "Checksum status unknown - use Download → Verify checksums to confirm files.",
                         slide=2,
                     )
                 )
@@ -823,7 +823,7 @@ def attach_settings_tab(win) -> None:
                 w = worst_integrity_status(bad_known)
                 tips = {
                     "missing": "Reported files are missing locally (incomplete download or wrong tree). Re-download if needed.",
-                    "corrupt": "Checksum mismatch — one or more files are wrong or damaged. Re-download this model.",
+                    "corrupt": "Checksum mismatch - one or more files are wrong or damaged. Re-download this model.",
                     "missing_and_corrupt": "Missing files and checksum failures. Re-download the affected model.",
                     "error": "Verification failed (offline, auth, gated repo, or Hub error). Retry when online.",
                 }
@@ -947,12 +947,12 @@ def attach_settings_tab(win) -> None:
             win.llm_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.llm_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
-            win.llm_vram_lbl.setText("—")
+            win.llm_vram_lbl.setText("-")
         if llm_repo:
             set_badge(win.llm_fit, kind="script", repo_id=llm_repo, quant_mode=qm)
             set_dl_badge(win.llm_dl_badge, [llm_repo])
         else:
-            win.llm_fit.setText("—")
+            win.llm_fit.setText("-")
             win.llm_dl_badge.setText("")
 
         img_repo = _combo_repo_id_from_selection(win.img_combo)
@@ -975,12 +975,12 @@ def attach_settings_tab(win) -> None:
             win.img_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.img_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
-            win.img_vram_lbl.setText("—")
+            win.img_vram_lbl.setText("-")
         if img_repo:
             set_badge(win.img_fit, kind="image", repo_id=img_repo, quant_mode=qm)
             set_dl_badge(win.img_dl_badge, [img_repo])
         else:
-            win.img_fit.setText("—")
+            win.img_fit.setText("-")
             win.img_dl_badge.setText("")
 
         vid_repo = _combo_repo_id_from_selection(win.vid_combo)
@@ -1004,12 +1004,12 @@ def attach_settings_tab(win) -> None:
             win.vid_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.vid_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
-            win.vid_vram_lbl.setText("—")
+            win.vid_vram_lbl.setText("-")
         if vid_repo:
             set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id, quant_mode=qm)
             set_dl_badge(win.vid_dl_badge, [vid_repo])
         else:
-            win.vid_fit.setText("—")
+            win.vid_fit.setText("-")
             win.vid_dl_badge.setText("")
 
         voice_repo = _combo_repo_id_from_selection(win.voice_combo)
@@ -1033,12 +1033,12 @@ def attach_settings_tab(win) -> None:
             win.voice_vram_lbl.setText(pv.display(mode=qm))  # type: ignore[arg-type]
             win.voice_vram_lbl.setToolTip(_my_pc_help_tip(pv.rationale))
         else:
-            win.voice_vram_lbl.setText("—")
+            win.voice_vram_lbl.setText("-")
         if voice_repo:
             set_badge(win.voice_fit, kind="voice", repo_id=voice_repo, quant_mode=qm)
             set_dl_badge(win.voice_dl_badge, [voice_repo])
         else:
-            win.voice_fit.setText("—")
+            win.voice_fit.setText("-")
             win.voice_dl_badge.setText("")
 
     def _sync_local_model_combo_tooltip(combo: QComboBox) -> None:
@@ -1357,11 +1357,11 @@ def attach_settings_tab(win) -> None:
     win.models_storage_mode_combo.setToolTip(
         _models_help_tip(
             "Default: snapshots under .Aquaduct_data/models. External: another folder for large disks or shared "
-            "libraries — set path, Apply, Detect.",
+            "libraries - set path, Apply, Detect.",
             slide=3,
         )
     )
-    storage_hint = QLabel("Default .Aquaduct_data/models, or External + path + Apply — hover storage toggle for detail.")
+    storage_hint = QLabel("Default .Aquaduct_data/models, or External + path + Apply - hover storage toggle for detail.")
     storage_hint.setWordWrap(True)
     storage_hint.setStyleSheet("color:#8A8A96;font-size:11px;padding:0 0 4px 0;")
     ll.addWidget(storage_hint)
@@ -1444,7 +1444,7 @@ def attach_settings_tab(win) -> None:
                         win._hf_remote_sizes[str(rid)] = int(info["bytes"])
                 bad = sum(1 for v in (probe or {}).values() if isinstance(v, dict) and not v.get("ok"))
                 win._hub_status_lbl.setText(
-                    f"Model list updated from Hugging Face. {bad} not listed online—dimmed unless already in models/."
+                    f"Model list updated from Hugging Face. {bad} not listed online-dimmed unless already in models/."
                 )
                 _refresh_model_combos_keep_selection()
                 _update_fit_badges()
@@ -1469,7 +1469,7 @@ def attach_settings_tab(win) -> None:
 
     api_page = QWidget()
     al = QVBoxLayout(api_page)
-    api_hint = QLabel("API mode: cloud generation — hover the scroll area below for full detail.")
+    api_hint = QLabel("API mode: cloud generation - hover the scroll area below for full detail.")
     api_hint.setWordWrap(True)
     api_hint.setStyleSheet("color:#B7B7C2;font-size:12px;")
     al.addWidget(api_hint, 0)
@@ -1494,7 +1494,7 @@ def attach_settings_tab(win) -> None:
     scroll.setWidget(inner)
     scroll.setToolTip(
         _api_help_tip(
-            "API mode runs script, stills, and (optionally) voice via cloud APIs — no local diffusion weights. "
+            "API mode runs script, stills, and (optionally) voice via cloud APIs - no local diffusion weights. "
             "Configure providers and keys in the panel below (same controls appear on the API tab). "
             "FFmpeg still runs locally for assembly.",
             slide=1,

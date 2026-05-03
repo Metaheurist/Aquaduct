@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 def script_llm_model_id_from_ui(win) -> str:
     """
-    Script (LLM) Hugging Face repo id — **must** match `_collect_settings_from_ui().llm_model_id` / the next Run.
+    Script (LLM) Hugging Face repo id - **must** match `_collect_settings_from_ui().llm_model_id` / the next Run.
 
     Order: Model tab ``llm_combo`` (current selection, explicit UserRole), then saved ``settings.llm_model_id``,
     then ``get_models().llm_id``.
@@ -50,7 +50,7 @@ def resolve_llm_model_id(win) -> str:
 
 def image_model_id_from_ui(win) -> str:
     """
-    Image diffusion Hugging Face repo id — matches Model tab ``img_combo`` (still / keyframe model).
+    Image diffusion Hugging Face repo id - matches Model tab ``img_combo`` (still / keyframe model).
     """
     try:
         img_data = win.img_combo.currentData() if hasattr(win, "img_combo") else None  # type: ignore[attr-defined]
@@ -100,7 +100,7 @@ class BrainAugmentedEditor(QWidget):
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn.setToolTip(
             help_tooltip_rich(
-                f"Expand / improve with LLM — {field_label}",
+                f"Expand / improve with LLM - {field_label}",
                 "topics_chars",
                 slide=0,
             )
@@ -193,7 +193,7 @@ class BrainAugmentedEditor(QWidget):
             self._btn.setEnabled(True)
             self._btn.setToolTip(
                 help_tooltip_rich(
-                    f"Expand / improve with LLM — {self._field_label}",
+                    f"Expand / improve with LLM - {self._field_label}",
                     "topics_chars",
                     slide=0,
                 )
@@ -215,7 +215,7 @@ class BrainAugmentedEditor(QWidget):
             self._btn.setEnabled(True)
             self._btn.setToolTip(
                 help_tooltip_rich(
-                    f"Expand / improve with LLM — {self._field_label}",
+                    f"Expand / improve with LLM - {self._field_label}",
                     "topics_chars",
                     slide=0,
                 )

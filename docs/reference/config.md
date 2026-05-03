@@ -97,6 +97,18 @@ When **`model_execution_mode`** is **`local`**, long article text plus instructi
 
 - **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** — hard cap on **input** (prompt) tokens for the local transformers `generate()` path in [`src/content/brain.py`](../../src/content/brain.py). If unset, the base cap is **4096**, or **`min(4096, tokenizer.model_max_length)`** when the tokenizer exposes a finite `model_max_length`; values are clamped to **256–100000**. When this env var is **not** set and **CUDA** is available, an additional cap is applied from **total GPU VRAM** (for example **1536** tokens when total VRAM is under ~10 GiB) to reduce attention **prefill** OOM on tight GPUs. When the pipeline passes **`inference_settings`** (desktop / `run_once`), the cap is **also** reduced by the **script inference profile** from [`src/models/inference_profiles.py`](../../src/models/inference_profiles.py) (same **effective** VRAM per script role as the fit badges). Override explicitly with **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** if you need longer prompts and have headroom.
 
+- **`AQUADUCT_PIPELINE_FORCE_ALPACA`** — when **`1`**, [`_generate_with_loaded_causal_lm`](../../src/content/brain.py) always uses the legacy **`### Instruction` / `### Response`** string plus **`tokenizer(...)`**, even if the tokenizer defines a **`chat_template`**. Use only if a model regresses on the chat-template path.
+
+## Title bar LLM chat — RAG and optional tuning
+
+Retrieval and embedding logic: [`src/content/llm_chat_rag.py`](../../src/content/llm_chat_rag.py). **`AQUADUCT_CHAT_EMBED_MODEL`** overrides the default sentence-transformers id for static/tooltip embeddings (see module default).
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_CHAT_RERANK`** | When **`1`** / **`true`** / **`yes`** / **`on`**, enable optional **cross-encoder** reranking of fused BM25+cosine candidates before MMR (CPU; lazy load). |
+| **`AQUADUCT_CHAT_RERANK_MODEL`** | Hugging Face id for the cross-encoder (default **`cross-encoder/ms-marco-MiniLM-L-6-v2`**). If set to a non-empty string, reranking is treated as **wanted** even when **`AQUADUCT_CHAT_RERANK`** is unset. |
+| **`AQUADUCT_CHAT_ANN_MIN`** | Minimum total snippet count (static + tooltip) before building an **hnswlib** index for cosine top‑*N*; default **5000**, clamped to at least **2**. Unset uses the default; below threshold or failed **hnswlib** import keeps **brute-force** cosine. |
+
 ## VRAM inference profiles (local image / video / script)
 For **local** runs, **image** and **video** diffusion call paths merge **per-repo profiles** (resolution, steps, frame counts, etc.) from [`src/models/inference_profiles.py`](../../src/models/inference_profiles.py) using **`effective_vram_gb_for_kind`** in [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py) — consistent with **Auto** / **Single** GPU policy on the **My PC** tab. See [inference profiles](inference_profiles.md) for bands, console logging (`[Aquaduct][inference_profile]`), and **Auto-fit** log append.
 
@@ -166,6 +178,7 @@ Weights for the PyTorch **x4+** path download once into **`.Aquaduct_data/reales
   - `resource_graph_compact`: when **`true`** (default; omitted key in older `ui_settings.json` also defaults to **mini**), the Resource usage window opens in **compact** layout (smaller sparklines, no chart footers, shorter split-view scroll). Set **`false`** after expanding via the title-bar toggle so the larger “expanded” layout persists.
 - `media_mode`: **`video`** (default) or **`photo`** — selects the desktop **Photo \| Video** title-bar toggle; drives output folder (**`videos/`** vs **`pictures/`** under **`.Aquaduct_data/`**), which tabs are visible (e.g. **Video** vs **Picture**), and Library refresh (see [ui.md](../ui/ui.md))
 - `tutorial_completed`: when `False`, the desktop UI may show the first-run **Help** tutorial once; set `True` after the user dismisses it (see [ui.md](../ui/ui.md))
+- **`llm_chat_geometry`**: last **LLM chat** window width, height, and optional *x* / *y* (see **`LLMChatGeometry`** in [`src/core/config.py`](../../src/core/config.py)); loaded/saved with **`ui_settings.json`** so the title-bar chat dialog reopens at the same size and position (clamped to the screen)
 - **`resume_partial_pipeline`**: **`false`** default — Video tab (**Resume partial pipeline**). When **`true`**, **`run_checkpoint.json`** milestones and **`pipeline_script_package.json`** are written under **`videos/<project>/assets/`** so a later desktop run can skip completed stages when fingerprint matches; see [`run_checkpoint`](../../src/runtime/run_checkpoint.py), [crash-resilience.md](../pipeline/crash-resilience.md).
 - **`resume_partial_project_directory`**: ephemeral in-memory/ephemeral-save only — pinned output folder during a resumed session; stripped from **`ui_settings.json`** on Save ([`strip_ephemeral_save_keys`](../../src/settings/ui_settings.py)).
 - `video_format`: `news` | `cartoon` | `explainer` | `unhinged` | `creepypasta` | `health_advice` (drives which tag list applies to a run; see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))

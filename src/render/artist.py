@@ -16,7 +16,11 @@ from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
 from src.render.clips import _maybe_enable_slice_inference
 from src.util.cuda_capabilities import cuda_device_reported_by_torch
-from src.util.diffusion_placement import dispose_diffusion_pipeline, place_diffusion_pipeline
+from src.util.diffusion_placement import (
+    dispose_diffusion_pipeline,
+    place_diffusion_pipeline,
+    resolve_diffusion_offload_mode,
+)
 from src.util.diffusers_load import diffusers_from_pretrained
 from src.util.memory_budget import release_between_stages
 from src.util.utils_vram import vram_guard
@@ -128,6 +132,7 @@ def _place_pipe_on_device(
     qm = (quant_mode or "").strip().lower()
     if qm == "cpu_offload":
         place_diffusion_pipeline(pipe, cuda_device_index=cuda_device_index, force_offload="model")
+        resolved_offload = "model"
     else:
         place_diffusion_pipeline(
             pipe,
@@ -136,6 +141,12 @@ def _place_pipe_on_device(
             model_repo_id=model_repo_id,
             placement_role="image",
             quant_mode=qm,
+        )
+        resolved_offload = resolve_diffusion_offload_mode(
+            inference_settings,
+            placement_role="image",
+            cuda_device_index=cuda_device_index,
+            model_repo_id=model_repo_id,
         )
     try:
         from debug import debug_enabled, dprint
@@ -146,7 +157,7 @@ def _place_pipe_on_device(
                 "diffusion placement",
                 f"cuda={cuda_device_index!r}",
                 f"quant={qm!r}",
-                f"offload={('model' if qm == 'cpu_offload' else None)!r}",
+                f"offload={resolved_offload!r}",
             )
     except Exception:
         pass

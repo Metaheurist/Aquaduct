@@ -83,6 +83,7 @@ DEBUG_CATEGORIES: Final[tuple[str, ...]] = (
     "story_context",
     "memory_budget",
     "gpu_plan",
+    "chat_rag",
 )
 
 # Flip to True to enable that category without AQUADUCT_DEBUG (union with env/CLI).

@@ -130,11 +130,11 @@ class ImportPopup(QDialog):
         top.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
         lay.addLayout(top)
 
-        self.current_model = QLabel("Current model: —")
+        self.current_model = QLabel("Current model: -")
         self.current_model.setStyleSheet("font-size: 13px; font-weight: 700;")
         lay.addWidget(self.current_model)
 
-        self.remaining = QLabel("Remaining: —")
+        self.remaining = QLabel("Remaining: -")
         self.remaining.setStyleSheet("color: #B7B7C2;")
         lay.addWidget(self.remaining)
 

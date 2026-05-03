@@ -67,7 +67,7 @@ def attach_branding_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     content_lay.addWidget(header)
 
-    sub = QLabel("Each section below is optional—turn on what you want.")
+    sub = QLabel("Each section below is optional-turn on what you want.")
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setToolTip(
         help_tooltip_rich(

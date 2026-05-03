@@ -30,7 +30,7 @@ def map_llm_on_task_to_overall(task: str, stage_pct: int) -> int:
 
 
 class _AuxiliaryProgressShell(FramelessDialog):
-    """Borderless modal; no ✕ — job has no cancel. Ignore Escape while work runs. Not draggable."""
+    """Borderless modal; no ✕ - job has no cancel. Ignore Escape while work runs. Not draggable."""
 
     def __init__(self, parent: QWidget | None, *, title: str) -> None:
         super().__init__(parent, title=title, close_button_visible=False, title_bar_draggable=False)
@@ -44,7 +44,7 @@ class _AuxiliaryProgressShell(FramelessDialog):
 
 class AuxiliaryProgressDialog:
     """
-    Fixed-size frameless modal — matches app chrome; worker ``progress(int, str)`` updates safely.
+    Fixed-size frameless modal - matches app chrome; worker ``progress(int, str)`` updates safely.
     """
 
     def __init__(self, parent: QWidget | None, *, window_title: str, initial_message: str = "Starting…") -> None:
@@ -103,7 +103,7 @@ class AuxiliaryProgressDialog:
 
 
 def schedule_auxiliary_job_memory_purge() -> None:
-    """After an auxiliary worker finishes — flush CUDA cache / GC from the GUI thread."""
+    """After an auxiliary worker finishes - flush CUDA cache / GC from the GUI thread."""
 
     def _purge() -> None:
         try:

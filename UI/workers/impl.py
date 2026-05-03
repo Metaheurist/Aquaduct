@@ -88,14 +88,14 @@ def _failure_text_with_cuda_hints(exc: BaseException, tb: str) -> str:
     head = ""
     if isinstance(exc, MemoryError) and loading_weights:
         head = (
-            "**MemoryError while loading model weights** — this usually means **Windows ran out of system RAM** "
+            "**MemoryError while loading model weights** - this usually means **Windows ran out of system RAM** "
             "(not only GPU VRAM) while diffusers/torch reads multi‑GB checkpoint shards. "
             "If the traceback ends inside `model_loading_utils.load_state_dict`, diffusers may be running an "
             "error‑recovery path that reads the whole shard.\n\n"
         )
     elif is_oom_error(exc):
         head = (
-            "CUDA / VRAM memory error — the GPU ran out of memory or an allocator refused the request.\n\n"
+            "CUDA / VRAM memory error - the GPU ran out of memory or an allocator refused the request.\n\n"
         )
 
     msg = head + f"{exc}\n\n{tb}"
@@ -103,14 +103,14 @@ def _failure_text_with_cuda_hints(exc: BaseException, tb: str) -> str:
     if isinstance(exc, MemoryError) and loading_weights:
         msg += (
             "\n\n---\nTip (RAM / checkpoints): Close heavy apps (browser, other ML tools), restart Aquaduct, "
-            "then retry. **Wan 2.2 14B** often needs **much more free RAM than 12 GiB VRAM suggests** — "
+            "then retry. **Wan 2.2 14B** often needs **much more free RAM than 12 GiB VRAM suggests** - "
             "try **THUDM/CogVideoX-5b** or another lighter Video repo if loads keep failing after CPU offload. "
             "Ensure checkpoints are fully downloaded (HF snapshot / git‑LFS pointers break loads differently).\n"
         )
     elif is_oom_error(exc):
         msg += (
             "\n\n---\nTip (VRAM): Large local T2V models (e.g. Wan 2.2 14B) often need "
-            "**CPU offload** on ~12 GiB GPUs — Model tab → Video → quantization → CPU offload — "
+            "**CPU offload** on ~12 GiB GPUs - Model tab → Video → quantization → CPU offload - "
             "or pick a lighter video repo. See docs/reference/inference_profiles.md (Troubleshooting).\n"
         )
     return msg
@@ -193,13 +193,13 @@ def firecrawl_search_ready(app: AppSettings) -> bool:
 
 def _fmt_bytes(n: int | float | None) -> str:
     if n is None:
-        return "—"
+        return "-"
     try:
         x = float(n)
     except Exception:
-        return "—"
+        return "-"
     if x < 0:
-        return "—"
+        return "-"
     units = ["B", "KB", "MB", "GB", "TB"]
     u = 0
     while x >= 1024.0 and u < len(units) - 1:
@@ -215,7 +215,7 @@ class PipelineWorker(QThread):
     progress = pyqtSignal(str, int, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
-    #: Non-fatal notices during ``run_once`` (VRAM warnings, etc.) — shown as UI dialogs from main thread.
+    #: Non-fatal notices during ``run_once`` (VRAM warnings, etc.) - shown as UI dialogs from main thread.
     pipeline_warning = pyqtSignal(str, str)
     cancelled = pyqtSignal()
 
@@ -372,7 +372,7 @@ class TikTokUploadWorker(QThread):
                 self.failed.emit("Task not found")
                 return
             if getattr(self.settings, "tiktok_publishing_mode", "inbox") != "inbox":
-                self.failed.emit("Direct publish is not implemented — use Inbox mode in the API tab (video.upload).")
+                self.failed.emit("Direct publish is not implemented - use Inbox mode in the API tab (video.upload).")
                 return
             s = self.settings
             access, refresh, exp = ensure_fresh_access_token(
@@ -427,7 +427,7 @@ class YouTubeUploadWorker(QThread):
                 return
             s = self.settings
             if not bool(getattr(s, "youtube_enabled", False)):
-                self.failed.emit("YouTube uploads are disabled — enable YouTube in the API tab.")
+                self.failed.emit("YouTube uploads are disabled - enable YouTube in the API tab.")
                 return
             access, refresh, exp = ensure_youtube_access_token(
                 str(s.youtube_client_id or ""),
@@ -454,7 +454,7 @@ class YouTubeUploadWorker(QThread):
             set_youtube_upload_result(self.task_id, video_id=yid, error="")
             set_task_status(self.task_id, "posted", "")
             self.finished_ok.emit(
-                f"Uploaded to YouTube — video id {yid} (open studio.youtube.com to manage).",
+                f"Uploaded to YouTube - video id {yid} (open studio.youtube.com to manage).",
                 access,
                 refresh,
                 exp,
@@ -472,7 +472,7 @@ class YouTubeUploadWorker(QThread):
 
 
 class ModelDownloadWorker(QThread):
-    # task "download" — overall 0–100 across repos; step 0–100 = current file download
+    # task "download" - overall 0–100 across repos; step 0–100 = current file download
     progress = pyqtSignal(str, int, int, str)
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
@@ -694,6 +694,7 @@ class TextExpandWorker(QThread):
 class TopicGroundingNotesWorker(QThread):
     """Batch-generate per-tag grounding lines via script LLM (local or API mode)."""
 
+    progress = pyqtSignal(int, str)  # 0–100, status label
     batch_done = pyqtSignal(dict)  # {"notes": {norm: note}, "missing": [norm, ...]}
     failed = pyqtSignal(str)
 
@@ -727,7 +728,7 @@ class TopicGroundingNotesWorker(QThread):
             if self.app_settings is not None and is_api_mode(self.app_settings):
                 from src.content.brain_api import generate_topic_tag_grounding_notes_openai
 
-                self.progress.emit(12, "API: grounding notes — contacting provider…")
+                self.progress.emit(12, "API: grounding notes - contacting provider…")
                 notes, missing = generate_topic_tag_grounding_notes_openai(
                     settings=self.app_settings,
                     tag_pairs=self.tag_pairs,
@@ -981,7 +982,7 @@ class ModelIntegrityVerifyWorker(QThread):
             lines: list[str] = []
             hdr = "Model integrity check (Hugging Face Hub checksums)"
             if self.scope_label:
-                hdr += f" — {self.scope_label}"
+                hdr += f" - {self.scope_label}"
             lines.append(hdr)
 
             if not self.repo_ids:
@@ -1021,7 +1022,7 @@ class ModelIntegrityVerifyWorker(QThread):
                         rev_s = f" (rev {rev})"
                     else:
                         rev_s = ""
-                    lines.append(f"  OK — {rpt.checked_files} file(s) matched{rev_s}")
+                    lines.append(f"  OK - {rpt.checked_files} file(s) matched{rev_s}")
                     status_by_repo[str(rpt.repo_id)] = "ok"
                     ok_n += 1
                 else:

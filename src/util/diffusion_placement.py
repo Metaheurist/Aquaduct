@@ -21,10 +21,40 @@ if TYPE_CHECKING:
 OffloadMode = Literal["none", "model", "sequential"]
 
 
+def _heavy_image_diffusion_repo(repo_id: str | None) -> bool:
+    """SD3 / SD3.5 / FLUX-class T2I routinely exceed ~12 GB peak even with model CPU offload."""
+    s = (repo_id or "").strip().lower()
+    if not s:
+        return False
+    if "stable-diffusion-3" in s or "stable-diffusion-3.5" in s:
+        return True
+    if "flux" in s:
+        return True
+    return False
+
+
+def _effective_diffusion_vram_gb(cuda_device_index: int | None) -> float | None:
+    """VRAM of the CUDA device used for diffusion (not max-over-GPUs from HardwareInfo)."""
+    if cuda_device_index is None:
+        return None
+    try:
+        from src.models.hardware import list_cuda_gpus
+
+        want = int(cuda_device_index)
+        for g in list_cuda_gpus():
+            if int(g.index) == want:
+                return float(g.total_vram_bytes) / (1024**3)
+    except Exception:
+        pass
+    return None
+
+
 def resolve_diffusion_offload_mode(
     settings: AppSettings | None = None,
     *,
     placement_role: Literal["image", "video"] | None = None,
+    cuda_device_index: int | None = None,
+    model_repo_id: str | None = None,
 ) -> OffloadMode:
     """
     Choose how to stage diffusion weights between CPU RAM and GPU VRAM.
@@ -43,8 +73,9 @@ def resolve_diffusion_offload_mode(
 
     Under **VRAM-first multi-GPU** plus **Auto** CUDA routing, ``auto`` may choose full-GPU staging
     (``none``) so video pipelines can shard across devices. **Image** placement
-    (``placement_role="image"``) still prefers **model** offload in that regime so resident full
-    weights do not routinely OOM moderate-VRAM GPUs (for example SD3.5).
+    (``placement_role="image"``) prefers **model** offload in that regime, but **SD3 / SD3.5 / FLUX**
+    on the **actual** diffusion GPU (``cuda_device_index``) with **≤ 14 GiB** uses **sequential**
+    offload to avoid encode-step OOMs that **model** offload can still hit.
     """
     raw = os.environ.get("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "").strip().lower()
     legacy_seq = os.environ.get("AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD", "").strip().lower() in (
@@ -68,7 +99,12 @@ def resolve_diffusion_offload_mode(
     if legacy_seq and raw in ("", "auto"):
         return "sequential"
 
-    return _resolve_auto_offload_mode(settings, placement_role=placement_role)
+    return _resolve_auto_offload_mode(
+        settings,
+        placement_role=placement_role,
+        cuda_device_index=cuda_device_index,
+        model_repo_id=model_repo_id,
+    )
 
 
 def _avail_ram_gb() -> float | None:
@@ -95,6 +131,8 @@ def _resolve_auto_offload_mode(
     settings: AppSettings | None = None,
     *,
     placement_role: Literal["image", "video"] | None = None,
+    cuda_device_index: int | None = None,
+    model_repo_id: str | None = None,
 ) -> OffloadMode:
     vram_gb: float | None = None
     try:
@@ -104,11 +142,27 @@ def _resolve_auto_offload_mode(
     except Exception:
         pass
 
+    eff = _effective_diffusion_vram_gb(cuda_device_index)
+    decision_vram = eff if eff is not None else vram_gb
+
     avail_gb = _avail_ram_gb()
 
-    if vram_gb is None:
+    if decision_vram is None:
         # No GPU info: sequential offload is the safest default when CUDA still works but VRAM unknown
         return "sequential"
+
+    def _elevate_heavy_image_sequential(mode: OffloadMode) -> OffloadMode:
+        """SD3 / FLUX on the *actual* diffusion GPU (e.g. 12 GB) often OOM with model offload."""
+        if mode != "model":
+            return mode
+        if (
+            placement_role == "image"
+            and _heavy_image_diffusion_repo(model_repo_id)
+            and decision_vram is not None
+            and decision_vram <= 14.0
+        ):
+            return "sequential"
+        return mode
 
     # Multiple GPUs: default to sequential offload unless VRAM-first intra-shard mode is enabled —
     # that path prefers resident GPU weights so peer submodule moves can distribute work.
@@ -122,7 +176,7 @@ def _resolve_auto_offload_mode(
                 if placement_role == "image":
                     if avail_gb is not None and avail_gb < 3.0:
                         return "sequential"
-                    return "model"
+                    return _elevate_heavy_image_sequential("model")
                 if avail_gb is None or avail_gb >= 8.0:
                     return "none"
         except Exception:
@@ -132,16 +186,16 @@ def _resolve_auto_offload_mode(
     # Very little free host RAM: avoid aggressive CPU staging (offload copies weights through RAM).
     # Prefer keeping the full pipeline on GPU only when VRAM is comfortably large.
     # 8–15 GB: full-GPU diffusion after LLM / image stages routinely OOMs (e.g. SVD img2vid on GPU 1).
-    if avail_gb is not None and avail_gb < 3.0 and vram_gb >= 16.0:
+    if avail_gb is not None and avail_gb < 3.0 and decision_vram >= 16.0:
         return "none"
 
-    if vram_gb >= 16.0:
+    if decision_vram >= 16.0:
         if avail_gb is None or avail_gb >= 4.0:
             return "none"
-        return "model"
+        return _elevate_heavy_image_sequential("model")
 
-    if vram_gb >= 8.0:
-        return "model"
+    if decision_vram >= 8.0:
+        return _elevate_heavy_image_sequential("model")
 
     return "sequential"
 
@@ -202,7 +256,12 @@ def place_diffusion_pipeline(
     mode = (
         force_offload
         if force_offload is not None
-        else resolve_diffusion_offload_mode(inference_settings, placement_role=placement_role)
+        else resolve_diffusion_offload_mode(
+            inference_settings,
+            placement_role=placement_role,
+            cuda_device_index=cuda_device_index,
+            model_repo_id=model_repo_id,
+        )
     )
     if mode == "none":
         pipe.to(dev)

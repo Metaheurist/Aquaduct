@@ -20,7 +20,7 @@ def prompt_cuda_torch_mismatch_choice(parent, *, suggestion: str | None = None) 
 
     ``suggestion`` may be full multiline hint (e.g. pip command); shown in a monospace detail label.
     """
-    d = FramelessDialog(parent, title="GPU detected — CUDA PyTorch missing")
+    d = FramelessDialog(parent, title="GPU detected - CUDA PyTorch missing")
     d.setMinimumWidth(540)
 
     body = QLabel(

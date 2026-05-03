@@ -47,20 +47,29 @@ def humanize_hf_hub_error(exc: BaseException) -> str | None:
     """
     msg = f"{exc}"
     low = msg.lower()
-    if (
-        "401" in msg
-        or "unauthorized" in low
-        or "gated" in low
-        or "restricted" in low
-        or "cannot access gated repo" in low
-        or "you are trying to access a gated repo" in low
-    ):
-        return (
-            "Hugging Face blocked this download (401 / gated model).\n\n"
-            "For models such as Llama:\n"
-            "ÔÇó On huggingface.co, open the model page and accept MetaÔÇÖs license / access request.\n"
-            "ÔÇó API tab: turn on ÔÇ£Hugging Face APIÔÇØ, paste your Access Token (read), Save settings.\n"
-            "ÔÇó Or set HF_TOKEN in .env / environment before starting the app.\n\n"
-            f"Details: {type(exc).__name__}: {exc}"
+    # Avoid matching unrelated text in LLM JSON previews (e.g. "401(k)", "HTTP 401" in a note).
+    hub_auth = (
+        ("401 client error" in low)
+        or ("403 client error" in low)
+        or ("cannot access gated repo" in low)
+        or ("you are trying to access a gated repo" in low)
+        or (
+            ("repository not found" in low)
+            and (("huggingface" in low) or ("hf.co" in low))
         )
-    return None
+        or (("invalid username or password" in low) and ("huggingface" in low))
+        or (
+            ("unauthorized" in low)
+            and (("huggingface.co" in low) or ("hf.co" in low) or ("hub request" in low))
+        )
+    )
+    if not hub_auth:
+        return None
+    return (
+        "Hugging Face blocked this download (401 / gated model).\n\n"
+        "For models such as Llama:\n"
+        "- On huggingface.co, open the model page and accept Meta's license / access request.\n"
+        '- API tab: turn on "Hugging Face API", paste your Access Token (read), Save settings.\n'
+        "- Or set HF_TOKEN in .env / environment before starting the app.\n\n"
+        f"Details: {type(exc).__name__}: {exc}"
+    )

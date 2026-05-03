@@ -17,6 +17,7 @@ from src.content.brain import (
     _supplement_context_block,
     clip_article_excerpt,
     get_personality_by_id,
+    topic_grounding_pair_chunks,
     video_package_from_llm_output,
 )
 from src.content.topic_constraints import parse_topic_grounding_llm_json
@@ -172,25 +173,43 @@ def generate_topic_tag_grounding_notes_openai(
     pairs = [(str(n).strip().lower(), str(d).strip()) for n, d in tag_pairs if str(n or "").strip()]
     if not pairs:
         return {}, ()
-    allowed = frozenset(n for n, _ in pairs)
-    if on_llm_task:
-        on_llm_task("llm_generate", 10, "Topic grounding notes (API)…")
-    user = _prompt_topic_tag_grounding_batch(
-        pairs,
-        video_format,
-        sibling_displays=sibling_displays,
-        seed_notes_by_norm=dict(seed_notes_by_norm or {}),
-    )
+    allowed_all = frozenset(n for n, _ in pairs)
+    seeds = dict(seed_notes_by_norm or {})
+    chunks = topic_grounding_pair_chunks(pairs)
+    n_chunks = len(chunks)
+    merged_notes: dict[str, str] = {}
     client = build_openai_client_from_settings(settings)
-    raw = client.chat_completion_text(
-        model=_llm_model(settings),
-        system=TOPIC_GROUNDING_BATCH_JSON_SYSTEM,
-        user=user,
-        json_mode=True,
-    )
-    if on_llm_task:
-        on_llm_task("llm_generate", 100, "Topic grounding notes received")
-    return parse_topic_grounding_llm_json(raw, allowed_normalized_tags=allowed)
+
+    def _scale_api_progress(chunk_idx: int, inner_pct: int, msg: str) -> None:
+        if on_llm_task is None:
+            return
+        inner_f = max(0.0, min(1.0, inner_pct / 100.0))
+        overall = int(100 * (chunk_idx + inner_f) / n_chunks)
+        if chunk_idx >= n_chunks - 1 and inner_pct >= 100:
+            overall = 100
+        on_llm_task("llm_generate", max(0, min(100, overall)), f"Tags batch {chunk_idx + 1}/{n_chunks}: {msg}")
+
+    for idx, chunk_pairs in enumerate(chunks):
+        _scale_api_progress(idx, 5, "Topic grounding (API)…")
+        user = _prompt_topic_tag_grounding_batch(
+            chunk_pairs,
+            video_format,
+            sibling_displays=sibling_displays,
+            seed_notes_by_norm=seeds,
+        )
+        raw = client.chat_completion_text(
+            model=_llm_model(settings),
+            system=TOPIC_GROUNDING_BATCH_JSON_SYSTEM,
+            user=user,
+            json_mode=True,
+        )
+        allowed_chunk = frozenset(n for n, _ in chunk_pairs)
+        notes, _m = parse_topic_grounding_llm_json(raw, allowed_normalized_tags=allowed_chunk)
+        merged_notes.update(notes)
+        _scale_api_progress(idx, 100, "batch received")
+
+    missing_final = tuple(sorted(t for t in allowed_all if t not in merged_notes))
+    return merged_notes, missing_final
 
 
 CHARACTER_JSON_SYSTEM = (

@@ -37,7 +37,7 @@ def format_status_line(task_id: str, overall_pct: int, task_pct: int, message: s
     label = label_for(task_id)
     o = max(0, min(100, int(overall_pct)))
     if task_pct < 0 or task_id not in _DUAL_PROGRESS_TASK_IDS:
-        return f"{label}: {message} — {o}%"
+        return f"{label}: {message} - {o}%"
     t = max(0, min(100, int(task_pct)))
-    return f"{label}: {message} — total {o}% · step {t}%"
+    return f"{label}: {message} - total {o}% · step {t}%"
 

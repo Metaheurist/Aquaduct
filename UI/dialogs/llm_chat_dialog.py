@@ -12,12 +12,13 @@ Unload / persistence order (see plan §13):
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 from typing import Any
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QTextCursor
+from PyQt6.QtGui import QGuiApplication, QTextCursor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -25,28 +26,87 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QScrollArea,
     QTextBrowser,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from UI.dialogs.frameless_dialog import FramelessDialog
+from UI.widgets.tab_sections import section_card, section_title
 from UI.widgets.title_bar_outline_button import styled_outline_button
 
 from src.content.brain import _dispose_causal_lm_pair, _infer_text_with_optional_holder
-from src.core.config import AppSettings, get_paths
+from src.content.llm_chat_rag import format_retrieval_block
+from src.content.llm_chat_system_prompt import DEFAULT_SYSTEM_PROMPT
+from src.core.config import AppSettings, LLMChatGeometry, get_paths
+from src.settings.ui_settings import save_settings
 from src.platform.openai_client import OpenAIRequestError, build_openai_client_from_settings
 from src.runtime.model_backend import is_api_mode, provider_has_key
+from src.util.llm_chat_budget import (
+    MAX_MESSAGE_CHARS_CAP,
+    composer_char_limit,
+    effective_max_new_tokens_for_chat,
+    llm_chat_context_token_budget,
+    trim_messages_to_budget,
+)
 from src.util.llm_chat_transcript_store import delete_transcript, load_transcript, save_transcript
 
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful assistant for Aquaduct, a short-form desktop video app. "
-    "Answer clearly and concisely in the user's language when obvious. "
-    "If the user asks for JSON or structured output, comply."
-)
-
-_MAX_MESSAGES_ROLL = 12
+_MAX_MESSAGES_ROLL = 10_000
 _MAX_TRANSCRIPT_PERSIST = 200
+
+# Transcript bubbles (distinct user vs assistant; chat-style alignment).
+_USER_BUBBLE_QSS = (
+    "QTextBrowser { background-color: #152028; color: #EEF6FC; border: 1px solid #25F4EE; "
+    "border-radius: 14px; padding: 10px 14px; }"
+)
+_ASSISTANT_BUBBLE_QSS = (
+    "QTextBrowser { background-color: #12141c; color: #D6DAE8; border: 1px solid #343a4d; "
+    "border-radius: 14px; padding: 10px 14px; }"
+)
+_BUBBLE_MAX_WIDTH_PX = 560
+
+
+def _style_transcript_bubble(browser: QTextBrowser, *, role: str) -> None:
+    browser.setOpenExternalLinks(True)
+    browser.setReadOnly(True)
+    browser.setMaximumWidth(_BUBBLE_MAX_WIDTH_PX)
+    if role == "user":
+        browser.setStyleSheet(_USER_BUBBLE_QSS)
+    else:
+        browser.setStyleSheet(_ASSISTANT_BUBBLE_QSS)
+
+
+def _wrap_transcript_row(role: str, browser: QTextBrowser) -> QWidget:
+    """Caption + bubble in a row; user flush right, assistant flush left."""
+    wrap = QWidget()
+    row = QHBoxLayout(wrap)
+    row.setContentsMargins(0, 6, 0, 6)
+    row.setSpacing(0)
+
+    col_w = QWidget()
+    col = QVBoxLayout(col_w)
+    col.setContentsMargins(0, 0, 0, 0)
+    col.setSpacing(6)
+
+    who = QLabel("You" if role == "user" else "Assistant")
+    if role == "user":
+        who.setStyleSheet("font-size: 11px; font-weight: 700; color: #25F4EE; letter-spacing: 0.02em;")
+        who.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    else:
+        who.setStyleSheet("font-size: 11px; font-weight: 700; color: #8A96A3; letter-spacing: 0.02em;")
+        who.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+    col.addWidget(who)
+    col.addWidget(browser)
+
+    if role == "user":
+        row.addStretch(1)
+        row.addWidget(col_w, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+    else:
+        row.addWidget(col_w, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        row.addStretch(1)
+    return wrap
 
 
 class _EnterSendingPlainText(QPlainTextEdit):
@@ -151,6 +211,7 @@ class _LLMChatWorker(QThread):
         model_key: str,
         api_messages: list[dict[str, str]],
         local_prompt: str,
+        local_messages: list[dict[str, str]] | None,
         llm_holder: dict[str, Any],
         cancel_event: threading.Event,
         max_new_tokens: int = 768,
@@ -162,6 +223,7 @@ class _LLMChatWorker(QThread):
         self._model_key = model_key
         self._api_messages = api_messages
         self._local_prompt = local_prompt
+        self._local_messages = local_messages
         self._holder = llm_holder
         self._cancel = cancel_event
         self._max_new = max_new_tokens
@@ -217,18 +279,30 @@ class _LLMChatWorker(QThread):
             self.status.emit(msg, pct)
 
         try:
-            raw = _infer_text_with_optional_holder(
-                self._model_key,
-                self._local_prompt,
-                llm_holder=self._holder,
-                on_llm_task=on_task,
-                max_new_tokens=self._max_new,
-                inference_settings=self._settings,
-                cancel_event=self._cancel,
-            )
+            if self._local_messages is not None:
+                raw = _infer_text_with_optional_holder(
+                    self._model_key,
+                    "",
+                    llm_holder=self._holder,
+                    messages=self._local_messages,
+                    on_llm_task=on_task,
+                    max_new_tokens=self._max_new,
+                    inference_settings=self._settings,
+                    cancel_event=self._cancel,
+                )
+            else:
+                raw = _infer_text_with_optional_holder(
+                    self._model_key,
+                    self._local_prompt,
+                    llm_holder=self._holder,
+                    on_llm_task=on_task,
+                    max_new_tokens=self._max_new,
+                    inference_settings=self._settings,
+                    cancel_event=self._cancel,
+                )
             text = (raw or "").strip()
             if self._cancel.is_set():
-                self.finished_ok.emit(text + ("\n\n— Cancelled" if text else "Cancelled"))
+                self.finished_ok.emit(text + ("\n\n- Cancelled" if text else "Cancelled"))
                 return
             # Local inference returns the full reply at once; streaming chunks come from the API path only.
             self.finished_ok.emit(text)
@@ -242,12 +316,15 @@ class LLMChatDialog(FramelessDialog):
     def __init__(self, win) -> None:
         super().__init__(win, title="LLM chat", modal=False, enable_main_blur=False)
         self._win = win
-        self.setMinimumSize(520, 520)
+        self.setMinimumSize(720, 600)
+        self._did_center = False
         self._llm_holder: dict[str, Any] = {}
         self._messages: list[dict[str, str]] = []
         self._worker: _LLMChatWorker | None = None
         self._cancel_event = threading.Event()
         self._current_assist_browser: QTextBrowser | None = None
+        self._composer_cap = MAX_MESSAGE_CHARS_CAP
+        self._budget_refresh_guard = False
 
         self._subtitle = QLabel("")
         self._subtitle.setWordWrap(True)
@@ -263,6 +340,26 @@ class LLMChatDialog(FramelessDialog):
         self._busy.setVisible(False)
         self.body_layout.addWidget(self._busy)
 
+        act_card, act_lay = section_card(margins=10, spacing=8)
+        act_lay.addWidget(section_title("Actions", emphasis=False))
+        top_btn_row = QHBoxLayout()
+        top_btn_row.setSpacing(8)
+        self._stop_btn = styled_outline_button("Stop", "muted_icon", min_width=72)
+        self._clear_btn = styled_outline_button("Clear", "muted_icon", min_width=72)
+        self._model_btn = styled_outline_button("Model tab", "muted_icon", min_width=88)
+        self._api_btn = styled_outline_button("API tab", "muted_icon", min_width=88)
+        self._stop_btn.clicked.connect(self._on_stop)
+        self._clear_btn.clicked.connect(self._on_clear)
+        self._model_btn.clicked.connect(lambda: _switch_main_tab(self._win, "Model"))
+        self._api_btn.clicked.connect(lambda: _switch_main_tab(self._win, "API"))
+        top_btn_row.addWidget(self._stop_btn)
+        top_btn_row.addWidget(self._clear_btn)
+        top_btn_row.addWidget(self._model_btn)
+        top_btn_row.addWidget(self._api_btn)
+        top_btn_row.addStretch(1)
+        act_lay.addLayout(top_btn_row)
+        self.body_layout.addWidget(act_card)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -274,37 +371,47 @@ class LLMChatDialog(FramelessDialog):
         self.body_layout.addWidget(scroll, 1)
 
         sys_row = QHBoxLayout()
-        sys_row.addWidget(QLabel("System prompt"))
+        self._system_toggle = QToolButton()
+        self._system_toggle.setCheckable(True)
+        self._system_toggle.setChecked(False)
+        self._system_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._system_toggle.setText("System prompt")
+        self._system_toggle.setToolTip("Show or hide instructions prepended to every reply (optional).")
+        self._system_toggle.toggled.connect(self._on_system_toggle)
+        sys_row.addWidget(self._system_toggle)
+        self._system_hint = QLabel(
+            "Toggle to view or edit instructions sent with each message. When the editor is empty, a built-in Aquaduct default is used."
+        )
+        self._system_hint.setWordWrap(True)
+        self._system_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+        sys_row.addWidget(self._system_hint, 1)
         self.body_layout.addLayout(sys_row)
         self._system_edit = QPlainTextEdit()
-        self._system_edit.setPlaceholderText("Instructions for the model…")
-        self._system_edit.setMaximumHeight(72)
+        self._system_edit.setPlaceholderText("Optional. Leave empty to use the built-in Aquaduct assistant instructions.")
+        self._system_edit.setMaximumHeight(120)
+        self._system_edit.setVisible(False)
+        self._system_hint.setVisible(True)
+        self._system_edit.textChanged.connect(self._refresh_composer_budget)
         self.body_layout.addWidget(self._system_edit)
 
         self._input = _EnterSendingPlainText()
-        self._input.setPlaceholderText("Message… (Enter = send, Shift+Enter = newline)")
+        self._input.setPlaceholderText("Message…")
+        self._input.setToolTip("Enter = send · Shift+Enter = newline")
         self._input.setMaximumHeight(100)
         self._input.send_requested.connect(self._on_send)
+        self._input.textChanged.connect(self._on_composer_text_changed)
         self.body_layout.addWidget(self._input)
 
-        row = QHBoxLayout()
+        self._input_limit_lbl = QLabel("")
+        self._input_limit_lbl.setStyleSheet("color: #8A96A3; font-size: 11px;")
+        self.body_layout.addWidget(self._input_limit_lbl)
+
+        send_row = QHBoxLayout()
+        send_row.addStretch(1)
         self._send_btn = styled_outline_button("Send", "accent_icon", min_width=72)
-        self._stop_btn = styled_outline_button("Stop", "muted_icon", min_width=72)
-        self._clear_btn = styled_outline_button("Clear", "muted_icon", min_width=72)
-        self._model_btn = styled_outline_button("Model tab", "muted_icon", min_width=88)
-        self._api_btn = styled_outline_button("API tab", "muted_icon", min_width=88)
         self._send_btn.clicked.connect(self._on_send)
-        self._stop_btn.clicked.connect(self._on_stop)
-        self._clear_btn.clicked.connect(self._on_clear)
-        self._model_btn.clicked.connect(lambda: _switch_main_tab(self._win, "Model"))
-        self._api_btn.clicked.connect(lambda: _switch_main_tab(self._win, "API"))
-        row.addWidget(self._send_btn)
-        row.addWidget(self._stop_btn)
-        row.addWidget(self._clear_btn)
-        row.addWidget(self._model_btn)
-        row.addWidget(self._api_btn)
-        row.addStretch(1)
-        self.body_layout.addLayout(row)
+        send_row.addWidget(self._send_btn)
+        self.body_layout.addLayout(send_row)
 
         self._send_btn.setEnabled(False)
         self._stop_btn.setEnabled(False)
@@ -313,14 +420,128 @@ class LLMChatDialog(FramelessDialog):
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        if not self._did_center:
+            self._did_center = True
+            self._apply_initial_geometry()
         # Header matches live Model/API selection when the window is re-focused.
         self._refresh_target()
+        self._refresh_composer_budget()
+
+    def _apply_initial_geometry(self) -> None:
+        pr = self.parent()
+        screen = QGuiApplication.primaryScreen()
+        saved = getattr(self._win.settings, "llm_chat_geometry", None)
+        if (
+            saved
+            and int(getattr(saved, "width", 0) or 0) >= 400
+            and int(getattr(saved, "height", 0) or 0) >= 400
+        ):
+            w = int(saved.width)
+            h = int(saved.height)
+            if screen is not None:
+                ag = screen.availableGeometry()
+                w = max(self.minimumWidth(), min(w, ag.width() - 24))
+                h = max(self.minimumHeight(), min(h, ag.height() - 24))
+            self.resize(w, h)
+            if saved.x is not None and saved.y is not None and screen is not None:
+                ag = screen.availableGeometry()
+                x = max(ag.left(), min(int(saved.x), ag.right() - self.width() + 1))
+                y = max(ag.top(), min(int(saved.y), ag.bottom() - self.height() + 1))
+                self.move(x, y)
+            elif pr is not None:
+                fg = pr.frameGeometry().center()
+                self.move(fg - self.rect().center())
+            return
+        if screen is not None:
+            geo = screen.availableGeometry()
+            w = min(960, int(geo.width() * 0.6))
+            h = min(760, int(geo.height() * 0.75))
+            self.resize(max(self.minimumWidth(), w), max(self.minimumHeight(), h))
+        if pr is not None:
+            fg = pr.frameGeometry().center()
+            self.move(fg - self.rect().center())
+
+    def _persist_llm_chat_geometry(self) -> None:
+        try:
+            g = self.geometry()
+            geo = LLMChatGeometry(width=g.width(), height=g.height(), x=g.x(), y=g.y())
+            new_settings = dataclasses.replace(self._win.settings, llm_chat_geometry=geo)
+            self._win.settings = new_settings
+            save_settings(new_settings)
+        except Exception:
+            pass
+
+    def _trimmed_history_for_send(self) -> list[dict[str, str]]:
+        mode, _l, key, err = resolve_chat_target(self._win)
+        hist = [m for m in self._messages if str(m.get("role", "")) in ("user", "assistant")]
+        if err or not key:
+            return hist
+        return trim_messages_to_budget(
+            hist,
+            system_prompt=self._effective_system_prompt(),
+            context_tokens=llm_chat_context_token_budget(mode=mode, model_key=key, settings=self._win.settings),
+            max_new_tokens=effective_max_new_tokens_for_chat(mode=mode, model_key=key, settings=self._win.settings),
+        )
+
+    def _on_composer_text_changed(self) -> None:
+        if self._budget_refresh_guard:
+            return
+        self._refresh_composer_budget()
+
+    def _refresh_composer_budget(self) -> None:
+        mode, _lab, key, err = resolve_chat_target(self._win)
+        if err or not key:
+            self._composer_cap = MAX_MESSAGE_CHARS_CAP
+            self._input_limit_lbl.setText("")
+            return
+        try:
+            trimmed = self._trimmed_history_for_send()
+            cap, ctx = composer_char_limit(
+                mode=mode,
+                model_key=key,
+                settings=self._win.settings,
+                system_prompt=self._effective_system_prompt(),
+                messages=trimmed,
+                max_history_messages=max(1, len(trimmed)),
+            )
+        except Exception:
+            self._composer_cap = MAX_MESSAGE_CHARS_CAP
+            self._input_limit_lbl.setText("")
+            return
+        self._composer_cap = cap
+        raw = self._input.toPlainText()
+        if len(raw) > cap:
+            self._budget_refresh_guard = True
+            try:
+                self._input.blockSignals(True)
+                self._input.setPlainText(raw[:cap])
+                cur = self._input.textCursor()
+                cur.movePosition(QTextCursor.MoveOperation.End)
+                self._input.setTextCursor(cur)
+            finally:
+                self._input.blockSignals(False)
+                self._budget_refresh_guard = False
+        n = len(self._input.toPlainText())
+        over = n > cap
+        self._input_limit_lbl.setText(f"{n:,} / {cap:,} characters · ~{ctx:,} token context budget")
+        self._input_limit_lbl.setStyleSheet(
+            "color: #FE2C55; font-size: 11px;" if over else "color: #8A96A3; font-size: 11px;"
+        )
 
     def llm_holder_has_local_weights(self) -> bool:
         try:
             return bool(self._llm_holder.get("model") is not None)
         except Exception:
             return False
+
+    def _effective_system_prompt(self) -> str:
+        return self._system_edit.toPlainText().strip() or DEFAULT_SYSTEM_PROMPT
+
+    def _on_system_toggle(self, checked: bool) -> None:
+        self._system_edit.setVisible(checked)
+        self._system_hint.setVisible(not checked)
+        if checked and not self._system_edit.toPlainText().strip():
+            self._system_edit.setPlainText(DEFAULT_SYSTEM_PROMPT)
 
     def _after_show_load(self) -> None:
         self._status.setText("Loading conversation…")
@@ -332,10 +553,16 @@ class LLMChatDialog(FramelessDialog):
             self._subtitle.setText("")
             self._send_btn.setEnabled(False)
             self._busy.setVisible(False)
-            self._system_edit.setPlainText(DEFAULT_SYSTEM_PROMPT)
+            self._system_edit.clear()
+            self._system_toggle.blockSignals(True)
+            self._system_toggle.setChecked(False)
+            self._system_toggle.blockSignals(False)
+            self._on_system_toggle(False)
+            self._refresh_composer_budget()
             return
         self._subtitle.setText(label)
         data = load_transcript(get_paths().data_dir, mode=mode, model_key=key)
+        custom_sp = False
         if isinstance(data, dict):
             msgs = data.get("messages")
             if isinstance(msgs, list):
@@ -345,16 +572,22 @@ class LLMChatDialog(FramelessDialog):
                     if isinstance(m, dict)
                 ]
             sp = str(data.get("system_prompt") or "").strip()
-            if sp:
+            if sp and sp != DEFAULT_SYSTEM_PROMPT.strip():
                 self._system_edit.setPlainText(sp)
+                custom_sp = True
             else:
-                self._system_edit.setPlainText(DEFAULT_SYSTEM_PROMPT)
+                self._system_edit.clear()
         else:
-            self._system_edit.setPlainText(DEFAULT_SYSTEM_PROMPT)
+            self._system_edit.clear()
+        self._system_toggle.blockSignals(True)
+        self._system_toggle.setChecked(custom_sp)
+        self._system_toggle.blockSignals(False)
+        self._on_system_toggle(custom_sp)
         self._rebuild_transcript_widgets()
         self._status.setText("Ready.")
         self._busy.setVisible(False)
         self._send_btn.setEnabled(True)
+        self._refresh_composer_budget()
 
     def _refresh_target(self) -> None:
         _mode, label, _key, err = resolve_chat_target(self._win)
@@ -373,7 +606,7 @@ class LLMChatDialog(FramelessDialog):
                 mode=mode,
                 model_key=key,
                 messages=self._messages,
-                system_prompt=self._system_edit.toPlainText().strip() or DEFAULT_SYSTEM_PROMPT,
+                system_prompt=self._effective_system_prompt(),
                 max_messages=_MAX_TRANSCRIPT_PERSIST,
             )
         except Exception:
@@ -386,39 +619,26 @@ class LLMChatDialog(FramelessDialog):
             if w is not None:
                 w.deleteLater()
         for m in self._messages:
-            role = m.get("role", "")
+            role = str(m.get("role", ""))
             text = str(m.get("content", ""))
+            if role not in ("user", "assistant"):
+                continue
             bubble = QTextBrowser()
-            bubble.setOpenExternalLinks(True)
-            bubble.setReadOnly(True)
             bubble.setPlainText(text)
-            if role == "user":
-                bubble.setStyleSheet(
-                    "QTextBrowser { background: #1a1f28; color: #E8E8EE; border-radius: 8px; padding: 6px; }"
-                )
-            else:
-                bubble.setStyleSheet(
-                    "QTextBrowser { background: #12161d; color: #D8D8E0; border-radius: 8px; padding: 6px; }"
-                )
-            self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, bubble)
+            _style_transcript_bubble(bubble, role=role)
+            self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, _wrap_transcript_row(role, bubble))
 
     def _append_user_bubble(self, text: str) -> None:
         b = QTextBrowser()
-        b.setReadOnly(True)
         b.setPlainText(text)
-        b.setStyleSheet(
-            "QTextBrowser { background: #1a1f28; color: #E8E8EE; border-radius: 8px; padding: 6px; }"
-        )
-        self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, b)
+        _style_transcript_bubble(b, role="user")
+        self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, _wrap_transcript_row("user", b))
 
     def _append_assistant_shell(self) -> QTextBrowser:
         b = QTextBrowser()
-        b.setReadOnly(True)
         b.setPlainText("")
-        b.setStyleSheet(
-            "QTextBrowser { background: #12161d; color: #D8D8E0; border-radius: 8px; padding: 6px; }"
-        )
-        self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, b)
+        _style_transcript_bubble(b, role="assistant")
+        self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, _wrap_transcript_row("assistant", b))
         self._current_assist_browser = b
         return b
 
@@ -438,10 +658,53 @@ class LLMChatDialog(FramelessDialog):
         text = self._input.toPlainText().strip()
         if not text:
             return
-        self._input.clear()
         self._messages.append({"role": "user", "content": text})
         self._append_user_bubble(text)
-        system = self._system_edit.toPlainText().strip() or DEFAULT_SYSTEM_PROMPT
+        self._input.clear()
+        self._refresh_composer_budget()
+        system = self._effective_system_prompt()
+
+        retrieval_block = ""
+        idx = getattr(self._win, "_chat_docs_index", None)
+        if idx is not None:
+            try:
+                hits = idx.search(text, k=3, min_score=0.5)
+            except Exception:
+                hits = []
+            if hits:
+                mode0, _l0, key0, err0 = resolve_chat_target(self._win)
+                if not err0 and key0:
+                    from src.util.llm_chat_budget import (
+                        LOCAL_FORMAT_OVERHEAD_TOKENS,
+                        RESERVE_COMPLETION_TOKENS,
+                        _rough_token_est,
+                    )
+
+                    ctx = llm_chat_context_token_budget(
+                        mode=mode0, model_key=key0, settings=self._win.settings
+                    )
+                    max_new = effective_max_new_tokens_for_chat(
+                        mode=mode0, model_key=key0, settings=self._win.settings
+                    )
+                    trimmed0 = trim_messages_to_budget(
+                        [m for m in self._messages if m.get("role") in ("user", "assistant")],
+                        system_prompt=system,
+                        context_tokens=ctx,
+                        max_new_tokens=max_new,
+                    )
+                    used = _rough_token_est(system)
+                    for m in trimmed0:
+                        used += _rough_token_est(str(m.get("content", "")))
+                    used += LOCAL_FORMAT_OVERHEAD_TOKENS
+                    remain = max(0, ctx - RESERVE_COMPLETION_TOKENS - max_new - 64 - used)
+                    char_budget = max(0, int(remain * 3.5 * 0.30))
+                    retrieval_block = format_retrieval_block(hits, char_budget=char_budget)
+        system_for_turn = f"{system}\n\n{retrieval_block}" if retrieval_block else system
+
+        trimmed = self._trimmed_history_for_send()
+        max_new = effective_max_new_tokens_for_chat(
+            mode=mode, model_key=key, settings=self._win.settings
+        )
 
         self._cancel_event.clear()
         self._send_btn.setEnabled(False)
@@ -449,10 +712,8 @@ class LLMChatDialog(FramelessDialog):
         self._busy.setVisible(True)
         self._status.setText("Generating…" if mode == "local" else "Streaming…")
 
-        api_msgs: list[dict[str, str]] = [{"role": "system", "content": system}]
-        api_msgs.extend(
-            _flatten_history_for_api([m for m in self._messages if m.get("role") != "system"])
-        )
+        api_msgs: list[dict[str, str]] = [{"role": "system", "content": system_for_turn}]
+        api_msgs.extend(_flatten_history_for_api([m for m in trimmed if m.get("role") != "system"]))
 
         shell = self._append_assistant_shell()
         buf: list[str] = []
@@ -462,14 +723,19 @@ class LLMChatDialog(FramelessDialog):
             shell.setPlainText("".join(buf))
             self._scroll_end()
 
+        local_msgs: list[dict[str, str]] = [{"role": "system", "content": system_for_turn}]
+        local_msgs.extend(trimmed)
+
         self._worker = _LLMChatWorker(
             mode=mode,
             settings=self._win.settings,
             model_key=key,
             api_messages=api_msgs,
-            local_prompt=_format_local_prompt(system, self._messages),
+            local_prompt="",
+            local_messages=local_msgs if mode == "local" else None,
             llm_holder=self._llm_holder,
             cancel_event=self._cancel_event,
+            max_new_tokens=max_new,
         )
         self._worker.chunk.connect(on_chunk)
         self._worker.status.connect(lambda m, _p: self._status.setText(m))
@@ -487,6 +753,7 @@ class LLMChatDialog(FramelessDialog):
         self._status.setText("Ready.")
         self._current_assist_browser = None
         self._persist()
+        self._refresh_composer_budget()
 
     def _on_worker_fail(self, msg: str) -> None:
         if self._current_assist_browser:
@@ -496,6 +763,7 @@ class LLMChatDialog(FramelessDialog):
         self._stop_btn.setEnabled(False)
         self._status.setText("Error.")
         self._current_assist_browser = None
+        self._refresh_composer_budget()
 
     def _on_stop(self) -> None:
         self._cancel_event.set()
@@ -511,6 +779,7 @@ class LLMChatDialog(FramelessDialog):
             except Exception:
                 pass
         self._persist()
+        self._refresh_composer_budget()
 
     def _full_teardown(self) -> None:
         """Stop worker, unload local weights, persist transcript (plan §13)."""
@@ -529,6 +798,7 @@ class LLMChatDialog(FramelessDialog):
             pass
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self._persist_llm_chat_geometry()
         self._full_teardown()
         try:
             fn = getattr(self._win, "_on_llm_chat_closed", None)
