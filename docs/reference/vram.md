@@ -14,6 +14,7 @@ Keep the pipeline stable on **8GB VRAM** by aggressively freeing memory between 
   - **`variant="cheap"`** → calls `cleanup_vram()` only (no per-device watchdog).
   - **`variant="prepare_diffusion"`** with a CUDA ordinal → calls `prepare_for_next_model(index)` so **`AQUADUCT_VRAM_WATCHDOG`** / [`check_cuda_headroom`](../../src/util/vram_watchdog.py) behavior stays unchanged (threshold env vars: [Config — VRAM watchdog](config.md#vram-watchdog-cuda-free-memory-before-loads)).
 - `purge_process_memory_aggressive()` — stronger multi-pass GC + **all-device** CUDA cache flush; intended for the Resource dialog **Purge memory** button and OOM retry paths, not every inner loop.
+- **`dispose_diffusion_pipeline()`** ([`diffusion_placement.py`](../../src/util/diffusion_placement.py)) — run before deleting a pipeline that used **model / sequential CPU offload**; invokes diffusers `maybe_free_model_hooks()` when available so offload hooks do not leave weights reachable after **`del pipe`**. Purge and `gc.collect()` alone often **cannot** reclaim that retained heap; on Windows **process RSS** may still reflect allocator pools even after successful teardown.
 
 Enable categorized traces with **`AQUADUCT_DEBUG=memory_budget`** (or **`memory_budget`** in the comma list).
 

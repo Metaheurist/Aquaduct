@@ -14,7 +14,7 @@ from src.models.model_manager import resolve_pretrained_load_path
 from src.models.native_fps import encoded_fps_for, write_clip_meta
 from src.models.torch_dtypes import torch_float16
 from src.render.utils_ffmpeg import ensure_ffmpeg
-from src.util.diffusion_placement import place_diffusion_pipeline
+from src.util.diffusion_placement import dispose_diffusion_pipeline, place_diffusion_pipeline
 from src.util.diffusers_load import diffusers_from_pretrained
 from src.util.cuda_capabilities import cuda_device_reported_by_torch
 from src.util.memory_budget import release_between_stages
@@ -672,6 +672,7 @@ def _try_text_to_video(
             pass
         results.append(GeneratedClip(path=out_path, prompt=p))
 
+    dispose_diffusion_pipeline(pipe)
     del pipe
     release_between_stages("after_text_to_video_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
@@ -779,6 +780,7 @@ def _try_image_to_video(
             pass
         results.append(GeneratedClip(path=out_path, prompt=p))
 
+    dispose_diffusion_pipeline(pipe)
     del pipe
     release_between_stages("after_image_to_video_batch", cuda_device_index=cuda_device_index, variant="cheap")
     return results
