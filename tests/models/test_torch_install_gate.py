@@ -28,3 +28,14 @@ def test_format_pytorch_pip_cli_non_empty() -> None:
     cmd, _ = ti.build_pytorch_install_cmd(python_exe=None, upgrade=False)
     s = ti.format_pytorch_pip_cli(cmd)
     assert "pip" in s and "install" in s
+
+
+def test_repo_root_contains_requirements_txt() -> None:
+    r = ti.repo_root()
+    assert (r / "requirements.txt").is_file()
+
+
+def test_ui_project_root_matches_torch_repo_root() -> None:
+    from UI.services.paths import project_root as pr
+
+    assert pr().resolve() == ti.repo_root().resolve()

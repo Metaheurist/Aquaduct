@@ -2377,8 +2377,12 @@ def run_once(
 
 
 def main() -> None:
+    # Repo-root .env (HF_TOKEN etc.) — plain load_dotenv() only searches cwd, which breaks when
+    # you launch Aquaduct from another working directory or via an IDE.
     if load_dotenv:
-        load_dotenv()
+        _repo = Path(__file__).resolve().parent
+        load_dotenv(_repo / ".env")
+        load_dotenv()  # optional: cwd .env fills keys missing from repo file
 
     argv = sys.argv[1:]
     if argv and argv[0] == "help":

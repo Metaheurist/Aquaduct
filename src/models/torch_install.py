@@ -45,7 +45,17 @@ _RTX_BLACKWELL_NAME_RE = re.compile(r"\bRTX\s*5\d{3}\b", re.IGNORECASE)
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    """Root of the Aquaduct tree (directory with ``requirements.txt`` and ``src/``).
+
+    Historically ``parents[1]`` was used by mistake — from ``src/models/torch_install.py``
+    that resolves to ``src/``, so ``requirements.txt`` was never found.
+    """
+    if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+        base = Path(sys._MEIPASS)  # type: ignore[arg-type]
+        if (base / "requirements.txt").is_file():
+            return base
+    here = Path(__file__).resolve()
+    return here.parents[2]
 
 
 def nvidia_gpu_likely_available() -> bool:

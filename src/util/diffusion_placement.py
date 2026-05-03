@@ -21,7 +21,11 @@ if TYPE_CHECKING:
 OffloadMode = Literal["none", "model", "sequential"]
 
 
-def resolve_diffusion_offload_mode(settings: AppSettings | None = None) -> OffloadMode:
+def resolve_diffusion_offload_mode(
+    settings: AppSettings | None = None,
+    *,
+    placement_role: Literal["image", "video"] | None = None,
+) -> OffloadMode:
     """
     Choose how to stage diffusion weights between CPU RAM and GPU VRAM.
 
@@ -36,6 +40,11 @@ def resolve_diffusion_offload_mode(settings: AppSettings | None = None) -> Offlo
 
     - ``AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD=1`` (legacy): same as ``sequential`` when the
       variable above is unset or ``auto``.
+
+    Under **VRAM-first multi-GPU** plus **Auto** CUDA routing, ``auto`` may choose full-GPU staging
+    (``none``) so video pipelines can shard across devices. **Image** placement
+    (``placement_role="image"``) still prefers **model** offload in that regime so resident full
+    weights do not routinely OOM moderate-VRAM GPUs (for example SD3.5).
     """
     raw = os.environ.get("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "").strip().lower()
     legacy_seq = os.environ.get("AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD", "").strip().lower() in (
@@ -59,7 +68,7 @@ def resolve_diffusion_offload_mode(settings: AppSettings | None = None) -> Offlo
     if legacy_seq and raw in ("", "auto"):
         return "sequential"
 
-    return _resolve_auto_offload_mode(settings)
+    return _resolve_auto_offload_mode(settings, placement_role=placement_role)
 
 
 def _avail_ram_gb() -> float | None:
@@ -82,7 +91,11 @@ def _cuda_device_count() -> int:
     return 0
 
 
-def _resolve_auto_offload_mode(settings: AppSettings | None = None) -> OffloadMode:
+def _resolve_auto_offload_mode(
+    settings: AppSettings | None = None,
+    *,
+    placement_role: Literal["image", "video"] | None = None,
+) -> OffloadMode:
     vram_gb: float | None = None
     try:
         from src.models.hardware import get_hardware_info
@@ -104,6 +117,12 @@ def _resolve_auto_offload_mode(settings: AppSettings | None = None) -> OffloadMo
             from src.gpu.multi_device.gates import vram_first_master_enabled
 
             if settings is not None and vram_first_master_enabled(settings):
+                # Video sharding prefers resident GPU tensors; single-GPU image T2I on the diffusion
+                # device still needs headroom alongside other workloads — avoid full ``pipe.to()`` here.
+                if placement_role == "image":
+                    if avail_gb is not None and avail_gb < 3.0:
+                        return "sequential"
+                    return "model"
                 if avail_gb is None or avail_gb >= 8.0:
                     return "none"
         except Exception:
@@ -161,7 +180,11 @@ def place_diffusion_pipeline(
 
     dev = f"cuda:{int(cuda_device_index)}" if cuda_device_index is not None else "cuda"
 
-    mode = force_offload if force_offload is not None else resolve_diffusion_offload_mode(inference_settings)
+    mode = (
+        force_offload
+        if force_offload is not None
+        else resolve_diffusion_offload_mode(inference_settings, placement_role=placement_role)
+    )
     if mode == "none":
         pipe.to(dev)
         _maybe_apply_vram_first_peer_modules(

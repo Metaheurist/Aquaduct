@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
+from src.core.config import AppSettings
 from src.models.hardware import HardwareInfo
 from src.util import diffusion_placement as dp
 
@@ -107,6 +110,74 @@ def test_auto_multi_gpu_prefers_sequential(monkeypatch: pytest.MonkeyPatch, clea
     monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
     monkeypatch.setattr(dp, "_cuda_device_count", lambda: 2)
     assert dp.resolve_diffusion_offload_mode() == "sequential"
+
+
+def test_auto_multi_gpu_vram_first_image_prefers_model(
+    monkeypatch: pytest.MonkeyPatch, clear_offload_env: None
+) -> None:
+    """VRAM-first + ≥2 GPUs: image role must not opt into full GPU (video-only optimization)."""
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    settings = replace(
+        AppSettings(),
+        multi_gpu_shard_mode="vram_first_auto",
+        gpu_selection_mode="auto",
+    )
+    monkeypatch.setattr(
+        "src.gpu.multi_device.gates.vram_first_master_enabled",
+        lambda s: isinstance(s, AppSettings),
+    )
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 2)
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=24.0),
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
+    assert dp.resolve_diffusion_offload_mode(settings, placement_role="image") == "model"
+
+
+def test_auto_multi_gpu_vram_first_image_tight_ram_prefers_sequential(
+    monkeypatch: pytest.MonkeyPatch, clear_offload_env: None
+) -> None:
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    settings = replace(
+        AppSettings(),
+        multi_gpu_shard_mode="vram_first_auto",
+        gpu_selection_mode="auto",
+    )
+    monkeypatch.setattr(
+        "src.gpu.multi_device.gates.vram_first_master_enabled",
+        lambda s: isinstance(s, AppSettings),
+    )
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 2)
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=24.0),
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 2.0)
+    assert dp.resolve_diffusion_offload_mode(settings, placement_role="image") == "sequential"
+
+
+def test_auto_multi_gpu_vram_first_video_prefers_none(
+    monkeypatch: pytest.MonkeyPatch, clear_offload_env: None
+) -> None:
+    """VRAM-first + ample host RAM: video path keeps full GPU for peer sharding."""
+    monkeypatch.setenv("AQUADUCT_DIFFUSION_CPU_OFFLOAD", "auto")
+    settings = replace(
+        AppSettings(),
+        multi_gpu_shard_mode="vram_first_auto",
+        gpu_selection_mode="auto",
+    )
+    monkeypatch.setattr(
+        "src.gpu.multi_device.gates.vram_first_master_enabled",
+        lambda s: isinstance(s, AppSettings),
+    )
+    monkeypatch.setattr(dp, "_cuda_device_count", lambda: 2)
+    monkeypatch.setattr(
+        "src.models.hardware.get_hardware_info",
+        lambda: HardwareInfo(os="t", cpu="c", ram_gb=32.0, gpu_name="g", vram_gb=24.0),
+    )
+    monkeypatch.setattr(dp, "_avail_ram_gb", lambda: 16.0)
+    assert dp.resolve_diffusion_offload_mode(settings, placement_role="video") == "none"
 
 
 def test_place_pipeline_cpu_when_no_cuda(monkeypatch: pytest.MonkeyPatch) -> None:

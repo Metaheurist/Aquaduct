@@ -39,6 +39,7 @@ from UI.dialogs.frameless_dialog import (
     aquaduct_warning,
     show_hf_token_dialog,
 )
+from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedule_auxiliary_job_memory_purge
 from UI.help.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
 from UI.widgets.media_mode_toggle import MediaModeToggle
 from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
@@ -104,9 +105,11 @@ from UI.workers import (
     PreviewWorker,
     StoryboardWorker,
     TikTokUploadWorker,
+    TopicDiscoverWorker,
+    TopicGroundingNotesWorker,
     YouTubeUploadWorker,
+    firecrawl_search_ready,
 )
-from UI.workers import TopicDiscoverWorker, firecrawl_search_ready
 from UI.dialogs.preview_dialog import PreviewDialog
 from UI.dialogs.storyboard_dialog import StoryboardPreviewDialog
 from UI.services.progress_tasks import format_status_line
@@ -300,6 +303,7 @@ class MainWindow(QMainWindow):
 
         self.worker: PipelineWorker | None = None
         self.topic_worker: TopicDiscoverWorker | None = None
+        self.topic_grounding_worker: TopicGroundingNotesWorker | None = None
         self.download_worker: ModelDownloadWorker | None = None
         self._download_popup: DownloadPopup | None = None
         self._resource_graph_dialog = None
@@ -1420,6 +1424,139 @@ class MainWindow(QMainWindow):
         else:
             self._append_log("Topic discovery failed:")
             self._append_log(err)
+
+    def _set_topic_notes_llm_busy(self, busy: bool) -> None:
+        btn = getattr(self, "topic_notes_llm_btn", None)
+        if btn is None:
+            return
+        try:
+            btn.setEnabled(not busy)
+            btn.setText("Suggest with LLM" if not busy else "Working…")
+        except Exception:
+            pass
+
+    def _topic_notes_suggest_llm(self) -> None:
+        w = getattr(self, "topic_grounding_worker", None)
+        if w is not None and w.isRunning():
+            return
+        if not hasattr(self, "topic_note_edits_by_tag_norm"):
+            return
+        self._flush_topic_list_to_mode(self._topics_bucket_key())
+        bucket = normalize_video_format(self._topics_bucket_key())
+        self._ensure_topic_modes()
+        tags_disp = list(self.settings.topic_tags_by_mode.get(bucket, []) or [])
+        tags_disp = [str(t).strip() for t in tags_disp if str(t or "").strip()]
+        if not tags_disp:
+            aquaduct_information(self, "No topic tags", "Add at least one tag before requesting LLM grounding lines.")
+            return
+        overwrite = bool(
+            getattr(self, "topic_notes_llm_overwrite", None)
+            and self.topic_notes_llm_overwrite.isChecked()
+        )
+        merged_notes = sanitize_topic_tag_notes(self._merge_topic_notes_edits_into_dict())
+        siblings = tags_disp
+        tag_pairs: list[tuple[str, str]] = []
+        for disp in tags_disp:
+            nk = " ".join(disp.split()).strip().lower()
+            cur = merged_notes.get(nk, "").strip()
+            if overwrite or not cur:
+                tag_pairs.append((nk, disp))
+        if not tag_pairs:
+            aquaduct_information(
+                self,
+                "Nothing to generate",
+                "Every tag already has a grounding note — enable Replace existing notes to regenerate.",
+            )
+            return
+        mid = script_llm_model_id_from_ui(self)
+        st = self._collect_settings_from_ui()
+        wg = TopicGroundingNotesWorker(
+            model_id=mid,
+            video_format=bucket,
+            tag_pairs=tag_pairs,
+            sibling_display_labels=siblings,
+            seed_notes_by_norm=dict(merged_notes),
+            hf_token=str(getattr(st, "hf_token", "") or ""),
+            hf_api_enabled=bool(getattr(st, "hf_api_enabled", True)),
+            try_llm_4bit=bool(getattr(st, "try_llm_4bit", True)),
+            app_settings=st,
+        )
+
+        self.topic_grounding_worker = wg
+
+        dlg = AuxiliaryProgressDialog(
+            self,
+            window_title="Topic grounding (LLM)",
+            initial_message="Starting…",
+        )
+        dlg.show()
+        wg.progress.connect(dlg.slot_update)
+
+        def _idle() -> None:
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
+            self._set_topic_notes_llm_busy(False)
+            self.topic_grounding_worker = None
+
+        wg.batch_done.connect(self._topic_notes_llm_finished)
+        wg.failed.connect(self._topic_notes_llm_failed)
+        wg.finished.connect(_idle)
+        self._set_topic_notes_llm_busy(True)
+        wg.start()
+
+    def _topic_notes_llm_finished(self, payload: object) -> None:
+        blob = payload if isinstance(payload, dict) else {}
+        notes = sanitize_topic_tag_notes(blob.get("notes") or {})
+        missing_raw = blob.get("missing") or ()
+        if not isinstance(missing_raw, (list, tuple)):
+            missing_raw = ()
+        missing = tuple(str(x).strip() for x in missing_raw if str(x or "").strip())
+
+        base = dict(self.settings.topic_tag_notes or {})
+        base.update(notes)
+        self.settings = replace(self.settings, topic_tag_notes=sanitize_topic_tag_notes(base))
+
+        edits = getattr(self, "topic_note_edits_by_tag_norm", None)
+        if isinstance(edits, dict):
+            for nk, text in notes.items():
+                ew = edits.get(nk)
+                try:
+                    if ew is not None:
+                        ew.setText(text)
+                except Exception:
+                    pass
+
+        if not notes:
+            aquaduct_warning(
+                self,
+                "Topic grounding — no usable output",
+                "The LLM returned no grounding lines the app could parse. Try another model or turn on Models API.",
+            )
+            return
+
+        try:
+            self._append_log(
+                "LLM topic grounding: wrote "
+                f"{len(notes)} line(s)."
+                + (f" Missing: {', '.join(missing[:32])}" if missing else "")
+            )
+        except Exception:
+            pass
+        if missing:
+            mx = ", ".join(missing[:24]) + ("…" if len(missing) > 24 else "")
+            aquaduct_information(
+                self,
+                "Partial LLM grounding",
+                "Some tags received no usable line:\n\n" + mx,
+            )
+
+    def _topic_notes_llm_failed(self, err: str) -> None:
+        msg = (err or "").strip() or "(unknown)"
+        headline = msg.split("\n")[0][:220]
+        aquaduct_message_with_details(self, "Topic grounding (LLM) failed", headline, "", details_text=msg)
 
     def _collect_settings_from_ui(self) -> AppSettings:
         if hasattr(self, "topics_mode_combo"):

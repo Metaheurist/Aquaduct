@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import replace
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -44,13 +44,61 @@ from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_a
 from src.settings.ui_settings import save_settings
 from src.speech.voice import list_pyttsx3_voices as list_sys_voices
 from UI.services.brain_expand import image_model_id_from_ui, resolve_llm_model_id
-from UI.dialogs.frameless_dialog import aquaduct_question, aquaduct_warning
+from UI.dialogs.frameless_dialog import FramelessDialog, aquaduct_question, aquaduct_warning
+from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedule_auxiliary_job_memory_purge
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.theme import resolve_palette
 from UI.widgets.toolbar_svg_icons import qicon_toolbar
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
+
+
+class _PortraitThumbLabel(QLabel):
+    """Small preview; click opens enlarged view when a pixmap is set."""
+
+    portraitClicked = pyqtSignal()
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            pm = self.pixmap()
+            if pm is not None and not pm.isNull():
+                self.portraitClicked.emit()
+                return
+        super().mousePressEvent(event)
+
+
+class _FitPixmapLabel(QLabel):
+    """Keeps aspect ratio while filling the label as the dialog resizes / maximizes."""
+
+    def __init__(self, original: QPixmap) -> None:
+        super().__init__()
+        self._orig = original
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setStyleSheet("background-color: #14141A;")
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._sync()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        QTimer.singleShot(0, self._sync)
+
+    def _sync(self) -> None:
+        if self._orig.isNull():
+            return
+        w = max(1, int(self.width()) - 16)
+        h = max(1, int(self.height()) - 16)
+        self.setPixmap(
+            self._orig.scaled(
+                w,
+                h,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
 
 
 class _ElevenLabsVoicesThread(QThread):
@@ -236,7 +284,7 @@ def attach_characters_tab(win) -> None:
         )
     )
     portrait_row.addWidget(win.character_portrait_generate_btn)
-    win.character_portrait_preview = QLabel()
+    win.character_portrait_preview = _PortraitThumbLabel()
     win.character_portrait_preview.setFixedSize(100, 120)
     win.character_portrait_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
     win.character_portrait_preview.setStyleSheet(
@@ -250,7 +298,7 @@ def attach_characters_tab(win) -> None:
     portrait_hint = QLabel("")
     portrait_hint.setWordWrap(True)
     portrait_hint.setStyleSheet("color: #8A96A3; font-size: 10px;")
-    portrait_hint.setText("Portrait uses your image model from Settings after you fill Visual style.")
+    portrait_hint.setText("Portrait uses the image model selected on the Model tab (same weights as slideshow / Run stills).")
     portrait_hint.setToolTip(
         help_tooltip_rich(
             "Fill Visual style first — the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards.",
@@ -474,9 +522,15 @@ def attach_characters_tab(win) -> None:
                     )
                 )
                 win.character_portrait_preview.setText("")
+                win.character_portrait_preview.setToolTip(
+                    "Click portrait to enlarge (maximized preview)."
+                )
+                win.character_portrait_preview.setCursor(Qt.CursorShape.PointingHandCursor)
                 return
         win.character_portrait_preview.setPixmap(QPixmap())
         win.character_portrait_preview.setText("No portrait")
+        win.character_portrait_preview.setToolTip("")
+        win.character_portrait_preview.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _load_form(c: Character) -> None:
         win.character_name_edit.setText(c.name)
@@ -631,12 +685,26 @@ def attach_characters_tab(win) -> None:
             app_settings=getattr(win, "settings", None),
         )
         _char_gen_worker = th
+
+        dlg = AuxiliaryProgressDialog(
+            win,
+            window_title="Generate with LLM",
+            initial_message="Starting…",
+        )
+        dlg.show()
+        th.progress.connect(dlg.slot_update)
+
         win.character_generate_btn.setEnabled(False)
         win.character_generate_btn.setText("Generating…")
 
         def _ok(fields: object) -> None:
             nonlocal _char_gen_worker
 
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
             _char_gen_worker = None
             win.character_generate_btn.setEnabled(True)
             win.character_generate_btn.setText("Generate with LLM")
@@ -652,6 +720,11 @@ def attach_characters_tab(win) -> None:
 
         def _fail(msg: str) -> None:
             nonlocal _char_gen_worker
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
             _char_gen_worker = None
             win.character_generate_btn.setEnabled(True)
             win.character_generate_btn.setText("Generate with LLM")
@@ -712,11 +785,25 @@ def attach_characters_tab(win) -> None:
             art_style_preset_id=str(getattr(win.settings, "art_style_preset_id", None) or "balanced"),
         )
         _portrait_worker = th
+
+        dlg = AuxiliaryProgressDialog(
+            win,
+            window_title="Portrait generation",
+            initial_message="Starting…",
+        )
+        dlg.show()
+        th.progress.connect(dlg.slot_update)
+
         win.character_portrait_generate_btn.setEnabled(False)
         win.character_portrait_generate_btn.setText("Generating…")
 
         def _ok(rel: str) -> None:
             nonlocal all_chars, _portrait_worker
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
             _portrait_worker = None
             win.character_portrait_generate_btn.setEnabled(True)
             win.character_portrait_generate_btn.setText("Generate portrait")
@@ -735,6 +822,11 @@ def attach_characters_tab(win) -> None:
 
         def _fail(msg: str) -> None:
             nonlocal _portrait_worker
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
             _portrait_worker = None
             win.character_portrait_generate_btn.setEnabled(True)
             win.character_portrait_generate_btn.setText("Generate portrait")
@@ -775,6 +867,23 @@ def attach_characters_tab(win) -> None:
         if hasattr(win, "_refresh_character_combo"):
             win._refresh_character_combo()
 
+    def _open_portrait_preview() -> None:
+        ch = get_by_id(all_chars, str(_current_id or "")) if _current_id else None
+        if ch is None:
+            return
+        p = character_reference_image_resolved(ch)
+        if p is None or not p.exists():
+            return
+        pm = QPixmap(str(p))
+        if pm.isNull():
+            return
+        title = str(ch.name or "Character").strip() or "Character"
+        dlg = FramelessDialog(win, title=f"Portrait — {title}"[:120])
+        img = _FitPixmapLabel(pm)
+        dlg.body_layout.addWidget(img, 1)
+        dlg.showMaximized()
+        dlg.exec()
+
     win.characters_list.currentRowChanged.connect(lambda _r: _on_select())
     win.characters_save_btn.clicked.connect(_on_save)
     win.characters_add_btn.clicked.connect(_on_add)
@@ -786,6 +895,7 @@ def attach_characters_tab(win) -> None:
     win.character_el_refresh_btn.clicked.connect(_on_el_refresh_clicked)
     win.character_generate_btn.clicked.connect(_on_generate_character)
     win.character_portrait_generate_btn.clicked.connect(_on_generate_portrait)
+    win.character_portrait_preview.portraitClicked.connect(_open_portrait_preview)
 
     _fill_voice_combo(win.character_voice_combo, "")
     _update_el_visibility()

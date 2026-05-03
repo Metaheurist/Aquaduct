@@ -24,6 +24,8 @@ Below the tag list, **Per-tag notes (grounding)** shows one optional line per ta
 - At run time, `main.py` merges these into [`topic_constraints_block`](../../src/content/topic_constraints.py) alongside active tags (`effective_topic_tags`) so the script model sees tags as **hard** constraints plus your short cue per tag.
 - Tags are global by **string**: the same wording in two formats shares one note unless you rename one tag.
 
+**Suggest with LLM** batches missing grounding lines via the **Script (LLM)** model (local or API). Progress uses the **`AuxiliaryProgressDialog`** chrome as Characters / 🧠 expand ([`UI/dialogs/auxiliary_progress_dialog.py`](../../UI/dialogs/auxiliary_progress_dialog.py)); **`purge_process_memory_aggressive()`** runs when the worker finishes.
+
 ## Related pipeline docs
 
 - [Brain — topic tags & hard constraints](../pipeline/brain.md#topic-tags--hard-constraints)

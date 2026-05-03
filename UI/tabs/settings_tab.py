@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
 
 from src.core.config import get_models
 from src.core.models_dir import models_dir_for_app
-from src.runtime.variant_fallback import next_smaller_repo_id
 from src.models.hardware import (
     fit_marker_display,
     get_hardware_info,
@@ -1004,26 +1003,6 @@ def attach_settings_tab(win) -> None:
         else:
             win.vid_fit.setText("—")
             win.vid_dl_badge.setText("")
-        if hasattr(win, "video_lighter_fit_btn"):
-            vid_mk = ""
-            sug_v = ""
-            if vid_repo:
-                vid_mk, _vw = rate_model_fit_for_repo(
-                    kind="video",
-                    speed=vid_spd,
-                    repo_id=str(vid_repo),
-                    pair_image_repo_id=pair_id,
-                    vram_gb=_vram_for_kind("video"),
-                    ram_gb=win._hw_info.ram_gb,
-                )
-                sug_v = next_smaller_repo_id("video", vid_repo) or ""
-            tight = str(vid_mk or "").strip().upper() in ("NO_GPU", "RISKY")
-            win.video_lighter_fit_btn.setVisible(bool(vid_repo and sug_v and tight))
-            win.video_lighter_fit_btn.setToolTip(
-                f"Apply curated smaller Motion model ({sug_v}) when the badge is risky."
-                if sug_v
-                else "No curated smaller checkpoint is defined for this repo."
-            )
 
         voice_repo = _combo_repo_id_from_selection(win.voice_combo)
         _refill_and_restore_quant(
@@ -1163,39 +1142,6 @@ def attach_settings_tab(win) -> None:
     ]
     for _txt, combo, dl_b, quant_panel, vram_l, fit_l in _model_rows:
         ll.addWidget(_model_role_card(_txt, combo, dl_b, quant_panel, vram_l, fit_l))
-
-    win.video_lighter_fit_btn = QPushButton("Use lighter Motion / Video checkpoint (red/amber badges)")
-    win.video_lighter_fit_btn.setVisible(False)
-    win.video_lighter_fit_btn.setToolTip(
-        help_tooltip_rich(
-            "When the **Video fit badge** is **VRAM Limit** (red) or **Risky**, this applies a curated lighter "
-            "Motion checkpoint if one exists — same mapping as crash-resilience “variant ladder” falls back.\n\n"
-            "Downloads still happen from Hugging Face; pick a lighter class if you regularly OOM.",
-            "models",
-            slide=2,
-        )
-    )
-
-    lighter_row = QHBoxLayout()
-    lighter_row.addWidget(win.video_lighter_fit_btn, 0)
-    lighter_row.addStretch(1)
-    ll.addLayout(lighter_row)
-
-    def _on_video_lighter_fit_clicked() -> None:
-        vid_r = _combo_repo_id_from_selection(win.vid_combo)
-        cand = next_smaller_repo_id("video", vid_r)
-        if not cand:
-            aquaduct_information(win, title="Video model", subtitle="No smaller curated fallback is wired for this repo.")
-            return
-        _append_saved_repo_row(win.vid_combo, cand)
-        _update_fit_badges()
-        if hasattr(win, "_save_settings"):
-            try:
-                win._save_settings()
-            except Exception:
-                pass
-
-    win.video_lighter_fit_btn.clicked.connect(_on_video_lighter_fit_clicked)
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")
