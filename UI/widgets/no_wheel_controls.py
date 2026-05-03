@@ -17,7 +17,7 @@ QSlider#QuantAccentSlider::groove:horizontal {
     border-radius: 5px;
     margin: 4px 0;
 }
-/* Left of thumb: grows with value — brighter/more saturated as more track is “filled”. */
+/* Left of thumb: grows with value - brighter/more saturated as more track is “filled”. */
 QSlider#QuantAccentSlider::sub-page:horizontal {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 rgba(37, 244, 238, 0.45),

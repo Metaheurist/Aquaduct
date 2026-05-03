@@ -87,7 +87,7 @@ def attach_library_tab(win) -> None:
 
     media_card, media_lay = section_card()
     win._library_media_card = media_card
-    win._library_media_title = section_title("videos/ — projects with final.mp4", emphasis=True)
+    win._library_media_title = section_title("videos/ - projects with final.mp4", emphasis=True)
     media_lay.addWidget(win._library_media_title)
 
     win.library_videos_table = QTableWidget(0, 4)
@@ -139,7 +139,7 @@ def attach_library_tab(win) -> None:
     add_section_spacing(lay, px=14)
 
     runs_card, runs_lay = section_card()
-    runs_lay.addWidget(section_title("runs/ — intermediate workspaces", emphasis=True))
+    runs_lay.addWidget(section_title("runs/ - intermediate workspaces", emphasis=True))
 
     win.library_runs_table = QTableWidget(0, 3)
     win.library_runs_table.setHorizontalHeaderLabels(["Run folder", "Modified", "assets/"])
@@ -186,7 +186,7 @@ def attach_library_tab(win) -> None:
         try:
             return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
         except (OSError, OverflowError, ValueError):
-            return "—"
+            return "-"
 
     def _fill() -> None:
         mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
@@ -214,7 +214,7 @@ def attach_library_tab(win) -> None:
             win.library_runs_table.setItem(r, 0, t0)
             win.library_runs_table.setItem(r, 1, QTableWidgetItem(_fmt_ts(rw.modified_ts)))
             win.library_runs_table.setItem(
-                r, 2, QTableWidgetItem("yes" if rw.has_assets_dir else "—")
+                r, 2, QTableWidgetItem("yes" if rw.has_assets_dir else "-")
             )
 
     win._library_fill_tables = _fill
@@ -259,7 +259,7 @@ def refresh_library_tab_for_media_mode(win) -> None:
         )
     if hasattr(win, "_library_media_title") and win._library_media_title is not None:
         win._library_media_title.setText(
-            "pictures/ — projects with final.png" if is_photo else "videos/ — projects with final.mp4"
+            "pictures/ - projects with final.png" if is_photo else "videos/ - projects with final.mp4"
         )
     if hasattr(win, "library_videos_table"):
         win.library_videos_table.setHorizontalHeaderLabels(

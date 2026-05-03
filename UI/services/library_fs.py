@@ -68,7 +68,7 @@ def scan_finished_videos(videos_dir: Path) -> list[FinishedVideoFolder]:
                     m_ep = _ep_dir_re.match(ep.name)
                     ep_n = int(m_ep.group(1)) if m_ep else 0
                     if ep_n:
-                        title = f"Series: {series_label} · Ep {ep_n} — {ep_title}"
+                        title = f"Series: {series_label} · Ep {ep_n} - {ep_title}"
                     else:
                         title = f"Series: {series_label} · {ep_title}"
                     mtimes: list[float] = []

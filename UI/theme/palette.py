@@ -26,6 +26,45 @@ QWidget {{ background: {bg}; color: {text}; font-family: "Segoe UI", "Arial"; fo
 /* QLabel subclasses QWidget; the rule above would paint every label with {bg}, so text looks like black bars on
    section cards (card color is different). Keep labels visually transparent so the parent/card shows through. */
 QLabel {{ background-color: transparent; }}
+/* Plain QWidget / group / radio inherit QWidget's window {bg} (#0F0…), which reads as a harsh black
+   slab inside lighter section cards. Let the card color show through; controls keep their own QSS. */
+QFrame#SettingsSectionCard QWidget#RunQtyRowWrap,
+QFrame#SettingsSectionCard QWidget#RunEpisodeRowWrap {{
+  background-color: transparent;
+}}
+QFrame#SettingsSectionCard QGroupBox {{
+  background-color: transparent;
+  border: 1px solid {border};
+  border-radius: 12px;
+  margin-top: 10px;
+  padding: 10px;
+  color: {text};
+}}
+QFrame#SettingsSectionCard QGroupBox::title {{
+  subcontrol-origin: margin;
+  subcontrol-position: top left;
+  padding: 0 6px;
+  left: 10px;
+  color: {muted};
+  font-weight: 600;
+}}
+QRadioButton {{
+  background-color: transparent;
+  color: {text};
+  spacing: 8px;
+  font-weight: 600;
+}}
+QRadioButton::indicator {{
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  border: 1px solid {border};
+  background: {control_bg};
+}}
+QRadioButton::indicator:checked {{
+  background: {accent};
+  border: 1px solid {accent};
+}}
 QDialog#FramelessDialogShell {{
   background: {panel};
   border: 1px solid {border};
@@ -110,7 +149,7 @@ QPushButton[chrome="title_outline"] {{
   padding: 4px 10px;
   font-weight: 800;
 }}
-QCheckBox {{ spacing: 10px; color: {text}; font-weight: 600; }}
+QCheckBox {{ spacing: 10px; color: {text}; font-weight: 600; background-color: transparent; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid {border}; background: {control_bg}; }}
 QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}
 """.lstrip()

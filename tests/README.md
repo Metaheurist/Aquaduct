@@ -9,7 +9,7 @@ Run the suite from the repository root; `pytest` collects everything under this 
 | [`models/`](models/) | Local HF model manager, VRAM / CUDA policy, diffusion presets, `torch` dtypes, inference profiles |
 | [`platform/`](platform/) | Remote API clients (OpenAI-shaped, Kling, Replicate, ElevenLabs, …) |
 | [`runtime/`](runtime/) | `api_generation`, preflight, pipeline control, import smoke, run-queue contract |
-| [`content/`](content/) | Brain, story pipeline, characters, personalities, story context |
+| [`content/`](content/) | Brain, story pipeline, characters, personalities, story context; LLM chat RAG (**`llm_chat_rag`**, **`llm_chat_system_prompt`**); pipeline generation / EOS routing (**`test_chat_generation`**) |
 | [`render/`](render/) | Artist / clips / FFmpeg / pro-mode / video format helpers |
 | [`discover/`](discover/) | Topic discovery, Firecrawl / crawler, news-cache modes |
 | [`social/`](social/) | Upload tasks, TikTok/TikTok-style posting helpers |

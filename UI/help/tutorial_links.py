@@ -47,7 +47,7 @@ def help_tooltip_rich(
     Build an HTML tooltip with a link of the form topic://<topic_id>?slide=N.
 
     ``base_plain`` is escaped; newlines become <br/>.
-    If ``slide`` is None, slide 0 is used (query omitted for clarity — dialog defaults to 0).
+    If ``slide`` is None, slide 0 is used (query omitted for clarity - dialog defaults to 0).
     """
     safe = html.escape(base_plain).replace("\n", "<br/>")
     qslide = 0 if slide is None else slide
@@ -87,7 +87,7 @@ def _rich_help_tooltip_text(widget: QWidget, event: QEvent) -> str:
     Return tooltip HTML for ``widget`` + ``event``.
 
     ``QComboBox`` list rows (and similar views) store rich text on the model's ``ToolTipRole`` while
-    the hover target is often the *viewport* with an empty ``QWidget.toolTip()`` — resolve that here.
+    the hover target is often the *viewport* with an empty ``QWidget.toolTip()`` - resolve that here.
     """
     direct = (widget.toolTip() or "").strip()
     if direct:

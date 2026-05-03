@@ -55,6 +55,7 @@ def attach_run_tab(win) -> None:
     if _ser0_qty and bool(getattr(_ser0_qty, "series_mode", False)):
         _init_batch = max(1, min(50, int(getattr(_ser0_qty, "episode_count", 1) or 1)))
     qty_wrap = QWidget()
+    qty_wrap.setObjectName("RunQtyRowWrap")
     qty_row = QHBoxLayout(qty_wrap)
     qty_row.setContentsMargins(0, 0, 0, 0)
     qty_lbl = QLabel("Videos to generate")
@@ -183,6 +184,7 @@ def attach_run_tab(win) -> None:
     )
     sv.addWidget(win.series_mode_check)
     ep_wrap = QWidget()
+    ep_wrap.setObjectName("RunEpisodeRowWrap")
     ep_row = QHBoxLayout(ep_wrap)
     ep_row.setContentsMargins(0, 0, 0, 0)
     ep_lbl = QLabel("Episodes to generate")
@@ -232,7 +234,7 @@ def attach_run_tab(win) -> None:
     sn_lbl.setWordWrap(True)
     sv.addWidget(sn_lbl)
     win.series_name_edit = QLineEdit()
-    win.series_name_edit.setPlaceholderText("Optional — used for the folder name under videos/")
+    win.series_name_edit.setPlaceholderText("Optional - used for the folder name under videos/")
     win.series_name_edit.setText(str(getattr(ser0, "series_name", "") or "") if ser0 else "")
     win.series_name_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     sv.addWidget(win.series_name_edit)
@@ -336,7 +338,7 @@ def attach_run_tab(win) -> None:
     win.run_content_custom_radio.setToolTip(
         help_tooltip_rich(
             "Custom uses your multiline instructions: the script model expands them into a brief, then writes "
-            "the full script (two LLM passes — slower than Preset).",
+            "the full script (two LLM passes - slower than Preset).",
             "run",
             slide=1,
         )
@@ -396,7 +398,7 @@ def attach_run_tab(win) -> None:
                 )
             else:
                 vf_hint.setText(
-                    "**Preset** uses the **source mode** below and your **Topics** tab to pick ideas — same flow as making a video, "
+                    "**Preset** uses the **source mode** below and your **Topics** tab to pick ideas - same flow as making a video, "
                     "except this run creates still images or a layout instead of an MP4.\n\n"
                     "Choose template, how many images, output type, and picture format on the **Picture** tab."
                 )
@@ -413,7 +415,7 @@ def attach_run_tab(win) -> None:
                 extra = " Short horror from the web; keep it fiction only."
             vf_hint.setText(
                 "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
-                "then writes the script (two passes — slower than Preset). Topic tags from the Topics tab still bias "
+                "then writes the script (two passes - slower than Preset). Topic tags from the Topics tab still bias "
                 "hashtags when relevant."
                 + extra
             )

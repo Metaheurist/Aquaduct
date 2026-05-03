@@ -303,6 +303,16 @@ class SeriesSettings:
 
 
 @dataclass(frozen=True)
+class LLMChatGeometry:
+    """Last LLM chat window size/position (persisted in ``ui_settings.json``). Zero width => never saved."""
+
+    width: int = 0
+    height: int = 0
+    x: int | None = None
+    y: int | None = None
+
+
+@dataclass(frozen=True)
 class AppSettings:
     topic_tags_by_mode: dict[str, list[str]] = field(default_factory=default_topic_tags_by_mode)
     #: Phase 6 — per-tag context note ({"tag": "free-form note"}). Surfaced as a
@@ -381,6 +391,8 @@ class AppSettings:
     youtube_privacy_status: Literal["public", "unlisted", "private"] = "private"
     youtube_add_shorts_hashtag: bool = True
     youtube_auto_upload_after_render: bool = False
+    #: Last LLM chat dialog geometry (see ``LLMChatGeometry``).
+    llm_chat_geometry: LLMChatGeometry = field(default_factory=LLMChatGeometry)
     #: Set True after the user dismisses the first-run tutorial (stored in ``ui_settings.json``).
     tutorial_completed: bool = False
     #: Multi-GPU: ``auto`` uses max-VRAM GPU for diffusion and heuristic-fast GPU for LLM; ``single`` pins ``gpu_device_index``.

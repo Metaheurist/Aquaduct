@@ -135,13 +135,13 @@ def build_generation_api_panel(win) -> QWidget:
     keys_row = QFormLayout()
     win.api_gen_openai_key = QLineEdit()
     win.api_gen_openai_key.setEchoMode(QLineEdit.EchoMode.Password)
-    win.api_gen_openai_key.setPlaceholderText("Paste API key—or set OPENAI_API_KEY in your environment")
+    win.api_gen_openai_key.setPlaceholderText("Paste API key-or set OPENAI_API_KEY in your environment")
     win.api_gen_openai_key.setText(str(getattr(win.settings, "api_openai_key", "") or ""))
     keys_row.addRow("OpenAI / LLM API key", win.api_gen_openai_key)
 
     win.api_gen_replicate_token = QLineEdit()
     win.api_gen_replicate_token.setEchoMode(QLineEdit.EchoMode.Password)
-    win.api_gen_replicate_token.setPlaceholderText("Replicate token—or set REPLICATE_API_TOKEN")
+    win.api_gen_replicate_token.setPlaceholderText("Replicate token-or set REPLICATE_API_TOKEN")
     win.api_gen_replicate_token.setText(str(getattr(win.settings, "api_replicate_token", "") or ""))
     keys_row.addRow("Replicate API token", win.api_gen_replicate_token)
     outer.addLayout(keys_row)
@@ -209,7 +209,7 @@ def build_generation_api_panel(win) -> QWidget:
     win.api_gen_video_provider, win.api_gen_video_model, _, _, _ = _role_block("Video API (Pro / Replicate)", "video")
     win.api_gen_voice_provider, win.api_gen_voice_model, _, _, win.api_gen_voice_id = _role_block("Voice API", "voice")
 
-    hint = QLabel("Tip: you can set API keys as environment variables instead—hover for a list.")
+    hint = QLabel("Tip: you can set API keys as environment variables instead-hover for a list.")
     hint.setWordWrap(True)
     hint.setStyleSheet("color:#9BB0C4;font-size:12px;")
     hint.setToolTip(

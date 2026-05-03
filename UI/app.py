@@ -83,7 +83,7 @@ def main() -> None:
     if splash is not None:
         splash.set_progress(22, "Loading main window code…")
         # Import is heavy on cold start (frozen EXE); indeterminate bar while blocked.
-        splash.set_indeterminate("Loading modules — this can take a while on first launch…")
+        splash.set_indeterminate("Loading modules - this can take a while on first launch…")
     from UI.main_window import MainWindow
 
     if splash is not None:

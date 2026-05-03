@@ -131,5 +131,5 @@ class ModelExecutionModeToggle(QWidget):
         if want != prev:
             self.currentIndexChanged.emit(want)
 
-    def currentData(self, role: int | None = None) -> str:  # noqa: ARG002 — match QComboBox signature
+    def currentData(self, role: int | None = None) -> str:  # noqa: ARG002 - match QComboBox signature
         return "api" if self._api.isChecked() else "local"

@@ -367,7 +367,7 @@ def aquaduct_message_with_details(
 
 def show_hf_token_dialog(parent) -> tuple[bool, str]:
     """
-    Borderless Hugging Face token prompt. Returns (accepted, token) — token may be empty if cancelled.
+    Borderless Hugging Face token prompt. Returns (accepted, token) - token may be empty if cancelled.
     """
     dlg = FramelessDialog(parent, title="Hugging Face token (recommended)")
     dlg.setMinimumWidth(520)

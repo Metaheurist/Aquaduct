@@ -16,6 +16,7 @@ from src.core.config import (
     AppSettings,
     BrandingSettings,
     GpuSelectionMode,
+    LLMChatGeometry,
     ModelExecutionMode,
     MultiGpuShardMode,
     PictureSettings,
@@ -168,6 +169,17 @@ def _sanitize_topic_tags_map(raw: Any) -> dict[str, list[str]]:
             continue
         merged[kk] = _sanitize_tags(v)
     return merged
+
+
+def _parse_llm_chat_geometry(raw: Any) -> LLMChatGeometry:
+    if not isinstance(raw, dict):
+        return LLMChatGeometry()
+    w = int(raw.get("width", 0) or 0)
+    h = int(raw.get("height", 0) or 0)
+    x_raw, y_raw = raw.get("x"), raw.get("y")
+    x = int(x_raw) if x_raw is not None and str(x_raw).strip().lstrip("-").isdigit() else None
+    y = int(y_raw) if y_raw is not None and str(y_raw).strip().lstrip("-").isdigit() else None
+    return LLMChatGeometry(width=w, height=h, x=x, y=y)
 
 
 def load_settings() -> AppSettings:
@@ -437,6 +449,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         youtube_auto_upload_after_render=bool(data.get("youtube_auto_upload_after_render", False))
         if isinstance(data, dict)
         else False,
+        llm_chat_geometry=_parse_llm_chat_geometry(data.get("llm_chat_geometry"))
+        if isinstance(data, dict)
+        else LLMChatGeometry(),
         tutorial_completed=bool(data.get("tutorial_completed", False)) if isinstance(data, dict) else False,
         gpu_selection_mode=_norm_gpu_selection_mode(data.get("gpu_selection_mode")) if isinstance(data, dict) else "auto",
         gpu_device_index=int(data.get("gpu_device_index", 0)) if isinstance(data, dict) else 0,

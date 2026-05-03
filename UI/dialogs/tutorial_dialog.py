@@ -47,32 +47,32 @@ TUTORIAL_TOPICS: list[_Topic] = [
             ),
             (
                 "Title bar & saving",
-                "Save — writes every tab’s settings to ui_settings.json (same as Run → Save settings).\n\n"
-                "Resource graph — opens the Resource usage window (about once per second). Default is a compact "
+                "Save - writes every tab’s settings to ui_settings.json (same as Run → Save settings).\n\n"
+                "Resource graph - opens the Resource usage window (about once per second). Default is a compact "
                 "**summary** (numbers only); use the title-bar toggle to switch to **live charts** for CPU, RAM, "
                 "and GPU VRAM. The next slide explains Monitor GPU, split view, and Purge memory.\n\n"
-                "Help — opens this window any time.\n\n"
+                "Help - opens this window any time.\n\n"
                 "Drag the top bar to move the window. The app uses a fixed width; height follows the active tab.",
             ),
             (
                 "Resource usage monitor",
                 "The Resource usage window samples about once per second.\n\n"
-                "CPU — usage for this process tree (including subprocesses such as FFmpeg), normalized vs logical cores.\n\n"
-                "RAM — in chart mode the yellow series is process-tree RSS vs total RAM; the label always shows "
+                "CPU - usage for this process tree (including subprocesses such as FFmpeg), normalized vs logical cores.\n\n"
+                "RAM - in chart mode the yellow series is process-tree RSS vs total RAM; the label always shows "
                 "MB by app vs other (approximate split from psutil). Hover labels and the Monitor combo for tooltips "
                 "with **Open in Help** links.\n\n"
-                "GPU VRAM — percent used on the CUDA device selected in the Monitor dropdown (when multiple GPUs exist, "
-                "Auto routing may put script LLM on one card and diffusion on another — switch entries to compare).\n\n"
-                "Split view — pick “Split view — all GPUs” at the bottom of the same Monitor dropdown for each CUDA "
-                "GPU (chart per device when expanded; one VRAM line per GPU in summary mode — scroll when many devices).\n\n"
-                "Purge (sparkle icon beside Monitor) — runs aggressive Python garbage collection and clears the PyTorch "
+                "GPU VRAM - percent used on the CUDA device selected in the Monitor dropdown (when multiple GPUs exist, "
+                "Auto routing may put script LLM on one card and diffusion on another - switch entries to compare).\n\n"
+                "Split view - pick “Split view - all GPUs” at the bottom of the same Monitor dropdown for each CUDA "
+                "GPU (chart per device when expanded; one VRAM line per GPU in summary mode - scroll when many devices).\n\n"
+                "Purge (sparkle icon beside Monitor) - runs aggressive Python garbage collection and clears the PyTorch "
                 "CUDA cache on all GPUs (and MPS cache on Apple Silicon). It frees unreachable objects and returns "
                 "allocator memory to the driver; it does **not** force-unload models that are still in use by a "
                 "running job. Status text appears under the metrics area after you click (or under charts in expanded mode).",
             ),
             (
                 "Small UX details",
-                "Scrolling with the mouse wheel moves the page, not combo boxes or number fields — "
+                "Scrolling with the mouse wheel moves the page, not combo boxes or number fields - "
                 "those only change when you click or use the keyboard. That avoids accidental edits while scrolling.\n\n"
                 "On first launch you may be asked for a Hugging Face token (optional but helps downloads and gated models). "
                 "This tutorial can appear after that prompt; closing it once records that you’ve seen it.",
@@ -87,7 +87,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
                 "Videos to generate & queue",
                 "Each unit is one full pipeline run = one output video folder. Set N greater than 1 to queue "
                 "multiple independent runs. The first starts immediately; the rest wait in FIFO order.\n\n"
-                "You can click Run again while a job is running — new clicks append to the queue. Stop cancels "
+                "You can click Run again while a job is running - new clicks append to the queue. Stop cancels "
                 "the current job and clears queued pipeline runs. Each queued row keeps the settings from "
                 "when you clicked.",
             ),
@@ -95,7 +95,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
                 "Preset vs Custom content",
                 "Preset uses your per-format topic tags plus the news/headline cache (behavior depends on "
                 "video format). Custom uses your multiline instructions: the script model expands them into a "
-                "brief, then writes the full script (two LLM passes — slower than Preset). Custom does not "
+                "brief, then writes the full script (two LLM passes - slower than Preset). Custom does not "
                 "pick headlines from the cache; tags still help hashtags when relevant.",
             ),
             (
@@ -119,7 +119,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
         label="Topics & Characters",
         slides=[
             (
-                "Topics — tags per format",
+                "Topics - tags per format",
                 "The mode selector matches video formats. Each mode has its own tag list stored in settings. "
                 "Tags bias crawling and scripting for that format only.\n\n"
                 "Use the brain icon on a tag line to expand or improve it with the same Script (LLM) model "
@@ -146,17 +146,17 @@ TUTORIAL_TOPICS: list[_Topic] = [
         slides=[
             (
                 "The four model roles",
-                "Script (LLM) — writes and refines the script; also powers brain-expand on Topics and Characters.\n\n"
-                "Image — still frames, slideshow, and Pro keyframes for image-to-video models.\n\n"
-                "Video — motion clips or Pro segments: text-to-video models animate prompts; img2vid models "
+                "Script (LLM) - writes and refines the script; also powers brain-expand on Topics and Characters.\n\n"
+                "Image - still frames, slideshow, and Pro keyframes for image-to-video models.\n\n"
+                "Video - motion clips or Pro segments: text-to-video models animate prompts; img2vid models "
                 "use keyframes from the Image model.\n\n"
-                "Voice — TTS for narration (local Kokoro-style repos or API routes in API mode).",
+                "Voice - TTS for narration (local Kokoro-style repos or API routes in API mode).",
             ),
             (
                 "Local vs API execution",
-                "Local — Hugging Face weights under your models folder, downloads, verify checksums, Auto-fit "
+                "Local - Hugging Face weights under your models folder, downloads, verify checksums, Auto-fit "
                 "for this PC, VRAM fit badges.\n\n"
-                "API — hides local download UI and shows Generation APIs (OpenAI, Replicate, etc.) with keys; "
+                "API - hides local download UI and shows Generation APIs (OpenAI, Replicate, etc.) with keys; "
                 "same panel is shared with the API tab. Pick providers per role in settings.",
             ),
             (
@@ -164,12 +164,12 @@ TUTORIAL_TOPICS: list[_Topic] = [
                 "Download menu: per-role download, all voices, all selected, full curated list, import folder, "
                 "verify checksums against the Hub, check/install Python deps with a live log.\n\n"
                 "Badges show on-disk size, verified state, or problems. Clear data (Model tab) wipes local app "
-                "outputs and default models path — read the warning if you use an external models folder.",
+                "outputs and default models path - read the warning if you use an external models folder.",
             ),
             (
                 "Model files location",
                 "Default stores snapshots under .Aquaduct_data/models. External points to another folder for "
-                "large disks or shared libraries — set path, Apply, and use Detect to list snapshots.\n\n"
+                "large disks or shared libraries - set path, Apply, and use Detect to list snapshots.\n\n"
                 "Title-bar Save persists storage mode with everything else.",
             ),
         ],
@@ -196,12 +196,12 @@ TUTORIAL_TOPICS: list[_Topic] = [
                 "Quality & story options",
                 "Prefer GPU, topic quality, fetch article text, and prompt conditioning tune behavior.\n\n"
                 "Story pipeline options: multi-stage script review, Firecrawl web context, reference images "
-                "for img2img — need API keys where noted. Cartoon/Unhinged can merge Discover research into context.",
+                "for img2img - need API keys where noted. Cartoon/Unhinged can merge Discover research into context.",
             ),
             (
                 "Advanced on Video tab",
                 "Optional background music path, clear news URL/title cache, NSFW allow (disables diffusion "
-                "safety checker — use responsibly).\n\n"
+                "safety checker - use responsibly).\n\n"
                 "Effects tab: transitions, motion strength, audio polish, SFX, ducking. Captions tab: word "
                 "captions and Key facts card (News/Explainer only for the facts overlay).",
             ),
@@ -214,7 +214,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
             (
                 "Tasks tab",
                 "The tab badge shows a count while pipeline, preview, storyboard, or upload workers run, "
-                "or when runs are queued — each queued pipeline appears as its own row.\n\n"
+                "or when runs are queued - each queued pipeline appears as its own row.\n\n"
                 "Finished renders list from upload_tasks.json: open folder, play final.mp4, copy caption, "
                 "mark posted, upload to TikTok or YouTube when configured.",
             ),
@@ -233,9 +233,9 @@ TUTORIAL_TOPICS: list[_Topic] = [
         slides=[
             (
                 "Keys: HF, Firecrawl, ElevenLabs",
-                "Hugging Face token — optional; helps size checks, gated models, and downloads.\n\n"
-                "Firecrawl — enable with API key for Discover, article text, and story web context.\n\n"
-                "ElevenLabs — optional cloud TTS when enabled and a character selects an ElevenLabs voice.",
+                "Hugging Face token - optional; helps size checks, gated models, and downloads.\n\n"
+                "Firecrawl - enable with API key for Discover, article text, and story web context.\n\n"
+                "ElevenLabs - optional cloud TTS when enabled and a character selects an ElevenLabs voice.",
             ),
             (
                 "Generation APIs (API mode)",
@@ -270,7 +270,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
             (
                 "My PC tab",
                 "Shows CPU, RAM, GPU, and VRAM at a glance plus short guidance. Model rows on the Model tab "
-                "include fit badges (Excellent / OK / Risky / etc.) from simple VRAM heuristics — not a guarantee, "
+                "include fit badges (Excellent / OK / Risky / etc.) from simple VRAM heuristics - not a guarantee, "
                 "but useful when choosing weights.\n\n"
                 "Auto-fit on the Model tab re-picks script, image, video, and voice models for the detected hardware.",
             ),
@@ -297,7 +297,7 @@ class TutorialDialog(FramelessDialog):
         start_topic_id: str | None = None,
         start_slide: int = 0,
     ) -> None:
-        super().__init__(parent, title="Help — tutorials")
+        super().__init__(parent, title="Help - tutorials")
         self.setMinimumSize(920, 520)
         self.resize(960, 540)
 
@@ -422,7 +422,7 @@ class TutorialDialog(FramelessDialog):
         self._slide_title.setText(title)
         self._body.setPlainText(text.replace("**", ""))
         n = len(slides)
-        self._counter.setText(f"Slide {self._slide_index + 1} of {n} — {topic.label}")
+        self._counter.setText(f"Slide {self._slide_index + 1} of {n} - {topic.label}")
 
         can_prev = self._slide_index > 0 or self._topic_index > 0
         self._prev_btn.setEnabled(can_prev)

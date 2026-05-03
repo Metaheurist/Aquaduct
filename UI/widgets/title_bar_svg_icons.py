@@ -36,7 +36,7 @@ _SVGS: dict[str, str] = {
   <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 8.5-8.5 8.38 8.38 0 0 1 3.8.9 8.5 8.5 0 0 1 3.7 11.6z"/>
   <path d="M8 10h.01M12 10h.01M16 10h.01"/>
 </svg>""",
-    # Cylinder (VRAM heap) + sparkles — “purge / clear caches” (Resource usage dialog).
+    # Cylinder (VRAM heap) + sparkles - “purge / clear caches” (Resource usage dialog).
     "purge": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <ellipse cx="12" cy="7" rx="7" ry="3"/>
   <path d="M5 7v5c0 1.66 3.13 3 7 3s7-1.34 7-3V7"/>
@@ -45,14 +45,14 @@ _SVGS: dict[str, str] = {
   <path d="M19 5l1 1M20 4l-1 1"/>
   <path d="M15 3l1 1M16 2l-1 1"/>
 </svg>""",
-    # Outward corners — “expand resource charts” (shown in mini mode; click expands).
+    # Outward corners - “expand resource charts” (shown in mini mode; click expands).
     "resource_expand": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <polyline points="9,21 3,21 3,15"/>
   <polyline points="15,21 21,21 21,15"/>
   <polyline points="21,9 21,3 15,3"/>
   <polyline points="3,9 3,3 9,3"/>
 </svg>""",
-    # Inward corners — “compact resource charts” (shown in expanded mode; click goes mini).
+    # Inward corners - “compact resource charts” (shown in expanded mode; click goes mini).
     "resource_compress": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <polyline points="15,21 21,21 21,15"/>
   <polyline points="9,21 3,21 3,15"/>

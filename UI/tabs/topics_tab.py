@@ -207,7 +207,7 @@ def attach_topics_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
-    intro = QLabel("Per-mode tag lists — same modes as Run. Details: hover Help or the mode control.")
+    intro = QLabel("Per-mode tag lists - same modes as Run. Details: hover Help or the mode control.")
     intro.setStyleSheet("color: #B7B7C2; font-size: 12px;")
     intro.setWordWrap(True)
     lay.addWidget(intro)
@@ -259,7 +259,7 @@ def attach_topics_tab(win) -> None:
     tags_lay.addWidget(win.tag_list, 1)
 
     notes_intro = QLabel(
-        "Optional grounding line per tag: the script LLM treats topic tags as hard constraints — "
+        "Optional grounding line per tag: the script LLM treats topic tags as hard constraints - "
         "these notes add extra direction (tone, must-mention angles, things to avoid)."
     )
     notes_intro.setWordWrap(True)
@@ -281,7 +281,7 @@ def attach_topics_tab(win) -> None:
     win.topic_notes_llm_btn = QPushButton("Suggest with LLM")
     win.topic_notes_llm_btn.setToolTip(
         help_tooltip_rich(
-            "Generates grounding lines from the Script LLM — one concise line per tag (API uses your Models API settings; "
+            "Generates grounding lines from the Script LLM - one concise line per tag (API uses your Models API settings; "
             "offline uses Model tab HF script model). Checked box replaces existing notes; otherwise empty fields only.",
             "topics_chars",
             slide=0,

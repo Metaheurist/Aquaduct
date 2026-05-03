@@ -95,5 +95,17 @@ The **Characters** tab can fill all text fields from a built-in archetype: **`ge
 **`resolve_llm_model_id(win)`** returns, in order: **`llm_combo.currentData()`** if set, else **`settings.llm_model_id`**, else the default from **`get_models()`**. This keeps 🧠 expand and character generation aligned with the **Model** tab selection even before the user clicks **Save settings**.
 
 ## Title bar LLM chat (desktop)
-The non-modal **LLM chat** window ([`UI/dialogs/llm_chat_dialog.py`](../../UI/dialogs/llm_chat_dialog.py)) targets the same script model as API vs local execution (**`resolve_chat_target`**, **`_infer_text_with_optional_holder`**). Streaming local generation supports a cooperative **`cancel_event`** on **`_generate_with_loaded_causal_lm`** / **`_infer_text_with_optional_holder`** so **Stop** can end generation without a second fallback **`generate`**. Encrypted transcripts persist under **`.Aquaduct_data`** via [`src/util/llm_chat_transcript_store.py`](../../src/util/llm_chat_transcript_store.py).
+The non-modal **LLM chat** window ([`UI/dialogs/llm_chat_dialog.py`](../../UI/dialogs/llm_chat_dialog.py)) targets the same script model as API vs local execution (**`resolve_chat_target`**, **`_infer_text_with_optional_holder`**). Streaming local generation supports a cooperative **`cancel_event`** on **`_generate_with_loaded_causal_lm`** / **`_infer_text_with_optional_holder`** so **Stop** can end generation without a second fallback **`generate`**. Encrypted transcripts persist under **`.Aquaduct_data`** via [`src/util/llm_chat_transcript_store.py`](../../src/util/llm_chat_transcript_store.py). **Window geometry** (size + position) is stored in **`AppSettings.llm_chat_geometry`** and **`ui_settings.json`** so reopening the chat restores the last layout (clamped to the available screen).
+
+**Retrieval-augmented context** for chat uses hybrid **BM25 + dense** similarity over static docs, tutorials, and live UI tooltips ([`src/content/llm_chat_rag.py`](../../src/content/llm_chat_rag.py)); optional **cross-encoder** reranking and threshold-gated **hnswlib** ANN for cosine neighbors are controlled by environment variables ([Config: Title bar LLM chat — RAG](../reference/config.md#title-bar-llm-chat--rag-and-optional-tuning)).
+
+## Pipeline single-shot local generation (`_generate_with_loaded_causal_lm`)
+
+Multistage pipeline calls that already have a **loaded** causal LM (script JSON batches, recap lines, article relevance, custom brief expansion internals, etc.) go through **`_generate_with_loaded_causal_lm`** in [`src/content/brain.py`](../../src/content/brain.py) instead of reloading weights per string.
+
+- When **`tokenizer.chat_template`** is set and **`AQUADUCT_PIPELINE_FORCE_ALPACA`** is **not** **`1`**, the prompt is turned into a single **user** message: plain **`prompt`** text is used, or—if the string still looks like legacy Alpaca markup—the body after **`### Instruction:`** and before **`### Response:`** is extracted (**`_pipeline_prompt_body_for_chat_template`**). Inputs are built with **`apply_chat_template`** (`add_generation_prompt=True`).
+- When **`chat_template`** is missing or the env forces Alpaca, the historical wrap is used: **`### Instruction:\n{prompt}\n\n### Response:\n`** plus **`tokenizer(...)`**.
+- **`eos_token_id`** is set from **`_eos_token_id_candidates`** so common instruct stop tokens (e.g. **`<|eot_id|>`**) terminate generation instead of running to the profile **`max_new_tokens`** cap when the model emits them.
+
+Sampling (**`temperature`**, **`top_p`**, **`repetition_penalty`**) and **`max_new_tokens`** behavior match the previous pipeline; only formatting and stop-token handling change on chat-templated models.
 

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtGui import QDesktopServices, QGuiApplication
-from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal
+from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal, QThread
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -132,6 +132,22 @@ _TASKS_ACTIVE_JOB_TOKEN = "__active_job__"
 _TASKS_QUEUED_PIPELINE_TOKEN = "__queued_pipeline__"
 
 
+class _ChatRagIndexWorker(QThread):
+    """Build hybrid RAG index off the UI thread (tooltips are collected on GUI first)."""
+
+    finished_ok = pyqtSignal(object)
+
+    def __init__(self, static_snippets, tooltip_snippets) -> None:
+        super().__init__()
+        self._static = static_snippets
+        self._tooltips = tooltip_snippets
+
+    def run(self) -> None:
+        from src.content.llm_chat_rag import build_chat_docs_index
+
+        self.finished_ok.emit(build_chat_docs_index(self._static, self._tooltips))
+
+
 class _InternetStatusBridge(QObject):
     """Emit reachability from a worker thread (Qt delivers the slot on the GUI thread)."""
 
@@ -202,7 +218,7 @@ class MainWindow(QMainWindow):
         save_btn.setFixedSize(44, 32)
         save_btn.setToolTip(
             help_tooltip_rich(
-                "Save — writes every tab’s settings to ui_settings.json (same as Run → Save settings).",
+                "Save - writes every tab’s settings to ui_settings.json (same as Run → Save settings).",
                 "welcome",
                 slide=1,
             )
@@ -214,7 +230,7 @@ class MainWindow(QMainWindow):
         graph_btn.setFixedSize(44, 32)
         graph_btn.setToolTip(
             help_tooltip_rich(
-                "Resource graph — live CPU, RAM, and GPU memory for this process (about once per second).",
+                "Resource graph - live CPU, RAM, and GPU memory for this process (about once per second).",
                 "welcome",
                 slide=2,
             )
@@ -226,7 +242,7 @@ class MainWindow(QMainWindow):
         chat_btn.setFixedSize(44, 32)
         chat_btn.setToolTip(
             help_tooltip_rich(
-                "LLM chat — talk with the selected script model (Model tab / API tab). Opens in a separate window.",
+                "LLM chat - talk with the selected script model (Model tab / API tab). Opens in a separate window.",
                 "welcome",
                 slide=0,
             )
@@ -238,7 +254,7 @@ class MainWindow(QMainWindow):
         help_btn.setFixedSize(44, 32)
         help_btn.setToolTip(
             help_tooltip_rich(
-                "Help — opens tutorials and tips (this window).",
+                "Help - opens tutorials and tips (this window).",
                 "welcome",
                 slide=0,
             )
@@ -285,6 +301,10 @@ class MainWindow(QMainWindow):
         attach_api_tab(self)
         attach_settings_tab(self)
         attach_my_pc_tab(self)
+
+        self._chat_docs_index = None
+        self._chat_docs_index_worker: QThread | None = None
+        self._start_chat_docs_index_build()
 
         # Tasks tab builds before the API tab; upload buttons need API widgets + current keys for visibility.
         try:
@@ -620,7 +640,7 @@ class MainWindow(QMainWindow):
     def _maybe_prompt_cuda_torch_mismatch(self) -> None:
         """
         If local mode sees an NVIDIA GPU but PyTorch is CPU-only, offer the streaming PyTorch installer
-        (CUDA wheels with live pip progress — same stack as Model → Install dependencies → PyTorch step).
+        (CUDA wheels with live pip progress - same stack as Model → Install dependencies → PyTorch step).
         """
         try:
             if str(getattr(self.settings, "model_execution_mode", "local") or "").strip().lower() != "local":
@@ -669,7 +689,7 @@ class MainWindow(QMainWindow):
             elif out:
                 self._append_log(out[:4000] + ("…" if len(out) > 4000 else ""))
             self._append_log(
-                "PyTorch CUDA install finished OK — restart Aquaduct to load the new build."
+                "PyTorch CUDA install finished OK - restart Aquaduct to load the new build."
                 if code == 0
                 else f"PyTorch CUDA install exited with code {code}."
             )
@@ -766,7 +786,7 @@ class MainWindow(QMainWindow):
         return out
 
     def _pipeline_run_should_queue(self) -> bool:
-        """True while a pipeline, preview, or storyboard job is active — Run should enqueue instead of starting."""
+        """True while a pipeline, preview, or storyboard job is active - Run should enqueue instead of starting."""
         if self.worker is not None and self.worker.isRunning():
             return True
         if self.preview_worker is not None and self.preview_worker.isRunning():
@@ -776,7 +796,7 @@ class MainWindow(QMainWindow):
         return False
 
     def _running_tasks_badge_count(self) -> int:
-        """Pipeline/preview/storyboard workers, queued runs, and Tasks-tab uploads — for the Tasks tab label."""
+        """Pipeline/preview/storyboard workers, queued runs, and Tasks-tab uploads - for the Tasks tab label."""
         n = len(getattr(self, "_pipeline_run_queue", None) or [])
         if self.worker is not None and self.worker.isRunning():
             n += 1
@@ -1162,7 +1182,7 @@ class MainWindow(QMainWindow):
             p = get_personality_by_id(pid)
             tip = f"{p.description}\n\n" + "\n".join(p.style_rules[:5])
             tip += (
-                "\n\nVoice: this preset steers the spoken delivery — MOSS uses it in the style instruction; "
+                "\n\nVoice: this preset steers the spoken delivery - MOSS uses it in the style instruction; "
                 "Kokoro / pyttsx3 / ElevenLabs use the shaped script (pacing, line breaks) from the same choice."
             )
             self.personality_combo.setToolTip(help_tooltip_rich(tip, "run", slide=2))
@@ -1260,13 +1280,13 @@ class MainWindow(QMainWindow):
         elif mode == "health_advice":
             tip = (
                 'Discover: Firecrawl searches for wellness and health-education pages '
-                '(using your "health_advice" tags when set) and suggests topic phrases from titles — '
+                '(using your "health_advice" tags when set) and suggests topic phrases from titles - '
                 "enable Firecrawl on the API tab with a key."
             )
         else:
             tip = (
                 f'Discover: Firecrawl searches the open web for creative seeds '
-                f'(using your "{mode}" tags when set) and suggests topic phrases from page titles — '
+                f'(using your "{mode}" tags when set) and suggests topic phrases from page titles - '
                 "enable Firecrawl on the API tab with a key."
             )
         self.discover_btn.setToolTip(help_tooltip_rich(tip, "topics_chars", slide=0))
@@ -1492,7 +1512,7 @@ class MainWindow(QMainWindow):
             aquaduct_information(
                 self,
                 "Nothing to generate",
-                "Every tag already has a grounding note — enable Replace existing notes to regenerate.",
+                "Every tag already has a grounding note - enable Replace existing notes to regenerate.",
             )
             return
         mid = script_llm_model_id_from_ui(self)
@@ -1559,7 +1579,7 @@ class MainWindow(QMainWindow):
         if not notes:
             aquaduct_warning(
                 self,
-                "Topic grounding — no usable output",
+                "Topic grounding - no usable output",
                 "The LLM returned no grounding lines the app could parse. Try another model or turn on Models API.",
             )
             return
@@ -2082,6 +2102,29 @@ class MainWindow(QMainWindow):
         """Folder for Hugging Face snapshots: default ``.Aquaduct_data/models`` or configured external path."""
         return models_dir_for_app(self._collect_settings_from_ui())
 
+    def _start_chat_docs_index_build(self) -> None:
+        if self._chat_docs_index_worker is not None and self._chat_docs_index_worker.isRunning():
+            return
+        try:
+            from src.content.llm_chat_rag import collect_static_snippets, collect_tooltip_snippets
+
+            static = collect_static_snippets()
+            tips = collect_tooltip_snippets(self)
+        except Exception:
+            return
+        w = _ChatRagIndexWorker(static, tips)
+        self._chat_docs_index_worker = w
+        w.finished_ok.connect(self._on_chat_docs_index_ready)
+        w.start()
+
+    def _on_chat_docs_index_ready(self, idx) -> None:
+        self._chat_docs_index = idx
+        self._chat_docs_index_worker = None
+
+    def _rebuild_chat_docs_index(self) -> None:
+        """Rebuild chat RAG index (e.g. after tutorial/tooltip edits during development)."""
+        self._start_chat_docs_index_build()
+
     def _on_llm_chat_closed(self) -> None:
         self._llm_chat_dialog = None
 
@@ -2207,7 +2250,7 @@ class MainWindow(QMainWindow):
             self._append_log(
                 "Could not save settings to disk (permission denied). "
                 "Close other copies of Aquaduct, pause OneDrive sync for this repo’s .Aquaduct_data folder, "
-                "or check that ui_settings.json is not open in another program — your current choices still apply until you quit."
+                "or check that ui_settings.json is not open in another program - your current choices still apply until you quit."
             )
 
     def _open_videos(self) -> None:
@@ -2424,7 +2467,7 @@ class MainWindow(QMainWindow):
                 preview += f", … (+{len(have) - 4} more)"
             self._append_log(f"Skipping {len(have)} already downloaded: {preview}")
         if not need:
-            self._append_log("Nothing to download — selected model(s) are already on disk.")
+            self._append_log("Nothing to download - selected model(s) are already on disk.")
             return
         self._start_download(need, title="Downloading model")
 
@@ -2450,7 +2493,7 @@ class MainWindow(QMainWindow):
                 preview += f", … (+{len(have) - 4} more)"
             self._append_log(f"Skipping {len(have)} already downloaded: {preview}")
         if not need:
-            self._append_log("All selected models are already on disk — nothing to download.")
+            self._append_log("All selected models are already on disk - nothing to download.")
             return
         self._start_download(need, title="Downloading selected models")
 
@@ -2780,7 +2823,7 @@ class MainWindow(QMainWindow):
                     info_text = (
                         "Failed checks mean missing weight files or checksum mismatches. "
                         "Re-download affected models from the Download tab.\n\n"
-                        "“Unexpected extra files” often includes Hub cache — focus on missing files first."
+                        "“Unexpected extra files” often includes Hub cache - focus on missing files first."
                     )
             else:
                 main_text = "Verification finished."
@@ -2947,7 +2990,7 @@ class MainWindow(QMainWindow):
             return True
         if self._ffmpeg_ensure_worker and self._ffmpeg_ensure_worker.isRunning():
             self._append_log(
-                'FFmpeg is still downloading — wait for "FFmpeg is ready" in the log, then click Run again.'
+                'FFmpeg is still downloading - wait for "FFmpeg is ready" in the log, then click Run again.'
             )
             return False
         self._append_log(
@@ -3358,7 +3401,7 @@ class MainWindow(QMainWindow):
             n = len(self._pipeline_run_queue)
             dprint("tasks", "pipeline queued (launch pending)", f"depth={n} batch_qty={qty}")
             self._append_log(
-                f"Run queued ({n} job(s) waiting — pipeline launch already in progress)."
+                f"Run queued ({n} job(s) waiting - pipeline launch already in progress)."
             )
             self._tasks_refresh()
             try:
@@ -3469,7 +3512,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._set_tasks_active_row(
-            self._task_title_with_mode(self.settings, "Preview script"), "Starting…", folder="—"
+            self._task_title_with_mode(self.settings, "Preview script"), "Starting…", folder="-"
         )
 
         self._pipeline_control = PipelineRunControl()
@@ -3586,7 +3629,7 @@ class MainWindow(QMainWindow):
             )
             n = len(self._pipeline_run_queue)
             self._append_log(
-                f"Approved preview run queued ({n} job(s) waiting — pipeline launch already in progress)."
+                f"Approved preview run queued ({n} job(s) waiting - pipeline launch already in progress)."
             )
             self._tasks_refresh()
             try:
@@ -3643,7 +3686,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._set_tasks_active_row(
-            self._task_title_with_mode(self.settings, "Storyboard preview"), "Starting…", folder="—"
+            self._task_title_with_mode(self.settings, "Storyboard preview"), "Starting…", folder="-"
         )
 
         self._pipeline_control = PipelineRunControl()
@@ -3751,7 +3794,7 @@ class MainWindow(QMainWindow):
             )
             n = len(self._pipeline_run_queue)
             self._append_log(
-                f"Approved storyboard run queued ({n} job(s) waiting — pipeline launch already in progress)."
+                f"Approved storyboard run queued ({n} job(s) waiting - pipeline launch already in progress)."
             )
             self._tasks_refresh()
             try:
@@ -3844,7 +3887,7 @@ class MainWindow(QMainWindow):
         ).strip():
             return
         if getattr(s, "tiktok_publishing_mode", "inbox") != "inbox":
-            self._append_log("TikTok auto-upload skipped — set publishing mode to Inbox.")
+            self._append_log("TikTok auto-upload skipped - set publishing mode to Inbox.")
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
             return
@@ -3866,7 +3909,7 @@ class MainWindow(QMainWindow):
         if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
-            # Avoid overlapping heavy uploads — user can retry YouTube from Tasks
+            # Avoid overlapping heavy uploads - user can retry YouTube from Tasks
             return
         self._append_log("Starting YouTube upload (auto)…")
         self._start_youtube_upload_worker(task_id)
@@ -3878,7 +3921,7 @@ class MainWindow(QMainWindow):
         *,
         youtube: str = "",
         created: str | None = None,
-        folder: str = "—",
+        folder: str = "-",
     ) -> None:
         c = created or (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M") + " UTC")
         self._tasks_active_row = {
@@ -3978,7 +4021,7 @@ class MainWindow(QMainWindow):
             dprint("ui", "_on_tasks_pause_toggle", "pause requested")
             rc.request_pause()
             self._sync_tasks_pause_button_appearance()
-            self._append_log("Pause requested — takes effect after the current step finishes.")
+            self._append_log("Pause requested - takes effect after the current step finishes.")
 
     def _on_tasks_stop(self) -> None:
         dprint(
@@ -4012,7 +4055,7 @@ class MainWindow(QMainWindow):
         if dropped:
             self._pipeline_run_queue.clear()
             extra = f" (including {series_n} series episode(s))" if series_n else ""
-            self._append_log(f"Pipeline cancelled — dropped {dropped} queued job(s){extra}.")
+            self._append_log(f"Pipeline cancelled - dropped {dropped} queued job(s){extra}.")
         else:
             self._append_log("Pipeline cancelled.")
         try:
@@ -4101,7 +4144,7 @@ class MainWindow(QMainWindow):
             self.tasks_table.setItem(row, 1, QTableWidgetItem(str(ar.get("status", "running"))[:200]))
             self.tasks_table.setItem(row, 2, QTableWidgetItem(str(ar.get("youtube", ""))[:80]))
             self.tasks_table.setItem(row, 3, QTableWidgetItem(str(ar.get("created", ""))[:24]))
-            self.tasks_table.setItem(row, 4, QTableWidgetItem(str(ar.get("folder", "—"))[:120]))
+            self.tasks_table.setItem(row, 4, QTableWidgetItem(str(ar.get("folder", "-"))[:120]))
             row += 1
 
         for qi, qitem in enumerate(getattr(self, "_pipeline_run_queue", None) or []):
@@ -4115,7 +4158,7 @@ class MainWindow(QMainWindow):
             self.tasks_table.setItem(row, 0, tq)
             self.tasks_table.setItem(row, 1, QTableWidgetItem("Waiting in queue…"))
             self.tasks_table.setItem(row, 2, QTableWidgetItem(""))
-            self.tasks_table.setItem(row, 3, QTableWidgetItem("—"))
+            self.tasks_table.setItem(row, 3, QTableWidgetItem("-"))
             self.tasks_table.setItem(row, 4, QTableWidgetItem("Queued"))
             row += 1
 
@@ -4288,12 +4331,12 @@ class MainWindow(QMainWindow):
         # In-progress row: Stop cancels the run; Remove is for finished uploads or queued snapshots only.
         if token == _TASKS_ACTIVE_JOB_TOKEN:
             self._append_log(
-                "Cannot remove the in-progress run from the list — use **Stop** to cancel it "
+                "Cannot remove the in-progress run from the list - use **Stop** to cancel it "
                 "(queued jobs can be removed without waiting)."
             )
             return
 
-        # Queued pipeline / preview / storyboard: drop from FIFO — instant, no interaction with the running worker.
+        # Queued pipeline / preview / storyboard: drop from FIFO - instant, no interaction with the running worker.
         if token == _TASKS_QUEUED_PIPELINE_TOKEN:
             qix = it0.data(Qt.ItemDataRole.UserRole + 1)
             if not isinstance(qix, int):
@@ -4352,7 +4395,7 @@ class MainWindow(QMainWindow):
         if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
-            aquaduct_information(self, "Uploads", "Another upload is in progress — wait for it to finish.")
+            aquaduct_information(self, "Uploads", "Another upload is in progress - wait for it to finish.")
             return
         self._start_youtube_upload_worker(tid)
 
@@ -4462,7 +4505,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=work, daemon=True).start()
         url = build_authorize_url(client_key=ck, redirect_uri=redirect, state=state, scopes=scopes, code_challenge=challenge)
         QTimer.singleShot(350, lambda: webbrowser.open(url))
-        self._append_log("Opened browser for TikTok login — complete authorization in the browser.")
+        self._append_log("Opened browser for TikTok login - complete authorization in the browser.")
 
     def _tiktok_oauth_ui_failed(self, err: str) -> None:
         aquaduct_warning(self, "TikTok OAuth", err[:800])
@@ -4548,7 +4591,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=work, daemon=True).start()
         url = build_authorization_url(client_id=cid, redirect_uri=redirect, state=state)
         QTimer.singleShot(350, lambda: webbrowser.open(url))
-        self._append_log("Opened browser for Google login — finish authorization to enable YouTube uploads.")
+        self._append_log("Opened browser for Google login - finish authorization to enable YouTube uploads.")
 
     def _youtube_oauth_ui_failed(self, err: str) -> None:
         aquaduct_warning(self, "YouTube OAuth", err[:800])
@@ -4588,7 +4631,7 @@ class MainWindow(QMainWindow):
             dropped = drop_queued_series_items_for_slug(self._pipeline_run_queue, sc.series_slug)
             if dropped:
                 self._append_log(
-                    f"Series aborted at episode {sc.episode_index}/{sc.episode_total} — "
+                    f"Series aborted at episode {sc.episode_index}/{sc.episode_total} - "
                     f"dropped {dropped} remaining queued episode(s)."
                 )
         try:

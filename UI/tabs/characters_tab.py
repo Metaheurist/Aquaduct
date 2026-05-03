@@ -164,7 +164,7 @@ def attach_characters_tab(win) -> None:
     list_card, list_lay = section_card(margins=10, spacing=8)
     list_lay.addWidget(section_title("Characters", emphasis=True))
 
-    hint = QLabel("Host identity and visuals — assign on the Run tab.")
+    hint = QLabel("Host identity and visuals - assign on the Run tab.")
     hint.setWordWrap(True)
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     list_lay.addWidget(hint)
@@ -188,7 +188,7 @@ def attach_characters_tab(win) -> None:
     win.character_generate_btn.setToolTip(
         help_tooltip_rich(
             "Fill name, identity, visual style, and negatives using the Model-tab script LLM (loads weights like other brain tasks). "
-            "Preset picks use the same LLM to invent a profile — click Save character when happy.",
+            "Preset picks use the same LLM to invent a profile - click Save character when happy.",
             "topics_chars",
             slide=2,
         )
@@ -301,7 +301,7 @@ def attach_characters_tab(win) -> None:
     portrait_hint.setText("Portrait uses the image model selected on the Model tab (same weights as slideshow / Run stills).")
     portrait_hint.setToolTip(
         help_tooltip_rich(
-            "Fill Visual style first — the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards.",
+            "Fill Visual style first - the portrait prompt is built from it. Saved on this profile for the script LLM and storyboards.",
             "topics_chars",
             slide=2,
         )
@@ -347,7 +347,7 @@ def attach_characters_tab(win) -> None:
     lbl_ko.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     edit_lay.addWidget(lbl_ko)
     win.character_kokoro_edit = QLineEdit()
-    win.character_kokoro_edit.setPlaceholderText("e.g. af_bella or “Bella” — leave empty to rotate voices")
+    win.character_kokoro_edit.setPlaceholderText("e.g. af_bella or “Bella” - leave empty to rotate voices")
     win.character_kokoro_edit.setMaximumHeight(26)
     edit_lay.addWidget(win.character_kokoro_edit)
 
@@ -364,7 +364,7 @@ def attach_characters_tab(win) -> None:
     edit_lay.addWidget(lbl_vi)
     win.character_voice_instruction_edit = QTextEdit()
     win.character_voice_instruction_edit.setPlaceholderText(
-        'Example: "Young woman, raspy, speaks fast" — only when MOSS is your voice model in Settings.'
+        'Example: "Young woman, raspy, speaks fast" - only when MOSS is your voice model in Settings.'
     )
     win.character_voice_instruction_edit.setAcceptRichText(False)
     win.character_voice_instruction_edit.setFixedHeight(56)
@@ -375,7 +375,7 @@ def attach_characters_tab(win) -> None:
     el_outer = QVBoxLayout(win.character_el_container)
     el_outer.setContentsMargins(0, 0, 0, 0)
     el_outer.setSpacing(2)
-    win.character_el_hint = QLabel("ElevenLabs when default voice is off — configure on API tab.")
+    win.character_el_hint = QLabel("ElevenLabs when default voice is off - configure on API tab.")
     win.character_el_hint.setWordWrap(True)
     win.character_el_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     win.character_el_hint.setToolTip(
@@ -716,7 +716,7 @@ def attach_characters_tab(win) -> None:
             win.character_negatives_edit.setPlainText(fields.negatives)
             win.character_default_voice_chk.setChecked(fields.use_default_voice)
             if hasattr(win, "_append_log"):
-                win._append_log(f"Generated character fields — preset “{preset.label}”. Click Save character to keep.")
+                win._append_log(f"Generated character fields - preset “{preset.label}”. Click Save character to keep.")
 
         def _fail(msg: str) -> None:
             nonlocal _char_gen_worker
@@ -750,7 +750,7 @@ def attach_characters_tab(win) -> None:
             aquaduct_warning(
                 w,
                 "Characters",
-                "Fill in Visual style first — the portrait prompt is built from that field.",
+                "Fill in Visual style first - the portrait prompt is built from that field.",
             )
             return
         s = getattr(win, "settings", None)
@@ -878,7 +878,7 @@ def attach_characters_tab(win) -> None:
         if pm.isNull():
             return
         title = str(ch.name or "Character").strip() or "Character"
-        dlg = FramelessDialog(win, title=f"Portrait — {title}"[:120])
+        dlg = FramelessDialog(win, title=f"Portrait - {title}"[:120])
         img = _FitPixmapLabel(pm)
         dlg.body_layout.addWidget(img, 1)
         dlg.showMaximized()

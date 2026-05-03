@@ -298,7 +298,13 @@ def parse_topic_grounding_llm_json(
     """
     blob = extract_first_json_object(raw_model_text or "")
     if not isinstance(blob, dict):
-        raise ValueError("Model did not return a JSON object for topic grounding.")
+        preview = (raw_model_text or "").strip().replace("\r", " ")
+        if len(preview) > 420:
+            preview = preview[:420] + "…"
+        raise ValueError(
+            "Model did not return a JSON object for topic grounding. "
+            f"Raw output preview: {preview!r}"
+        )
 
     inner: Mapping[str, Any]
     notes_obj = blob.get("notes")

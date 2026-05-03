@@ -20,3 +20,11 @@ def test_humanize_gated_repo_error():
     assert msg is not None
     assert "gated" in msg.lower() or "401" in msg
     assert "huggingface" in msg.lower()
+
+
+def test_humanize_not_json_errors_with_stray_401_in_text():
+    """LLM error previews can mention 401(k) etc.; must not map to Hub download copy."""
+    exc = ValueError(
+        'Model did not return a JSON object. Preview: {"notes": {"x": "Discuss 401(k) rollovers"}}'
+    )
+    assert humanize_hf_hub_error(exc) is None

@@ -65,7 +65,7 @@ def attach_captions_tab(win) -> None:
     form.addRow("Facts card duration", win.facts_card_dur_combo)
 
     win.facts_card_scope_hint = QLabel(
-        "Shown for News and Explainer only. Cartoon and other styles skip it—change format on Run."
+        "Shown for News and Explainer only. Cartoon and other styles skip it-change format on Run."
     )
     win.facts_card_scope_hint.setWordWrap(True)
     win.facts_card_scope_hint.setStyleSheet("color: #9898A8; font-size: 11px;")
@@ -73,7 +73,7 @@ def attach_captions_tab(win) -> None:
 
     lay.addLayout(form)
 
-    tip = QLabel("Caption accent colors follow your theme—open Branding to adjust.")
+    tip = QLabel("Caption accent colors follow your theme-open Branding to adjust.")
     tip.setWordWrap(True)
     tip.setStyleSheet("color: #B7B7C2;")
     lay.addWidget(tip)

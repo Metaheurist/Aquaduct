@@ -7,9 +7,10 @@ for whether to keep the project default voice.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any
+
+from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
 
 
 @dataclass(frozen=True)
@@ -125,33 +126,9 @@ def get_character_auto_preset_by_id(pid: str) -> CharacterAutoPreset | None:
     return None
 
 
-def _strip_markdown_fence(text: str) -> str:
-    t = (text or "").strip()
-    if not t.startswith("```"):
-        return t
-    lines = t.splitlines()
-    if lines and lines[0].strip().startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].strip() == "```":
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
-
-
 def extract_first_json_object(text: str) -> dict[str, Any] | None:
     """Return the first JSON object in *text* (handles leading junk and fenced blocks)."""
-    t = _strip_markdown_fence(text)
-    dec = json.JSONDecoder()
-    i = 0
-    while i < len(t):
-        if t[i] == "{":
-            try:
-                obj, _end = dec.raw_decode(t, i)
-                if isinstance(obj, dict):
-                    return obj
-            except json.JSONDecodeError:
-                pass
-        i += 1
-    return None
+    return parse_first_json_dict_from_llm_text(text or "")
 
 
 def coerce_generated_character_fields(raw: dict[str, Any] | None) -> GeneratedCharacterFields | None:
