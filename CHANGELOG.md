@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Auxiliary UI (off-pipeline progress, portrait preview, diffusion offload)
+
+- **Off-pipeline progress + VRAM purge** ([`UI/dialogs/auxiliary_progress_dialog.py`](UI/dialogs/auxiliary_progress_dialog.py), [`UI/workers/impl.py`](UI/workers/impl.py)): **🧠** field expand ([`UI/services/brain_expand.py`](UI/services/brain_expand.py)), **Characters → Generate with LLM** / **Generate portrait**, and **Topics → Suggest with LLM** open a **frameless, fixed-size** modal with status text + progress bar wired to **`on_llm_task`** / **`on_image_progress`** (local) or coarse API-phase messages. Each job schedules **`purge_process_memory_aggressive()`** on the GUI thread after **done** / **failed** via **`schedule_auxiliary_job_memory_purge()`**.
+- **`FramelessDialog`** ([`UI/dialogs/frameless_dialog.py`](UI/dialogs/frameless_dialog.py)): optional **`close_button_visible=False`** for shells that omit the title-bar ✕ (auxiliary progress: no dismiss mid-job; **Escape** ignored on that shell).
+- **Characters portrait** ([`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)): click the thumbnail when an image is loaded to open a **maximized** **`FramelessDialog`** preview (**Portrait — \<name\>**) using **`_FitPixmapLabel`** (aspect-preserving scale on resize).
+- **Diffusion `auto` offload — image vs VRAM-first multi-GPU** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): **`resolve_diffusion_offload_mode(..., placement_role=)`** passes through from **`place_diffusion_pipeline`**; when **VRAM-first** + **≥ 2 GPUs** + ample host RAM, **video** may still prefer full-GPU (**`none`**) for sharding paths, while **`placement_role="image"`** (still generation / character portrait) prefers **model** or **sequential** offload so ~12 GB diffusion GPUs avoid OOM. Tests extended in [`tests/models/test_diffusion_placement.py`](tests/models/test_diffusion_placement.py).
+- **Tests**: [`tests/ui/test_auxiliary_llm_progress_map.py`](tests/ui/test_auxiliary_llm_progress_map.py) (**`map_llm_on_task_to_overall`**).
+
 ### Video quality & tab redesign (in progress)
 
 This is an in-flight track; bullets land per phase as they ship.
@@ -247,7 +255,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Voice** ([`main.py`](main.py), [`src/speech/voice.py`](src/speech/voice.py), [`src/runtime/variant_fallback.py`](src/runtime/variant_fallback.py)): local voice path uses **`retry_stage`**; pyttsx3-only sentinel repo `aquaduct/system-tts-pyttsx3`; MOSS → Kokoro → pyttsx3 style mapping in variant table.
 - **Load heartbeat UI** ([`src/runtime/load_heartbeat.py`](src/runtime/load_heartbeat.py), [`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): Resource graph footer shows recent model-load heartbeat; **`AQUADUCT_LOAD_TIMEOUT_S`** mirrors **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** for the stalled-load watchdog.
 - **Preflight HF** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): token guidance for gated/frontier Hub ids when no token is configured.
-- **Settings** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): **Use lighter Motion / Video checkpoint** when the video fit badge is red/amber (curated downgrade list).
+- **Runtime Motion variants** ([`src/runtime/variant_fallback.py`](src/runtime/variant_fallback.py)): curated **`next_smaller_repo_id("video", …)`** mapping still participates in **`retry_stage`** / load fallbacks — the redundant **Models** tab **Use lighter Motion / Video checkpoint** button was removed (choose a lighter repo from the dropdown or **Auto-fit for this PC**).
 - **Tests**: [`tests/runtime/test_resource_and_deps.py`](tests/runtime/test_resource_and_deps.py), [`tests/runtime/test_load_heartbeat.py`](tests/runtime/test_load_heartbeat.py), [`tests/content/test_llm_session.py`](tests/content/test_llm_session.py), [`tests/content/test_factcheck_pkg_roundtrip.py`](tests/content/test_factcheck_pkg_roundtrip.py).
 - **Docs**: consolidated guide **[`docs/pipeline/crash-resilience.md`](docs/pipeline/crash-resilience.md)** (checkpoints/resume, heartbeat, RAM preflight, LLM holder, HF token); touches **[`README.md`](README.md)**, **[`docs/README.md`](docs/README.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md), [`docs/reference/quantization.md`](docs/reference/quantization.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/pipeline/main.md`](docs/pipeline/main.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/pipeline/voice.md`](docs/pipeline/voice.md), [`docs/ui/ui.md`](docs/ui/ui.md)**.
 

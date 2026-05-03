@@ -13,6 +13,7 @@ from UI.workers.impl import (
     TextExpandWorker,
     TikTokUploadWorker,
     TopicDiscoverWorker,
+    TopicGroundingNotesWorker,
     YouTubeUploadWorker,
     firecrawl_search_ready,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "TextExpandWorker",
     "TikTokUploadWorker",
     "TopicDiscoverWorker",
+    "TopicGroundingNotesWorker",
     "YouTubeUploadWorker",
     "firecrawl_search_ready",
 ]

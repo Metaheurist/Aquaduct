@@ -22,6 +22,10 @@ At the top, **Preset** lists built-in archetypes (e.g. **Unhinged comedy**, **Ge
 
 Choose **Character** `(None)` to disable, or pick a saved character. The selection is stored as `active_character_id` in `ui_settings.json` and applied for the next pipeline run (including Preview / Storyboard workers).
 
+## Portrait preview
+
+Beside **Generate portrait**, the small thumbnail shows the resolved reference image when a file exists. **Click** the thumbnail to open a **maximized** borderless preview (`FramelessDialog`, title **`Portrait — <character name>`**); the image scales with the window **keeping aspect ratio**. The **No portrait** placeholder is not clickable until you generate or assign an image path.
+
 ## Pipeline
 
 - **Script**: character context is appended to the brain prompt after the personality block.

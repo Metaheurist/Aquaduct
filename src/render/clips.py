@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from src.core.config import AppSettings
-from src.core.models_dir import get_models_dir
+from src.core.models_dir import resolve_models_dir_for_pretrained
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.native_fps import encoded_fps_for, write_clip_meta
 from src.models.torch_dtypes import torch_float16
@@ -538,7 +538,7 @@ def _try_text_to_video(
         variant="prepare_diffusion",
     )
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(model_id, models_dir=resolve_models_dir_for_pretrained(inference_settings))
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)
@@ -701,7 +701,7 @@ def _try_image_to_video(
         variant="prepare_diffusion",
     )
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(model_id, models_dir=resolve_models_dir_for_pretrained(inference_settings))
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_n = max(8, int(round(fps * seconds)))
     vkw = _video_pipe_kwargs(model_id, num_frames=frames_n)

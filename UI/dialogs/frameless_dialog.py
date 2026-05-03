@@ -25,7 +25,7 @@ class FramelessDialog(QDialog):
     Drag by the title bar only.
     """
 
-    def __init__(self, parent=None, *, title: str = "") -> None:
+    def __init__(self, parent=None, *, title: str = "", close_button_visible: bool = True) -> None:
         super().__init__(parent)
         self.setModal(True)
         flags = self.windowFlags()
@@ -51,6 +51,8 @@ class FramelessDialog(QDialog):
         close_btn.clicked.connect(self.reject)
         self._title_bar_layout.addWidget(close_btn)
         self._frameless_close_button = close_btn
+        if not close_button_visible:
+            close_btn.hide()
         outer.addWidget(self._title_bar)
 
         self.body = QWidget()

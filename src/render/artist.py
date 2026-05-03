@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from src.core.config import AppSettings
-from src.core.models_dir import get_models_dir
+from src.core.models_dir import resolve_models_dir_for_pretrained
 from src.models.model_manager import resolve_pretrained_load_path
 from src.models.torch_dtypes import torch_float16
 from src.settings.art_style_presets import ArtStylePreset, art_style_preset_by_id
@@ -540,7 +540,7 @@ def _try_sdxl_turbo(
     app_settings: AppSettings | None = None,
 ) -> list[GeneratedImage]:
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(model_id, models_dir=resolve_models_dir_for_pretrained(app_settings))
     out_dir.mkdir(parents=True, exist_ok=True)
     qm = _image_quant_mode_from_settings(app_settings)
     pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
@@ -592,7 +592,7 @@ def _try_sdxl_turbo_seeded(
     import torch
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(model_id, models_dir=resolve_models_dir_for_pretrained(app_settings))
     out_dir.mkdir(parents=True, exist_ok=True)
     qm = _image_quant_mode_from_settings(app_settings)
     pipe = _load_auto_t2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
@@ -654,7 +654,7 @@ def _try_sdxl_reference_chain(
     import torch
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(model_id, models_dir=resolve_models_dir_for_pretrained(app_settings))
     out_dir.mkdir(parents=True, exist_ok=True)
     qm = _image_quant_mode_from_settings(app_settings)
     pipe = _load_auto_i2i_pipeline(model_id, load_path, _fp16, quant_mode=qm)
@@ -731,7 +731,7 @@ def _try_external_ref_then_txt2img(
     import torch
 
     _fp16 = torch_float16()
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(model_id, models_dir=resolve_models_dir_for_pretrained(app_settings))
     out_dir.mkdir(parents=True, exist_ok=True)
     stg = float(external_strength)
     stg = max(0.15, min(0.95, stg))

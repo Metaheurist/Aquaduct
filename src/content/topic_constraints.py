@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
+from src.content.character_presets import extract_first_json_object
+
 
 _LOWER_QUALITY_TLD_HINTS = (
     ".tk",
@@ -278,3 +280,45 @@ def sanitize_topic_tag_notes(raw: Any) -> dict[str, str]:
             continue
         out[tag] = note[:240]
     return out
+
+
+def parse_topic_grounding_llm_json(
+    raw_model_text: str,
+    *,
+    allowed_normalized_tags: frozenset[str],
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    """Parse batch topic-grounding JSON from the script LLM.
+
+    Expected shape either ``{\"notes\": {tag_key: note, ...}}`` or a flat
+    ``{tag_key: note, ...}`` object. Keys are matched case-insensitively
+    and normalized like other topic-tag maps. Values are sanitized to ≤240 chars.
+
+    Returns ``(notes_dict, missing_keys)`` where *missing_keys* lists allowed
+    tag keys that were not present or had empty strings after coercion.
+    """
+    blob = extract_first_json_object(raw_model_text or "")
+    if not isinstance(blob, dict):
+        raise ValueError("Model did not return a JSON object for topic grounding.")
+
+    inner: Mapping[str, Any]
+    notes_obj = blob.get("notes")
+    if isinstance(notes_obj, Mapping):
+        inner = notes_obj
+    else:
+        inner = blob
+
+    picked: dict[str, str] = {}
+    for raw_k, raw_v in inner.items():
+        nk = _normalize_tag(str(raw_k or ""))
+        if nk not in allowed_normalized_tags:
+            continue
+        if raw_v is None:
+            continue
+        note_text = _BAD_NOTE_CHARS.sub(" ", str(raw_v)).strip()
+        if not note_text:
+            continue
+        picked[nk] = note_text[:240]
+
+    clean = sanitize_topic_tag_notes(picked)
+    missing = tuple(sorted(tag for tag in allowed_normalized_tags if tag not in clean))
+    return clean, missing

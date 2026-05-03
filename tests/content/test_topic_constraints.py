@@ -10,6 +10,7 @@ Pure-Python coverage of:
   messages, body-length nudges.
 - ``sanitize_topic_tag_notes`` — coerces messy persisted dicts into a
   clean ``{tag_lower: note}`` mapping.
+- ``parse_topic_grounding_llm_json`` — batch LLM helper for per-tag notes.
 """
 from __future__ import annotations
 
@@ -152,3 +153,25 @@ def test_topic_notes_for_case_insensitive_lookup() -> None:
     assert tc.topic_notes_for({"tag-a": "hi"}, "TAG-A") == "hi"
     assert tc.topic_notes_for(None, "x") == ""
     assert tc.topic_notes_for({}, "x") == ""
+
+
+def test_parse_topic_grounding_llm_json_nested_notes_shape() -> None:
+    allowed = frozenset({"ghost", "folk horror"})
+    raw = '{"notes": {"ghost": " keep first-person unease ", "folk horror": "rural dread, no gore"}} extra'
+    out, missing = tc.parse_topic_grounding_llm_json(raw, allowed_normalized_tags=allowed)
+    assert out["ghost"] == "keep first-person unease"
+    assert "folk horror" in out
+    assert missing == tuple()
+
+
+def test_parse_topic_grounding_llm_json_flat_object_and_missing() -> None:
+    allowed = frozenset({"a", "b"})
+    raw = '{"a": "one", "noise": "ignored"}'
+    out, missing = tc.parse_topic_grounding_llm_json(raw, allowed_normalized_tags=allowed)
+    assert out == {"a": "one"}
+    assert missing == ("b",)
+
+
+def test_parse_topic_grounding_llm_json_raises_on_non_json() -> None:
+    with pytest.raises(ValueError):
+        tc.parse_topic_grounding_llm_json("hello", allowed_normalized_tags=frozenset({"x"}))

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from src.util.utils_vram import cleanup_vram, vram_guard
+from src.content.topic_constraints import parse_topic_grounding_llm_json
 from .personalities import PersonalityPreset, get_personality_by_id
 from .character_presets import (
     CharacterAutoPreset,
@@ -15,7 +16,7 @@ from .character_presets import (
     extract_first_json_object,
 )
 from src.core.config import AppSettings, ARTICLE_EXCERPT_MAX_CHARS, BrandingSettings, get_paths
-from src.core.models_dir import get_models_dir
+from src.core.models_dir import resolve_models_dir_for_pretrained
 from src.models.model_manager import resolve_pretrained_load_path
 from src.render.branding_video import palette_prompt_suffix, video_style_strength
 from src.util.cuda_capabilities import (
@@ -1970,7 +1971,10 @@ def _load_causal_lm_pair(
     def _load_status(detail: str) -> None:
         _emit_llm(on_llm_task, "llm_load", 55, detail)
 
-    load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
+    load_path = resolve_pretrained_load_path(
+        model_id,
+        models_dir=resolve_models_dir_for_pretrained(inference_settings),
+    )
 
     try:
         from src.util.vram_watchdog import check_cuda_headroom
@@ -2576,6 +2580,7 @@ def generate_character_from_preset_llm(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 1400,
     try_llm_4bit: bool = True,
+    inference_settings: AppSettings | None = None,
 ) -> GeneratedCharacterFields:
     """
     Use the script LLM to invent a full character profile (text fields) from a built-in archetype.
@@ -2612,6 +2617,7 @@ def generate_character_from_preset_llm(
             on_llm_task=on_llm_task,
             max_new_tokens=max_new_tokens,
             try_llm_4bit=try_llm_4bit,
+            inference_settings=inference_settings,
         )
     blob = extract_first_json_object(raw or "")
     coerced = coerce_generated_character_fields(blob)
@@ -2742,6 +2748,7 @@ def expand_custom_field_text(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 512,
     try_llm_4bit: bool = True,
+    inference_settings: AppSettings | None = None,
 ) -> str:
     """
     Use the local LLM to expand or improve free-form UI text (character fields, topics, prompts, etc.).
@@ -2770,6 +2777,7 @@ def expand_custom_field_text(
             on_llm_task=on_llm_task,
             max_new_tokens=max_new_tokens,
             try_llm_4bit=try_llm_4bit,
+            inference_settings=inference_settings,
         )
     out = (raw or "").strip()
     # Trim common wrappers
@@ -2783,4 +2791,80 @@ def expand_custom_field_text(
     if (out.startswith('"') and out.endswith('"')) or (out.startswith("'") and out.endswith("'")):
         out = out[1:-1].strip()
     return out
+
+
+def _prompt_topic_tag_grounding_batch(
+    tag_pairs: Sequence[tuple[str, str]],
+    video_format: str,
+    *,
+    sibling_displays: Sequence[str],
+    seed_notes_by_norm: Mapping[str, str] | None,
+) -> str:
+    vf = str(video_format or "news").strip() or "news"
+    siblings = ", ".join(x.strip() for x in sibling_displays if str(x or "").strip())[:900]
+    tag_lines = []
+    for norm, disp in tag_pairs:
+        cur = ((seed_notes_by_norm or {}).get(norm) or "").strip()
+        suffix = (' current note: "' + cur[:220] + ('…"' if len(cur) > 220 else '"')) if cur else ""
+        tag_lines.append(f'  • json key EXACTLY `{norm}` (display label: "{disp}"){suffix}')
+    joined = "\n".join(tag_lines)
+    sibling_block = ""
+    if siblings.strip():
+        sibling_block = f"\nAll topic tags this mode (for consistency; do not merge into one note): {siblings}\n"
+
+    return (
+        "You help configure per-tag GROUNDING lines for short-form VERTICAL VIDEO (9:16) scripts.\n"
+        "The script generator treats topic tags as HARD anchors; each grounding line guides tone, angles, bans, genre facts.\n\n"
+        f'Video format / mode bucket: "{vf}" — match idioms audiences expect for this mode.\n'
+        f"{sibling_block}\n"
+        "Write ONE grounding line each for ONLY the tags listed below:\n\n"
+        f"{joined}\n\n"
+        "Output RULES:\n"
+        '- Return ONLY valid JSON.\n'
+        '- Shape: {\"notes\": {\"exact_lowercase_tag_key\": \"single line note\", ...}}.\n'
+        "- Each inner object key MUST match the backtick-enclosed ``json key`` above character-for-character (normalized lowercase).\n"
+        '- Each note: one concise line under 240 characters, plain text.\n'
+        "- No Markdown, no preamble, no code fences.\n"
+    )
+
+
+def generate_topic_tag_grounding_notes_llm(
+    *,
+    model_id: str,
+    tag_pairs: Sequence[tuple[str, str]],
+    video_format: str,
+    sibling_displays: Sequence[str] | None = None,
+    seed_notes_by_norm: Mapping[str, str] | None = None,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int | None = None,
+    try_llm_4bit: bool = True,
+    inference_settings: AppSettings | None = None,
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    pairs = [(str(n).strip().lower(), str(d).strip()) for n, d in tag_pairs if str(n or "").strip()]
+    if not pairs:
+        return {}, ()
+
+    siblings = sibling_displays if sibling_displays is not None else [d for _, d in pairs]
+    prompt = _prompt_topic_tag_grounding_batch(
+        pairs,
+        video_format,
+        sibling_displays=siblings,
+        seed_notes_by_norm=seed_notes_by_norm,
+    )
+
+    nt = max_new_tokens
+    if nt is None:
+        nt = min(4096, 256 + len(pairs) * 140)
+
+    allowed = frozenset(n for n, _ in pairs)
+    with vram_guard():
+        raw = _generate_with_transformers(
+            model_id,
+            prompt,
+            on_llm_task=on_llm_task,
+            max_new_tokens=nt,
+            try_llm_4bit=try_llm_4bit,
+            inference_settings=inference_settings,
+        )
+    return parse_topic_grounding_llm_json(raw or "", allowed_normalized_tags=allowed)
 

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QLineEdit, QSizePolicy, QTextEdit, QToolButton, QWidget
 
+from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedule_auxiliary_job_memory_purge
 from UI.dialogs.frameless_dialog import aquaduct_warning
 from UI.help.tutorial_links import help_tooltip_rich
 
@@ -163,6 +164,13 @@ class BrainAugmentedEditor(QWidget):
         mid = script_llm_model_id_from_ui(self._win)
         self._btn.setEnabled(False)
         self._btn.setToolTip("Working… (loading model may take a while)")
+        dlg_parent = self._win if isinstance(self._win, QWidget) else self
+        dlg = AuxiliaryProgressDialog(
+            dlg_parent,
+            window_title="Expand field with LLM",
+            initial_message="Starting…",
+        )
+        dlg.show()
         st = getattr(self._win, "settings", None)
         self._worker = TextExpandWorker(
             model_id=mid,
@@ -174,7 +182,14 @@ class BrainAugmentedEditor(QWidget):
             app_settings=st,
         )
 
+        self._worker.progress.connect(dlg.slot_update)
+
         def _ok(out: str) -> None:
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
             self._btn.setEnabled(True)
             self._btn.setToolTip(
                 help_tooltip_rich(
@@ -192,6 +207,11 @@ class BrainAugmentedEditor(QWidget):
                     pass
 
         def _fail(err: str) -> None:
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            schedule_auxiliary_job_memory_purge()
             self._btn.setEnabled(True)
             self._btn.setToolTip(
                 help_tooltip_rich(

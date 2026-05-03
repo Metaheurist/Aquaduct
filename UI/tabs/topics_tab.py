@@ -277,6 +277,24 @@ def attach_topics_tab(win) -> None:
     topic_notes_scroll.setWidget(win.topic_notes_inner)
     tags_lay.addWidget(topic_notes_scroll)
 
+    notes_btns = QHBoxLayout()
+    win.topic_notes_llm_btn = QPushButton("Suggest with LLM")
+    win.topic_notes_llm_btn.setToolTip(
+        help_tooltip_rich(
+            "Generates grounding lines from the Script LLM — one concise line per tag (API uses your Models API settings; "
+            "offline uses Model tab HF script model). Checked box replaces existing notes; otherwise empty fields only.",
+            "topics_chars",
+            slide=0,
+        )
+    )
+    win.topic_notes_llm_btn.clicked.connect(win._topic_notes_suggest_llm)
+    notes_btns.addWidget(win.topic_notes_llm_btn)
+    win.topic_notes_llm_overwrite = QCheckBox("Replace existing notes")
+    win.topic_notes_llm_overwrite.setToolTip("When unchecked, only tags with blank grounding boxes are filled.")
+    notes_btns.addWidget(win.topic_notes_llm_overwrite)
+    notes_btns.addStretch(1)
+    tags_lay.addLayout(notes_btns)
+
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
     win.discover_btn.setToolTip(

@@ -57,7 +57,6 @@ from src.content.brain import (
 from src.content.story_context import build_script_context
 from src.content.story_pipeline import run_multistage_refinement
 from src.content.brain import expand_custom_field_text, generate_character_from_preset_llm
-from src.core.config import get_paths
 from src.content.character_presets import CharacterAutoPreset, GeneratedCharacterFields
 from src.models.hf_access import ensure_hf_token_in_env, humanize_hf_hub_error
 from src.models.model_integrity_cache import classify_integrity_status
@@ -75,6 +74,8 @@ from src.render.branding_video import apply_palette_to_prompts
 from src.content.personality_auto import auto_pick_personality
 from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
 from src.util.memory_budget import release_between_stages
+
+from UI.dialogs.auxiliary_progress_dialog import map_llm_on_task_to_overall
 from debug import dprint
 
 
@@ -619,6 +620,7 @@ class ModelDownloadWorker(QThread):
 class TextExpandWorker(QThread):
     """Run ``expand_custom_field_text`` off the GUI thread (loads LLM; can take a while)."""
 
+    progress = pyqtSignal(int, str)  # 0–100, status label
     done = pyqtSignal(str)
     failed = pyqtSignal(str)
 
@@ -644,26 +646,36 @@ class TextExpandWorker(QThread):
 
     def run(self) -> None:
         try:
+            self.progress.emit(0, "Starting…")
             if self.app_settings is not None and is_api_mode(self.app_settings):
                 from src.content.brain_api import expand_custom_field_text_openai
 
+                self.progress.emit(12, "API: contacting provider…")
                 out = expand_custom_field_text_openai(
                     settings=self.app_settings,
                     field_label=self.field_label,
                     seed=self.seed,
                 )
+                self.progress.emit(100, "Done")
                 self.done.emit(out)
                 return
             if not self.model_id:
                 self.failed.emit("No script (LLM) model selected in Model tab.")
                 return
             ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
+
+            def _emit_llm(task: str, pct: int, msg: str) -> None:
+                self.progress.emit(map_llm_on_task_to_overall(task, pct), msg)
+
             out = expand_custom_field_text(
                 model_id=self.model_id,
                 field_label=self.field_label,
                 seed=self.seed,
+                on_llm_task=_emit_llm,
                 try_llm_4bit=self.try_llm_4bit,
+                inference_settings=self.app_settings,
             )
+            self.progress.emit(100, "Done")
             self.done.emit(out)
         except BaseException as e:
             _reraise_system_interrupt(e)
@@ -675,9 +687,96 @@ class TextExpandWorker(QThread):
             self.failed.emit(f"{e}\n\n{tb}")
 
 
+class TopicGroundingNotesWorker(QThread):
+    """Batch-generate per-tag grounding lines via script LLM (local or API mode)."""
+
+    batch_done = pyqtSignal(dict)  # {"notes": {norm: note}, "missing": [norm, ...]}
+    failed = pyqtSignal(str)
+
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        video_format: str,
+        tag_pairs: list[tuple[str, str]],
+        sibling_display_labels: list[str],
+        seed_notes_by_norm: dict[str, str],
+        hf_token: str = "",
+        hf_api_enabled: bool = True,
+        try_llm_4bit: bool = True,
+        app_settings: AppSettings | None = None,
+    ) -> None:
+        super().__init__()
+        self.model_id = str(model_id or "").strip()
+        self.video_format = str(video_format or "news").strip()
+        self.tag_pairs = list(tag_pairs)
+        self.sibling_display_labels = list(sibling_display_labels)
+        self.seed_notes_by_norm = dict(seed_notes_by_norm)
+        self.hf_token = str(hf_token or "").strip()
+        self.hf_api_enabled = bool(hf_api_enabled)
+        self.try_llm_4bit = bool(try_llm_4bit)
+        self.app_settings = app_settings
+
+    def run(self) -> None:
+        try:
+            self.progress.emit(0, "Starting…")
+            if self.app_settings is not None and is_api_mode(self.app_settings):
+                from src.content.brain_api import generate_topic_tag_grounding_notes_openai
+
+                self.progress.emit(12, "API: grounding notes — contacting provider…")
+                notes, missing = generate_topic_tag_grounding_notes_openai(
+                    settings=self.app_settings,
+                    tag_pairs=self.tag_pairs,
+                    video_format=self.video_format,
+                    sibling_displays=self.sibling_display_labels,
+                    seed_notes_by_norm=self.seed_notes_by_norm,
+                )
+                self.progress.emit(100, "Done")
+                self.batch_done.emit({"notes": notes, "missing": list(missing)})
+                return
+            if not self.model_id:
+                self.failed.emit("No script (LLM) model selected in Model tab.")
+                return
+            ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
+            from src.content.brain import generate_topic_tag_grounding_notes_llm
+
+            def _emit_llm(task: str, pct: int, msg: str) -> None:
+                self.progress.emit(map_llm_on_task_to_overall(task, pct), msg)
+
+            notes, missing = generate_topic_tag_grounding_notes_llm(
+                model_id=self.model_id,
+                tag_pairs=self.tag_pairs,
+                video_format=self.video_format,
+                sibling_displays=self.sibling_display_labels,
+                seed_notes_by_norm=self.seed_notes_by_norm,
+                on_llm_task=_emit_llm,
+                try_llm_4bit=self.try_llm_4bit,
+                inference_settings=self.app_settings,
+            )
+            self.progress.emit(100, "Done")
+            self.batch_done.emit({"notes": notes, "missing": list(missing)})
+        except BaseException as e:
+            _reraise_system_interrupt(e)
+            friendly = humanize_hf_hub_error(e)
+            if friendly:
+                self.failed.emit(friendly)
+                return
+            try:
+                from src.platform.openai_client import OpenAIRequestError
+
+                if isinstance(e, OpenAIRequestError):
+                    self.failed.emit(str(e))
+                    return
+            except Exception:
+                pass
+            tb = traceback.format_exc()
+            self.failed.emit(f"{e}\n\n{tb}")
+
+
 class CharacterGenerateWorker(QThread):
     """Run ``generate_character_from_preset_llm`` off the GUI thread."""
 
+    progress = pyqtSignal(int, str)
     done = pyqtSignal(object)  # GeneratedCharacterFields
     failed = pyqtSignal(str)
 
@@ -703,7 +802,9 @@ class CharacterGenerateWorker(QThread):
 
     def run(self) -> None:
         try:
+            self.progress.emit(0, "Starting…")
             if self.app_settings is not None and is_api_mode(self.app_settings):
+                self.progress.emit(14, "API: generating character fields…")
                 out = generate_character_from_preset_openai(
                     settings=self.app_settings,
                     preset=self.preset,
@@ -714,13 +815,20 @@ class CharacterGenerateWorker(QThread):
                     self.failed.emit("No script (LLM) model selected in Model tab.")
                     return
                 ensure_hf_token_in_env(hf_token=self.hf_token, hf_api_enabled=self.hf_api_enabled)
+
+                def _emit_llm(task: str, pct: int, msg: str) -> None:
+                    self.progress.emit(map_llm_on_task_to_overall(task, pct), msg)
+
                 out = generate_character_from_preset_llm(
                     model_id=self.model_id,
                     preset=self.preset,
                     extra_notes=self.extra_notes,
+                    on_llm_task=_emit_llm,
                     try_llm_4bit=self.try_llm_4bit,
+                    inference_settings=self.app_settings,
                 )
             assert isinstance(out, GeneratedCharacterFields)
+            self.progress.emit(100, "Done")
             self.done.emit(out)
         except BaseException as e:
             _reraise_system_interrupt(e)
@@ -735,6 +843,7 @@ class CharacterGenerateWorker(QThread):
 class CharacterPortraitWorker(QThread):
     """Generate a single host portrait with the project image model; saves under data/characters/<id>/portrait.png."""
 
+    progress = pyqtSignal(int, str)
     done = pyqtSignal(str)  # reference_image_rel
     failed = pyqtSignal(str)
 
@@ -760,6 +869,7 @@ class CharacterPortraitWorker(QThread):
 
     def run(self) -> None:
         try:
+            self.progress.emit(0, "Starting portrait…")
             if not self.character_id:
                 self.failed.emit("No character selected.")
                 return
@@ -783,16 +893,35 @@ class CharacterPortraitWorker(QThread):
             )
             dest = base / "portrait.png"
             if self.app_settings is not None and is_api_mode(self.app_settings):
+                self.progress.emit(22, "API: requesting portrait image…")
                 png = generate_still_png_bytes(settings=self.app_settings, prompt=prompt)
                 dest.write_bytes(png)
+                self.progress.emit(92, "Saving portrait…")
             else:
+                from src.models.hf_access import ensure_hf_token_in_env
                 from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
 
+                stp = self.app_settings
+                ensure_hf_token_in_env(
+                    hf_token=str(getattr(stp, "hf_token", "") or "") if stp is not None else "",
+                    hf_api_enabled=bool(getattr(stp, "hf_api_enabled", True)) if stp is not None else True,
+                )
+                self.progress.emit(6, "Preparing GPU…")
                 release_between_stages(
                     "character_portrait_before_image",
                     cuda_device_index=resolve_diffusion_cuda_device_index(self.app_settings),
                     variant="prepare_diffusion",
                 )
+                self.progress.emit(
+                    10,
+                    "Loading diffusion / generating (first load may take several minutes)…",
+                )
+
+                def _img_prog(pct_in: int, msg: str) -> None:
+                    p = float(max(0, min(100, int(pct_in))))
+                    v = int(12.0 + 83.0 * (p / 100.0))
+                    self.progress.emit(max(12, min(97, v)), msg or "Generating…")
+
                 gen = generate_images(
                     sdxl_turbo_model_id=self.image_model_id,
                     prompts=[prompt],
@@ -800,6 +929,7 @@ class CharacterPortraitWorker(QThread):
                     max_images=1,
                     steps=self.steps,
                     allow_nsfw=self.allow_nsfw,
+                    on_image_progress=_img_prog,
                     art_style_preset_id=str(getattr(self, "art_style_preset_id", None) or "balanced"),
                     use_style_continuity=False,
                     cuda_device_index=resolve_diffusion_cuda_device_index(self.app_settings),
@@ -812,6 +942,7 @@ class CharacterPortraitWorker(QThread):
                 shutil.copy2(src, dest)
             shutil.rmtree(tmp, ignore_errors=True)
             rel = f"characters/{self.character_id}/portrait.png"
+            self.progress.emit(100, "Done")
             self.done.emit(rel)
         except BaseException as e:
             _reraise_system_interrupt(e)

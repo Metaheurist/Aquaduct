@@ -56,3 +56,23 @@ def get_models_dir() -> Path:
     if _pipeline_models_dir is not None:
         return _pipeline_models_dir
     return get_paths().models_dir
+
+
+def resolve_models_dir_for_pretrained(inference_settings: AppSettings | None = None) -> Path:
+    """
+    Root folder for resolving local HF snapshots (``resolve_pretrained_load_path``).
+
+    Order: pipeline override (``run_once``) → explicit ``inference_settings`` → saved UI settings
+    (so **external models path** matches the Model tab "on disk" badge when the pipeline
+    override is unset, e.g. Characters / 🧠 expand before a run) → default ``get_paths().models_dir``.
+    """
+    if _pipeline_models_dir is not None:
+        return _pipeline_models_dir
+    if inference_settings is not None:
+        return models_dir_for_app(inference_settings)
+    try:
+        from src.settings.ui_settings import load_settings
+
+        return models_dir_for_app(load_settings())
+    except Exception:
+        return get_paths().models_dir

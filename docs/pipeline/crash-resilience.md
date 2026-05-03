@@ -76,4 +76,4 @@ CUDA allocator: at process start **`main`** sets **`PYTORCH_CUDA_ALLOC_CONF=expa
 - Stronger wording when configured model ids include **gated / frontier** repos.
 - Generic “slower downloads / rate limits” hint otherwise.
 
-Combined with optional **lighter Motion / Video checkpoint** on red/amber fit badges (**Models** tab — [`hardware.md`](../reference/hardware.md)).
+

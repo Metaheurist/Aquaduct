@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Mapping, Sequence
 
 from src.content.character_presets import (
     CharacterAutoPreset,
@@ -12,11 +12,13 @@ from src.content.brain import (
     VideoPackage,
     _prompt_for_creative_brief,
     _prompt_for_items,
+    _prompt_topic_tag_grounding_batch,
     _supplement_context_block,
     clip_article_excerpt,
     get_personality_by_id,
     video_package_from_llm_output,
 )
+from src.content.topic_constraints import parse_topic_grounding_llm_json
 from src.content.characters_store import CHARACTER_FIELD_MAX_LEN, CHARACTER_NAME_MAX_LEN
 from src.core.config import AppSettings, BrandingSettings
 from src.platform.openai_client import build_openai_client_from_settings
@@ -140,6 +142,46 @@ def expand_custom_field_text_openai(
         user=user,
         json_mode=False,
     ).strip()
+
+
+TOPIC_GROUNDING_BATCH_JSON_SYSTEM = (
+    "Return ONLY valid JSON — no Markdown fences or commentary.\n"
+    'Use top-level object key "notes" mapping each normalized lowercase topic tag '
+    "to one plain-text grounding line (~200 chars max)."
+)
+
+
+def generate_topic_tag_grounding_notes_openai(
+    *,
+    settings: AppSettings,
+    tag_pairs: Sequence[tuple[str, str]],
+    video_format: str,
+    sibling_displays: Sequence[str],
+    seed_notes_by_norm: Mapping[str, str] | None = None,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    pairs = [(str(n).strip().lower(), str(d).strip()) for n, d in tag_pairs if str(n or "").strip()]
+    if not pairs:
+        return {}, ()
+    allowed = frozenset(n for n, _ in pairs)
+    if on_llm_task:
+        on_llm_task("llm_generate", 10, "Topic grounding notes (API)…")
+    user = _prompt_topic_tag_grounding_batch(
+        pairs,
+        video_format,
+        sibling_displays=sibling_displays,
+        seed_notes_by_norm=dict(seed_notes_by_norm or {}),
+    )
+    client = build_openai_client_from_settings(settings)
+    raw = client.chat_completion_text(
+        model=_llm_model(settings),
+        system=TOPIC_GROUNDING_BATCH_JSON_SYSTEM,
+        user=user,
+        json_mode=True,
+    )
+    if on_llm_task:
+        on_llm_task("llm_generate", 100, "Topic grounding notes received")
+    return parse_topic_grounding_llm_json(raw, allowed_normalized_tags=allowed)
 
 
 CHARACTER_JSON_SYSTEM = (

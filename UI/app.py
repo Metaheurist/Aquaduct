@@ -56,6 +56,8 @@ def main() -> None:
     try:
         from dotenv import load_dotenv
 
+        _repo_root = Path(__file__).resolve().parent.parent
+        load_dotenv(_repo_root / ".env")
         load_dotenv()
     except Exception:
         pass
