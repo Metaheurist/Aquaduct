@@ -110,7 +110,7 @@ def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
 CURATED_VIDEO_CLIP_REPO_IDS: frozenset[str] = frozenset(
     {
         "wan-ai/wan2.2-t2v-a14b-diffusers",
-        "genmo/mochi-1.5-final",
+        "genmo/mochi-1-preview",
         "thudm/cogvideox-5b",
         "tencent/hunyuanvideo",
         "lightricks/ltx-2",
@@ -169,8 +169,8 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "width": 832,
             "guidance_scale": 5.0,
         }
-    if mid == "genmo/mochi-1.5-final":
-        # 1.5: longer default clips (~10s); cap ~12.5s @ 24fps (300) to stay in-model.
+    if "genmo" in mid and "mochi" in mid:
+        # Preview is the public Hub repo; 1.5-final alias may still appear in saved settings or typed ids.
         nf_m = min(max(8, nf), 300)
         return {
             "num_frames": nf_m,

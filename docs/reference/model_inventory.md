@@ -25,7 +25,7 @@ Curated **local** models come from `model_options()`; **API** providers from `ap
 | image | `stabilityai/stable-diffusion-3.5-medium` | Standard | ~10-14GB | faster | ~ 10-14 GB VRAM |
 | image | `stabilityai/stable-diffusion-3.5-large-turbo` | Lite | ~8-12GB | fastest | ~ 8-12 GB VRAM |
 | video | `Wan-AI/Wan2.2-T2V-A14B-Diffusers` | Standard | ~12-16GB | faster | ~ 12-16 GB VRAM |
-| video | `genmo/mochi-1.5-final` | Standard | ~10-14GB | faster | ~ 10-14 GB VRAM |
+| video | `genmo/mochi-1-preview` | Standard | ~10-14GB | faster | ~ 10-14 GB VRAM |
 | video | `THUDM/CogVideoX-5b` | Lite | ~6-10GB | fastest | ~ 6-10 GB VRAM |
 | video | `Tencent/HunyuanVideo` | Pro | ~16-24GB+ | slow | ~ 16-24+ GB VRAM |
 | video | `Lightricks/LTX-2` | Pro | ~24-40GB+ | slow | ~ 24-40+ GB VRAM at 4K-class settings (LTX-2; lower res/CPU offload may fit less) |

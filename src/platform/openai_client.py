@@ -123,6 +123,82 @@ class OpenAIClient:
         except Exception as e:
             raise OpenAIRequestError("OpenAI returned an unexpected response shape.") from e
 
+    def chat_completion_stream(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        json_mode: bool = False,
+    ):
+        """
+        Stream chat completion chunks (OpenAI SSE). Yields assistant text fragments (may be empty strings).
+        On completion, iteration ends. On HTTP error, raises OpenAIRequestError.
+        """
+        url = urljoin(self.base_url.rstrip("/") + "/", "chat/completions")
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.7,
+            "stream": True,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        last_exc: BaseException | None = None
+        r: requests.Response | None = None
+        for attempt in range(_POST_MAX_ATTEMPTS):
+            try:
+                r = requests.post(
+                    url,
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                    stream=True,
+                )
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt >= _POST_MAX_ATTEMPTS - 1:
+                    raise OpenAIRequestError(f"OpenAI network error: {e}") from e
+                _sleep_backoff(attempt)
+                continue
+            if r.status_code in _POST_RETRY_STATUSES and attempt < _POST_MAX_ATTEMPTS - 1:
+                _sleep_backoff(attempt)
+                continue
+            break
+        else:
+            raise OpenAIRequestError(f"OpenAI network error: {last_exc!r}")
+
+        assert r is not None
+        if r.status_code >= 400:
+            try:
+                body = r.text
+            except Exception:
+                body = ""
+            raise OpenAIRequestError(_map_http_error(r.status_code, body), status_code=r.status_code)
+
+        import json as _json
+
+        for raw_line in r.iter_lines(decode_unicode=True):
+            if not raw_line:
+                continue
+            line = str(raw_line).strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                obj = _json.loads(data)
+            except Exception:
+                continue
+            choices = obj.get("choices") or []
+            if not choices:
+                continue
+            delta = (choices[0] or {}).get("delta") or {}
+            piece = delta.get("content")
+            if piece:
+                yield str(piece)
+
     def download_image_png(self, *, model: str, prompt: str, size: str = "1024x1792") -> bytes:
         """Returns PNG bytes (DALL·E)."""
         url = urljoin(self.base_url.rstrip("/") + "/", "images/generations")

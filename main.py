@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +41,7 @@ from src.content.characters_store import (
     resolve_character_for_pipeline,
 )
 from src.content.crawler import (
+    NewsItem,
     fetch_article_text,
     fetch_latest_items,
     get_latest_items,
@@ -89,6 +90,13 @@ from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
 from src.runtime.generation_facade import get_generation_facade
 from src.runtime.model_backend import is_api_mode
 from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
+from src.series.context import SeriesContext
+from src.series.store import (
+    episode_subdir_name,
+    load_series_record,
+    persist_locked_sources,
+    series_root_for,
+)
 from src.runtime.preflight import preflight_check
 from src.runtime import run_checkpoint as run_ckpt
 from src.models.inference_profiles import log_inference_profiles_for_run
@@ -272,6 +280,7 @@ def _write_video_folder(
     sources: list[dict[str, str]],
     prompts: list[str],
     preview: dict | None = None,
+    series_meta: dict | None = None,
 ) -> None:
     video_dir.mkdir(parents=True, exist_ok=True)
 
@@ -285,7 +294,7 @@ def _write_video_folder(
     )
     (video_dir / "hashtags.txt").write_text(hashtags_text, encoding="utf-8")
 
-    meta = {
+    meta: dict = {
         "title": pkg.title,
         "description": pkg.description,
         "hashtags": pkg.hashtags,
@@ -293,6 +302,8 @@ def _write_video_folder(
         "prompts": prompts,
         "created_at_utc": datetime.utcnow().isoformat() + "Z",
     }
+    if series_meta:
+        meta["series"] = series_meta
     (video_dir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if preview is not None:
@@ -409,6 +420,37 @@ def _split_into_pro_scenes_from_script(
     return specs_to_prompts(specs)
 
 
+def _series_script_excerpt_for_prompt(series_context: SeriesContext | None) -> str:
+    if series_context is None or not series_context.carry_recap:
+        return ""
+    pd = (series_context.previous_episode_dir or "").strip()
+    if not pd:
+        return ""
+    p = Path(pd) / "script.txt"
+    if not p.is_file():
+        return ""
+    try:
+        t = p.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+    if len(lines) <= 4:
+        return t.strip()[:6000]
+    return ("\n".join(lines[:2]) + "\n…\n" + "\n".join(lines[-2:])).strip()[:6000]
+
+
+def _series_meta_for_video_folder(series_context: SeriesContext | None) -> dict | None:
+    if series_context is None:
+        return None
+    prev = series_context.previous_episode_dir
+    return {
+        "slug": series_context.series_slug,
+        "episode_index": series_context.episode_index,
+        "episode_total": series_context.episode_total,
+        "previous_episode_dir": prev,
+    }
+
+
 def run_once(
     *,
     settings: AppSettings | None = None,
@@ -417,6 +459,7 @@ def run_once(
     prebuilt_prompts: list[str] | None = None,
     prebuilt_seeds: list[int] | None = None,
     run_control: PipelineRunControl | None = None,
+    series_context: SeriesContext | None = None,
     on_progress: Callable[[str, int, int, str], None] | None = None,
 ) -> Path | None:
     paths = get_paths()
@@ -433,6 +476,7 @@ def run_once(
             prebuilt_prompts=prebuilt_prompts,
             prebuilt_seeds=prebuilt_seeds,
             run_control=run_control,
+            series_context=series_context,
             on_progress=on_progress,
         )
     try:
@@ -504,11 +548,23 @@ def run_once(
         except Exception:
             pass
 
+        if series_context is not None:
+            import zlib
+
+            _seed_mix = zlib.crc32(series_context.series_slug.encode("utf-8", errors="ignore")) ^ int(
+                series_context.episode_index
+            )
+            _seed_mix = (_seed_mix & 0x7FFFFFFF) or 1
+            app = replace(app, video=replace(app.video, seed_base=_seed_mix))
+            video_settings = app.video
+
         items = None
         sources: list[dict[str, str]] = []
         preview_blob: dict | None = None
         item = None
-    
+        series_locked_article_mode = False
+        locked_article_body = ""
+
         if prebuilt_pkg is None:
             if str(getattr(app, "run_content_mode", "preset")) == "custom":
                 raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
@@ -521,48 +577,73 @@ def run_once(
                 items = []
                 dprint("pipeline", "custom mode — synthetic source", f"title={first_line[:80]!r}")
             else:
-                # Prefer scored + diversified selection (better signals, fewer duplicates).
-                fc = _firecrawl_kwargs(app)
-                tags = effective_topic_tags(app)
-                cm = news_cache_mode_for_run(app)
-                # Unhinged / creepypasta: do not read/write news_cache — fetch fresh each run.
-                if video_format_skips_seen_url_disk_cache(cm):
-                    if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+                _locked_replay = (
+                    series_context is not None
+                    and not series_context.is_first
+                    and series_context.source_strategy_resolved == "lock_first"
+                )
+                _rec_lock = None
+                if _locked_replay:
+                    _rec_lock = load_series_record(series_root_for(paths, series_context.series_slug))
+                if _locked_replay and _rec_lock and _rec_lock.locked_sources:
+                    sources = [dict(x) for x in _rec_lock.locked_sources]
+                    fs0 = sources[0] if sources else {}
+                    _pub = fs0.get("published_at")
+                    _iu = fs0.get("image_url")
+                    item = NewsItem(
+                        title=str(fs0.get("title", "") or ""),
+                        url=str(fs0.get("url", "") or ""),
+                        source=str(fs0.get("source", "") or "news"),
+                        published_at=str(_pub).strip() if _pub else None,
+                        image_url=str(_iu).strip() if _iu else None,
+                    )
+                    items = [item]
+                    series_locked_article_mode = True
+                    locked_article_body = _rec_lock.locked_article_excerpt or ""
+                    dprint("crawler", "series lock_first: reusing episode-1 sources")
+                else:
+                    # Prefer scored + diversified selection (better signals, fewer duplicates).
+                    fc = _firecrawl_kwargs(app)
+                    tags = effective_topic_tags(app)
+                    cm = news_cache_mode_for_run(app)
+                    # Unhinged / creepypasta: do not read/write news_cache — fetch fresh each run.
+                    if video_format_skips_seen_url_disk_cache(cm):
+                        if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+                            items = get_scored_items(
+                                paths.news_cache_dir,
+                                limit=SCRIPT_HEADLINE_FETCH_LIMIT,
+                                topic_tags=tags,
+                                cache_mode=cm,
+                                persist_cache=False,
+                                **fc,
+                            )
+                        else:
+                            items = fetch_latest_items(
+                                limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc
+                            )
+                    elif bool(getattr(video_settings, "high_quality_topic_selection", True)):
                         items = get_scored_items(
                             paths.news_cache_dir,
                             limit=SCRIPT_HEADLINE_FETCH_LIMIT,
                             topic_tags=tags,
                             cache_mode=cm,
-                            persist_cache=False,
                             **fc,
                         )
                     else:
-                        items = fetch_latest_items(
-                            limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc
+                        items = get_latest_items(
+                            paths.news_cache_dir,
+                            limit=SCRIPT_HEADLINE_FETCH_LIMIT,
+                            topic_tags=tags,
+                            cache_mode=cm,
+                            **fc,
                         )
-                elif bool(getattr(video_settings, "high_quality_topic_selection", True)):
-                    items = get_scored_items(
-                        paths.news_cache_dir,
-                        limit=SCRIPT_HEADLINE_FETCH_LIMIT,
-                        topic_tags=tags,
-                        cache_mode=cm,
-                        **fc,
-                    )
-                else:
-                    items = get_latest_items(
-                        paths.news_cache_dir,
-                        limit=SCRIPT_HEADLINE_FETCH_LIMIT,
-                        topic_tags=tags,
-                        cache_mode=cm,
-                        **fc,
-                    )
-                item = pick_one_item(items)
-                if not item:
-                    dprint("crawler", "no item picked — stopping run_once")
-                    _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
-                    return None
-                dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
-                sources = [news_item_to_script_source(it) for it in items]
+                    item = pick_one_item(items)
+                    if not item:
+                        dprint("crawler", "no item picked — stopping run_once")
+                        _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
+                        return None
+                    dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
+                    sources = [news_item_to_script_source(it) for it in items]
         else:
             sources = list(prebuilt_sources or [])
             if not sources:
@@ -598,6 +679,14 @@ def run_once(
         run_dir = paths.runs_dir / run_id
         run_assets = run_dir / "assets"
         run_assets.mkdir(parents=True, exist_ok=True)
+        if series_context is not None:
+            try:
+                (run_assets / "series_context.json").write_text(
+                    json.dumps(asdict(series_context), indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
         _PIPELINE_CKPT_BOX["staging"] = run_assets
         _PIPELINE_CKPT_BOX["project"] = None
         _PIPELINE_CKPT_BOX["settings"] = app
@@ -605,7 +694,46 @@ def run_once(
 
         article_text = ""
         article_url_for_screen: str = ""
-        if prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
+        if prebuilt_pkg is None and series_locked_article_mode and (locked_article_body or "").strip():
+            _run_stage("article", "Using locked series article excerpt (lock_first replay)")
+            article_text = str(locked_article_body or "").strip()
+            article_url_for_screen = str(getattr(item, "url", "") or "") if item is not None else ""
+            try:
+                (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
+            except OSError:
+                pass
+            try:
+                from src.content.topic_constraints import (
+                    score_source_url as _score_source_url,
+                    source_quality_label as _source_quality_label,
+                )
+
+                _src_q = _score_source_url(
+                    article_url_for_screen,
+                    body_length=len(article_text or ""),
+                )
+                (run_assets / "source_quality.json").write_text(
+                    json.dumps(
+                        {
+                            "url": article_url_for_screen,
+                            "score": _src_q.score,
+                            "badge": _src_q.badge,
+                            "reasons": list(_src_q.reasons),
+                            "body_length": len(article_text or ""),
+                            "series_locked": True,
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                _run_stage(
+                    "source_quality",
+                    f"Source quality: {_source_quality_label(_src_q)} — {', '.join(_src_q.reasons) or 'no flags'}",
+                )
+            except Exception:
+                pass
+        elif prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
             _run_stage("article", "Fetching full article text (Firecrawl/crawl; may be empty on failure)")
             try:
                 article_text = fetch_article_text(
@@ -712,6 +840,8 @@ def run_once(
             tags = list(effective_topic_tags(app))
             vf = str(getattr(app, "video_format", "news") or "news")
             try_llm_4bit = bool(getattr(app, "try_llm_4bit", True))
+            _sc_prev = _series_script_excerpt_for_prompt(series_context)
+            _sc_bible = (series_context.series_bible_text if series_context is not None else "") or ""
 
             # Phase 10: chunked LLM relevance pass over the fetched article body so the
             # script LLM only sees actual story content (drops Fandom rails, sidebars,
@@ -771,6 +901,21 @@ def run_once(
                         _dprint("article", "relevance screen skipped", str(exc))
                     except Exception:
                         pass
+
+            if (
+                series_context is not None
+                and series_context.is_first
+                and series_context.source_strategy_resolved == "lock_first"
+            ):
+                try:
+                    persist_locked_sources(
+                        paths,
+                        series_context.series_slug,
+                        sources=list(sources or []),
+                        article_excerpt=str(article_text or ""),
+                    )
+                except Exception:
+                    pass
 
             script_digest = ""
             script_ref_notes = ""
@@ -942,6 +1087,8 @@ def run_once(
                         try_llm_4bit=try_llm_4bit,
                         article_excerpt=clip_article_excerpt(article_text),
                         supplement_context=script_digest,
+                        previous_episode_summary=_sc_prev,
+                        series_bible=_sc_bible,
                         llm_holder=llm_sess,
                     )
 
@@ -987,6 +1134,8 @@ def run_once(
                         try_llm_4bit=try_llm_4bit,
                         article_excerpt=clip_article_excerpt(article_text),
                         supplement_context=script_digest,
+                        previous_episode_summary=_sc_prev,
+                        series_bible=_sc_bible,
                         llm_holder=llm_sess,
                     )
 
@@ -1034,6 +1183,14 @@ def run_once(
             )
     
         assert personality_pick is not None
+
+        mm_vid = str(getattr(app, "media_mode", "video") or "video").strip().lower()
+        _series_video_base: Path | None = None
+        if series_context is not None and mm_vid == "video":
+            _series_video_base = paths.videos_dir / series_context.series_slug / episode_subdir_name(
+                series_context.episode_index,
+                str(pkg.title or ""),
+            )
     
         # If the user did NOT select a character, generate a storyline-aligned narrator/cast and store it under the video assets.
         # This keeps cartoon/unhinged runs from using a single generic host, and keeps news/explainer as narrator-only.
@@ -1093,7 +1250,9 @@ def run_once(
                 char_ctx = character_context_for_brain(active_character)
 
                 safe_dir_cast = safe_title_to_dirname(pkg.title)
-                video_dir_cast = _projects_root / safe_dir_cast
+                video_dir_cast = (
+                    _series_video_base if _series_video_base is not None else _projects_root / safe_dir_cast
+                )
                 assets_dir_cast = video_dir_cast / "assets"
                 assets_dir_cast.mkdir(parents=True, exist_ok=True)
                 if not _cast_loaded:
@@ -1145,7 +1304,13 @@ def run_once(
 
         safe_dir = safe_title_to_dirname(pkg.title)
         _rsp_vd = str(getattr(app, "resume_partial_project_directory", "") or "").strip()
-        if _rsp_vd and bool(getattr(video_settings, "resume_partial_pipeline", False)):
+        if _series_video_base is not None:
+            if _rsp_vd and bool(getattr(video_settings, "resume_partial_pipeline", False)):
+                _vd_try = Path(_rsp_vd).expanduser().resolve()
+                video_dir = _vd_try if _vd_try.is_dir() else _series_video_base
+            else:
+                video_dir = _series_video_base
+        elif _rsp_vd and bool(getattr(video_settings, "resume_partial_pipeline", False)):
             _vd_try = Path(_rsp_vd).expanduser().resolve()
             video_dir = _vd_try if _vd_try.is_dir() else (_projects_root / safe_dir)
         else:
@@ -1743,6 +1908,29 @@ def run_once(
                 cuda_device_index=_diffusion_cuda_idx,
             )
             _pipe_progress(on_progress, 93, -1, "Encode complete")
+            if series_context is not None:
+                try:
+                    _write_video_folder(
+                        pkg=pkg,
+                        video_dir=video_dir,
+                        sources=sources,
+                        prompts=prompts,
+                        preview=preview_blob,
+                        series_meta=_series_meta_for_video_folder(series_context),
+                    )
+                    from src.series.finish import finalize_series_episode_if_needed
+
+                    finalize_series_episode_if_needed(
+                        paths=paths,
+                        app=app,
+                        series_context=series_context,
+                        video_dir=video_dir,
+                        pkg=pkg,
+                        llm_model_id=llm_id,
+                        llm_cuda_device_index=_llm_cuda_idx,
+                    )
+                except Exception:
+                    pass
             try:
                 if app != app_in:
                     save_settings(app)
@@ -2367,7 +2555,28 @@ def run_once(
     
         _pipe_progress(on_progress, 97, -1, "Saving project folder…")
         _run_stage("export", f"Writing meta.json, script.txt, hashtags → {video_dir}")
-        _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
+        _write_video_folder(
+            pkg=pkg,
+            video_dir=video_dir,
+            sources=sources,
+            prompts=prompts,
+            preview=preview_blob,
+            series_meta=_series_meta_for_video_folder(series_context),
+        )
+        try:
+            from src.series.finish import finalize_series_episode_if_needed
+
+            finalize_series_episode_if_needed(
+                paths=paths,
+                app=app,
+                series_context=series_context,
+                video_dir=video_dir,
+                pkg=pkg,
+                llm_model_id=llm_id,
+                llm_cuda_device_index=_llm_cuda_idx,
+            )
+        except Exception:
+            pass
         _pipe_progress(on_progress, 100, 100, "Done")
         dprint("pipeline", "run_once done", f"video_dir={video_dir}")
         try:

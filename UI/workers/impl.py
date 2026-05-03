@@ -15,6 +15,7 @@ from src.content.brain_api import (
 )
 from src.content.firecrawl_news import resolve_firecrawl_api_key
 from src.core.config import SCRIPT_HEADLINE_FETCH_LIMIT, AppSettings, get_paths, media_output_root
+from src.series.context import SeriesContext
 from src.runtime.api_generation import generate_still_png_bytes
 from src.runtime.model_backend import is_api_mode
 from src.content.crawler import (
@@ -227,6 +228,7 @@ class PipelineWorker(QThread):
         prebuilt_prompts=None,
         prebuilt_seeds=None,
         run_control: PipelineRunControl | None = None,
+        series_context: SeriesContext | None = None,
     ):
         super().__init__()
         self.settings = settings
@@ -235,6 +237,7 @@ class PipelineWorker(QThread):
         self.prebuilt_prompts = prebuilt_prompts
         self.prebuilt_seeds = prebuilt_seeds
         self.run_control = run_control
+        self.series_context = series_context
 
     def run(self) -> None:
         try:
@@ -247,6 +250,7 @@ class PipelineWorker(QThread):
                     prebuilt_prompts=self.prebuilt_prompts,
                     prebuilt_seeds=self.prebuilt_seeds,
                     run_control=self.run_control,
+                    series_context=self.series_context,
                     on_progress=lambda tid, ov, tk, msg: self.progress.emit(
                         str(tid), int(ov), int(tk), str(msg)
                     ),

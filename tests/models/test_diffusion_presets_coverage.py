@@ -36,7 +36,7 @@ def test_video_pipe_kwargs_for_each_curated_clip_model():
         kw = _video_pipe_kwargs(rid, num_frames=24)
         if rid == "wan-ai/wan2.2-t2v-a14b-diffusers":
             assert kw["height"] == 480 and kw["width"] == 832
-        elif rid == "genmo/mochi-1.5-final":
+        elif rid == "genmo/mochi-1-preview":
             assert kw["num_frames"] == 24
         elif rid == "thudm/cogvideox-5b":
             assert kw["num_frames"] == 24 and kw["guidance_scale"] == 6.0

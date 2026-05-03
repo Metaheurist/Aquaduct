@@ -64,7 +64,7 @@ ALL_REPOS = [
     "stabilityai/stable-diffusion-3.5-large-turbo",
     # Video / motion
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
-    "genmo/mochi-1.5-final",
+    "genmo/mochi-1-preview",
     "THUDM/CogVideoX-5b",
     "Tencent/HunyuanVideo",
     "Lightricks/LTX-2",

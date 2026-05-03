@@ -37,3 +37,6 @@ psutil>=5.9.0
 
 # CLI: Rich progress bars for install_pytorch.py (TTY)
 rich>=13.7.0
+
+# LLM chat transcript encryption at rest
+cryptography>=42.0.0

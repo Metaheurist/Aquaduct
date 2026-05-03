@@ -80,3 +80,26 @@ def test_auto_fit_picks_quality_quant_modes_high_vram() -> None:
     assert r.script_quant_modes[0] in ("bf16", "fp16")
     assert r.image_quant_modes[0] in ("bf16", "fp16")
     assert r.video_quant_modes[0] in ("bf16", "fp16")
+
+
+def test_rate_model_fit_badge_respects_video_quant_mode() -> None:
+    """CPU offload lowers effective VRAM thresholds vs fp16 for the same GPU memory."""
+    from src.models.hardware import marker_rank, rate_model_fit_for_repo
+
+    m_fp, _ = rate_model_fit_for_repo(
+        kind="video",
+        speed="faster",
+        repo_id="genmo/mochi-1-preview",
+        vram_gb=9.0,
+        ram_gb=32.0,
+        quant_mode="fp16",
+    )
+    m_off, _ = rate_model_fit_for_repo(
+        kind="video",
+        speed="faster",
+        repo_id="genmo/mochi-1-preview",
+        vram_gb=9.0,
+        ram_gb=32.0,
+        quant_mode="cpu_offload",
+    )
+    assert marker_rank(m_off) >= marker_rank(m_fp)

@@ -17,6 +17,9 @@ VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer", "unhinged", "c
 
 RunContentMode = Literal["preset", "custom"]
 
+# Video series: how each episode picks its source (see ``resolve_series_source_strategy``).
+SeriesSourceStrategy = Literal["auto", "lock_first", "fresh_per_ep"]
+
 # High-level UI/pipeline mode (separate from model execution Local/API).
 MediaMode = Literal["video", "photo"]
 
@@ -287,6 +290,19 @@ class BrandingSettings:
 
 
 @dataclass(frozen=True)
+class SeriesSettings:
+    """Run-tab **Video series** options (multi-episode continuation). Persisted in ``ui_settings.json``."""
+
+    series_mode: bool = False
+    series_name: str = ""
+    episode_count: int = 1
+    lock_style: bool = True
+    carry_recap: bool = True
+    source_strategy: SeriesSourceStrategy = "auto"
+    continue_on_failure: bool = False
+
+
+@dataclass(frozen=True)
 class AppSettings:
     topic_tags_by_mode: dict[str, list[str]] = field(default_factory=default_topic_tags_by_mode)
     #: Phase 6 — per-tag context note ({"tag": "free-form note"}). Surfaced as a
@@ -339,6 +355,7 @@ class AppSettings:
     video: VideoSettings = VideoSettings()
     picture: PictureSettings = PictureSettings()
     branding: BrandingSettings = BrandingSettings()
+    series: SeriesSettings = field(default_factory=SeriesSettings)
     # TikTok Content Posting API (OAuth + optional upload). See docs/integrations/tiktok.md
     tiktok_enabled: bool = False
     tiktok_client_key: str = ""

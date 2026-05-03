@@ -61,7 +61,7 @@ _LOCAL_TIER: dict[str, str] = {
     "stabilityai/stable-diffusion-3.5-large-turbo": TIER_LITE,
     # Video
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers": TIER_STANDARD,
-    "genmo/mochi-1.5-final": TIER_STANDARD,
+        "genmo/mochi-1-preview": TIER_STANDARD,
     "THUDM/CogVideoX-5b": TIER_LITE,
     "Tencent/HunyuanVideo": TIER_PRO,
     "Lightricks/LTX-2": TIER_PRO,

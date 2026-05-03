@@ -19,6 +19,7 @@ from src.core.config import (
     ModelExecutionMode,
     MultiGpuShardMode,
     PictureSettings,
+    SeriesSettings,
     VideoSettings,
     VIDEO_FORMATS,
     VideoFormat,
@@ -93,6 +94,26 @@ def _norm_quant_mode(s: Any) -> str:
     if t in ("offload", "cpu", "cpu-offload"):
         return "cpu_offload"
     return "auto"
+
+
+def _norm_series_source_strategy(s: Any) -> str:
+    t = str(s or "auto").strip().lower()
+    return t if t in ("auto", "lock_first", "fresh_per_ep") else "auto"
+
+
+def _parse_series_settings(raw: Any) -> SeriesSettings:
+    if not isinstance(raw, dict):
+        return SeriesSettings()
+    ec = int(raw.get("episode_count", 1) or 1)
+    return SeriesSettings(
+        series_mode=bool(raw.get("series_mode", False)),
+        series_name=str(raw.get("series_name", "") or ""),
+        episode_count=max(1, min(50, ec)),
+        lock_style=bool(raw.get("lock_style", True)),
+        carry_recap=bool(raw.get("carry_recap", True)),
+        source_strategy=_norm_series_source_strategy(raw.get("source_strategy")),  # type: ignore[arg-type]
+        continue_on_failure=bool(raw.get("continue_on_failure", False)),
+    )
 
 
 def _parse_api_role(raw: Any) -> ApiRoleConfig:
@@ -327,6 +348,10 @@ def app_settings_from_dict(data: Any) -> AppSettings:
     video_q = _norm_quant_mode(data.get("video_quant_mode", "auto"))
     voice_q = _norm_quant_mode(data.get("voice_quant_mode", "auto"))
 
+    _video_model_id = str(data.get("video_model_id", "")) if isinstance(data, dict) else ""
+    if isinstance(data, dict) and _video_model_id.strip().lower().replace("\\", "/") == "genmo/mochi-1.5-final":
+        _video_model_id = "genmo/mochi-1-preview"
+
     return AppSettings(
         topic_tags_by_mode=topic_map,
         topic_tag_notes=_sanitize_topic_tag_notes_for_settings(data.get("topic_tag_notes"))
@@ -371,12 +396,13 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         else "",
         llm_model_id=str(data.get("llm_model_id", "")) if isinstance(data, dict) else "",
         image_model_id=str(data.get("image_model_id", "")) if isinstance(data, dict) else "",
-        video_model_id=str(data.get("video_model_id", "")) if isinstance(data, dict) else "",
+        video_model_id=_video_model_id,
         voice_model_id=str(data.get("voice_model_id", "")) if isinstance(data, dict) else "",
         allow_nsfw=bool(data.get("allow_nsfw", False)) if isinstance(data, dict) else False,
         video=video,
         picture=picture,
         branding=branding,
+        series=_parse_series_settings(data.get("series")) if isinstance(data, dict) else SeriesSettings(),
         tiktok_enabled=bool(data.get("tiktok_enabled", False)) if isinstance(data, dict) else False,
         tiktok_client_key=str(data.get("tiktok_client_key", "")) if isinstance(data, dict) else "",
         tiktok_client_secret=str(data.get("tiktok_client_secret", "")) if isinstance(data, dict) else "",

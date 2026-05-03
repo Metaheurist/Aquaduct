@@ -13,6 +13,7 @@ from src.content.brain import (
     _prompt_for_creative_brief,
     _prompt_for_items,
     _prompt_topic_tag_grounding_batch,
+    _series_continuity_block,
     _supplement_context_block,
     clip_article_excerpt,
     get_personality_by_id,
@@ -50,6 +51,8 @@ def generate_script_openai(
     video_format: str,
     article_excerpt: str | None,
     supplement_context: str = "",
+    previous_episode_summary: str = "",
+    series_bible: str = "",
     on_llm_task: Callable[[str, int, str], None] | None = None,
 ) -> VideoPackage:
     personality = get_personality_by_id(personality_id)
@@ -77,6 +80,12 @@ def generate_script_openai(
     sup = (supplement_context or "").strip()
     if sup:
         prompt = prompt + _supplement_context_block(sup)
+    _cont = _series_continuity_block(
+        previous_episode_summary=previous_episode_summary,
+        series_bible=series_bible,
+    )
+    if _cont:
+        prompt = prompt + _cont
 
     try:
         from debug import dprint

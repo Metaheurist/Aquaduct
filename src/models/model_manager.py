@@ -10,6 +10,19 @@ from typing import Iterable
 
 from src.models.model_tiers import local_tier_for_repo
 
+
+def canonical_hub_repo_id(repo_id: str) -> str:
+    """Map retired or invalid Hub ids to the current public repo id."""
+    rid = str(repo_id or "").strip()
+    if not rid:
+        return rid
+    low = rid.lower().replace("\\", "/")
+    # ``genmo/mochi-1.5-final`` is not available on the Hub (404/401); diffusers weights use preview.
+    if low == "genmo/mochi-1.5-final":
+        return "genmo/mochi-1-preview"
+    return rid
+
+
 @dataclass(frozen=True)
 class ModelOption:
     label: str
@@ -132,8 +145,8 @@ def model_options() -> list[ModelOption]:
             ui_sequence=1,
         ),
         ModelOption(
-            "Mochi 1.5 (T2V — Genmo, ~10s default clips, Apache 2.0)",
-            "genmo/mochi-1.5-final",
+            "Mochi 1 (T2V — Genmo, Apache 2.0; Hub: mochi-1-preview)",
+            "genmo/mochi-1-preview",
             "faster",
             "video",
             size_hint="~10-14GB",
@@ -567,10 +580,12 @@ def resolve_pretrained_load_path(repo_id: str, *, models_dir: Path) -> str:
     from disk. Otherwise returns ``repo_id`` and Hugging Face will use the hub cache
     (may download into the cache even when Settings shows a project snapshot path).
     """
-    rid = str(repo_id or "").strip()
+    rid = canonical_hub_repo_id(str(repo_id or "").strip())
     if not rid:
-        return repo_id
+        return str(repo_id or "").strip()
     p = _find_local_snapshot_dir(rid, models_dir)
+    if p is None and rid.lower() == "genmo/mochi-1-preview":
+        p = _find_local_snapshot_dir("genmo/mochi-1.5-final", models_dir)
     if p is not None:
         return str(p.resolve())
     return rid

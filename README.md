@@ -140,10 +140,10 @@ python -m UI
 
 The title bar includes a **Photo \| Video** toggle (persists as `media_mode` in `ui_settings.json`) to switch between the picture pipeline and the video pipeline; **Library** and open-folder actions follow the active mode.
 
-Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** and **rounded outline** buttons drawn like the main window title bar (not legacy square Fusion borders); native **file/folder** pickers stay OS-standard. The title bar and compact toolbars (e.g. Characters, Tasks **Run controls**) use **SVG** icons (crisp at any DPI); theme palettes include several named dark presets on the **Branding** tab.
+Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** and **rounded outline** buttons drawn like the main window title bar (not legacy square Fusion borders); native **file/folder** pickers stay OS-standard. The title bar and compact toolbars (e.g. Characters, Tasks **Run controls**) use **SVG** icons (crisp at any DPI); theme palettes include several named dark presets on the **Branding** tab. **LLM chat** (speech-bubble) opens a non-modal window for the selected script model; **`pip install -r requirements.txt`** must include **`cryptography`** for encrypted chat transcripts.
 
 Tabs:
-- **Run**: in **Video** mode, set **Videos to generate** to queue **that many independent full runs** (each produces one video); **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged / Creepypasta / Health advice) + **Personality** + optional **Character** + open `videos/`
+- **Run**: in **Video** mode, set **Videos to generate** to queue **that many independent full runs** when **multi-episode series** is off; with **Video series (continuation)** on, use **Episodes to generate** in that group instead (Output quantity hides). **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged / Creepypasta / Health advice) + **Personality** + optional **Character** + open `videos/`
 - **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl for creative modes and **Health advice** (wellness/education pages + saved pack under `data/topic_research/`); **News** / **Explainer** use headline-style sourcing. Approved picks are added to that format’s list ([UI](docs/ui/ui.md), [Crawler](docs/integrations/crawler.md))
 - **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
@@ -183,7 +183,8 @@ Example:
 - [Main loop / CLI](docs/pipeline/main.md)
 - [Config](docs/reference/config.md)
 - [Topics (tags + grounding notes)](docs/ui/topics.md)
-- [Desktop UI](docs/ui/ui.md) (includes **Video** platform preset tiles, **quality presets v2**, NSFW toggle)
+- [Video series mode](docs/pipeline/series-mode.md) (multi-episode continuation + recap / bible)
+- [Desktop UI](docs/ui/ui.md) (includes **Video** platform preset tiles, **quality presets v2**, NSFW toggle, title-bar **LLM chat**)
 - [Branding (theme + watermark)](docs/ui/branding.md)
 - [Models + downloads](docs/reference/models.md)
 - [VRAM inference profiles (local)](docs/reference/inference_profiles.md)

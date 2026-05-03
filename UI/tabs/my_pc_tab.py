@@ -129,7 +129,8 @@ def attach_my_pc_tab(win) -> None:
     table.setToolTip(
         help_tooltip_rich(
             "Fit markers match the Model tab (EXCELLENT / OK / RISKY / …). "
-            "Rows use effective VRAM from the policy above (Auto vs Select GPU).",
+            "Rows use effective VRAM from the policy above (Auto vs Select GPU). "
+            "Script / Image / Video / Voice quantization from your saved settings adjusts the VRAM threshold the same way as on the Model tab.",
             "my_pc",
             slide=0,
         )
@@ -139,9 +140,23 @@ def attach_my_pc_tab(win) -> None:
         app = getattr(win, "settings", None)
         if app is None:
             return
+
+        def _qm_for_row(kind: str) -> str | None:
+            k = (kind or "").strip().lower()
+            if k == "script":
+                return str(getattr(app, "script_quant_mode", "auto") or "auto")
+            if k == "image":
+                return str(getattr(app, "image_quant_mode", "auto") or "auto")
+            if k == "video":
+                return str(getattr(app, "video_quant_mode", "auto") or "auto")
+            if k == "voice":
+                return str(getattr(app, "voice_quant_mode", "auto") or "auto")
+            return None
+
         for r, opt in enumerate(opts):
             vk = effective_vram_gb_for_kind(opt.kind, gpus, app) if gpus else None
             vram_eff = vk if vk is not None else info.vram_gb
+
             marker, why = rate_model_fit_for_repo(
                 kind=opt.kind,
                 speed=opt.speed,
@@ -149,6 +164,7 @@ def attach_my_pc_tab(win) -> None:
                 pair_image_repo_id=getattr(opt, "pair_image_repo_id", "") or "",
                 vram_gb=vram_eff,
                 ram_gb=info.ram_gb,
+                quant_mode=_qm_for_row(opt.kind),
             )
             bg, fg = _fit_colors(marker)
             table.setItem(r, 0, QTableWidgetItem(opt.kind))

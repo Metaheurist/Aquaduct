@@ -529,6 +529,35 @@ def vram_requirement_hint(
     return "--"
 
 
+def _resolve_fit_quant_mode(*, kind: str, quant_mode: str | None, vram_gb: float | None) -> str:
+    """Map UI ``auto`` to the same pick as ``pick_auto_mode`` so badges match the quant strip."""
+    from src.models.quantization import _norm_mode, pick_auto_mode
+
+    m = _norm_mode(quant_mode if quant_mode is not None else "auto")
+    if m != "auto":
+        return m
+    role = (kind or "script").strip().lower()
+    if role not in ("script", "image", "video", "voice"):
+        role = "script"
+    cuda_ok = vram_gb is not None and float(vram_gb) > 0
+    return pick_auto_mode(role=role, repo_id="", vram_gb=vram_gb, cuda_ok=cuda_ok)  # type: ignore[arg-type]
+
+
+def _fit_need_scale_after_quant(*, kind: str, quant_mode_resolved: str) -> float:
+    """Scale down OK/EXCELLENT VRAM thresholds when quant/offload reduces peak memory (fit badges)."""
+    from src.models.quantization import _norm_mode
+
+    m = _norm_mode(quant_mode_resolved or "auto")
+    if m == "auto":
+        return 1.0
+    k = (kind or "").strip().lower()
+    if k == "script":
+        return {"bf16": 1.0, "fp16": 1.0, "int8": 0.88, "nf4_4bit": 0.72, "cpu_offload": 1.0}.get(m, 1.0)
+    if k in ("image", "video"):
+        return {"bf16": 1.0, "fp16": 1.0, "int8": 0.90, "nf4_4bit": 0.90, "cpu_offload": 0.75}.get(m, 1.0)
+    return {"bf16": 1.0, "fp16": 1.0, "int8": 0.95, "nf4_4bit": 0.95, "cpu_offload": 0.92}.get(m, 1.0)
+
+
 def rate_model_fit_for_repo(
     *,
     kind: str,
@@ -537,10 +566,14 @@ def rate_model_fit_for_repo(
     pair_image_repo_id: str = "",
     vram_gb: float | None,
     ram_gb: float | None,
+    quant_mode: str | None = None,
 ) -> tuple[str, str]:
     """
     Like `rate_model_fit`, but can take the actual repo_id (and optional paired image repo)
     to estimate fit more accurately for video/image models.
+
+    ``quant_mode`` adjusts OK/EXCELLENT thresholds. Pass ``None`` to skip (legacy callers).
+    Pass ``\"auto\"`` or a concrete mode from settings / Model tab to apply relaxation.
     """
     if vram_gb is None:
         return "UNKNOWN", "GPU VRAM not detected (will fall back to CPU / placeholders where possible)."
@@ -548,6 +581,18 @@ def rate_model_fit_for_repo(
     k = (kind or "").strip().lower()
     rid = (repo_id or "").strip().lower()
     pair = (pair_image_repo_id or "").strip()
+
+    if quant_mode is None:
+        q_scale = 1.0
+        q_suffix = ""
+    else:
+        q_eff = _resolve_fit_quant_mode(kind=k, quant_mode=quant_mode, vram_gb=vram_gb)
+        q_scale = _fit_need_scale_after_quant(kind=k, quant_mode_resolved=q_eff)
+        from src.models.quantization import mode_label
+
+        q_suffix = ""
+        if q_scale < 0.999:
+            q_suffix = f" Quantization {mode_label(q_eff)} relaxes the VRAM threshold for this badge."
 
     if k == "image":
         if "stable-diffusion-v1-5" in rid or "v1-5" in rid:
@@ -586,13 +631,14 @@ def rate_model_fit_for_repo(
             need_ok = 8.0
             need_ex = 10.0
             why = "Image diffusion (mid-range) expectation."
-        if vram_gb >= need_ex:
-            return "EXCELLENT", f"{why} VRAM looks comfortable."
-        if vram_gb >= need_ok:
-            return "OK", f"{why} Should run if models are unloaded between stages."
-        if vram_gb >= max(4.0, need_ok - 2.0):
-            return "RISKY", f"{why} Tight headroom; may OOM depending on drivers/settings."
-        return "NO_GPU", f"{why} Likely too little VRAM; will use placeholders or fail to load."
+        n_ok, n_ex = need_ok * q_scale, need_ex * q_scale
+        if vram_gb >= n_ex:
+            return "EXCELLENT", f"{why}{q_suffix} VRAM looks comfortable."
+        if vram_gb >= n_ok:
+            return "OK", f"{why}{q_suffix} Should run if models are unloaded between stages."
+        if vram_gb >= max(4.0, n_ok - 2.0):
+            return "RISKY", f"{why}{q_suffix} Tight headroom; may OOM depending on drivers/settings."
+        return "NO_GPU", f"{why}{q_suffix} Likely too little VRAM; will use placeholders or fail to load."
 
     if k == "video":
         # Motion / latent video models (not T2I — see kind "image").
@@ -607,7 +653,7 @@ def rate_model_fit_for_repo(
         elif "mochi" in rid:
             need_ok = 10.0
             need_ex = 14.0
-            why = "Mochi 1.5 T2V (Genmo); long clips; quantization offloads are common in community setups."
+            why = "Mochi 1 T2V (Genmo); long clips; quantization offloads are common in community setups."
         elif "cogvideox-5b" in rid:
             need_ok = 6.0
             need_ex = 10.0
@@ -649,13 +695,14 @@ def rate_model_fit_for_repo(
             need_ex = 12.0
             why = "Video diffusion class expectation."
 
-        if vram_gb >= need_ex:
-            return "EXCELLENT", f"{why} VRAM looks comfortable."
-        if vram_gb >= need_ok:
-            return "OK", f"{why} Should run if models are unloaded between stages."
-        if vram_gb >= max(4.0, need_ok - 2.0):
-            return "RISKY", f"{why} Tight headroom; may OOM depending on drivers/settings."
-        return "NO_GPU", f"{why} Likely too little VRAM; will use placeholders or fail to load."
+        n_ok, n_ex = need_ok * q_scale, need_ex * q_scale
+        if vram_gb >= n_ex:
+            return "EXCELLENT", f"{why}{q_suffix} VRAM looks comfortable."
+        if vram_gb >= n_ok:
+            return "OK", f"{why}{q_suffix} Should run if models are unloaded between stages."
+        if vram_gb >= max(4.0, n_ok - 2.0):
+            return "RISKY", f"{why}{q_suffix} Tight headroom; may OOM depending on drivers/settings."
+        return "NO_GPU", f"{why}{q_suffix} Likely too little VRAM; will use placeholders or fail to load."
 
     if k == "script":
         if "midnight-miqu" in rid or "miqu-70" in rid:
@@ -681,13 +728,14 @@ def rate_model_fit_for_repo(
         else:
             return rate_model_fit(kind=kind, speed=speed, vram_gb=vram_gb, ram_gb=ram_gb)
 
-        if vram_gb >= need_ex:
-            return "EXCELLENT", f"{why} VRAM looks comfortable."
-        if vram_gb >= need_ok:
-            return "OK", f"{why} Should run if the model is unloaded between pipeline stages."
-        if vram_gb >= max(4.0, need_ok - 2.0):
-            return "RISKY", f"{why} Tight headroom; may OOM or need CPU offload."
-        return "NO_GPU", f"{why} Likely too little VRAM; generation may fail."
+        n_ok, n_ex = need_ok * q_scale, need_ex * q_scale
+        if vram_gb >= n_ex:
+            return "EXCELLENT", f"{why}{q_suffix} VRAM looks comfortable."
+        if vram_gb >= n_ok:
+            return "OK", f"{why}{q_suffix} Should run if the model is unloaded between pipeline stages."
+        if vram_gb >= max(4.0, n_ok - 2.0):
+            return "RISKY", f"{why}{q_suffix} Tight headroom; may OOM or need CPU offload."
+        return "NO_GPU", f"{why}{q_suffix} Likely too little VRAM; generation may fail."
 
     # For voice, keep the existing heuristic (speed-based).
     return rate_model_fit(kind=kind, speed=speed, vram_gb=vram_gb, ram_gb=ram_gb)
@@ -760,7 +808,7 @@ _IMAGE_PREF_ORDER: tuple[str, ...] = (
 
 _MOTION_VIDEO_PREF_ORDER: tuple[str, ...] = (
     "thudm/cogvideox-5b",
-    "genmo/mochi-1.5-final",
+    "genmo/mochi-1-preview",
     "wan-ai/wan2.2-t2v-a14b-diffusers",
     "tencent/hunyuanvideo",
     "lightricks/ltx-2",
@@ -845,6 +893,22 @@ def rank_models_for_auto_fit(
     video_opts = [o for o in model_options if o.kind == "video"]
     voice_opts = [o for o in model_options if o.kind == "voice"]
 
+    sq = (
+        str(getattr(app_settings, "script_quant_mode", "auto") or "auto")
+        if app_settings is not None
+        else None
+    )
+    iq = (
+        str(getattr(app_settings, "image_quant_mode", "auto") or "auto")
+        if app_settings is not None
+        else None
+    )
+    vq = (
+        str(getattr(app_settings, "video_quant_mode", "auto") or "auto")
+        if app_settings is not None
+        else None
+    )
+
     def script_key(o: ModelOption) -> tuple[float, float]:
         m, _ = rate_model_fit_for_repo(
             kind="script",
@@ -852,6 +916,7 @@ def rank_models_for_auto_fit(
             repo_id=o.repo_id,
             vram_gb=vram_script,
             ram_gb=ram,
+            quant_mode=sq,
         )
         rk = float(marker_rank(m))
         spd = float(_SCRIPT_SPEED_RANK.get(o.speed, 0))
@@ -864,6 +929,7 @@ def rank_models_for_auto_fit(
             repo_id=o.repo_id,
             vram_gb=vram_image,
             ram_gb=ram,
+            quant_mode=iq,
         )
         rk = float(marker_rank(m))
         pref = float(_image_pref_index(o.repo_id))
@@ -878,6 +944,7 @@ def rank_models_for_auto_fit(
             pair_image_repo_id=pair,
             vram_gb=vram_video,
             ram_gb=ram,
+            quant_mode=vq,
         )
         rk = float(marker_rank(m))
         pref = float(_motion_video_pref_index(o.repo_id))
