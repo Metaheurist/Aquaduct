@@ -139,6 +139,21 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
 - bitrate preset (low/med/high)
 - export micro-scenes toggle (`export_microclips` in settings — key name unchanged)
 - **`platform_preset_id`**: last selected **platform template** id from the Video tab tiles (empty string = **Custom**). See [`src/settings/video_platform_presets.py`](../../src/settings/video_platform_presets.py).
+- **`spatial_upscale_mode`**: **`off`** (default) or **`auto`** — optional Real-ESRGAN-class **spatial** upsampling toward the export width×height before caption compositing ([`spatial_upscale.py`](../../src/render/spatial_upscale.py)). **`auto`** tries PyTorch on CUDA when **`basicsr`**, **`realesrgan`**, and **`opencv`** are installed, then the **`realesrgan-ncnn-vulkan`** binary; otherwise the editor keeps Lanczos resize. Ignored in **API** mode. Optional pip set: [`requirements-optional-upscale.txt`](../../requirements-optional-upscale.txt).
+
+### Spatial upscale environment (optional)
+
+| Variable | Role |
+|----------|------|
+| **`AQUADUCT_REALESRGAN_NCNN`** | Full path to **`realesrgan-ncnn-vulkan`** (or `.exe`) when not on `PATH`. |
+| **`AQUADUCT_DISABLE_REALESRGAN_NCNN`** | **`1`** / **`true`** — skip the Vulkan path. |
+| **`AQUADUCT_REALESRGAN_NCNN_MODEL`** | NCNN model name (default **`realesrgan-x4plus`**). |
+| **`AQUADUCT_REALESRGAN_NCNN_SCALE`** | Integer scale **`2`–`4`** for NCNN (default **4**). |
+| **`AQUADUCT_REALESRGAN_TILE`** | PyReal-ESRGAN tile size for CUDA (default **256**). |
+| **`AQUADUCT_SPATIAL_UPSCALE_CLIP_TIMEOUT_S`** | Per-clip wall-time ceiling (seconds); abort SR for that clip only. |
+| **`AQUADUCT_SPATIAL_UPSCALE_JOB_MAX_S`** | Max total wall time for a multi-clip upscale batch. |
+
+Weights for the PyTorch **x4+** path download once into **`.Aquaduct_data/realesrgan/RealESRGAN_x4plus.pth`** (or app data dir from [`get_paths()`](../../src/core/config.py)).
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:

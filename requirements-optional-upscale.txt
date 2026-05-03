@@ -1,0 +1,11 @@
+"""Optional dependency set for AI spatial upscaling (Real-ESRGAN / OpenCV).
+
+Install after PyTorch, e.g.:
+  pip install -r requirements-optional-upscale.txt
+
+NCNN Vulkan fallback uses a separate binary; see docs/reference/config.md.
+"""
+# basicsr pulls training utilities; pinned loosely for inference-only use.
+basicsr>=1.4.2
+realesrgan>=0.3.0
+opencv-python-headless>=4.8.0

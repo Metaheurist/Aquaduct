@@ -62,7 +62,7 @@ defines the registries (`LENGTH_PRESETS`, `SCENE_PRESETS`, `FPS_PRESETS`,
 ## UI
 
 [`UI/tabs/video_tab.py`](../../UI/tabs/video_tab.py) adds a new
-**"Quality presets (v2)"** form right above **Output & timing**:
+**"Quality presets"** form right above **Output & timing**:
 
 ```
 Length:        Medium clip (~25–35 s)

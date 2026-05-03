@@ -145,7 +145,7 @@ def attach_video_tab(win) -> None:
     lay.addWidget(preset_hint)
 
     add_section_spacing(lay, px=14)
-    lay.addWidget(section_title("Quality presets (v2)", emphasis=True))
+    lay.addWidget(section_title("Quality presets", emphasis=True))
     lay.addSpacing(2)
 
     from src.render.video_quality_presets import (
@@ -262,6 +262,25 @@ def attach_video_tab(win) -> None:
         )
     )
     presets_form.addRow("Smoothness", win.video_smoothness_combo)
+
+    win.video_spatial_upscale_combo = NoWheelComboBox()
+    win.video_spatial_upscale_combo.addItem("Off — Lanczos resize in editor", "off")
+    win.video_spatial_upscale_combo.addItem("Auto — PyTorch CUDA, else NCNN Vulkan", "auto")
+    _prep_combo(win.video_spatial_upscale_combo, min_w=240)
+    cur_su = str(getattr(win.settings.video, "spatial_upscale_mode", "off") or "off")
+    idx_su = win.video_spatial_upscale_combo.findData(cur_su)
+    if idx_su >= 0:
+        win.video_spatial_upscale_combo.setCurrentIndex(idx_su)
+    win.video_spatial_upscale_combo.setToolTip(
+        help_tooltip_rich(
+            "Optional Real-ESRGAN-class super-resolution toward the export resolution. "
+            "Requires optional pip packages (basicsr, realesrgan, opencv) for CUDA, or the "
+            "realesrgan-ncnn-vulkan binary for Vulkan. See docs/reference/config.md.",
+            "video",
+            slide=0,
+        )
+    )
+    presets_form.addRow("Spatial upscale", win.video_spatial_upscale_combo)
 
     lay.addLayout(presets_form)
 

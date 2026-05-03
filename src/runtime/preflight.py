@@ -71,6 +71,59 @@ def _preflight_smoothness_warnings(settings: AppSettings) -> list[str]:
     return out
 
 
+def _preflight_spatial_upscale_warnings(settings: AppSettings) -> list[str]:
+    """Warn when spatial upscale cannot run its preferred backends."""
+    out: list[str] = []
+    v = getattr(settings, "video", None)
+    mode = str(getattr(v, "spatial_upscale_mode", "off") or "off").strip().lower()
+    if mode != "auto":
+        return out
+    if is_api_mode(settings):
+        out.append(
+            "Spatial upscale 'auto' is ignored in API mode (cloud T2V) — the final encode uses normal resize."
+        )
+        return out
+    try:
+        from src.render.spatial_upscale import (
+            SPATIAL_VRAM_BUDGET_MB,
+            ncnn_spatial_available,
+            pytorch_realesrgan_available,
+            spatial_vram_budget_ok,
+        )
+    except Exception:
+        return out
+
+    has_torch_stack = pytorch_realesrgan_available()
+    has_ncnn = ncnn_spatial_available()
+    if not has_torch_stack and not has_ncnn:
+        out.append(
+            "Spatial upscale 'auto' is on but no backend was found (install optional "
+            "`basicsr` + `realesrgan` + `opencv-python-headless` for CUDA, and/or ship "
+            "`realesrgan-ncnn-vulkan` + models). Export will use Lanczos resize only."
+        )
+        return out
+
+    free_mb: int | None = None
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            free_b, _ = torch.cuda.mem_get_info()  # type: ignore[no-untyped-call]
+            free_mb = int(free_b) // (1024 * 1024)
+    except Exception:
+        pass
+    if (
+        has_torch_stack
+        and free_mb is not None
+        and not spatial_vram_budget_ok(free_vram_mb=free_mb)
+    ):
+        out.append(
+            f"Spatial upscale may skip the PyTorch path when free VRAM is under ~{SPATIAL_VRAM_BUDGET_MB} MB — "
+            "NCNN or editor resize will be used instead."
+        )
+    return out
+
+
 def _check_imports(mods: Iterable[str]) -> list[str]:
     missing: list[str] = []
     for m in mods:
@@ -274,6 +327,7 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
     warnings.extend(preflight_heavy_repo_ram_warnings(settings))
     warnings.extend(preflight_cpu_busy_warnings())
     warnings.extend(_preflight_smoothness_warnings(settings))
+    warnings.extend(_preflight_spatial_upscale_warnings(settings))
 
     if not is_api_mode(settings):
         try:

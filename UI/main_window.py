@@ -1639,6 +1639,11 @@ class MainWindow(QMainWindow):
                 else str(getattr(self.settings.video, "smoothness_mode", "off") or "off")
             ),
             smoothness_target_fps=int(getattr(self.settings.video, "smoothness_target_fps", 24) or 24),
+            spatial_upscale_mode=(
+                str(self.video_spatial_upscale_combo.currentData() or "off")
+                if hasattr(self, "video_spatial_upscale_combo")
+                else str(getattr(self.settings.video, "spatial_upscale_mode", "off") or "off")
+            ),
             video_length_preset_id=(
                 str(self.video_length_preset_combo.currentData() or "medium")
                 if hasattr(self, "video_length_preset_combo")
