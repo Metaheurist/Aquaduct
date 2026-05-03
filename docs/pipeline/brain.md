@@ -53,6 +53,10 @@ The `creepypasta` prompt now states explicitly that empty `visual_prompt`
 makes a segment unusable; this is paired with the validator above so partial
 outputs degrade gracefully instead of becoming the new failure mode.
 
+## NSFW format (`video_format="nsfw"`)
+
+**Adults-only** preset: shared guardrails + denylist in [`src/content/nsfw_guardrails.py`](../../src/content/nsfw_guardrails.py); Firecrawl-first sourcing and topic Discover like other creative modes (`data/topic_research/nsfw/`); script branch [`_prompt_for_nsfw_items`](../../src/content/brain.py); `enforce_arc` skipped; optional web digest uses the richer meme-mode scrape budget ([`src/content/story_context.py`](../../src/content/story_context.py)); pipeline forces diffusion **`allow_nsfw`** for that run ([`main.py`](../../main.py)); preflight + UI block TikTok/YouTube auto-upload when incompatible. **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** (desktop **F12**) turns off those guardrails, denylist filtering, and upload gates for the **current process** — see [Config — Session guardrail bypass](../reference/config.md#session-guardrail-bypass).
+
 ## Inference profiles (local)
 When the desktop app or `run_once` passes **`inference_settings`** (`AppSettings`), [`_infer_text_with_optional_holder`](../../src/content/brain.py) tightens **`max_new_tokens`** and the tokenizer **input** cap (via **`_generate_with_loaded_causal_lm`**) using [`pick_script_profile`](../../src/models/inference_profiles.py) and the same **effective script VRAM** as the GPU policy fit badges. **`AQUADUCT_LLM_MAX_INPUT_TOKENS`** still overrides the input cap when set. See [Inference profiles](../reference/inference_profiles.md).
 

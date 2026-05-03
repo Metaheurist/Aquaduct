@@ -167,6 +167,14 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
 
 Weights for the PyTorch **x4+** path download once into **`.Aquaduct_data/realesrgan/RealESRGAN_x4plus.pth`** (or app data dir from [`get_paths()`](../../src/core/config.py)).
 
+## Session guardrail bypass
+
+Process-only guardrail bypass for **NSFW-related** checks (see [`nsfw_guardrails.py`](../../src/content/nsfw_guardrails.py)):
+
+| Variable | Meaning |
+|----------|---------|
+| **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** | When **`1`** / **`true`** / **`yes`** / **`on`**, skips NSFW **LLM guardrail** injection, **topic/crawl denylist** filtering, **preflight** errors for NSFW plus TikTok/YouTube **auto-upload**, the NSFW **safety-checker** preflight **warning**, and **Tasks** manual-upload blocks for renders tagged NSFW in **`meta.json`**. The desktop app sets or clears this for the **current process** when **F12** is pressed ([Desktop UI](../ui/ui.md)). |
+
 ## App settings (UI + pipeline)
 `AppSettings` includes:
 - **GPU policy** (desktop; persisted in `ui_settings.json`; see [hardware.md](hardware.md); **My PC** tab maps **Auto** \| **Select GPU** to these keys — see [ui.md](../ui/ui.md)):
@@ -181,7 +189,7 @@ Weights for the PyTorch **x4+** path download once into **`.Aquaduct_data/reales
 - **`llm_chat_geometry`**: last **LLM chat** window width, height, and optional *x* / *y* (see **`LLMChatGeometry`** in [`src/core/config.py`](../../src/core/config.py)); loaded/saved with **`ui_settings.json`** so the title-bar chat dialog reopens at the same size and position (clamped to the screen)
 - **`resume_partial_pipeline`**: **`false`** default — Video tab (**Resume partial pipeline**). When **`true`**, **`run_checkpoint.json`** milestones and **`pipeline_script_package.json`** are written under **`videos/<project>/assets/`** so a later desktop run can skip completed stages when fingerprint matches; see [`run_checkpoint`](../../src/runtime/run_checkpoint.py), [crash-resilience.md](../pipeline/crash-resilience.md).
 - **`resume_partial_project_directory`**: ephemeral in-memory/ephemeral-save only — pinned output folder during a resumed session; stripped from **`ui_settings.json`** on Save ([`strip_ephemeral_save_keys`](../../src/settings/ui_settings.py)).
-- `video_format`: `news` | `cartoon` | `explainer` | `unhinged` | `creepypasta` | `health_advice` (drives which tag list applies to a run; see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))
+- `video_format`: `news` \| `cartoon` \| `explainer` \| `unhinged` \| `creepypasta` \| `health_advice` \| `nsfw` — drives which tag list applies to a run (see [UI](../ui/ui.md), [Crawler](../integrations/crawler.md))
 - `run_content_mode`: `preset` | `custom` — **preset** uses the news cache + topics for script sourcing; **custom** uses `custom_video_instructions` (no headline pick from cache for that run)
 - `custom_video_instructions`: multiline user notes; used when `run_content_mode == "custom"` (max length `MAX_CUSTOM_VIDEO_INSTRUCTIONS` in [`src/core/config.py`](../../src/core/config.py))
 - `topic_tags_by_mode`: per-format tag lists (crawling + scripting for the active format); use [`src/content/topics.py`](../../src/content/topics.py) `effective_topic_tags()` for the current format
@@ -196,7 +204,7 @@ Weights for the PyTorch **x4+** path download once into **`.Aquaduct_data/reales
 - **Characters**: `active_character_id` selects a row from `data/characters.json` (Character Builder); empty means no character — see [Characters](../ui/characters.md)
 - **TikTok** (optional): `tiktok_enabled`, client key/secret, redirect URI, OAuth port, tokens, `tiktok_publishing_mode`, `tiktok_auto_upload_after_render` — see [TikTok](../integrations/tiktok.md)
 - **YouTube** (optional, independent of TikTok): `youtube_enabled`, OAuth client ID/secret, redirect URI, OAuth port (default loopback port **8888**), tokens, `youtube_privacy_status`, `youtube_add_shorts_hashtag`, `youtube_auto_upload_after_render` — see [YouTube](../integrations/youtube.md)
-- **Image safety**: `allow_nsfw` — when `True`, diffusion image generation runs without the built-in **safety checker** (see [Artist](../pipeline/artist.md))
+- **Image safety**: `allow_nsfw` — when `True`, diffusion image generation runs without the built-in **safety checker** (see [Artist](../pipeline/artist.md)). Independent of **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** (session guardrail bypass — [above](#session-guardrail-bypass)).
 - **Model execution (API vs local)** ([`src/core/config.py`](../../src/core/config.py), persisted in [`src/settings/ui_settings.py`](../../src/settings/ui_settings.py)):
   - `model_execution_mode`: `"local"` (default) or `"api"` — see [api_generation.md](../integrations/api_generation.md) and the **Model** tab notes in [ui.md](../ui/ui.md).
   - `api_models`: nested per-role `ApiRoleConfig` — `llm`, `image`, `video`, `voice` each with `provider`, `model`, optional `base_url` / `org_id` (LLM), `voice_id` (voice). Recommended API-mode providers (first in the UI list) include **Google AI Studio (Gemini)** for script, **SiliconFlow** for images, **Kling AI** (plus Magic Hour and Replicate) for Pro text-to-video, and **Inworld** for TTS; see [API generation](../integrations/api_generation.md) for required env keys (`GEMINI_API_KEY`, `SILICONFLOW_API_KEY`, `KLING_ACCESS_KEY`, `KLING_SECRET_KEY`, `MAGIC_HOUR_API_KEY`, `INWORLD_API_KEY`, etc.).

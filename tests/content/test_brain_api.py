@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.content.character_presets import CharacterAutoPreset
 from src.content.brain_api import (
@@ -61,6 +64,66 @@ def test_expand_custom_video_instructions_openai():
             personality_id="neutral",
         )
     assert "Expanded" in out
+
+
+def test_generate_character_from_preset_openai_prepends_guardrails_for_nsfw():
+    app = replace(_minimal_app(), video_format="nsfw")
+    raw = (
+        '{"name":"Alex","identity":"Warm host.","visual_style":"Studio lighting, casual blazer.",'
+        '"negatives":"blur, watermark","use_default_voice":true}'
+    )
+    fake = MagicMock()
+    fake.chat_completion_text.return_value = raw
+    preset = CharacterAutoPreset(
+        id="gen_z",
+        label="Host",
+        llm_directive="Friendly explainer.",
+    )
+    with patch("src.content.brain_api.build_openai_client_from_settings", return_value=fake):
+        generate_character_from_preset_openai(settings=app, preset=preset, extra_notes="")
+    kwargs = fake.chat_completion_text.call_args.kwargs
+    assert "NON-NEGOTIABLE" in kwargs["user"]
+
+
+def test_generate_character_from_preset_openai_prepends_guardrails_for_nsfw():
+    app = replace(_minimal_app(), video_format="nsfw")
+    raw = (
+        '{"name":"Alex","identity":"Warm host.","visual_style":"Studio lighting, casual blazer.",'
+        '"negatives":"blur, watermark","use_default_voice":true}'
+    )
+    fake = MagicMock()
+    fake.chat_completion_text.return_value = raw
+    preset = CharacterAutoPreset(
+        id="gen_z",
+        label="Host",
+        llm_directive="Friendly explainer.",
+    )
+    with patch("src.content.brain_api.build_openai_client_from_settings", return_value=fake):
+        generate_character_from_preset_openai(settings=app, preset=preset, extra_notes="")
+    kwargs = fake.chat_completion_text.call_args.kwargs
+    assert "NON-NEGOTIABLE" in kwargs["user"]
+
+
+def test_generate_character_from_preset_openai_omits_guardrails_when_session_guardrail_bypass(monkeypatch: pytest.MonkeyPatch):
+    import src.content.nsfw_guardrails as ng
+
+    monkeypatch.setattr(ng, "dev_content_guardrails_disabled", lambda: True)
+    app = replace(_minimal_app(), video_format="nsfw")
+    raw = (
+        '{"name":"Alex","identity":"Warm host.","visual_style":"Studio lighting, casual blazer.",'
+        '"negatives":"blur, watermark","use_default_voice":true}'
+    )
+    fake = MagicMock()
+    fake.chat_completion_text.return_value = raw
+    preset = CharacterAutoPreset(
+        id="gen_z",
+        label="Host",
+        llm_directive="Friendly explainer.",
+    )
+    with patch("src.content.brain_api.build_openai_client_from_settings", return_value=fake):
+        generate_character_from_preset_openai(settings=app, preset=preset, extra_notes="")
+    kwargs = fake.chat_completion_text.call_args.kwargs
+    assert "NON-NEGOTIABLE" not in kwargs["user"]
 
 
 def test_generate_character_from_preset_openai_parses_json():

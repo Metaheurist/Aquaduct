@@ -5,6 +5,7 @@ from collections import Counter
 from typing import Iterable
 
 from .crawler import NewsItem
+from .nsfw_guardrails import nsfw_text_matches_denylist
 from .topics import normalize_video_format
 
 _STOP = {
@@ -111,6 +112,22 @@ _CREEPYPASTA_BOOST_TERMS = (
     "eerie",
 )
 
+_NSFW_BOOST_TERMS = (
+    "adult",
+    "performer",
+    "studio",
+    "industry",
+    "producer",
+    "director",
+    "scene",
+    "award",
+    "creator",
+    "content",
+    "interview",
+    "trade",
+    "film",
+)
+
 _HEALTH_BOOST_TERMS = (
     "wellness",
     "health",
@@ -155,7 +172,7 @@ _HEALTH_SINGLE_JUNK = frozenset(
     }
 )
 
-_WEB_TOPIC_MODES = frozenset({"cartoon", "unhinged", "creepypasta", "health_advice"})
+_WEB_TOPIC_MODES = frozenset({"cartoon", "unhinged", "creepypasta", "health_advice", "nsfw"})
 
 
 def _creative_topic_boost(s: str, topic_mode: str | None) -> int:
@@ -163,6 +180,9 @@ def _creative_topic_boost(s: str, topic_mode: str | None) -> int:
     if m == "creepypasta":
         sl = s.lower()
         return sum(2 for w in _CREEPYPASTA_BOOST_TERMS if w in sl)
+    if m == "nsfw":
+        sl = s.lower()
+        return sum(2 for w in _NSFW_BOOST_TERMS if w in sl)
     if m == "health_advice":
         sl = s.lower()
         return sum(2 for w in _HEALTH_BOOST_TERMS if w in sl)
@@ -180,6 +200,11 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
     if not t:
         return True
     sl = t.lower()
+    if m == "nsfw":
+        if nsfw_text_matches_denylist(t):
+            return True
+        if _LISTICLE_OR_CLICKBAIT.search(sl) and not any(k in sl for k in _NSFW_BOOST_TERMS):
+            return True
     if m == "health_advice":
         if re.search(
             r"\b(casino|poker|viagra|cialis|forex|crypto airdrop|nft|slots|jackpot)\b",
@@ -205,7 +230,7 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
             )
         ):
             return True
-    elif _LISTICLE_OR_CLICKBAIT.search(sl):
+    elif m != "nsfw" and _LISTICLE_OR_CLICKBAIT.search(sl):
         return True
     if "photos and videos" in sl or "instagram photos" in sl:
         return True
@@ -214,7 +239,9 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
         w0 = words[0].lower()
         if m == "health_advice" and w0 in _HEALTH_SINGLE_JUNK:
             return True
-        if m != "health_advice" and w0 in _CREATIVE_SINGLE_JUNK:
+        if m == "nsfw" and w0 in _CREATIVE_SINGLE_JUNK:
+            return True
+        if m not in ("health_advice", "nsfw") and w0 in _CREATIVE_SINGLE_JUNK:
             return True
     if m == "health_advice":
         health_ok = any(k in sl for k in _HEALTH_BOOST_TERMS) or any(
@@ -244,7 +271,14 @@ def _should_discard_creative_candidate(s: str, topic_mode: str | None) -> bool:
         if re.search(r"\b(youtube|netflix|instagram|tiktok|facebook)\b", sl) and not horror_ok:
             return True
         return False
-    # Bare platform / venue lines with no animation signal
+    if m == "nsfw":
+        nsfw_ok = any(k in sl for k in _NSFW_BOOST_TERMS)
+        if re.search(r"\b(youtube|tiktok|instagram|facebook|reddit)\b", sl) and not nsfw_ok:
+            return True
+        return False
+    # Bare platform / venue lines with no animation signal (cartoon / unhinged only)
+    if m not in ("cartoon", "unhinged"):
+        return False
     if re.search(
         r"\b(youtube|netflix|instagram|tiktok)\b",
         sl,
@@ -277,6 +311,11 @@ def _title_too_generic_for_creative(title: str, topic_mode: str | None) -> bool:
                 "gut",
             )
         ):
+            return True
+    elif m == "nsfw":
+        if nsfw_text_matches_denylist(title or ""):
+            return True
+        if _LISTICLE_OR_CLICKBAIT.search(sl) and not any(k in sl for k in _NSFW_BOOST_TERMS):
             return True
     elif _LISTICLE_OR_CLICKBAIT.search(sl):
         return True

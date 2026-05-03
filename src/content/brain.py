@@ -10,6 +10,7 @@ from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
 from src.util.utils_vram import cleanup_vram, vram_guard
 from src.content.topic_constraints import parse_topic_grounding_llm_json
 from .personalities import PersonalityPreset, get_personality_by_id
+from .nsfw_guardrails import nsfw_llm_guardrails_block
 from .character_presets import (
     CharacterAutoPreset,
     GeneratedCharacterFields,
@@ -68,6 +69,12 @@ def _article_prompt_block(*, video_format: str, excerpt: str) -> str:
             "Article excerpt (ground truth for general wellness facts, definitions, and public-health-style information — "
             "prefer these over guessing; hedge or stay vague where sources disagree; "
             "do not diagnose the viewer or tell them to start, stop, or change medication or treatment):\n"
+            f"{ex}\n\n"
+        )
+    if vf == "nsfw":
+        return (
+            "Scraped pages (adult-industry trade / performer profiles / trend coverage — paraphrase; invent original stage names "
+            "and do not claim real people):\n"
             f"{ex}\n\n"
         )
     return (
@@ -170,6 +177,19 @@ def _health_visual_prompt_rules(*, video_format: str) -> str:
     )
 
 
+def _nsfw_visual_prompt_rules(*, video_format: str) -> str:
+    vf = (video_format or "news").strip().lower()
+    if vf != "nsfw":
+        return ""
+    return (
+        "`visual_prompt` rules (still image per beat — mandatory):\n"
+        "- **Consenting adults (21+) only**: cinematic studio lighting, tasteful lingerie or implied intimacy ok; "
+        "avoid extreme explicit mechanical detail that breaks image/T2V models.\n"
+        "- **Silhouette and wardrobe storytelling** over graphic close-ups; no readable long text; no real celebrities.\n"
+        "- Each `visual_prompt` must **match that segment's narration** — 9:16.\n\n"
+    )
+
+
 def _meme_visual_prompt_rules(*, video_format: str) -> str:
     """Extra diffusion guidance for cartoon/unhinged — reduces generic neon/abstract stills."""
     vf = (video_format or "news").strip().lower()
@@ -177,6 +197,8 @@ def _meme_visual_prompt_rules(*, video_format: str) -> str:
         return _horror_visual_prompt_rules(video_format=vf)
     if vf == "health_advice":
         return _health_visual_prompt_rules(video_format=vf)
+    if vf == "nsfw":
+        return _nsfw_visual_prompt_rules(video_format=vf)
     if vf not in ("cartoon", "unhinged"):
         return ""
     return (
@@ -214,6 +236,11 @@ def _character_voice_block(character_context: str | None, *, video_format: str) 
                 "Clinician (mandatory — the entire spoken script is this doctor or nurse persona; educational, not alarmist):\n"
                 f"{cc}\n\n"
             )
+        if vf == "nsfw":
+            return (
+                "Host / performer (mandatory — the entire spoken script is this consenting adult entertainer or industry host):\n"
+                f"{cc}\n\n"
+            )
         return (
             "Character / host (mandatory — the entire spoken script is this persona; not a generic anonymous announcer):\n"
             f"{cc}\n\n"
@@ -237,6 +264,11 @@ def _character_voice_block(character_context: str | None, *, video_format: str) 
             "Clinician: none provided — invent **one** original doctor **or** nurse (name + voice, generic medical professional — "
             "not a real person or celebrity). The entire spoken script is this persona: warm, clear, educational; "
             "first-person or direct address as a clinician on a wellness short.\n\n"
+        )
+    if vf == "nsfw":
+        return (
+            "Host / performer: none provided — invent **one** original adult entertainer or industry host "
+            "(stage name + voice, 21+, consent-positive; no real public figures or real performer names).\n\n"
         )
     return (
         "Host: none provided — invent one host persona (name + voice) aligned with the topic_tags and headlines; "
@@ -283,6 +315,11 @@ def _personality_character_fusion_block(
         beat_note = (
             "Health-education pacing: one clear idea per beat; favor reassurance, hedging, and \"check with your clinician\" "
             "where individual care applies — never prescribe or diagnose the viewer.\n"
+        )
+    elif vf == "nsfw":
+        beat_note = (
+            "Adult performer-host pacing: confident, scene-setting intros; industry-aware beats; stay inside the guardrails "
+            "(consenting adults, no real luminaries, tame platform metadata).\n"
         )
 
     return (
@@ -390,6 +427,8 @@ def _synthesize_visual_prompt(
         bits.append("vivid 9:16 satirical animation still, exaggerated character expressions")
     elif vf == "health_advice":
         bits.append("clean vertical 9:16 explainer scene, friendly clear infographic feel")
+    elif vf == "nsfw":
+        bits.append("cinematic vertical 9:16 soft studio light, tasteful adult editorial portrait mood, consenting adult talent")
     elif vf == "news":
         bits.append("vertical 9:16 news-style frame, sharp focus, clear subject framing")
     elif vf == "explainer":
@@ -680,6 +719,90 @@ def _prompt_for_creepypasta_items(
     )
 
 
+def _prompt_for_nsfw_items(
+    headlines: list[dict[str, str]],
+    topic_tags: list[str] | None,
+    personality: PersonalityPreset,
+    branding: BrandingSettings | None = None,
+    character_context: str | None = None,
+    *,
+    article_excerpt: str = "",
+    video_format: str = "nsfw",
+) -> str:
+    """Adults-only vertical shorts driven by industry / performer context sources (guardrails mandatory)."""
+    tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
+    tag_line = (
+        f"Topic tags (HARD constraint — mood, setting, and hashtags must reflect these): "
+        f"{json.dumps(tags, ensure_ascii=False)}\n"
+        if tags
+        else ""
+    )
+    personality_block = (
+        "Tone/personality:\n"
+        f"- {personality.label}\n"
+        f"- {personality.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in personality.style_rules)
+        + "\nDo/Don't:\n"
+        + "\n".join(f"- {r}" for r in personality.do_dont)
+        + "\n"
+    )
+    style_suffix = ""
+    if branding and bool(getattr(branding, "video_style_enabled", False)):
+        strength = video_style_strength(branding)
+        suf = palette_prompt_suffix(branding)
+        if suf:
+            style_suffix = (
+                "Visual palette guidance:\n"
+                f"- Strength: {strength}\n"
+                f"- {suf}\n"
+            )
+    char_block = _character_voice_block(character_context, video_format=video_format)
+    fusion = _personality_character_fusion_block(
+        personality, character_context, video_format=video_format
+    )
+    art = _article_prompt_block(video_format=video_format, excerpt=article_excerpt)
+    guard = nsfw_llm_guardrails_block()
+    return (
+        "You write consent-positive **adults-only** vertical shorts (9:16) for a private creative pipeline.\n"
+        "Sources are **industry news / performer profiles / trade coverage** — use them as inspiration; "
+        "invent original characters, stage names, and brands (no real public figures).\n"
+        f"{guard}\n"
+        "Contract: short-form host or performer narration with scene setup + outro; JSON `VideoPackage` only.\n"
+        "Tonal guidance: tasteful adult entertainment; confident performer energy; "
+        "titles/descriptions professional — avoid slurs and gratuitous explicit spell-outs in metadata.\n"
+        "Hashtags: prefer tame industry tags (#adultindustry, #nsfwcreative, #creators, etc.).\n"
+        f"{_SCRIPT_SUBSTANCE_RULES}"
+        f"{_tts_block()}"
+        f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
+        "The `hook` must include a brief **spoken 18+ disclaimer** (adult content; fictional characters).\n"
+        "Weave **at least 2–4** distinct headline angles into one coherent performer-led arc.\n"
+        f"{_meme_visual_prompt_rules(video_format=video_format)}"
+        "Enforce this arc (adapt timing across segments):\n"
+        "- Hook: performer welcomes viewers + disclaimer line\n"
+        "- Beat: industry or scene story with concrete stakes\n"
+        "- Middle beats: callbacks to sources (paraphrased)\n"
+        "- Climax: memorable line or reveal (still within guardrails)\n"
+        "- Close/CTA: follow for more in-character (no pressure tactics)\n"
+        "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+        "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+        "Constraints:\n"
+        f"- narration total {_SCRIPT_WORDS}\n"
+        "- EVERY segment MUST include BOTH `narration` AND a concrete `visual_prompt` suitable for image/T2V models.\n"
+        "- title <= 80 chars\n"
+        "- hashtags: 15-30 items\n"
+        "- avoid markdown except optional ```json fence\n"
+        "\n"
+        f"{personality_block}"
+        f"{char_block}"
+        f"{fusion}"
+        f"{style_suffix}"
+        f"{tag_line}"
+        f"{art}"
+        f"Sources (title, url, source — use several): {json.dumps(headlines, ensure_ascii=False)}\n"
+    )
+
+
 def _prompt_for_cartoon_items(
     headlines: list[dict[str, str]],
     topic_tags: list[str] | None,
@@ -913,6 +1036,16 @@ def _prompt_for_items(
             article_excerpt=article_excerpt,
             video_format=vf,
         )
+    if vf == "nsfw":
+        return _prompt_for_nsfw_items(
+            headlines,
+            topic_tags,
+            personality,
+            branding=branding,
+            character_context=character_context,
+            article_excerpt=article_excerpt,
+            video_format=vf,
+        )
     # Keep it stable for JSON parsing.
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     if vf == "explainer":
@@ -1041,6 +1174,11 @@ def _vf_hint(video_format: str) -> str:
         return (
             "clinician-voiced wellness education for vertical video — general tips and condition overviews from web sources; "
             "hedged, non-alarmist, not personal medical advice"
+        )
+    if f == "nsfw":
+        return (
+            "adults-only performer-host short — tasteful adult entertainment beats from industry/trade sources; "
+            "consent-positive; fictional stage names; tame platform metadata"
         )
     return "timely angle anchored to user topics and sources"
 
@@ -1188,6 +1326,35 @@ def _prompt_for_creative_brief(
             f"- narration total {_SCRIPT_WORDS}\n"
             "- title <= 80 chars\n"
             "- hashtags: 15-30 items (horror fiction, creepypasta, scary shorts — match the brief)\n"
+            "- avoid markdown except optional ```json fence\n"
+            "\n"
+            f"{personality_block}"
+            f"{char_block}"
+            f"{fusion}"
+            f"{style_suffix}"
+            f"{tag_line}"
+            "Creative brief (primary — follow this):\n"
+            f"{expanded_brief.strip()}\n"
+            f"{art}"
+        )
+    if vf_key == "nsfw":
+        g = nsfw_llm_guardrails_block()
+        return (
+            "You write **adults-only** vertical shorts (9:16) from the user's expanded creative brief.\n"
+            + (f"{g}\n" if g else "")
+            + "Turn the brief into a complete JSON `VideoPackage` — tasteful performer-host energy; "
+            "invent stage names; tame metadata; include a spoken 18+ disclaimer in the hook.\n"
+            f"Video format mode: {video_format!r}. Aim for: {vf}\n"
+            f"{_meme_visual_prompt_rules(video_format=vf_key)}"
+            f"{_SCRIPT_SUBSTANCE_RULES}"
+            f"{_tts_block()}"
+            f"Write a {_SCRIPT_RUNTIME} script with {_SCRIPT_SEGMENTS} few-second beats.\n"
+            "Output STRICT JSON with keys: title, description, hashtags, hook, segments, cta.\n"
+            "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
+            "Constraints:\n"
+            f"- narration total {_SCRIPT_WORDS}\n"
+            "- title <= 80 chars\n"
+            "- hashtags: 15-30 items (industry-tame tags)\n"
             "- avoid markdown except optional ```json fence\n"
             "\n"
             f"{personality_block}"
@@ -1367,6 +1534,32 @@ def expand_custom_video_instructions(
             "8) CTA idea (low-key unsettling)\n"
             "Keep it tight and actionable.\n"
         )
+    elif vf_key == "nsfw":
+        g = nsfw_llm_guardrails_block()
+        prompt = (
+            "You are a creative director for **adults-only** performer-led vertical shorts (9:16).\n"
+            + (f"{g}\n" if g else "")
+            + "The user wrote rough notes. Expand them into a structured creative brief. "
+            "Do NOT output JSON. Use clear plain text with labeled sections.\n"
+            f"Video format mode: {video_format!r}. Target style: {vf}\n"
+            "Fiction / entertainment framing only — consenting adults (21+), no real public figures, no illegal themes.\n"
+            f"{fusion}"
+            f"Tone anchor — {personality.label}: {personality.description}\n"
+            "Style rules to respect:\n"
+            + "\n".join(f"- {r}" for r in personality.style_rules)
+            + "\n\nUser's raw notes:\n"
+            f"{raw_instructions.strip()}\n\n"
+            "Output sections (use headings):\n"
+            "1) Working title (one line; professional wording)\n"
+            "2) Performer/host persona (stage name + voice)\n"
+            "3) Hook + spoken 18+ disclaimer line\n"
+            f"4) Beat-by-beat outline ({_SCRIPT_SEGMENTS} beats) — spoken lines only\n"
+            "5) Visual motifs (tasteful studio / editorial moods — staging here, not in spoken lines)\n"
+            "6) Short on-screen text keywords per beat\n"
+            "7) Hashtag theme words (no # prefixes; tame industry labels)\n"
+            "8) CTA idea (in-character)\n"
+            "Keep it tight and actionable.\n"
+        )
     elif vf_key == "health_advice":
         prompt = (
             "You are a creative director for clinician-led **wellness education** vertical shorts (9:16).\n"
@@ -1507,10 +1700,10 @@ def enforce_arc(pkg: VideoPackage, video_format: str | None = None) -> VideoPack
     """
     Best-effort post-processor to ensure the script includes context + why-it-matters beats.
     We don't require the model to label beats; we inject minimal beats if missing.
-    Skipped for cartoon/unhinged/creepypasta — comedy or horror pacing should not get generic "news explainer" inserts.
+    Skipped for cartoon/unhinged/creepypasta/nsfw — comedy, horror, or performer pacing should not get generic "news explainer" inserts.
     """
     vf = (video_format or "news").strip().lower()
-    if vf in ("cartoon", "unhinged", "creepypasta"):
+    if vf in ("cartoon", "unhinged", "creepypasta", "nsfw"):
         return pkg
     try:
         segs = list(pkg.segments or [])
@@ -2882,6 +3075,7 @@ def generate_character_from_preset_llm(
     max_new_tokens: int = 1400,
     try_llm_4bit: bool = True,
     inference_settings: AppSettings | None = None,
+    video_format: str | None = None,
 ) -> GeneratedCharacterFields:
     """
     Use the script LLM to invent a full character profile (text fields) from a built-in archetype.
@@ -2893,8 +3087,15 @@ def generate_character_from_preset_llm(
     notes_block = f"Extra notes from the user (optional):\n{notes}\n" if notes else ""
 
     arch = (preset.llm_directive or "").strip() or "Original short-form video host."
+    vf = (video_format or "").strip().lower()
+    pid = (preset.id or "").strip().lower()
+    guard = ""
+    if vf == "nsfw" or pid.startswith("nsfw_"):
+        gblk = nsfw_llm_guardrails_block()
+        guard = (gblk + "\n") if gblk else ""
     prompt = (
         "You help users of a desktop short-form video app (9:16 vertical).\n"
+        f"{guard}"
         "Invent ONE original host character — not a real celebrity, brand mascot, or copyrighted figure.\n\n"
         f"Archetype label: {preset.label}\n"
         f"Creative direction for this archetype:\n{arch}\n\n"

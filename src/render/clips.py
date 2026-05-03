@@ -475,6 +475,19 @@ def _img2vid_accepts_text_prompt(model_id: str) -> bool:
     return True
 
 
+def is_image_to_video_motion_model(model_id: str) -> bool:
+    """
+    True when ``generate_clips(..., init_images=[...])`` should use the image-to-video path
+    (same heuristic as Pro-mode ``run_once`` img→vid detection).
+    """
+    mid = _norm_repo_id(model_id)
+    if "stable-video-diffusion" in mid:
+        return True
+    if "img2vid" in mid and "zeroscope" not in mid:
+        return True
+    return False
+
+
 def _write_mp4_from_frames(frames: list[np.ndarray], out_path: Path, *, fps: int) -> None:
     import imageio
 

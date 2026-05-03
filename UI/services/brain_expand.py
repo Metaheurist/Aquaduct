@@ -63,6 +63,21 @@ def image_model_id_from_ui(win) -> str:
     return str(img_data or "").strip()
 
 
+def video_model_id_from_ui(win) -> str:
+    """
+    Video (motion / T2V) Hugging Face repo id — matches Model tab ``vid_combo``.
+    """
+    try:
+        vid_data = win.vid_combo.currentData() if hasattr(win, "vid_combo") else None  # type: ignore[attr-defined]
+    except Exception:
+        vid_data = None
+    if vid_data is None:
+        vid_data = getattr(getattr(win, "settings", None), "video_model_id", "") or ""
+    if isinstance(vid_data, tuple) and len(vid_data) >= 1:
+        return str(vid_data[0] or "").strip()
+    return str(vid_data or "").strip()
+
+
 class BrainAugmentedEditor(QWidget):
     """
     Paints a QTextEdit or QLineEdit full-frame with a brain button in the top-right corner.

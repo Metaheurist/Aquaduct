@@ -89,6 +89,7 @@ def attach_run_tab(win) -> None:
     win.video_format_combo.addItem("Cartoon (unhinged)", "unhinged")
     win.video_format_combo.addItem("Creepypasta (web horror)", "creepypasta")
     win.video_format_combo.addItem("Health advice (wellness tips)", "health_advice")
+    win.video_format_combo.addItem("NSFW (adult, 18+ only)", "nsfw")
     cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
     if cur_vf not in VIDEO_FORMATS:
         cur_vf = "news"
@@ -104,6 +105,16 @@ def attach_run_tab(win) -> None:
     fmt_row.addWidget(win.video_format_combo, 1)
     fmt_row.addStretch(1)
     out_lay.addLayout(fmt_row)
+
+    win.nsfw_format_warning = QLabel(
+        "Adults only. Auto-enables NSFW image output for this run. "
+        "TikTok/YouTube auto-upload is disabled in the UI while this format is selected — "
+        "turn it off in settings before running if preflight still complains."
+    )
+    win.nsfw_format_warning.setWordWrap(True)
+    win.nsfw_format_warning.setStyleSheet("color: #FE2C55; font-size: 11px;")
+    win.nsfw_format_warning.setVisible(False)
+    out_lay.addWidget(win.nsfw_format_warning)
 
     pic_row = QHBoxLayout()
     win._picture_format_label = QLabel("Picture format")
@@ -377,6 +388,8 @@ def attach_run_tab(win) -> None:
             return "Preset (topics + fresh headlines)"
         if vf == "creepypasta":
             return "Preset (topics + web horror fiction)"
+        if vf == "nsfw":
+            return "Preset (topics + fresh headlines)"
         if vf == "news":
             return "Preset (news cache + topics)"
         # cartoon / explainer: per-format URL cache under data/news_cache/, not the news bucket
@@ -387,6 +400,12 @@ def attach_run_tab(win) -> None:
         win.custom_instructions_edit.setVisible(custom)
         mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
         vf = str(win.video_format_combo.currentData() or "news")
+        if hasattr(win, "nsfw_format_warning"):
+            win.nsfw_format_warning.setVisible(mm != "photo" and vf == "nsfw")
+        if hasattr(win, "_sync_nsfw_upload_checkbox_state"):
+            win._sync_nsfw_upload_checkbox_state()
+        if hasattr(win, "_refresh_character_preset_combo"):
+            win._refresh_character_preset_combo()
         if mm == "photo":
             win.run_content_preset_radio.setText("Preset (topics + headlines for prompts)")
             if custom:
@@ -413,6 +432,8 @@ def attach_run_tab(win) -> None:
                 )
             elif vf == "creepypasta":
                 extra = " Short horror from the web; keep it fiction only."
+            elif vf == "nsfw":
+                extra = " Adults-only mode: enable Firecrawl for best source discovery; guardrails apply to scripts and topics."
             vf_hint.setText(
                 "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
                 "then writes the script (two passes - slower than Preset). Topic tags from the Topics tab still bias "
@@ -428,6 +449,11 @@ def attach_run_tab(win) -> None:
             vf_hint.setText(
                 "Creepypasta: Preset crawls the open web for short horror / creepypasta fiction (Firecrawl search + optional RSS fallback). "
                 "Uses your Topics tags to steer queries; no local seen-URL cache. Enable Firecrawl on the API tab for best results."
+            )
+        elif vf == "nsfw":
+            vf_hint.setText(
+                "NSFW: Firecrawl-first discover with adults-only guardrails on topics and script prompts. "
+                "Fresh headline URLs each run. Auto-upload to TikTok/YouTube is blocked — not suitable for those platforms."
             )
         else:
             vf_hint.setText("Tags for the run come from the Topics tab list for this format.")
@@ -588,11 +614,11 @@ def attach_run_tab(win) -> None:
     add_section_spacing(root)
     root.addWidget(act_card, 0)
 
-    win.tabs.addTab(w, "Run")
+    win.tabs.addTab(w, "Pipeline")
 
 
 def refresh_run_tab_for_media_mode(win) -> None:
-    """Keep Run tab labels and actions aligned with Video vs Photo mode."""
+    """Keep Pipeline tab labels and actions aligned with Video vs Photo mode."""
     from UI.help.tutorial_links import help_tooltip_rich
 
     mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()

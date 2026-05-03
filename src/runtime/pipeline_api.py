@@ -92,6 +92,7 @@ def _write_video_folder(
     prompts: list[str],
     preview: dict | None = None,
     series_meta: dict | None = None,
+    video_format: str = "news",
 ) -> None:
     import main as m
 
@@ -102,6 +103,7 @@ def _write_video_folder(
         prompts=prompts,
         preview=preview,
         series_meta=series_meta,
+        video_format=video_format,
     )
 
 
@@ -569,6 +571,7 @@ def run_once_api(
             prompts=prompts_img,
             preview=preview_blob,
             series_meta=_series_meta_wr,
+            video_format=str(getattr(app, "video_format", "news") or "news"),
         )
         _finalize_series_if_needed()
         _pipe_progress(on_progress, 100, 100, "Done (API photo)")
@@ -790,6 +793,7 @@ def run_once_api(
             prompts=prompts,
             preview=preview_blob,
             series_meta=_series_meta_wr,
+            video_format=str(getattr(app, "video_format", "news") or "news"),
         )
         _finalize_series_if_needed()
         _pipe_progress(on_progress, 100, 100, "Done (API)")
@@ -878,6 +882,7 @@ def run_once_api(
         prompts=prompts,
         preview=preview_blob,
         series_meta=_series_meta_wr,
+        video_format=str(getattr(app, "video_format", "news") or "news"),
     )
     _finalize_series_if_needed()
     _pipe_progress(on_progress, 100, 100, "Done (API)")

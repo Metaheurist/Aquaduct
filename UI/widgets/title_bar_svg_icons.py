@@ -36,6 +36,23 @@ _SVGS: dict[str, str] = {
   <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 8.5-8.5 8.38 8.38 0 0 1 3.8.9 8.5 8.5 0 0 1 3.7 11.6z"/>
   <path d="M8 10h.01M12 10h.01M16 10h.01"/>
 </svg>""",
+    "image_gen": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="5" width="18" height="14" rx="2" ry="2"/>
+  <circle cx="8.5" cy="10.5" r="1.5"/>
+  <path d="M21 15l-5-5L5 21"/>
+</svg>""",
+    "video_gen": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/>
+  <path d="m10 9 7 3-7 3V9z"/>
+</svg>""",
+    # Wastebasket — e.g. “Clear data” / destructive clear actions (stroke tinted by button theme).
+    "trash": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 6h18"/>
+  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+  <line x1="10" y1="11" x2="10" y2="17"/>
+  <line x1="14" y1="11" x2="14" y2="17"/>
+</svg>""",
     # Cylinder (VRAM heap) + sparkles - “purge / clear caches” (Resource usage dialog).
     "purge": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <ellipse cx="12" cy="7" rx="7" ry="3"/>

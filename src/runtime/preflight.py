@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 from src.core.config import AppSettings, get_models
+from src.content.topics import normalize_video_format
 from src.core.models_dir import models_dir_for_app
 from src.models.model_manager import model_has_local_snapshot
 from src.runtime.model_backend import api_preflight_errors, is_api_mode
@@ -196,6 +197,23 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         errors.append(f"Invalid resolution: {v.width}×{v.height}.")
     if not (1 <= int(v.fps) <= 120):
         errors.append(f"Invalid FPS: {v.fps}.")
+
+    vf_pf = normalize_video_format(str(getattr(settings, "video_format", "news") or "news"))
+    if vf_pf == "nsfw":
+        from src.content.nsfw_guardrails import dev_content_guardrails_disabled
+
+        if not dev_content_guardrails_disabled():
+            if bool(getattr(settings, "tiktok_auto_upload_after_render", False)) or bool(
+                getattr(settings, "youtube_auto_upload_after_render", False)
+            ):
+                errors.append(
+                    "NSFW preset: TikTok and YouTube prohibit explicit content. "
+                    "Turn off TikTok and YouTube auto-upload on the API tab before running."
+                )
+            warnings.append(
+                "NSFW video format: diffusion safety checker is bypassed for this run (effective allow_nsfw)."
+            )
+
     pro_on = bool(getattr(v, "pro_mode", False))
     if pro_on and not is_api_mode(settings):
         # Pro mode runs scene-by-scene video (text-to-video and/or image→keyframes→video). Slideshow must be OFF.

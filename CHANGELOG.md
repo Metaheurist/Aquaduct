@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### NSFW video format (adults-only preset)
+
+- **Run tab**: **NSFW (adult, 18+ only)** `video_format`; warning when selected; greys out TikTok/YouTube **auto-upload** checkboxes session-only (unless **F12** session guardrail bypass is on).
+- **Session guardrail bypass**: title bar **F12** toggles process-only **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** — skips NSFW LLM guard blocks, topic/crawl denylist, NSFW+auto-upload preflight errors and safety-checker warning, Tasks upload blocks for explicit renders; selects NSFW + **Allow NSFW** and copies topic tags to all `topic_tags_by_mode` buckets. Documented in [docs/reference/config.md](docs/reference/config.md#session-guardrail-bypass) and [docs/ui/ui.md](docs/ui/ui.md).
+- **Topics / crawler**: Firecrawl-first discover + denylist filtering ([`src/content/nsfw_guardrails.py`](src/content/nsfw_guardrails.py)); research pack under **`data/topic_research/nsfw/`**; topic line heuristics in [`src/content/topic_discovery.py`](src/content/topic_discovery.py).
+- **Brain**: [`_prompt_for_nsfw_items`](src/content/brain.py), custom-brief + expand paths, `enforce_arc` skip; multi-stage refinements in [`src/content/story_pipeline.py`](src/content/story_pipeline.py); character presets `nsfw_*` in [`src/content/character_presets.py`](src/content/character_presets.py); portrait / character generation prepend guardrails when format or preset is NSFW.
+- **Pipeline**: `main.py` forces `allow_nsfw` for NSFW runs; **`meta.json`** includes **`video_format`** for Tasks upload guards; scene prompts NSFW motion/style in [`src/render/scene_prompts.py`](src/render/scene_prompts.py).
+- **Preflight / Tasks**: hard error when NSFW + auto-upload toggles on; Tasks manual TikTok/YouTube upload blocked when `meta.json` says NSFW (both skipped when session guardrail bypass is active).
+- **Docs / tests**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/ui/topics.md`](docs/ui/topics.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/reference/config.md`](docs/reference/config.md); [`tests/content/test_nsfw_prompt_branch.py`](tests/content/test_nsfw_prompt_branch.py), [`tests/content/test_nsfw_topic_filter.py`](tests/content/test_nsfw_topic_filter.py), [`tests/content/test_brain_api.py`](tests/content/test_brain_api.py), [`tests/runtime/test_preflight_nsfw_uploads.py`](tests/runtime/test_preflight_nsfw_uploads.py), [`tests/ui/test_run_tab_nsfw_combo.py`](tests/ui/test_run_tab_nsfw_combo.py).
+
 ### Title bar — LLM chat
 
 - **Chat window** ([`UI/dialogs/llm_chat_dialog.py`](UI/dialogs/llm_chat_dialog.py)): non-modal **LLM chat** from the title bar (**chat** icon); uses the same target as pipeline script generation (**API** tab vs **Model** tab / `llm_combo`). API path uses **SSE streaming** ([`chat_completion_stream`](src/platform/openai_client.py)); local path reuses **[`_infer_text_with_optional_holder`](src/content/brain.py)** with cooperative **cancel** and unloads via **`_dispose_causal_lm_pair`** on close.
@@ -16,6 +26,14 @@ All notable changes to this project will be documented in this file.
 - **Pipeline local completion** ([`_generate_with_loaded_causal_lm`](src/content/brain.py)): when the tokenizer exposes **`chat_template`**, the pipeline formats prompts with **`apply_chat_template`** and strips legacy **`### Instruction` / `### Response`** wrappers to a single user turn; **`eos_token_id`** uses **`_eos_token_id_candidates`** for better stop behavior on Llama/Qwen-style instruct checkpoints. Set **`AQUADUCT_PIPELINE_FORCE_ALPACA=1`** to force the historical Alpaca string + **`tokenizer(...)`** path.
 - **Dependency**: **`hnswlib>=0.8.0`** in [`requirements.txt`](requirements.txt) (optional index path; import failure falls back to brute-force cosine).
 - **Tests**: [`tests/content/test_chat_generation.py`](tests/content/test_chat_generation.py) (pipeline routing + Alpaca strip), [`tests/content/test_llm_chat_rag_ann_rerank.py`](tests/content/test_llm_chat_rag_ann_rerank.py), [`tests/ui/test_llm_chat_dialog_size.py`](tests/ui/test_llm_chat_dialog_size.py).
+
+### Title bar — image playground (F4)
+
+- **Image playground** ([`UI/dialogs/image_playground_dialog.py`](UI/dialogs/image_playground_dialog.py)): non-modal **text-to-image** window (title-bar **frame** icon + **F4**); **`resolve_image_target`** parallels LLM **`resolve_chat_target`** for the **Image** API/local role. **[`ImagePlaygroundWorker`](UI/workers/impl.py)** calls **`generate_still_png_bytes`** (API) or **`generate_images`** (local, `max_images=1`, no style chain). Session scratch under **`<data_dir>/.cache/image_playground/`**. Main window: singleton ref, **`closeEvent`** teardown, **`ApplicationShortcut`** **F1–F5** (including **F5 → Save**). Tests: [`tests/ui/test_image_playground_dialog.py`](tests/ui/test_image_playground_dialog.py).
+
+### Title bar — video playground (F6)
+
+- **Video playground** ([`UI/dialogs/video_playground_dialog.py`](UI/dialogs/video_playground_dialog.py)): non-modal **text-to-video** window (title-bar **video_gen** icon + **F6**); **`resolve_video_target`** mirrors **`resolve_image_target`** for the **Video** API/local role. **[`VideoPlaygroundWorker`](UI/workers/impl.py)** calls **`cloud_video_mp4_paths`** (API) or **`generate_clips`** (local T2V, `max_clips=1`). Session scratch under **`<data_dir>/.cache/video_playground/`**. MVP: no in-window player (**Open video** / **Open folder** / **Save as…**). Main window: singleton, pipeline-running guard, **`closeEvent`** teardown, **`ApplicationShortcut` F6**. **`video_model_id_from_ui`** in [`UI/services/brain_expand.py`](UI/services/brain_expand.py). Docs: [`docs/ui/ui.md`](docs/ui/ui.md). Tests: [`tests/ui/test_video_playground_dialog.py`](tests/ui/test_video_playground_dialog.py).
 
 ### Video series mode (multi-episode queue)
 

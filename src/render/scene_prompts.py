@@ -107,6 +107,17 @@ def _genre_motion_cues(video_format: str) -> tuple[str, ...]:
             "rack focus to diagram",
             "gentle pull-back",
         )
+    if vf == "nsfw":
+        return (
+            "slow intimate push-in",
+            "soft lens flare drift",
+            "gentle handheld orbit",
+            "static medium portrait hold",
+            "subtle rack focus to silhouette",
+            "slow parallax over fabric texture",
+            "low-key dolly across set",
+            "breathing room pull-back",
+        )
     return (
         "slow push-in",
         "parallax drift",
@@ -127,6 +138,7 @@ def _genre_style_tail(video_format: str) -> str:
         "unhinged": "9:16 vertical, satirical adult-animation, exaggerated reaction",
         "creepypasta": "9:16 vertical, low-key cinematic horror, fog and grain, no gore",
         "health_advice": "9:16 vertical, soft clinical teaching look, no real patients",
+        "nsfw": "9:16 vertical, soft studio cinematography, tasteful adult editorial, consenting adult talent",
     }.get(vf, "9:16 vertical, cinematic framing")
 
 

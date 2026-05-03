@@ -42,15 +42,15 @@ def news_cache_mode_for_run(app: AppSettings) -> str:
 
 def video_format_skips_seen_url_disk_cache(value: str | None) -> bool:
     """Preset modes that fetch fresh URLs each run without persisting seen_<mode>.json (Firecrawl-heavy)."""
-    return normalize_video_format(value) in ("unhinged", "creepypasta")
+    return normalize_video_format(value) in ("unhinged", "creepypasta", "nsfw")
 
 
 def video_format_is_creative_topics_mode(value: str | None) -> bool:
     """Topics tab Discover: web-first creative sourcing (not Google News headline lists)."""
-    return normalize_video_format(value) in ("cartoon", "unhinged", "creepypasta")
+    return normalize_video_format(value) in ("cartoon", "unhinged", "creepypasta", "nsfw")
 
 
 def video_format_writes_topic_research_pack(value: str | None) -> bool:
     """After Discover, persist topic_research manifest + images (creative modes and health_advice)."""
     v = normalize_video_format(value)
-    return v in ("cartoon", "unhinged", "creepypasta", "health_advice")
+    return v in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw")

@@ -3,6 +3,7 @@ Optional web digest + reference image download for the script pipeline (Firecraw
 
 For **cartoon** and **unhinged**, search is biased toward memes / viral / templates. For **creepypasta**, toward
 horror fiction / atmospheric references. For **health_advice**, toward wellness and health-education pages.
+For **nsfw**, toward neutral adult-industry trade coverage and performer profiles (18+ creative references).
 Extra Firecrawl supplement queries run for those modes so scraped pages
 yield richer reference images for diffusion.
 """
@@ -20,6 +21,7 @@ from src.content.firecrawl_news import (
     firecrawl_search_news,
     resolve_firecrawl_api_key,
 )
+from src.content.nsfw_guardrails import nsfw_llm_guardrails_block, nsfw_text_matches_denylist
 from src.content.topics import normalize_video_format
 from debug import dprint
 
@@ -126,6 +128,18 @@ def _search_query(topic_tags: list[str], source_titles: list[str], video_format:
             "\"wellness tips\" OR \"healthy lifestyle\" OR \"sleep hygiene\" OR \"heart health\" OR diabetes prevention OR stress management OR mindfulness OR hydration OR stretching",
             240,
         )
+    if vf == "nsfw":
+        ind_bias = (
+            "(adult industry OR adult entertainment trade OR performer interview OR studio news OR "
+            "content creator economy OR awards season OR production trends) "
+            "(profile OR feature OR analysis OR trade publication)"
+        )
+        if base:
+            return _trim(f"{base} {ind_bias}", 240)
+        return _trim(
+            "adult industry news OR performer profiles OR studio trade news OR content creator trends 2026",
+            240,
+        )
     q = base
     return _trim(q, 240) or "breaking news today"
 
@@ -138,7 +152,7 @@ def _meme_supplement_searches(
 ) -> list[str]:
     """Extra Firecrawl queries for creative video formats to pull richer reference pages."""
     vf = normalize_video_format(video_format)
-    if vf not in ("cartoon", "unhinged", "creepypasta", "health_advice"):
+    if vf not in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw"):
         return []
     tags = [t.strip() for t in topic_tags if str(t).strip()][:4]
     tag_expr = " OR ".join(f'"{t}"' for t in tags)
@@ -180,6 +194,19 @@ def _meme_supplement_searches(
             _trim(
                 "(stress OR anxiety OR mindfulness OR meditation OR sleep OR burnout OR self-care) "
                 "(coping OR strategies OR wellness OR mental health OR overview)",
+                240,
+            ),
+        ]
+    if vf == "nsfw":
+        return [
+            _trim(
+                f"{lead}{tag_prefix}"
+                "(adult industry trade news OR studio business OR performer interview feature)",
+                240,
+            ),
+            _trim(
+                f"{lead}{tag_prefix}"
+                "(adult content trends OR creator economy OR production awards coverage)",
                 240,
             ),
         ]
@@ -242,8 +269,8 @@ def build_script_context(
     """
     Build optional web digest and download reference images.
 
-    For ``video_format`` **cartoon**, **unhinged**, **creepypasta**, or **health_advice**, search queries bias toward
-    meme/viral, horror-atmosphere, or wellness-education content; two supplement Firecrawl searches run; more pages are scraped and more reference
+    For ``video_format`` **cartoon**, **unhinged**, **creepypasta**, **health_advice**, or **nsfw**, search queries bias toward
+    meme/viral, horror-atmosphere, wellness-education, or adult-industry reference pages; two supplement Firecrawl searches run; more pages are scraped and more reference
     images may be saved when ``want_refs`` is true.
 
     Returns:
@@ -262,7 +289,11 @@ def build_script_context(
     can_fc = bool(api_key) and bool(firecrawl_enabled)
 
     vf_norm = normalize_video_format(video_format or "news")
-    rich_web_mode = vf_norm in ("cartoon", "unhinged", "creepypasta", "health_advice")
+    if vf_norm == "nsfw":
+        _gr = nsfw_llm_guardrails_block()
+        if _gr:
+            digest_parts.append("## Script guardrails (mandatory)\n" + _gr + "\n")
+    rich_web_mode = vf_norm in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw")
     max_scrape = MAX_PAGES_TO_SCRAPE_MEME_MODES if rich_web_mode else MAX_PAGES_TO_SCRAPE
     max_ref_save = MAX_REFERENCE_IMAGES_MEME_MODES if rich_web_mode else MAX_REFERENCE_IMAGES
     img_cap = 16 if rich_web_mode else 12
@@ -279,6 +310,10 @@ def build_script_context(
                 u = str(h.get("url") or "").strip()
                 if not u or u in seen_u:
                     continue
+                if vf_norm == "nsfw":
+                    blob = f"{h.get('title', '')} {u}"
+                    if nsfw_text_matches_denylist(blob):
+                        continue
                 seen_u.add(u)
                 hits.append(h)
 
@@ -309,6 +344,8 @@ def build_script_context(
                 if vf_norm == "creepypasta"
                 else "Wellness / education supplement queries"
                 if vf_norm == "health_advice"
+                else "Adult industry supplement queries"
+                if vf_norm == "nsfw"
                 else "Meme / viral supplement queries"
             )
             digest_parts.append(f"\n## {sup_heading}\n")
