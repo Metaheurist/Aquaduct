@@ -478,6 +478,59 @@ _IMAGE_T2I_PRESETS: dict[str, Callable[[int], dict]] = {
     "stabilityai/stable-diffusion-3.5-large-turbo": _preset_sd35_large_turbo,
 }
 
+# Discrete UI step options per model class (must stay consistent with preset clamps above).
+_T2I_STEPS_TURBO_FEW: tuple[int, ...] = (1, 2, 3, 4)
+_T2I_STEPS_SD15_CLASS: tuple[int, ...] = (25, 30, 35, 40, 45, 50)
+_T2I_STEPS_SDXL_BASE: tuple[int, ...] = (20, 25, 30, 35, 40, 45, 50)
+_T2I_STEPS_MID_20_50: tuple[int, ...] = (20, 24, 28, 32, 36, 40, 45, 50)
+_T2I_STEPS_FLUX_11_ULTRA: tuple[int, ...] = (4, 8, 12, 16, 20, 24)
+
+_IMAGE_T2I_STEP_CHOICES: dict[str, tuple[int, ...]] = {
+    "black-forest-labs/flux.1.1-pro-ultra": _T2I_STEPS_FLUX_11_ULTRA,
+    "black-forest-labs/flux.1-dev": _T2I_STEPS_MID_20_50,
+    "black-forest-labs/flux.1-schnell": _T2I_STEPS_TURBO_FEW,
+    "stabilityai/stable-diffusion-3.5-large": _T2I_STEPS_MID_20_50,
+    "stabilityai/stable-diffusion-3.5-medium": _T2I_STEPS_MID_20_50,
+    "stabilityai/stable-diffusion-3.5-large-turbo": _T2I_STEPS_TURBO_FEW,
+}
+
+
+def t2i_user_step_choices(model_id: str) -> list[int]:
+    """
+    Step counts exposed in the image playground (local only). Values are chosen so that
+    ``_diffusion_kw_for_model(model_id, steps=n)`` does not clamp them away from the
+    requested count (except where the preset enforces a minimum).
+    """
+    key = _norm_repo_id(model_id)
+    if not key:
+        return list(_T2I_STEPS_TURBO_FEW)
+    fixed = _IMAGE_T2I_STEP_CHOICES.get(key)
+    if fixed is not None:
+        return list(fixed)
+    mid = key
+    if (
+        "sdxl-turbo" in mid
+        or mid.rstrip("/").endswith("/turbo")
+        or "lcm" in mid
+        or "lightning" in mid
+    ):
+        return list(_T2I_STEPS_TURBO_FEW)
+    if "stable-diffusion-v1-5" in mid or "stable-diffusion-v1-4" in mid or "/v1-4" in mid or "/v1-5" in mid:
+        return list(_T2I_STEPS_SD15_CLASS)
+    if "flux" in mid:
+        if "1.1" in mid and "ultra" in mid:
+            return list(_T2I_STEPS_FLUX_11_ULTRA)
+        if "schnell" in mid:
+            return list(_T2I_STEPS_TURBO_FEW)
+        return list(_T2I_STEPS_MID_20_50)
+    if "3.5" in mid and "large-turbo" in mid:
+        return list(_T2I_STEPS_TURBO_FEW)
+    if "stable-diffusion-3" in mid:
+        return list(_T2I_STEPS_MID_20_50)
+    if "xl" in mid or "sdxl" in mid:
+        return list(_T2I_STEPS_SDXL_BASE)
+    return list(_T2I_STEPS_SD15_CLASS)
+
 
 def _diffusion_kw_for_model(model_id: str, *, steps: int) -> dict:
     """

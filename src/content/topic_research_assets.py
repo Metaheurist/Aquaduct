@@ -99,13 +99,13 @@ def write_topic_research_pack(
     data_dir: Path,
 ) -> Path | None:
     """
-    Save a manifest plus downloaded preview images for topic Discover (cartoon / unhinged / creepypasta / health_advice).
+    Save a manifest plus downloaded preview images for topic Discover (cartoon / unhinged / creepypasta / health_advice / nsfw).
 
     Images come from Firecrawl search ``image_url`` when present; otherwise we try ``og:image`` for the
     first few result pages (best-effort). Output is under ``data_dir / topic_research / {mode} /``.
     """
     m = (mode or "news").strip().lower()
-    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice"):
+    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw"):
         return None
     if not items:
         return None
@@ -164,10 +164,10 @@ def write_topic_research_pack(
 def topic_research_digest_for_script(data_dir: Path, video_format: str, *, max_chars: int = 8000) -> str:
     """
     Markdown block for the script LLM: latest Topics-tab Discover manifest (titles, URLs, local image paths).
-    Only cartoon / unhinged / creepypasta / health_advice; empty string if no manifest.
+    Only cartoon / unhinged / creepypasta / health_advice / nsfw; empty string if no manifest.
     """
     m = normalize_video_format(video_format or "news")
-    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice"):
+    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw"):
         return ""
     man_path = (Path(data_dir) / "topic_research" / m / "manifest.json").resolve()
     if not man_path.is_file():
@@ -186,6 +186,8 @@ def topic_research_digest_for_script(data_dir: Path, video_format: str, *, max_c
         else "Mood, setting, and visual inspiration from horror-fiction pages you discovered"
         if m == "creepypasta"
         else "Wellness topics and visual inspiration from health-education pages you discovered"
+        if m == "health_advice"
+        else "Adult-industry context and visual inspiration from pages you discovered (18+ creative use only)"
     )
     lines: list[str] = [
         "## Topics tab research (latest Discover)",

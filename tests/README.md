@@ -5,11 +5,11 @@ Run the suite from the repository root; `pytest` collects everything under this 
 | Subfolder | What lives here |
 |-----------|-----------------|
 | [`cli/`](cli/) | Headless CLI parser, config merge, `ui_settings` roundtrips |
-| [`ui/`](ui/) | PyQt6 / `pytest-qt` desktop UI (`@pytest.mark.qt` where applicable) |
+| [`ui/`](ui/) | PyQt6 / `pytest-qt` desktop UI (`@pytest.mark.qt` where applicable); F4 image playground ([`test_image_playground_dialog.py`](test_image_playground_dialog.py)); NSFW Run tab / session bypass ([`test_run_tab_nsfw_combo.py`](test_run_tab_nsfw_combo.py)) |
 | [`models/`](models/) | Local HF model manager, VRAM / CUDA policy, diffusion presets, `torch` dtypes, inference profiles |
 | [`platform/`](platform/) | Remote API clients (OpenAI-shaped, Kling, Replicate, ElevenLabs, …) |
-| [`runtime/`](runtime/) | `api_generation`, preflight, pipeline control, import smoke, run-queue contract |
-| [`content/`](content/) | Brain, story pipeline, characters, personalities, story context; LLM chat RAG (**`llm_chat_rag`**, **`llm_chat_system_prompt`**); pipeline generation / EOS routing (**`test_chat_generation`**) |
+| [`runtime/`](runtime/) | `api_generation`, preflight, pipeline control, import smoke, run-queue contract; NSFW preflight + **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** ([`test_preflight_nsfw_uploads.py`](runtime/test_preflight_nsfw_uploads.py)) |
+| [`content/`](content/) | Brain, story pipeline, characters, personalities, story context; LLM chat RAG (**`llm_chat_rag`**, **`llm_chat_system_prompt`**); pipeline generation / EOS routing (**`test_chat_generation`**); NSFW guardrails (**`test_nsfw_*`**, **`test_brain_api`**) |
 | [`render/`](render/) | Artist / clips / FFmpeg / pro-mode / video format helpers |
 | [`discover/`](discover/) | Topic discovery, Firecrawl / crawler, news-cache modes |
 | [`social/`](social/) | Upload tasks, TikTok/TikTok-style posting helpers |
@@ -22,6 +22,9 @@ Shared fixtures: [`conftest.py`](conftest.py).
 ```powershell
 # Typical headless run (no Qt)
 pytest -q -m "not qt"
+
+# NSFW guardrails / session bypass (no Qt)
+pytest tests/content/test_nsfw_prompt_branch.py tests/content/test_nsfw_topic_filter.py tests/runtime/test_preflight_nsfw_uploads.py -q
 
 # API-mode smoke (example)
 pytest tests/models/test_model_backend.py tests/runtime/test_preflight.py tests/runtime/test_api_generation.py tests/runtime/test_api_model_catalog.py tests/platform/test_kling_client.py tests/platform/test_openai_client.py -q

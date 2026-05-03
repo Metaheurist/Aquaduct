@@ -23,8 +23,8 @@ from PyQt6.QtWidgets import (
 
 from src.content.character_presets import (
     GeneratedCharacterFields,
+    character_auto_presets_for_ui,
     get_character_auto_preset_by_id,
-    get_character_auto_presets,
 )
 from src.content.characters_store import (
     Character,
@@ -40,6 +40,7 @@ from src.content.characters_store import (
     upsert,
 )
 from src.runtime.model_backend import api_role_ready, is_api_mode
+from src.content.topics import normalize_video_format
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.settings.ui_settings import save_settings
 from src.speech.voice import list_pyttsx3_voices as list_sys_voices
@@ -178,8 +179,25 @@ def attach_characters_tab(win) -> None:
     win.character_preset_combo = NoWheelComboBox()
     win.character_preset_combo.setMinimumWidth(160)
     win.character_preset_combo.setMaximumHeight(26)
-    for ap in get_character_auto_presets():
-        win.character_preset_combo.addItem(ap.label, ap.id)
+
+    def _current_vf_for_char_presets() -> str:
+        if hasattr(win, "video_format_combo"):
+            return str(win.video_format_combo.currentData() or getattr(win.settings, "video_format", "news") or "news")
+        return str(getattr(win.settings, "video_format", "news") or "news")
+
+    def _refresh_character_preset_combo() -> None:
+        cur = str(win.character_preset_combo.currentData() or "")
+        win.character_preset_combo.clear()
+        for ap in character_auto_presets_for_ui(_current_vf_for_char_presets()):
+            win.character_preset_combo.addItem(ap.label, ap.id)
+        ix = win.character_preset_combo.findData(cur)
+        if ix >= 0:
+            win.character_preset_combo.setCurrentIndex(ix)
+        elif win.character_preset_combo.count() > 0:
+            win.character_preset_combo.setCurrentIndex(0)
+
+    _refresh_character_preset_combo()
+    win._refresh_character_preset_combo = _refresh_character_preset_combo
     gen_row.addWidget(win.character_preset_combo, 1)
     win.character_generate_btn = QPushButton("Generate with LLM")
     win.character_generate_btn.setProperty("buttonRole", "secondary")
@@ -779,7 +797,11 @@ def attach_characters_tab(win) -> None:
             image_model_id=img_id,
             character_id=base.id,
             visual_style=vs,
-            allow_nsfw=bool(getattr(win.settings, "allow_nsfw", False)),
+            allow_nsfw=(
+                bool(getattr(win.settings, "allow_nsfw", False))
+                or normalize_video_format(_current_vf_for_char_presets()) == "nsfw"
+                or str(win.character_preset_combo.currentData() or "").strip().lower().startswith("nsfw_")
+            ),
             app_settings=getattr(win, "settings", None),
             steps=4,
             art_style_preset_id=str(getattr(win.settings, "art_style_preset_id", None) or "balanced"),

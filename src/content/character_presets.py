@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
+from src.content.topics import normalize_video_format
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class CharacterAutoPreset:
     id: str
     label: str
     llm_directive: str
+    tags: tuple[str, ...] = ()
 
 
 @dataclass
@@ -115,7 +117,46 @@ def get_character_auto_presets() -> list[CharacterAutoPreset]:
                 "tasteful restraint. Not snobby toward the audience."
             ),
         ),
+        CharacterAutoPreset(
+            id="nsfw_solo_performer",
+            label="NSFW — solo performer host",
+            llm_directive=(
+                "Confident solo adult entertainer hosting a tasteful vertical short: original stage name, warm-direct camera presence, "
+                "consent-positive copy, lingerie-forward or implied-intimacy styling cues — never real people. "
+                "Include adults-only guardrails in the character DNA (21+, fictional)."
+            ),
+            tags=("nsfw",),
+        ),
+        CharacterAutoPreset(
+            id="nsfw_industry_host",
+            label="NSFW — industry news host",
+            llm_directive=(
+                "Adult-industry trade-show host energy: sharp, professional, reads like a presenter at a creators’ conference — "
+                "covers trends and studio lore without sleaze in the bio text; original name only; 21+ consenting persona."
+            ),
+            tags=("nsfw",),
+        ),
+        CharacterAutoPreset(
+            id="nsfw_couple_performers",
+            label="NSFW — duo performers",
+            llm_directive=(
+                "Two original co-host performers (stage names only), consent-positive couple or creative partnership framing, "
+                "complementary visual styles, warm banter — adults 21+, no real relationship claims, tasteful wardrobe notes."
+            ),
+            tags=("nsfw",),
+        ),
     ]
+
+
+def character_auto_presets_for_ui(video_format: str | None = None) -> list[CharacterAutoPreset]:
+    """Filter archetypes: NSFW-tagged presets only appear when video format is ``nsfw``."""
+    vf = normalize_video_format(video_format or "news")
+    out: list[CharacterAutoPreset] = []
+    for p in get_character_auto_presets():
+        if p.tags and "nsfw" in p.tags and vf != "nsfw":
+            continue
+        out.append(p)
+    return out
 
 
 def get_character_auto_preset_by_id(pid: str) -> CharacterAutoPreset | None:

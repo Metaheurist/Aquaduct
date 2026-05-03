@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format** (News, Cartoon, Explainer, Unhinged, Creepypasta, Health advice — same buckets as Run). Tags drive crawls, Discover seeds, and the script LLM.
+The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format** (News, Cartoon, Explainer, Unhinged, Creepypasta, Health advice, NSFW — same buckets as Run). Tags drive crawls, Discover seeds, and the script LLM.
 
 ## Tags
 
@@ -12,7 +12,7 @@ The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format**
 ## Discover
 
 - **News / Explainer**: headline-style suggestions.
-- **Cartoon, Unhinged, Creepypasta, Health advice**: Firecrawl web seeds (requires API tab key). Research packs under `data/topic_research/<mode>/` when enabled.
+- **Cartoon, Unhinged, Creepypasta, Health advice, NSFW**: Firecrawl web seeds (requires API tab key). Research packs under `data/topic_research/<mode>/` when enabled. For **NSFW**, Discover applies denylist filtering on suggested lines unless a **session guardrail bypass** is active ([Desktop UI](ui.md), [Config](../reference/config.md#session-guardrail-bypass)).
 
 See [Desktop UI overview](ui.md) and [Crawler](../integrations/crawler.md).
 

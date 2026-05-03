@@ -218,6 +218,68 @@ def _prompt_creepypasta_clarity(pkg: VideoPackage, web_digest: str, reference_no
     )
 
 
+def _prompt_nsfw_beats(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    from src.content.nsfw_guardrails import nsfw_llm_guardrails_block
+
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    g = nsfw_llm_guardrails_block()
+    guard = (g + "\n") if g else ""
+    arc = (
+        "Enforce arc: spoken 18+ disclaimer in hook → confident performer/industry beats → memorable consent-positive close.\n"
+        if g
+        else ""
+    )
+    return (
+        f"You revise ADULTS-ONLY performer-host vertical scripts (video_format={vf!r}).\n"
+        f"{guard}"
+        f"{arc}"
+        "Invent stage names only; tame metadata; keep visual_prompt model-friendly (studio light, editorial framing).\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Current script JSON (rewrite beats and narration as needed):\n"
+        f"{body}\n"
+    )
+
+
+def _prompt_nsfw_policy(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    from src.content.nsfw_guardrails import nsfw_llm_guardrails_block
+
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    g = nsfw_llm_guardrails_block()
+    if not g:
+        return (
+            "You revise vertical script JSON for flow, clarity, and TTS-friendly narration lines only.\n"
+            f"{_common_json_rules()}\n"
+            f"{ctx}"
+            "Script JSON:\n"
+            f"{body}\n"
+        )
+    return (
+        "You are a policy editor for adults-only entertainment shorts.\n"
+        f"{g}\n"
+        "Remove minor/teen framing, non-consent, illegal themes, real public figures, and brand-unsafe slurs in titles or metadata.\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Script JSON:\n"
+        f"{body}\n"
+    )
+
+
+def _prompt_nsfw_clarity(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
+    body = package_to_json_text(pkg)
+    ctx = _ctx_block(web_digest, reference_notes)
+    return (
+        "Tighten host/performer lines for TTS: shorter sentences, confident pacing, no stage directions in narration.\n"
+        "Keep visual_prompt concrete (wardrobe, lighting, set, one action, 9:16) — tasteful adult editorial; no readable wall text.\n"
+        f"{_common_json_rules()}\n"
+        f"{ctx}"
+        "Script JSON:\n"
+        f"{body}\n"
+    )
+
+
 def _prompt_comedy_dialogue(pkg: VideoPackage, web_digest: str, reference_notes: str, vf: str) -> str:
     body = package_to_json_text(pkg)
     ctx = _ctx_block(web_digest, reference_notes)
@@ -324,6 +386,13 @@ def _stages_for_format(vf: str) -> tuple[_StageSpec, ...]:
             _StageSpec("policy", "Safety polish", "llm_full_json", _prompt_creepypasta_policy),
             _StageSpec("elaboration", "Length & elaboration", "elaboration_gate", None),
             _StageSpec("clarity", "Clarity & TTS", "llm_full_json", _prompt_creepypasta_clarity),
+        )
+    if v == "nsfw":
+        return (
+            _StageSpec("beats", "Performer arc & beats", "llm_full_json", _prompt_nsfw_beats),
+            _StageSpec("policy", "Adults-only policy", "llm_full_json", _prompt_nsfw_policy),
+            _StageSpec("elaboration", "Length & elaboration", "elaboration_gate", None),
+            _StageSpec("clarity", "Clarity & TTS", "llm_full_json", _prompt_nsfw_clarity),
         )
     # unhinged
     return (

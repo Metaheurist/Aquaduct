@@ -20,6 +20,7 @@ from src.content.brain import (
     topic_grounding_pair_chunks,
     video_package_from_llm_output,
 )
+from src.content.nsfw_guardrails import nsfw_llm_guardrails_block
 from src.content.topic_constraints import parse_topic_grounding_llm_json
 from src.content.characters_store import CHARACTER_FIELD_MAX_LEN, CHARACTER_NAME_MAX_LEN
 from src.core.config import AppSettings, BrandingSettings
@@ -224,13 +225,21 @@ def generate_character_from_preset_openai(
     preset: CharacterAutoPreset,
     extra_notes: str = "",
     on_llm_task: Callable[[str, int, str], None] | None = None,
+    video_format: str | None = None,
 ) -> GeneratedCharacterFields:
     """Same JSON contract as :func:`src.content.brain.generate_character_from_preset_llm` via OpenAI."""
     notes = (extra_notes or "").strip()
     notes_block = f"Extra notes from the user (optional):\n{notes}\n" if notes else ""
     arch = (preset.llm_directive or "").strip() or "Original short-form video host."
+    vf = (video_format or str(getattr(settings, "video_format", "") or "")).strip().lower()
+    pid = (preset.id or "").strip().lower()
+    guard = ""
+    if vf == "nsfw" or pid.startswith("nsfw_"):
+        gblk = nsfw_llm_guardrails_block()
+        guard = (gblk + "\n") if gblk else ""
     user = (
         "You help users of a desktop short-form video app (9:16 vertical).\n"
+        f"{guard}"
         "Invent ONE original host character — not a real celebrity, brand mascot, or copyrighted figure.\n\n"
         f"Archetype label: {preset.label}\n"
         f"Creative direction for this archetype:\n{arch}\n\n"

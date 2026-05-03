@@ -14,7 +14,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PyQt6.QtGui import QDesktopServices, QGuiApplication
+from PyQt6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal, QThread
 from PyQt6.QtWidgets import (
     QApplication,
@@ -40,7 +40,9 @@ from UI.dialogs.frameless_dialog import (
     aquaduct_warning,
     show_hf_token_dialog,
 )
+from UI.dialogs.image_playground_dialog import ImagePlaygroundDialog
 from UI.dialogs.llm_chat_dialog import LLMChatDialog
+from UI.dialogs.video_playground_dialog import VideoPlaygroundDialog
 from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedule_auxiliary_job_memory_purge
 from UI.help.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
 from UI.widgets.media_mode_toggle import MediaModeToggle
@@ -80,6 +82,10 @@ from src.models.model_integrity_cache import (
     save_integrity_cache,
 )
 from src.content.crawler import clear_news_seen_cache_files
+from src.content.nsfw_guardrails import (
+    AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS,
+    dev_content_guardrails_disabled,
+)
 from src.content.topic_constraints import sanitize_topic_tag_notes, topic_notes_for
 from src.content.topics import normalize_video_format, video_format_writes_topic_research_pack
 from src.util.fs_delete import rmtree_robust, unlink_file
@@ -170,6 +176,8 @@ class MainWindow(QMainWindow):
         self.paths = get_paths()
         self.settings = load_settings()
         self._llm_chat_dialog: LLMChatDialog | None = None
+        self._image_playground_dialog: ImagePlaygroundDialog | None = None
+        self._video_playground_dialog: VideoPlaygroundDialog | None = None
         self._model_integrity_by_repo: dict[str, str] = load_integrity_cache(self.paths.data_dir)
         self._apply_saved_hf_token_to_env()
 
@@ -218,7 +226,7 @@ class MainWindow(QMainWindow):
         save_btn.setFixedSize(44, 32)
         save_btn.setToolTip(
             help_tooltip_rich(
-                "Save - writes every tab’s settings to ui_settings.json (same as Run → Save settings).",
+                "Save - writes every tab’s settings to ui_settings.json (same as Run → Save settings). Press F5 anytime.",
                 "welcome",
                 slide=1,
             )
@@ -230,7 +238,7 @@ class MainWindow(QMainWindow):
         graph_btn.setFixedSize(44, 32)
         graph_btn.setToolTip(
             help_tooltip_rich(
-                "Resource graph - live CPU, RAM, and GPU memory for this process (about once per second).",
+                "Resource graph - live CPU, RAM, and GPU memory for this process (about once per second). Press F3 anytime.",
                 "welcome",
                 slide=2,
             )
@@ -242,7 +250,7 @@ class MainWindow(QMainWindow):
         chat_btn.setFixedSize(44, 32)
         chat_btn.setToolTip(
             help_tooltip_rich(
-                "LLM chat - talk with the selected script model (Model tab / API tab). Opens in a separate window.",
+                "LLM chat - talk with the selected script model (Model tab / API tab). Opens in a separate window. Press F2 anytime.",
                 "welcome",
                 slide=0,
             )
@@ -250,23 +258,69 @@ class MainWindow(QMainWindow):
         chat_btn.clicked.connect(self._show_chat_dialog)
         title_row.addWidget(chat_btn, 0, Qt.AlignmentFlag.AlignRight)
 
+        image_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="image_gen")
+        image_btn.setFixedSize(44, 32)
+        image_btn.setToolTip(
+            help_tooltip_rich(
+                "Image playground - one still from your prompt (uses Model/API image settings). Press F4 anytime.",
+                "welcome",
+                slide=0,
+            )
+        )
+        image_btn.clicked.connect(self._show_image_playground_dialog)
+        title_row.addWidget(image_btn, 0, Qt.AlignmentFlag.AlignRight)
+
+        video_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="video_gen")
+        video_btn.setFixedSize(44, 32)
+        video_btn.setToolTip(
+            help_tooltip_rich(
+                "Video playground - one short MP4 from your prompt (uses Model/API video settings). Press F6 anytime.",
+                "welcome",
+                slide=0,
+            )
+        )
+        video_btn.clicked.connect(self._show_video_playground_dialog)
+        title_row.addWidget(video_btn, 0, Qt.AlignmentFlag.AlignRight)
+
         help_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="help")
         help_btn.setFixedSize(44, 32)
         help_btn.setToolTip(
             help_tooltip_rich(
-                "Help - opens tutorials and tips (this window).",
+                "Help - opens tutorials and tips (this window). Press F1 anytime.",
                 "welcome",
                 slide=0,
             )
         )
         help_btn.clicked.connect(lambda: self._show_tutorial_dialog(first_run=False))
         title_row.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignRight)
+        _ctx = Qt.ShortcutContext.ApplicationShortcut
+        sc1 = QShortcut(QKeySequence(Qt.Key.Key_F1), self)
+        sc1.setContext(_ctx)
+        sc1.activated.connect(lambda: self._show_tutorial_dialog(first_run=False))
+        sc2 = QShortcut(QKeySequence(Qt.Key.Key_F2), self)
+        sc2.setContext(_ctx)
+        sc2.activated.connect(self._show_chat_dialog)
+        sc3 = QShortcut(QKeySequence(Qt.Key.Key_F3), self)
+        sc3.setContext(_ctx)
+        sc3.activated.connect(self._show_resource_graph)
+        sc4 = QShortcut(QKeySequence(Qt.Key.Key_F4), self)
+        sc4.setContext(_ctx)
+        sc4.activated.connect(self._show_image_playground_dialog)
+        sc4v = QShortcut(QKeySequence(Qt.Key.Key_F6), self)
+        sc4v.setContext(_ctx)
+        sc4v.activated.connect(self._show_video_playground_dialog)
+        sc5 = QShortcut(QKeySequence(Qt.Key.Key_F5), self)
+        sc5.setContext(_ctx)
+        sc5.activated.connect(self._save_settings)
+        sc_f12 = QShortcut(QKeySequence(Qt.Key.Key_F12), self)
+        sc_f12.setContext(_ctx)
+        sc_f12.activated.connect(self._toggle_f12_session_guardrails)
 
         close_btn = TitleBarOutlineButton("", variant="danger", icon_kind="close")
         close_btn.setFixedSize(44, 32)
         close_btn.clicked.connect(self.close)
         title_row.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
-        self._title_outline_buttons = (save_btn, graph_btn, chat_btn, help_btn, close_btn)
+        self._title_outline_buttons = (save_btn, graph_btn, chat_btn, image_btn, video_btn, help_btn, close_btn)
         self._sync_title_bar_outline_colors()
         root_lay.addWidget(self._title_bar, 0)
 
@@ -301,6 +355,8 @@ class MainWindow(QMainWindow):
         attach_api_tab(self)
         attach_settings_tab(self)
         attach_my_pc_tab(self)
+
+        self._sync_nsfw_upload_checkbox_state()
 
         self._chat_docs_index = None
         self._chat_docs_index_worker: QThread | None = None
@@ -396,6 +452,81 @@ class MainWindow(QMainWindow):
                     btn.set_chrome_colors(accent, danger, muted, text)
         except Exception:
             pass
+
+    def _video_format_from_upload_task_id(self, task_id: str) -> str | None:
+        """Read ``video_format`` from a finished render's ``meta.json`` if present."""
+        from src.platform.upload_tasks import load_tasks
+
+        for t in load_tasks():
+            if str(t.id) != str(task_id):
+                continue
+            mp = Path(t.video_dir) / "meta.json"
+            if not mp.is_file():
+                return None
+            try:
+                data = json.loads(mp.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    raw = data.get("video_format")
+                    if isinstance(raw, str) and raw.strip():
+                        return normalize_video_format(raw.strip())
+            except Exception:
+                return None
+        return None
+
+    def _sync_nsfw_upload_checkbox_state(self) -> None:
+        """Grey out TikTok/YouTube auto-upload toggles while NSFW run format is selected (session UI only)."""
+        if not hasattr(self, "video_format_combo"):
+            return
+        if dev_content_guardrails_disabled():
+            for attr in ("api_tt_auto_upload_chk", "api_yt_auto_upload_chk"):
+                w = getattr(self, attr, None)
+                if w is not None:
+                    w.setEnabled(True)
+            return
+        vf = normalize_video_format(str(self.video_format_combo.currentData() or "news"))
+        nsfw_on = vf == "nsfw"
+        for attr in ("api_tt_auto_upload_chk", "api_yt_auto_upload_chk"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setEnabled(not nsfw_on)
+
+    def _toggle_f12_session_guardrails(self) -> None:
+        """Toggle session-only bypass for NSFW-related guardrails and NSFW-oriented Run defaults."""
+        if dev_content_guardrails_disabled():
+            os.environ.pop(AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS, None)
+            self._append_log(
+                "F12: content guardrails restored (LLM blocks, topic/crawl filters, upload preflight/Task gates)."
+            )
+        else:
+            os.environ[AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS] = "1"
+            self._ensure_topic_modes()
+            vf_now = (
+                normalize_video_format(str(self.video_format_combo.currentData() or "news"))
+                if hasattr(self, "video_format_combo")
+                else normalize_video_format(str(getattr(self.settings, "video_format", "news") or "news"))
+            )
+            seed = list(self.settings.topic_tags_by_mode.get("nsfw", []) or [])
+            if not seed:
+                seed = list(self.settings.topic_tags_by_mode.get(vf_now, []) or [])
+            for m in VIDEO_FORMATS:
+                self.settings.topic_tags_by_mode[m] = list(seed)
+            self._append_log(
+                "F12: session guardrails off — NSFW format, Allow NSFW, topic lists synced to all modes."
+            )
+            if hasattr(self, "video_format_combo"):
+                ix = self.video_format_combo.findData("nsfw")
+                if ix >= 0:
+                    self.video_format_combo.setCurrentIndex(ix)
+            if hasattr(self, "allow_nsfw_chk"):
+                self.allow_nsfw_chk.setChecked(True)
+            if hasattr(self, "tag_list"):
+                self._sync_tags_to_ui()
+        self._sync_nsfw_upload_checkbox_state()
+        if hasattr(self, "_refresh_character_preset_combo"):
+            try:
+                self._refresh_character_preset_combo()
+            except Exception:
+                pass
 
     def _has_explicit_hf_env_token(self) -> bool:
         """Return True when HF token env vars are explicitly set with a non-empty value."""
@@ -589,7 +720,7 @@ class MainWindow(QMainWindow):
             cur = self.tabs.currentIndex()
             if cur >= 0 and hasattr(self.tabs, "setTabVisible") and not self.tabs.isTabVisible(cur):  # type: ignore[attr-defined]
                 for i in range(self.tabs.count()):
-                    if str(self.tabs.tabText(i) or "") == "Run":
+                    if str(self.tabs.tabText(i) or "") == "Pipeline":
                         self.tabs.setCurrentIndex(i)
                         break
         except Exception:
@@ -1111,7 +1242,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         try:
-            if self.tabs.tabText(idx) == "Run":
+            if self.tabs.tabText(idx) == "Pipeline":
                 self._refresh_character_combo()
             if self.tabs.tabText(idx) == "Library":
                 self._library_refresh()
@@ -2128,6 +2259,12 @@ class MainWindow(QMainWindow):
     def _on_llm_chat_closed(self) -> None:
         self._llm_chat_dialog = None
 
+    def _on_image_playground_closed(self) -> None:
+        self._image_playground_dialog = None
+
+    def _on_video_playground_closed(self) -> None:
+        self._video_playground_dialog = None
+
     def _show_chat_dialog(self) -> None:
         """Open or focus the title-bar LLM chat (non-modal)."""
         if self._llm_chat_dialog is None:
@@ -2135,6 +2272,22 @@ class MainWindow(QMainWindow):
         self._llm_chat_dialog.show()
         self._llm_chat_dialog.raise_()
         self._llm_chat_dialog.activateWindow()
+
+    def _show_image_playground_dialog(self) -> None:
+        """Open or focus the F4 image playground (non-modal)."""
+        if self._image_playground_dialog is None:
+            self._image_playground_dialog = ImagePlaygroundDialog(self)
+        self._image_playground_dialog.show()
+        self._image_playground_dialog.raise_()
+        self._image_playground_dialog.activateWindow()
+
+    def _show_video_playground_dialog(self) -> None:
+        """Open or focus the F6 video playground (non-modal)."""
+        if self._video_playground_dialog is None:
+            self._video_playground_dialog = VideoPlaygroundDialog(self)
+        self._video_playground_dialog.show()
+        self._video_playground_dialog.raise_()
+        self._video_playground_dialog.activateWindow()
 
     def _llm_chat_run_gate(self, continuation: Callable[[], None]) -> None:
         """If the LLM chat window is open, prompt before starting Run / Preview / Storyboard."""
@@ -2950,6 +3103,16 @@ class MainWindow(QMainWindow):
         try:
             if self._llm_chat_dialog is not None:
                 self._llm_chat_dialog.close()
+        except Exception:
+            pass
+        try:
+            if self._image_playground_dialog is not None:
+                self._image_playground_dialog.close()
+        except Exception:
+            pass
+        try:
+            if self._video_playground_dialog is not None:
+                self._video_playground_dialog.close()
         except Exception:
             pass
         # Make app exit reliably even if a background download is running.
@@ -4375,6 +4538,13 @@ class MainWindow(QMainWindow):
                 "Enable TikTok in the API tab, fill the client key/secret, connect your account, and use Inbox mode.",
             )
             return
+        if self._video_format_from_upload_task_id(tid) == "nsfw" and not dev_content_guardrails_disabled():
+            aquaduct_information(
+                self,
+                "TikTok",
+                "This render was saved in NSFW video format. TikTok prohibits explicit uploads — manual upload is not available from Tasks.",
+            )
+            return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
             return
         self._start_tiktok_upload_worker(tid)
@@ -4390,6 +4560,13 @@ class MainWindow(QMainWindow):
                 self,
                 "YouTube",
                 "Enable YouTube in the API tab, fill the client ID/secret, and connect your account.",
+            )
+            return
+        if self._video_format_from_upload_task_id(tid) == "nsfw" and not dev_content_guardrails_disabled():
+            aquaduct_information(
+                self,
+                "YouTube",
+                "This render was saved in NSFW video format. YouTube prohibits explicit uploads — manual upload is not available from Tasks.",
             )
             return
         if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():

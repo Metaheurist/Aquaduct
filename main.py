@@ -281,6 +281,7 @@ def _write_video_folder(
     prompts: list[str],
     preview: dict | None = None,
     series_meta: dict | None = None,
+    video_format: str = "news",
 ) -> None:
     video_dir.mkdir(parents=True, exist_ok=True)
 
@@ -301,6 +302,7 @@ def _write_video_folder(
         "sources": sources,
         "prompts": prompts,
         "created_at_utc": datetime.utcnow().isoformat() + "Z",
+        "video_format": str(video_format or "news"),
     }
     if series_meta:
         meta["series"] = series_meta
@@ -351,7 +353,7 @@ def _scrub_spoken_text(text: str, *, video_format: str) -> str:
 
     # Remove common LLM artifact fragments / banned filler that harm pacing.
     low = t.lower()
-    if vf in ("cartoon", "unhinged"):
+    if vf in ("cartoon", "unhinged", "nsfw"):
         # "one of the..." scaffolding tends to appear as broken mid-sentence filler.
         t = re.sub(r"\bthe\s+one\s+of\s+the\b", "the", t, flags=re.IGNORECASE)
         t = re.sub(r"\bone\s+of\s+the\b", "the", t, flags=re.IGNORECASE)
@@ -1655,6 +1657,8 @@ def run_once(
         _rc(run_control)
     
         _allow_nsfw = bool(getattr(app, "allow_nsfw", False))
+        if str(getattr(app, "video_format", "news") or "news").strip().lower() == "nsfw":
+            _allow_nsfw = True
         _art_style_id = str(getattr(app, "art_style_preset_id", None) or "balanced")
         _diffusion_ref_kw: dict = {}
         if (
@@ -1676,7 +1680,7 @@ def run_once(
             pro_img2vid = "stable-video-diffusion" in lowv or "img2vid" in lowv
             try:
                 vf_tip = str(getattr(app, "video_format", "news") or "news").strip().lower()
-                if vf_tip in ("cartoon", "unhinged", "creepypasta", "health_advice") and pro_img2vid:
+                if vf_tip in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw") and pro_img2vid:
                     _pipe_progress(
                         on_progress,
                         64,
@@ -1917,6 +1921,7 @@ def run_once(
                         prompts=prompts,
                         preview=preview_blob,
                         series_meta=_series_meta_for_video_folder(series_context),
+                        video_format=str(getattr(app, "video_format", "news") or "news"),
                     )
                     from src.series.finish import finalize_series_episode_if_needed
 
@@ -2562,6 +2567,7 @@ def run_once(
             prompts=prompts,
             preview=preview_blob,
             series_meta=_series_meta_for_video_folder(series_context),
+            video_format=str(getattr(app, "video_format", "news") or "news"),
         )
         try:
             from src.series.finish import finalize_series_episode_if_needed

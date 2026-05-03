@@ -26,7 +26,6 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QScrollArea,
     QTextBrowser,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -370,30 +369,6 @@ class LLMChatDialog(FramelessDialog):
         scroll.setWidget(self._transcript_host)
         self.body_layout.addWidget(scroll, 1)
 
-        sys_row = QHBoxLayout()
-        self._system_toggle = QToolButton()
-        self._system_toggle.setCheckable(True)
-        self._system_toggle.setChecked(False)
-        self._system_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self._system_toggle.setText("System prompt")
-        self._system_toggle.setToolTip("Show or hide instructions prepended to every reply (optional).")
-        self._system_toggle.toggled.connect(self._on_system_toggle)
-        sys_row.addWidget(self._system_toggle)
-        self._system_hint = QLabel(
-            "Toggle to view or edit instructions sent with each message. When the editor is empty, a built-in Aquaduct default is used."
-        )
-        self._system_hint.setWordWrap(True)
-        self._system_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
-        sys_row.addWidget(self._system_hint, 1)
-        self.body_layout.addLayout(sys_row)
-        self._system_edit = QPlainTextEdit()
-        self._system_edit.setPlaceholderText("Optional. Leave empty to use the built-in Aquaduct assistant instructions.")
-        self._system_edit.setMaximumHeight(120)
-        self._system_edit.setVisible(False)
-        self._system_hint.setVisible(True)
-        self._system_edit.textChanged.connect(self._refresh_composer_budget)
-        self.body_layout.addWidget(self._system_edit)
-
         self._input = _EnterSendingPlainText()
         self._input.setPlaceholderText("Message…")
         self._input.setToolTip("Enter = send · Shift+Enter = newline")
@@ -535,13 +510,7 @@ class LLMChatDialog(FramelessDialog):
             return False
 
     def _effective_system_prompt(self) -> str:
-        return self._system_edit.toPlainText().strip() or DEFAULT_SYSTEM_PROMPT
-
-    def _on_system_toggle(self, checked: bool) -> None:
-        self._system_edit.setVisible(checked)
-        self._system_hint.setVisible(not checked)
-        if checked and not self._system_edit.toPlainText().strip():
-            self._system_edit.setPlainText(DEFAULT_SYSTEM_PROMPT)
+        return DEFAULT_SYSTEM_PROMPT
 
     def _after_show_load(self) -> None:
         self._status.setText("Loading conversation…")
@@ -553,16 +522,11 @@ class LLMChatDialog(FramelessDialog):
             self._subtitle.setText("")
             self._send_btn.setEnabled(False)
             self._busy.setVisible(False)
-            self._system_edit.clear()
-            self._system_toggle.blockSignals(True)
-            self._system_toggle.setChecked(False)
-            self._system_toggle.blockSignals(False)
-            self._on_system_toggle(False)
             self._refresh_composer_budget()
             return
         self._subtitle.setText(label)
         data = load_transcript(get_paths().data_dir, mode=mode, model_key=key)
-        custom_sp = False
+        self._messages = []
         if isinstance(data, dict):
             msgs = data.get("messages")
             if isinstance(msgs, list):
@@ -571,18 +535,6 @@ class LLMChatDialog(FramelessDialog):
                     for m in msgs
                     if isinstance(m, dict)
                 ]
-            sp = str(data.get("system_prompt") or "").strip()
-            if sp and sp != DEFAULT_SYSTEM_PROMPT.strip():
-                self._system_edit.setPlainText(sp)
-                custom_sp = True
-            else:
-                self._system_edit.clear()
-        else:
-            self._system_edit.clear()
-        self._system_toggle.blockSignals(True)
-        self._system_toggle.setChecked(custom_sp)
-        self._system_toggle.blockSignals(False)
-        self._on_system_toggle(custom_sp)
         self._rebuild_transcript_widgets()
         self._status.setText("Ready.")
         self._busy.setVisible(False)

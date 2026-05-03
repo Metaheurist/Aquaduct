@@ -11,9 +11,25 @@ QuantMode = Literal["auto", "bf16", "fp16", "int8", "nf4_4bit", "cpu_offload"]
 from .app_dirs import application_data_dir, installation_dir
 
 # Pipeline + per-mode topic lists use the same IDs.
-VideoFormat = Literal["news", "cartoon", "explainer", "unhinged", "creepypasta", "health_advice"]
+VideoFormat = Literal[
+    "news",
+    "cartoon",
+    "explainer",
+    "unhinged",
+    "creepypasta",
+    "health_advice",
+    "nsfw",
+]
 
-VIDEO_FORMATS: tuple[str, ...] = ("news", "cartoon", "explainer", "unhinged", "creepypasta", "health_advice")
+VIDEO_FORMATS: tuple[str, ...] = (
+    "news",
+    "cartoon",
+    "explainer",
+    "unhinged",
+    "creepypasta",
+    "health_advice",
+    "nsfw",
+)
 
 RunContentMode = Literal["preset", "custom"]
 

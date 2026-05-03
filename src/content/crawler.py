@@ -161,6 +161,12 @@ def _default_headline_query(mode: str | None) -> str:
             "\"blood pressure\" OR \"immune system\" OR \"public health\" OR \"health education\") "
             "(tips OR guide OR overview OR explained OR \"what to know\" OR evidence OR research)"
         )
+    if m == "nsfw":
+        return (
+            "(\"adult industry\" OR \"adult entertainment\" OR performer OR interview OR studio OR awards OR avn OR xbiz OR "
+            "\"content creator\" adult OR \"adult platform\" OR \"subscription platform\" OR trade OR magazine) "
+            "(news OR trends OR profile OR overview OR business OR legal OR policy OR interview)"
+        )
     return '("AI tool" OR "AI agent" OR "AI app") (release OR launched OR introduces OR "new tool")'
 
 
@@ -212,6 +218,11 @@ def _effective_query(
                 f"(wellness OR health OR nutrition OR sleep OR exercise OR mental OR symptoms OR prevention OR "
                 f"\"healthy lifestyle\" OR \"what is\" OR explained OR tips OR overview)"
             )
+        if mode == "nsfw":
+            return (
+                f"({tag_expr}) "
+                f"(adult industry OR adult entertainment OR performer OR creator OR studio OR interview OR business OR magazine OR trade)"
+            )
         return f"({tag_expr}) {_default_headline_query(mode)}"
     return _default_headline_query(mode)
 
@@ -219,7 +230,7 @@ def _effective_query(
 def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[str] | None) -> list[str]:
     """Alternate search strings when the primary query under-fills (creative modes + health_advice)."""
     m = _cache_mode_key(topic_mode)
-    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice"):
+    if m not in ("cartoon", "unhinged", "creepypasta", "health_advice", "nsfw"):
         return []
     tags = [t.strip() for t in (topic_tags or []) if t and t.strip()]
     tag_prefix = ""
@@ -253,6 +264,12 @@ def _extra_creative_firecrawl_queries(topic_mode: str | None, topic_tags: list[s
             "(\"two sentence horror\" OR micro horror OR \"flash fiction\" horror OR \"urban legend\" story) "
             "(reddit OR tumblr OR blog)",
             "(backrooms OR liminal space OR uncanny OR \"found footage\" style) (fiction OR story OR creepypasta)",
+        ]
+    elif m == "nsfw":
+        rest = [
+            "(\"adult industry\" OR avn OR xbiz OR trade OR magazine) (business OR trends OR interview OR profile OR legal OR policy)",
+            "(performer OR creator OR \"content creator\") (interview OR profile OR career OR studio OR platform OR business)",
+            "(\"adult platform\" OR streaming OR subscription OR creator economy) (news OR earnings OR industry OR overview)",
         ]
     else:
         rest = [
@@ -318,7 +335,6 @@ def _fetch_headlines(
                     image_url=iu,
                 )
             )
-            have.add(url)
 
     if firecrawl_enabled and key:
         try:
@@ -420,6 +436,15 @@ def _fetch_headlines(
             have.add(it.url)
             if len(fetched) >= need:
                 break
+
+    if _cache_mode_key(topic_mode) == "nsfw":
+        from src.content.nsfw_guardrails import nsfw_text_matches_denylist
+
+        fetched = [
+            it
+            for it in fetched
+            if not nsfw_text_matches_denylist(f"{it.title or ''} {it.url or ''}")
+        ]
 
     return fetched[:need]
 
