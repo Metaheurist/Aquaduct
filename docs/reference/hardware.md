@@ -51,7 +51,7 @@ The My PC tab assigns each model option a marker (internal codes; UI labels matc
 
 **Effective VRAM**: thresholds use the VRAM of the GPU resolved for that **kind** and the active **GPU policy** (Auto vs single), not “first GPU only” when multiple cards exist.
 
-These are simple heuristics based mainly on VRAM and the model kind. **`rate_model_fit_for_repo`** also applies **per-repo** thresholds for frontier checkpoints (e.g. **FLUX** / **SD3.5**, **Wan 2.2** / **Mochi 1.5** / **CogVideoX 5B** / **HunyuanVideo** / **LTX-2** for T2V, and user-typed **SVD** / **LTX-Video** / **ZeroScope** ids) — see [`src/models/hardware.py`](../../src/models/hardware.py) (`vram_requirement_hint`, `rate_model_fit_for_repo`).
+These are simple heuristics based mainly on VRAM and the model kind. **`rate_model_fit_for_repo`** also applies **per-repo** thresholds for frontier checkpoints (e.g. **FLUX** / **SD3.5**, **Wan 2.2** / **Mochi 1** / **CogVideoX 5B** / **HunyuanVideo** / **LTX-2** for T2V, and user-typed **SVD** / **LTX-Video** / **ZeroScope** ids) — see [`src/models/hardware.py`](../../src/models/hardware.py) (`vram_requirement_hint`, `rate_model_fit_for_repo`).
 
 For **heavy** Motion models, **`next_smaller_repo_id("video", …)`** in [`variant_fallback`](../../src/runtime/variant_fallback.py) still applies during **automatic retry** when loading fails — pick a lighter **Video model** combo manually or via **Auto-fit for this PC** when the fit badge reads **VRAM Limit** (red) or **Risky** (amber). **Gated** checkpoints usually need **`HF_TOKEN`** configured — startup preflight warns when missing.
 

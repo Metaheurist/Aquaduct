@@ -75,6 +75,33 @@ def _article_prompt_block(*, video_format: str, excerpt: str) -> str:
     )
 
 
+def _previous_episode_block(text: str) -> str:
+    prev = (text or "").strip()
+    if not prev:
+        return ""
+    return (
+        "Previous episode recap (continuation — advance the same storyline and character arcs):\n"
+        f"{prev}\n\n"
+    )
+
+
+def _series_bible_block(text: str) -> str:
+    bible = (text or "").strip()
+    if not bible:
+        return ""
+    cap = 8000
+    b = bible if len(bible) <= cap else bible[: cap - 1] + "…"
+    return (
+        "Series bible (rolling continuity notes across episodes so far):\n"
+        f"{b}\n\n"
+    )
+
+
+def _series_continuity_block(*, previous_episode_summary: str = "", series_bible: str = "") -> str:
+    """Prompt fragment for multi-episode series continuity (recap + rolling bible)."""
+    return _previous_episode_block(previous_episode_summary) + _series_bible_block(series_bible)
+
+
 _TTS_SPOKEN_RULES = (
     "Text-to-speech rules (mandatory):\n"
     "- `hook`, each segment `narration`, and `cta` are read aloud by TTS. Put ONLY speakable words there: host/character "
@@ -102,6 +129,8 @@ _SCRIPT_SUBSTANCE_RULES = (
     "\"we escalated\", \"yelled about morality\", \"stick the landing\", \"before the bit gets old\", \"still sane\".\n"
     "- If a headline is broken English, SEO spam, or a mangled listicle title, **state the topic in clean plain language** "
     "— do not read gibberish aloud or repeat the same broken phrase every segment.\n"
+    "- When a **previous episode recap** or **series bible** is provided, **continue** that arc — do not rehash beats already "
+    "covered; reference characters by their established names.\n"
     "- `visual_prompt` must show **this beat's** main subject + setting + one clear action (readable silhouette, one focal idea, 9:16). "
     "Avoid prompts that are only \"dynamic graphics\" / \"bold text\" with no concrete scene.\n\n"
 )
@@ -2027,6 +2056,7 @@ def _generate_with_loaded_causal_lm(
     on_llm_task: Callable[[str, int, str], None] | None = None,
     max_new_tokens: int = 650,
     inference_settings: AppSettings | None = None,
+    cancel_event: Any | None = None,
 ) -> str:
     """Single decode pass using an already-loaded causal LM (multistage refinement session)."""
     import torch
@@ -2094,6 +2124,8 @@ def _generate_with_loaded_causal_lm(
         chunks: list[str] = []
         n_tok = 0
         for text in streamer:
+            if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+                break
             chunks.append(text)
             n_tok += 1
             pct = min(99, int(100 * n_tok / max(1, max_new_use)))
@@ -2105,10 +2137,15 @@ def _generate_with_loaded_causal_lm(
             )
         th.join(timeout=7200)
         raw_new = "".join(chunks)
+        if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+            _emit_llm(on_llm_task, "llm_generate", 100, "Cancelled")
+            return raw_new
         _emit_llm(on_llm_task, "llm_generate", 100, "Generation finished")
     except Exception as e:
         dprint("brain", "streamed generation failed, falling back", str(e))
         _emit_llm(on_llm_task, "llm_generate", 10, "Fallback: one-shot generate…")
+        if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+            return (raw_new or "").strip()
         with torch.inference_mode():
             if cuda_device_reported_by_torch():
                 torch.cuda.empty_cache()
@@ -2143,6 +2180,7 @@ def _infer_text_with_optional_holder(
     llm_cuda_device_index: int | None = None,
     inference_settings: AppSettings | None = None,
     quant_mode: str | None = None,
+    cancel_event: Any | None = None,
 ) -> str:
     """
     Run one causal-LM inference. If ``llm_holder`` is provided, reuse or swap weights in-place;
@@ -2174,6 +2212,7 @@ def _infer_text_with_optional_holder(
                 on_llm_task=on_llm_task,
                 max_new_tokens=max_new_tokens,
                 inference_settings=inference_settings,
+                cancel_event=cancel_event,
             )
         finally:
             _dispose_causal_lm_pair(model, tokenizer)
@@ -2206,6 +2245,7 @@ def _infer_text_with_optional_holder(
         on_llm_task=on_llm_task,
         max_new_tokens=max_new_tokens,
         inference_settings=inference_settings,
+        cancel_event=cancel_event,
     )
 
 
@@ -2247,6 +2287,8 @@ def generate_script(
     try_llm_4bit: bool = True,
     article_excerpt: str | None = None,
     supplement_context: str = "",
+    previous_episode_summary: str = "",
+    series_bible: str = "",
     llm_cuda_device_index: int | None = None,
     inference_settings: AppSettings | None = None,
     llm_holder: MutableMapping[str, Any] | None = None,
@@ -2280,6 +2322,12 @@ def generate_script(
     sup = (supplement_context or "").strip()
     if sup:
         prompt = prompt + _supplement_context_block(sup)
+    _cont = _series_continuity_block(
+        previous_episode_summary=previous_episode_summary,
+        series_bible=series_bible,
+    )
+    if _cont:
+        prompt = prompt + _cont
     mode = "custom_brief" if (creative_brief is not None and str(creative_brief).strip()) else "headlines"
     dprint("brain", "generate_script start", f"model_id={model_id!r}", f"mode={mode!r}", f"items={len(items)}", f"personality={personality_id!r}")
 

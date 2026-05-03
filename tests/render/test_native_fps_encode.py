@@ -28,7 +28,7 @@ from src.models.native_fps import (
 def test_native_fps_registry_known_models() -> None:
     assert native_fps_for("THUDM/CogVideoX-5b") == 8
     assert native_fps_for("Wan-AI/Wan2.2-T2V-A14B-Diffusers") == 16
-    assert native_fps_for("genmo/mochi-1.5-final") == 30
+    assert native_fps_for("genmo/mochi-1-preview") == 30
     assert native_fps_for("Lightricks/LTX-2") == 24
     assert native_fps_for("Lightricks/LTX-Video") == 24
     assert native_fps_for("tencent/HunyuanVideo") == 24

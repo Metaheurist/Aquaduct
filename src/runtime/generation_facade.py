@@ -27,6 +27,8 @@ class GenerationFacade(Protocol):
         try_llm_4bit: bool = True,
         article_excerpt: str | None = None,
         supplement_context: str = "",
+        previous_episode_summary: str = "",
+        series_bible: str = "",
         llm_holder: dict[str, Any] | None = None,
     ) -> VideoPackage: ...
 
@@ -49,6 +51,8 @@ class _LocalGenerationFacade:
         try_llm_4bit: bool = True,
         article_excerpt: str | None = None,
         supplement_context: str = "",
+        previous_episode_summary: str = "",
+        series_bible: str = "",
         llm_holder: dict[str, Any] | None = None,
     ) -> VideoPackage:
         from src.content.brain import generate_script
@@ -72,6 +76,8 @@ class _LocalGenerationFacade:
             try_llm_4bit=try_llm_4bit,
             article_excerpt=article_excerpt,
             supplement_context=supplement_context,
+            previous_episode_summary=previous_episode_summary,
+            series_bible=series_bible,
             llm_cuda_device_index=llm_idx,
             inference_settings=settings,
             llm_holder=llm_holder,
@@ -96,6 +102,8 @@ class _ApiGenerationFacade:
         try_llm_4bit: bool = True,
         article_excerpt: str | None = None,
         supplement_context: str = "",
+        previous_episode_summary: str = "",
+        series_bible: str = "",
         llm_holder: dict[str, Any] | None = None,
     ) -> VideoPackage:
         from src.content.brain_api import generate_script_openai
@@ -115,6 +123,8 @@ class _ApiGenerationFacade:
             video_format=video_format,
             article_excerpt=article_excerpt,
             supplement_context=supplement_context,
+            previous_episode_summary=previous_episode_summary,
+            series_bible=series_bible,
             on_llm_task=on_llm_task,
         )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from src.content.characters_store import (
     resolve_character_for_pipeline,
 )
 from src.content.crawler import (
+    NewsItem,
     fetch_article_text,
     fetch_latest_items,
     get_latest_items,
@@ -58,6 +60,8 @@ from src.speech.audio_fx import (
     build_sfx_mix_cmd,
 )
 from src.runtime.pipeline_control import PipelineRunControl
+from src.series.context import SeriesContext
+from src.series.store import episode_subdir_name, load_series_record, persist_locked_sources, series_root_for
 from src.util.memory_budget import release_between_stages
 from debug import dprint
 
@@ -87,10 +91,18 @@ def _write_video_folder(
     sources: list[dict[str, str]],
     prompts: list[str],
     preview: dict | None = None,
+    series_meta: dict | None = None,
 ) -> None:
     import main as m
 
-    m._write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview)
+    m._write_video_folder(
+        pkg=pkg,
+        video_dir=video_dir,
+        sources=sources,
+        prompts=prompts,
+        preview=preview,
+        series_meta=series_meta,
+    )
 
 
 def _rc(run: PipelineRunControl | None) -> None:
@@ -106,6 +118,7 @@ def run_once_api(
     prebuilt_prompts: list[str] | None = None,
     prebuilt_seeds: list[int] | None = None,
     run_control: PipelineRunControl | None = None,
+    series_context: SeriesContext | None = None,
     on_progress: Callable[[str, int, int, str], None] | None = None,
 ) -> Path | None:
     """API execution mode — HTTP providers for LLM / image / voice; Replicate optional for Pro video."""
@@ -145,6 +158,8 @@ def run_once_api(
     sources: list[dict[str, str]] = []
     preview_blob: dict | None = None
     item = None
+    series_locked_article_mode = False
+    locked_article_body = ""
 
     if prebuilt_pkg is None:
         if str(getattr(app, "run_content_mode", "preset")) == "custom":
@@ -156,47 +171,72 @@ def run_once_api(
             sources = [{"title": first_line, "url": "", "source": "custom"}]
             items = []
         else:
-            fc = _firecrawl_kwargs(app)
-            tags = effective_topic_tags(app)
-            cm = news_cache_mode_for_run(app)
-            if video_format_skips_seen_url_disk_cache(cm):
-                if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+            _locked_replay = (
+                series_context is not None
+                and not series_context.is_first
+                and series_context.source_strategy_resolved == "lock_first"
+            )
+            _rec_lock = None
+            if _locked_replay:
+                _rec_lock = load_series_record(series_root_for(paths, series_context.series_slug))
+            if _locked_replay and _rec_lock and _rec_lock.locked_sources:
+                sources = [dict(x) for x in _rec_lock.locked_sources]
+                fs0 = sources[0] if sources else {}
+                _pub = fs0.get("published_at")
+                _iu = fs0.get("image_url")
+                item = NewsItem(
+                    title=str(fs0.get("title", "") or ""),
+                    url=str(fs0.get("url", "") or ""),
+                    source=str(fs0.get("source", "") or "news"),
+                    published_at=str(_pub).strip() if _pub else None,
+                    image_url=str(_iu).strip() if _iu else None,
+                )
+                items = [item]
+                series_locked_article_mode = True
+                locked_article_body = _rec_lock.locked_article_excerpt or ""
+                dprint("crawler", "run_once_api series lock_first: reusing episode-1 sources")
+            else:
+                fc = _firecrawl_kwargs(app)
+                tags = effective_topic_tags(app)
+                cm = news_cache_mode_for_run(app)
+                if video_format_skips_seen_url_disk_cache(cm):
+                    if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+                        items = get_scored_items(
+                            paths.news_cache_dir,
+                            limit=SCRIPT_HEADLINE_FETCH_LIMIT,
+                            topic_tags=tags,
+                            cache_mode=cm,
+                            persist_cache=False,
+                            **fc,
+                        )
+                    else:
+                        items = fetch_latest_items(
+                            limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc
+                        )
+                elif bool(getattr(video_settings, "high_quality_topic_selection", True)):
                     items = get_scored_items(
                         paths.news_cache_dir,
                         limit=SCRIPT_HEADLINE_FETCH_LIMIT,
                         topic_tags=tags,
                         cache_mode=cm,
-                        persist_cache=False,
                         **fc,
                     )
                 else:
-                    items = fetch_latest_items(
-                        limit=SCRIPT_HEADLINE_FETCH_LIMIT, topic_tags=tags, topic_mode=cm, **fc
+                    items = get_latest_items(
+                        paths.news_cache_dir,
+                        limit=SCRIPT_HEADLINE_FETCH_LIMIT,
+                        topic_tags=tags,
+                        cache_mode=cm,
+                        **fc,
                     )
-            elif bool(getattr(video_settings, "high_quality_topic_selection", True)):
-                items = get_scored_items(
-                    paths.news_cache_dir,
-                    limit=SCRIPT_HEADLINE_FETCH_LIMIT,
-                    topic_tags=tags,
-                    cache_mode=cm,
-                    **fc,
-                )
-            else:
-                items = get_latest_items(
-                    paths.news_cache_dir,
-                    limit=SCRIPT_HEADLINE_FETCH_LIMIT,
-                    topic_tags=tags,
-                    cache_mode=cm,
-                    **fc,
-                )
-            item = pick_one_item(items)
-            if not item:
-                dprint("topics", "run_once_api headlines", "none picked")
-                _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
-                return None
-            _ttl = str(getattr(item, "title", "") or "")[:120]
-            dprint("topics", "run_once_api headlines", f"n_items={len(items)} title={_ttl!r}")
-            sources = [news_item_to_script_source(it) for it in items]
+                item = pick_one_item(items)
+                if not item:
+                    dprint("topics", "run_once_api headlines", "none picked")
+                    _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
+                    return None
+                _ttl = str(getattr(item, "title", "") or "")[:120]
+                dprint("topics", "run_once_api headlines", f"n_items={len(items)} title={_ttl!r}")
+                sources = [news_item_to_script_source(it) for it in items]
     else:
         sources = list(prebuilt_sources or [])
         preview_blob = {
@@ -217,7 +257,9 @@ def run_once_api(
 
     _rc(run_control)
     article_text = ""
-    if prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
+    if prebuilt_pkg is None and series_locked_article_mode and (locked_article_body or "").strip():
+        article_text = str(locked_article_body or "").strip()
+    elif prebuilt_pkg is None and item is not None and bool(getattr(video_settings, "fetch_article_text", True)):
         try:
             article_text = fetch_article_text(str(getattr(item, "url", "") or ""), **_firecrawl_kwargs(app))
         except Exception:
@@ -227,9 +269,33 @@ def run_once_api(
     run_dir = paths.runs_dir / run_id
     run_assets = run_dir / "assets"
     run_assets.mkdir(parents=True, exist_ok=True)
+    if series_context is not None:
+        try:
+            (run_assets / "series_context.json").write_text(
+                json.dumps(asdict(series_context), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
     if article_text:
         try:
             (run_assets / "article.txt").write_text(article_text, encoding="utf-8")
+        except Exception:
+            pass
+
+    if (
+        prebuilt_pkg is None
+        and series_context is not None
+        and series_context.is_first
+        and series_context.source_strategy_resolved == "lock_first"
+    ):
+        try:
+            persist_locked_sources(
+                paths,
+                series_context.series_slug,
+                sources=list(sources or []),
+                article_excerpt=str(article_text or ""),
+            )
         except Exception:
             pass
 
@@ -245,6 +311,10 @@ def run_once_api(
     char_ctx = character_context_for_brain(active_character)
 
     if prebuilt_pkg is None:
+        import main as _main_ser
+
+        _sc_prev = _main_ser._series_script_excerpt_for_prompt(series_context)
+        _sc_bible = (series_context.series_bible_text if series_context is not None else "") or ""
         tags = list(effective_topic_tags(app))
         vf = str(getattr(app, "video_format", "news") or "news")
         llm_id = (app.llm_model_id or "").strip() or models.llm_id
@@ -288,6 +358,8 @@ def run_once_api(
                 try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
                 article_excerpt=clip_article_excerpt(article_text),
                 supplement_context=script_digest,
+                previous_episode_summary=_sc_prev,
+                series_bible=_sc_bible,
                 on_llm_task=_llm_api,
             )
             pkg = enforce_arc(pkg, video_format=vf)
@@ -308,15 +380,6 @@ def run_once_api(
                 inner = max(0, min(100, int(pct)))
                 _pipe_progress(on_progress, 18 + inner // 4, inner, msg or "OpenAI script…")
 
-            article_excerpt = ""
-            if bool(getattr(video_settings, "fetch_article_text", True)) and item is not None:
-                try:
-                    article_excerpt = clip_article_excerpt(
-                        fetch_article_text(str(getattr(item, "url", "") or ""), **_firecrawl_kwargs(app))
-                    )
-                except Exception:
-                    article_excerpt = ""
-
             pkg = get_generation_facade(app).generate_script_package(
                 settings=app,
                 llm_cuda_device_index=None,
@@ -329,8 +392,10 @@ def run_once_api(
                 creative_brief=None,
                 video_format=vf,
                 try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
-                article_excerpt=article_excerpt,
+                article_excerpt=clip_article_excerpt(article_text),
                 supplement_context="",
+                previous_episode_summary=_sc_prev,
+                series_bible=_sc_bible,
                 on_llm_task=_llm_api2,
             )
             pkg = enforce_arc(pkg, video_format=vf)
@@ -357,7 +422,16 @@ def run_once_api(
                 active_character = cast_to_ephemeral_character(cast=cast, video_format=vf_cast2)
                 char_ctx = character_context_for_brain(active_character)
                 safe_dir_cast = safe_title_to_dirname(pkg.title)
-                video_dir_cast = _projects_root / safe_dir_cast
+                if (
+                    series_context is not None
+                    and str(getattr(app, "media_mode", "video") or "video").strip().lower() == "video"
+                ):
+                    video_dir_cast = paths.videos_dir / series_context.series_slug / episode_subdir_name(
+                        series_context.episode_index,
+                        str(pkg.title or ""),
+                    )
+                else:
+                    video_dir_cast = _projects_root / safe_dir_cast
                 assets_dir_cast = video_dir_cast / "assets"
                 assets_dir_cast.mkdir(parents=True, exist_ok=True)
                 (assets_dir_cast / "generated_cast.json").write_text(
@@ -382,13 +456,39 @@ def run_once_api(
     # Parity with local run_once: drop retained HTTP/client buffers before voice or photo work.
     release_between_stages("run_once_api_after_script", variant="cheap")
 
+    mm_api = str(getattr(app, "media_mode", "video") or "video").strip().lower()
     safe_dir = safe_title_to_dirname(pkg.title)
-    video_dir = _projects_root / safe_dir
+    if series_context is not None and mm_api == "video":
+        video_dir = paths.videos_dir / series_context.series_slug / episode_subdir_name(
+            series_context.episode_index,
+            str(pkg.title or ""),
+        )
+    else:
+        video_dir = _projects_root / safe_dir
     assets_dir = video_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
 
+    import main as _m_meta
+
+    _series_meta_wr = _m_meta._series_meta_for_video_folder(series_context)
+
+    def _finalize_series_if_needed() -> None:
+        try:
+            from src.series.finish import finalize_series_episode_if_needed
+
+            finalize_series_episode_if_needed(
+                paths=paths,
+                app=app,
+                series_context=series_context,
+                video_dir=video_dir,
+                pkg=pkg,
+                llm_model_id=(app.llm_model_id or "").strip() or models.llm_id,
+                llm_cuda_device_index=None,
+            )
+        except Exception:
+            pass
+
     # Photo mode: still images (+ optional layout) only — no voice, no MP4 / clips.
-    mm_api = str(getattr(app, "media_mode", "video") or "video").strip().lower()
     dprint("pipeline", "run_once_api branch", f"media_mode={mm_api}")
     if mm_api == "photo":
         pic = getattr(app, "picture", None)
@@ -462,7 +562,15 @@ def run_once_api(
 
                 shutil.copy2(img_paths[0], out_final_png)
 
-        _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts_img, preview=preview_blob)
+        _write_video_folder(
+            pkg=pkg,
+            video_dir=video_dir,
+            sources=sources,
+            prompts=prompts_img,
+            preview=preview_blob,
+            series_meta=_series_meta_wr,
+        )
+        _finalize_series_if_needed()
         _pipe_progress(on_progress, 100, 100, "Done (API photo)")
         dprint("pipeline", "run_once_api complete", "photo", str(out_final_png))
         return out_final_png
@@ -675,7 +783,15 @@ def run_once_api(
             topic_tags=list(effective_topic_tags(app)),
             video_format=str(getattr(app, "video_format", "news") or "news"),
         )
-        _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
+        _write_video_folder(
+            pkg=pkg,
+            video_dir=video_dir,
+            sources=sources,
+            prompts=prompts,
+            preview=preview_blob,
+            series_meta=_series_meta_wr,
+        )
+        _finalize_series_if_needed()
         _pipe_progress(on_progress, 100, 100, "Done (API)")
         dprint("pipeline", "run_once_api complete", "pro", str(video_dir))
         return video_dir
@@ -755,7 +871,15 @@ def run_once_api(
             except Exception:
                 pass
 
-    _write_video_folder(pkg=pkg, video_dir=video_dir, sources=sources, prompts=prompts, preview=preview_blob)
+    _write_video_folder(
+        pkg=pkg,
+        video_dir=video_dir,
+        sources=sources,
+        prompts=prompts,
+        preview=preview_blob,
+        series_meta=_series_meta_wr,
+    )
+    _finalize_series_if_needed()
     _pipe_progress(on_progress, 100, 100, "Done (API)")
     dprint("pipeline", "run_once_api complete", "slideshow", str(video_dir))
     return video_dir

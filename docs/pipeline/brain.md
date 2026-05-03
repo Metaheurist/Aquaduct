@@ -94,3 +94,6 @@ The **Characters** tab can fill all text fields from a built-in archetype: **`ge
 ## Which repo id is used for “brain” UI tasks?
 **`resolve_llm_model_id(win)`** returns, in order: **`llm_combo.currentData()`** if set, else **`settings.llm_model_id`**, else the default from **`get_models()`**. This keeps 🧠 expand and character generation aligned with the **Model** tab selection even before the user clicks **Save settings**.
 
+## Title bar LLM chat (desktop)
+The non-modal **LLM chat** window ([`UI/dialogs/llm_chat_dialog.py`](../../UI/dialogs/llm_chat_dialog.py)) targets the same script model as API vs local execution (**`resolve_chat_target`**, **`_infer_text_with_optional_holder`**). Streaming local generation supports a cooperative **`cancel_event`** on **`_generate_with_loaded_causal_lm`** / **`_infer_text_with_optional_holder`** so **Stop** can end generation without a second fallback **`generate`**. Encrypted transcripts persist under **`.Aquaduct_data`** via [`src/util/llm_chat_transcript_store.py`](../../src/util/llm_chat_transcript_store.py).
+

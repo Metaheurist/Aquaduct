@@ -14,7 +14,7 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QApplication, QPushButton
 
 Variant = Literal["accent_icon", "muted_icon", "danger"]
-IconKind = Literal["save", "graph", "help", "close", "purge", "resource_expand", "resource_compress"]
+IconKind = Literal["save", "graph", "help", "close", "purge", "resource_expand", "resource_compress", "chat"]
 
 
 class TitleBarOutlineButton(QPushButton):

@@ -5,12 +5,18 @@ Use these instead of QMessageBox / framed QDialog for a consistent Aquaduct look
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, Qt
+from collections.abc import Callable
+
+from PyQt6.QtCore import QEvent, QPoint, QObject, Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
+    QGraphicsBlurEffect,
+    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMainWindow,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -19,15 +25,49 @@ from PyQt6.QtWidgets import (
 from UI.widgets.title_bar_outline_button import styled_outline_button
 
 
+class _DimRefitFilter(QObject):
+    def __init__(self, host: QWidget, refit: Callable[[], None]) -> None:
+        super().__init__(host)
+        self._host = host
+        self._refit = refit
+
+    def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
+        if obj is self._host and event.type() == QEvent.Type.Resize:
+            self._refit()
+        return False
+
+
 class FramelessDialog(QDialog):
     """
     Modal frameless shell: title + ✕, optional body via ``body_layout``.
-    Drag by the title bar only.
+    Drag by the title bar only when ``title_bar_draggable=True`` (default).
+
+    When ``modal=True``, a dim overlay + blur is applied to the parent
+    :class:`QMainWindow` central widget while the dialog is visible (ref-counted
+    for nested modals).
     """
 
-    def __init__(self, parent=None, *, title: str = "", close_button_visible: bool = True) -> None:
+    _blur_refcount: int = 0
+    _blur_host: QWidget | None = None
+    _blur_effect: QGraphicsBlurEffect | None = None
+    _blur_dim: QWidget | None = None
+    _blur_resize_filter: _DimRefitFilter | None = None
+    _blur_applied_graphics_effect: bool = False
+
+    def __init__(
+        self,
+        parent=None,
+        *,
+        title: str = "",
+        close_button_visible: bool = True,
+        modal: bool = True,
+        enable_main_blur: bool = True,
+        title_bar_draggable: bool = True,
+    ) -> None:
         super().__init__(parent)
-        self.setModal(True)
+        self.setModal(modal)
+        self._enable_main_blur = bool(enable_main_blur)
+        self._title_bar_draggable = bool(title_bar_draggable)
         flags = self.windowFlags()
         flags |= Qt.WindowType.FramelessWindowHint
         flags &= ~Qt.WindowType.WindowContextHelpButtonHint
@@ -35,6 +75,7 @@ class FramelessDialog(QDialog):
         self._drag_pos: QPoint | None = None
         self.setObjectName("FramelessDialogShell")
         self.setMinimumWidth(400)
+        self._blur_had_acquired = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 12, 12, 12)
@@ -61,6 +102,117 @@ class FramelessDialog(QDialog):
         self.body_layout.setSpacing(10)
         outer.addWidget(self.body, 1)
 
+    def _resolve_blur_host(self) -> QWidget | None:
+        w = self.parentWidget()
+        while w is not None and not isinstance(w, QMainWindow):
+            w = w.parentWidget()
+        if isinstance(w, QMainWindow):
+            return w.centralWidget()
+        win = self.window()
+        if isinstance(win, QMainWindow):
+            return win.centralWidget()
+        for top in QApplication.topLevelWidgets():
+            if isinstance(top, QMainWindow) and top.isVisible():
+                return top.centralWidget()
+        return None
+
+    @classmethod
+    def _install_main_blur(cls, host: QWidget) -> None:
+        if cls._blur_host is not None and cls._blur_host is not host:
+            return
+        cls._blur_host = host
+
+        def _refit() -> None:
+            if cls._blur_dim is not None and cls._blur_host is not None:
+                cls._blur_dim.setGeometry(cls._blur_host.rect())
+
+        skip_blur = False
+        try:
+            skip_blur = host.findChild(QGraphicsView) is not None
+        except Exception:
+            skip_blur = False
+
+        if not skip_blur:
+            if cls._blur_effect is None:
+                cls._blur_effect = QGraphicsBlurEffect(host)
+                cls._blur_effect.setBlurRadius(12)
+            host.setGraphicsEffect(cls._blur_effect)
+            cls._blur_applied_graphics_effect = True
+        else:
+            cls._blur_applied_graphics_effect = False
+
+        if cls._blur_dim is None:
+            dim = QWidget(host)
+            dim.setObjectName("MainWindowModalDim")
+            dim.setStyleSheet("#MainWindowModalDim { background-color: rgba(8, 10, 18, 110); }")
+            cls._blur_dim = dim
+
+        if cls._blur_resize_filter is None:
+            cls._blur_resize_filter = _DimRefitFilter(host, _refit)
+            host.installEventFilter(cls._blur_resize_filter)
+
+        _refit()
+        cls._blur_dim.show()
+        cls._blur_dim.raise_()
+
+    @classmethod
+    def _clear_main_blur(cls) -> None:
+        if cls._blur_host is not None and cls._blur_resize_filter is not None:
+            try:
+                cls._blur_host.removeEventFilter(cls._blur_resize_filter)
+            except Exception:
+                pass
+        cls._blur_resize_filter = None
+
+        if cls._blur_host is not None and cls._blur_applied_graphics_effect:
+            try:
+                cls._blur_host.setGraphicsEffect(None)
+            except Exception:
+                pass
+        cls._blur_applied_graphics_effect = False
+
+        if cls._blur_dim is not None:
+            try:
+                cls._blur_dim.hide()
+                cls._blur_dim.deleteLater()
+            except Exception:
+                pass
+
+        cls._blur_dim = None
+        cls._blur_effect = None
+        cls._blur_host = None
+        cls._blur_refcount = 0
+
+    @classmethod
+    def _blur_acquire(cls, dlg: FramelessDialog) -> None:
+        if not dlg.isModal() or not dlg._enable_main_blur:
+            return
+        host = dlg._resolve_blur_host()
+        if host is None:
+            dlg._blur_had_acquired = False
+            return
+        dlg._blur_had_acquired = True
+        cls._blur_refcount += 1
+        if cls._blur_refcount == 1:
+            cls._install_main_blur(host)
+
+    @classmethod
+    def _blur_release(cls, dlg: FramelessDialog) -> None:
+        if not getattr(dlg, "_blur_had_acquired", False):
+            return
+        dlg._blur_had_acquired = False
+        cls._blur_refcount = max(0, cls._blur_refcount - 1)
+        if cls._blur_refcount == 0:
+            cls._clear_main_blur()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        FramelessDialog._blur_acquire(self)
+
+    def hideEvent(self, event) -> None:  # type: ignore[override]
+        FramelessDialog._blur_release(self)
+        super().hideEvent(event)
+
     def set_frameless_title(self, t: str) -> None:
         self._title_lbl.setText(t)
 
@@ -70,15 +222,22 @@ class FramelessDialog(QDialog):
         lay.insertWidget(lay.count() - 1, w)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self._title_bar.geometry().contains(event.pos()):
-                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                event.accept()
-                return
+        if (
+            self._title_bar_draggable
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._title_bar.geometry().contains(event.pos())
+        ):
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        if self._drag_pos is not None and (event.buttons() & Qt.MouseButton.LeftButton):
+        if (
+            self._title_bar_draggable
+            and self._drag_pos is not None
+            and (event.buttons() & Qt.MouseButton.LeftButton)
+        ):
             self.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
             return
@@ -113,11 +272,14 @@ def aquaduct_information(parent, title: str, text: str) -> None:
     row.addStretch(1)
     row.addWidget(ok)
     d.body_layout.addLayout(row)
-    d.exec()
+    try:
+        d.exec()
+    finally:
+        FramelessDialog._blur_release(d)
 
 
 def aquaduct_warning(parent, title: str, text: str) -> None:
-    aquaduct_information(parent, title, text)  # same chrome; copy uses neutral label
+    aquaduct_information(parent, title, text)
 
 
 def aquaduct_critical(parent, title: str, text: str) -> None:
@@ -155,7 +317,10 @@ def aquaduct_question(parent, title: str, text: str, *, default_no: bool = True)
     else:
         yes.setDefault(True)
         yes.setAutoDefault(True)
-    d.exec()
+    try:
+        d.exec()
+    finally:
+        FramelessDialog._blur_release(d)
     return bool(result["ok"])
 
 
@@ -194,7 +359,10 @@ def aquaduct_message_with_details(
     row.addStretch(1)
     row.addWidget(ok)
     d.body_layout.addLayout(row)
-    d.exec()
+    try:
+        d.exec()
+    finally:
+        FramelessDialog._blur_release(d)
 
 
 def show_hf_token_dialog(parent) -> tuple[bool, str]:
@@ -243,5 +411,8 @@ def show_hf_token_dialog(parent) -> tuple[bool, str]:
     inp.returnPressed.connect(_accept)
     dlg.body_layout.addLayout(row)
 
-    code = dlg.exec()
+    try:
+        code = dlg.exec()
+    finally:
+        FramelessDialog._blur_release(dlg)
     return code == QDialog.DialogCode.Accepted, str(inp.text() or "").strip()

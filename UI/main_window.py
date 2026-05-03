@@ -33,16 +33,18 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.dialogs.frameless_dialog import (
+    FramelessDialog,
     aquaduct_information,
     aquaduct_message_with_details,
     aquaduct_question,
     aquaduct_warning,
     show_hf_token_dialog,
 )
+from UI.dialogs.llm_chat_dialog import LLMChatDialog
 from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedule_auxiliary_job_memory_purge
 from UI.help.tutorial_links import RichHelpTooltipFilter, help_tooltip_rich
 from UI.widgets.media_mode_toggle import MediaModeToggle
-from UI.widgets.title_bar_outline_button import TitleBarOutlineButton
+from UI.widgets.title_bar_outline_button import TitleBarOutlineButton, styled_outline_button
 from UI.theme import resolve_palette
 
 from src.core.config import (
@@ -52,11 +54,23 @@ from src.core.config import (
     AppSettings,
     BrandingSettings,
     PictureSettings,
+    SeriesSettings,
     VideoSettings,
     VIDEO_FORMATS,
     default_api_models,
     get_paths,
     media_output_root,
+)
+from src.series.context import SeriesContext
+from src.series.rehydrate import merge_unlocked_style_from_live, rehydrate_settings_from_series_snapshot
+from src.series.source_strategy import resolve_series_source_strategy
+from src.series.store import (
+    drop_queued_series_items_for_slug,
+    find_or_create_series,
+    load_series_record,
+    latest_episode_dir,
+    read_series_bible,
+    series_root_for,
 )
 from src.core.models_dir import models_dir_for_app
 from src.models.model_integrity_cache import (
@@ -139,6 +153,7 @@ class MainWindow(QMainWindow):
 
         self.paths = get_paths()
         self.settings = load_settings()
+        self._llm_chat_dialog: LLMChatDialog | None = None
         self._model_integrity_by_repo: dict[str, str] = load_integrity_cache(self.paths.data_dir)
         self._apply_saved_hf_token_to_env()
 
@@ -207,6 +222,18 @@ class MainWindow(QMainWindow):
         graph_btn.clicked.connect(self._show_resource_graph)
         title_row.addWidget(graph_btn, 0, Qt.AlignmentFlag.AlignRight)
 
+        chat_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="chat")
+        chat_btn.setFixedSize(44, 32)
+        chat_btn.setToolTip(
+            help_tooltip_rich(
+                "LLM chat — talk with the selected script model (Model tab / API tab). Opens in a separate window.",
+                "welcome",
+                slide=0,
+            )
+        )
+        chat_btn.clicked.connect(self._show_chat_dialog)
+        title_row.addWidget(chat_btn, 0, Qt.AlignmentFlag.AlignRight)
+
         help_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="help")
         help_btn.setFixedSize(44, 32)
         help_btn.setToolTip(
@@ -223,7 +250,7 @@ class MainWindow(QMainWindow):
         close_btn.setFixedSize(44, 32)
         close_btn.clicked.connect(self.close)
         title_row.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
-        self._title_outline_buttons = (save_btn, graph_btn, help_btn, close_btn)
+        self._title_outline_buttons = (save_btn, graph_btn, chat_btn, help_btn, close_btn)
         self._sync_title_bar_outline_colors()
         root_lay.addWidget(self._title_bar, 0)
 
@@ -1925,6 +1952,44 @@ class MainWindow(QMainWindow):
 
         topic_notes_out = sanitize_topic_tag_notes(self._merge_topic_notes_edits_into_dict())
 
+        _ser0 = getattr(self.settings, "series", None)
+        _qty_spin = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
+        _ser_mode_ui = bool(self.series_mode_check.isChecked()) if hasattr(self, "series_mode_check") else bool(getattr(_ser0, "series_mode", False))
+        _ss = (
+            str(self.series_source_strategy_combo.currentData() or "auto")
+            if hasattr(self, "series_source_strategy_combo")
+            else str(getattr(_ser0, "source_strategy", "auto") or "auto")
+        )
+        if _ss not in ("auto", "lock_first", "fresh_per_ep"):
+            _ss = "auto"
+        series_out = SeriesSettings(
+            series_mode=_ser_mode_ui and mm == "video",
+            series_name=(
+                str(self.series_name_edit.text()).strip()
+                if hasattr(self, "series_name_edit")
+                else str(getattr(_ser0, "series_name", "") or "")
+            ),
+            episode_count=_qty_spin if _ser_mode_ui and mm == "video" else 1,
+            lock_style=(
+                bool(self.series_lock_style_check.isChecked())
+                if hasattr(self, "series_lock_style_check")
+                else bool(getattr(_ser0, "lock_style", True))
+            ),
+            carry_recap=(
+                bool(self.series_carry_recap_check.isChecked())
+                if hasattr(self, "series_carry_recap_check")
+                else bool(getattr(_ser0, "carry_recap", True))
+            ),
+            source_strategy=_ss,  # type: ignore[arg-type]
+            continue_on_failure=(
+                bool(self.series_continue_on_failure_check.isChecked())
+                if hasattr(self, "series_continue_on_failure_check")
+                else bool(getattr(_ser0, "continue_on_failure", False))
+            ),
+        )
+        if mm != "video":
+            series_out = replace(series_out, series_mode=False, episode_count=1)
+
         return AppSettings(
             topic_tags_by_mode=topic_map,
             topic_tag_notes=topic_notes_out,
@@ -2010,11 +2075,79 @@ class MainWindow(QMainWindow):
             video=video,
             picture=pic,
             branding=branding,
+            series=series_out,
         )
 
     def effective_models_dir(self) -> Path:
         """Folder for Hugging Face snapshots: default ``.Aquaduct_data/models`` or configured external path."""
         return models_dir_for_app(self._collect_settings_from_ui())
+
+    def _on_llm_chat_closed(self) -> None:
+        self._llm_chat_dialog = None
+
+    def _show_chat_dialog(self) -> None:
+        """Open or focus the title-bar LLM chat (non-modal)."""
+        if self._llm_chat_dialog is None:
+            self._llm_chat_dialog = LLMChatDialog(self)
+        self._llm_chat_dialog.show()
+        self._llm_chat_dialog.raise_()
+        self._llm_chat_dialog.activateWindow()
+
+    def _llm_chat_run_gate(self, continuation: Callable[[], None]) -> None:
+        """If the LLM chat window is open, prompt before starting Run / Preview / Storyboard."""
+        dlg = self._llm_chat_dialog
+        if dlg is None or not dlg.isVisible():
+            continuation()
+            return
+        has_local = dlg.llm_holder_has_local_weights()
+        gate = FramelessDialog(
+            self,
+            title="LLM chat is open",
+            modal=True,
+            enable_main_blur=True,
+        )
+        if has_local:
+            copy = (
+                "The LLM chat window has a local model loaded. Close chat first to free VRAM, "
+                "then continue with Run / Preview."
+            ).strip()
+        else:
+            copy = (
+                "The LLM chat window is open. Close it before Run / Preview to avoid loading two heavy "
+                "local models at once (VRAM).\n\n"
+                "You can override if you use API-only chat or know you have enough headroom."
+            ).strip()
+        lbl = QLabel(copy)
+        lbl.setWordWrap(True)
+        gate.body_layout.addWidget(lbl)
+        row = QHBoxLayout()
+        close_chat = styled_outline_button("Close chat and continue", "accent_icon")
+        override = styled_outline_button("Override and continue", "muted_icon")
+        cancel = styled_outline_button("Cancel", "muted_icon")
+        if has_local:
+            override.hide()
+
+        def _close_chat_then() -> None:
+            gate.accept()
+            try:
+                dlg._full_teardown()
+                dlg.close()
+            except Exception:
+                pass
+            continuation()
+
+        def _override_then() -> None:
+            gate.accept()
+            continuation()
+
+        close_chat.clicked.connect(_close_chat_then)
+        override.clicked.connect(_override_then)
+        cancel.clicked.connect(gate.reject)
+        row.addWidget(close_chat)
+        row.addWidget(override)
+        row.addWidget(cancel)
+        gate.body_layout.addLayout(row)
+        gate.exec()
 
     def _show_resource_graph(self) -> None:
         from UI.dialogs.resource_graph_dialog import ResourceGraphDialog
@@ -2771,6 +2904,11 @@ class MainWindow(QMainWindow):
         self._download_popup = None
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        try:
+            if self._llm_chat_dialog is not None:
+                self._llm_chat_dialog.close()
+        except Exception:
+            pass
         # Make app exit reliably even if a background download is running.
         try:
             if self.download_worker and self.download_worker.isRunning():
@@ -2885,6 +3023,61 @@ class MainWindow(QMainWindow):
         except Exception:
             return settings
 
+    def _build_series_context(
+        self,
+        *,
+        slug: str,
+        episode_index: int,
+        episode_total: int,
+        eff: AppSettings,
+    ) -> SeriesContext:
+        paths = get_paths()
+        root = series_root_for(paths, slug)
+        record = load_series_record(root)
+        prev_path: str | None = None
+        if episode_index > 1 and record is not None:
+            p = latest_episode_dir(paths, record)
+            if p is not None and p.is_dir():
+                prev_path = str(p.resolve())
+        ser = eff.series
+        bible = read_series_bible(root) if ser.carry_recap else ""
+        resolved = resolve_series_source_strategy(
+            ser.source_strategy,
+            video_format=eff.video_format,
+            run_content_mode=eff.run_content_mode,
+        )
+        return SeriesContext(
+            series_slug=slug,
+            episode_index=int(episode_index),
+            episode_total=int(episode_total),
+            is_first=int(episode_index) <= 1,
+            source_strategy_resolved=resolved,
+            previous_episode_dir=prev_path,
+            series_bible_text=bible,
+            lock_style=bool(ser.lock_style),
+            carry_recap=bool(ser.carry_recap),
+            continue_on_failure=bool(ser.continue_on_failure),
+        )
+
+    def _append_series_to_queue(self, qty: int) -> None:
+        display = (self.settings.series.series_name or "").strip() or "Series"
+        slug, _rec = find_or_create_series(
+            get_paths(),
+            self.settings,
+            display_name=display,
+            episode_total=qty,
+        )
+        for i in range(1, qty + 1):
+            self._pipeline_run_queue.append(
+                {
+                    "kind": "series_episode",
+                    "series_slug": slug,
+                    "episode_index": i,
+                    "episode_total": qty,
+                    "is_first": i == 1,
+                }
+            )
+
     def _attach_and_start_pipeline_worker(
         self,
         settings: AppSettings,
@@ -2893,6 +3086,7 @@ class MainWindow(QMainWindow):
         prebuilt_sources=None,
         prebuilt_prompts=None,
         prebuilt_seeds=None,
+        series_context: SeriesContext | None = None,
     ) -> None:
         """Preflight must have passed. Starts a single-video ``PipelineWorker`` (queue multiple jobs for N videos)."""
 
@@ -2958,7 +3152,11 @@ class MainWindow(QMainWindow):
             folder="In progress",
         )
         self._pipeline_control = PipelineRunControl()
-        self.worker = PipelineWorker(settings, run_control=self._pipeline_control)
+        self.worker = PipelineWorker(
+            settings,
+            run_control=self._pipeline_control,
+            series_context=series_context,
+        )
         self.worker.progress.connect(on_prog)
         self.worker.done.connect(lambda out: self._on_done(out))
         self.worker.failed.connect(self._on_failed)
@@ -3012,15 +3210,59 @@ class MainWindow(QMainWindow):
             worker_started = False
             try:
                 self._tasks_refresh()
-                kind = str(item.get("kind") or "")
-                settings = item.get("settings")
-                if not isinstance(settings, AppSettings):
-                    self._append_log("Queued job skipped (invalid settings).")
-                    self._pipeline_launch_pending = False
-                    self._try_start_next_queued_pipeline()
-                    return
+                kind = str(item.get("kind") or "pipeline")
+                settings: AppSettings | None = None
+                series_ctx: SeriesContext | None = None
 
-                pf = preflight_check(settings=settings, strict=True)
+                if kind == "series_episode":
+                    slug = str(item.get("series_slug") or "").strip()
+                    ep_idx = int(item.get("episode_index", 1) or 1)
+                    total = int(item.get("episode_total", 1) or 1)
+                    if not slug:
+                        self._append_log("Queued series job skipped (missing slug).")
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
+                    record = load_series_record(series_root_for(get_paths(), slug))
+                    if record is None:
+                        self._append_log(f"Queued series job skipped (missing series data for {slug!r}).")
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
+                    settings = rehydrate_settings_from_series_snapshot(
+                        live=self.settings,
+                        snapshot=record.settings_snapshot,
+                    )
+                    series_ctx = self._build_series_context(
+                        slug=slug,
+                        episode_index=ep_idx,
+                        episode_total=total,
+                        eff=settings,
+                    )
+                    if not series_ctx.lock_style:
+                        settings = merge_unlocked_style_from_live(base=settings, live=self.settings)
+                else:
+                    cand = item.get("settings")
+                    settings = cand if isinstance(cand, AppSettings) else None
+
+                if kind in ("pipeline", "series_episode"):
+                    if not isinstance(settings, AppSettings):
+                        self._append_log("Queued job skipped (invalid settings).")
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
+                    if str(getattr(settings, "run_content_mode", "preset")) == "custom" and not str(
+                        getattr(settings, "custom_video_instructions", "") or ""
+                    ).strip():
+                        self._append_log("Queued job skipped (custom mode with empty instructions).")
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
+
+                if not isinstance(settings, AppSettings):
+                    settings = self.settings
+
+                pf = preflight_check(settings=settings, strict=True)  # type: ignore[arg-type]
                 for w in pf.warnings:
                     self._append_log(f"Warning: {w}")
                 if not pf.ok:
@@ -3033,14 +3275,11 @@ class MainWindow(QMainWindow):
                     return
 
                 if kind == "pipeline":
-                    if str(getattr(settings, "run_content_mode", "preset")) == "custom" and not str(
-                        getattr(settings, "custom_video_instructions", "") or ""
-                    ).strip():
-                        self._append_log("Queued job skipped (custom mode with empty instructions).")
-                        self._pipeline_launch_pending = False
-                        self._try_start_next_queued_pipeline()
-                        return
                     self._attach_and_start_pipeline_worker(settings)
+                    worker_started = True
+                elif kind == "series_episode":
+                    assert series_ctx is not None
+                    self._attach_and_start_pipeline_worker(settings, series_context=series_ctx)
                     worker_started = True
                 elif kind == "prebuilt":
                     self._attach_and_start_pipeline_worker(
@@ -3070,6 +3309,9 @@ class MainWindow(QMainWindow):
 
     def _on_run(self) -> None:
         dprint("ui", "_on_run")
+        self._llm_chat_run_gate(self._on_run_impl)
+
+    def _on_run_impl(self) -> None:
         self._save_settings()
         if self._pipeline_run_should_queue():
             pfq = preflight_check(settings=self.settings, strict=True)
@@ -3077,8 +3319,16 @@ class MainWindow(QMainWindow):
                 self._preflight_failed_ui(pfq)
                 return
             qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
-            for _ in range(qty):
-                self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
+            is_series = bool(getattr(getattr(self.settings, "series", None), "series_mode", False)) and str(
+                getattr(self.settings, "media_mode", "video") or "video"
+            ).strip().lower() == "video"
+            if is_series:
+                self._append_series_to_queue(qty)
+            else:
+                for _ in range(qty):
+                    self._pipeline_run_queue.append(
+                        {"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1}
+                    )
             n = len(self._pipeline_run_queue)
             dprint("tasks", "pipeline queued (waiting)", f"depth={n} batch_qty={qty}")
             self._append_log(f"Run queued ({n} job(s) waiting after the current one).")
@@ -3095,8 +3345,16 @@ class MainWindow(QMainWindow):
                 self._preflight_failed_ui(pfq)
                 return
             qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
-            for _ in range(qty):
-                self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
+            is_series = bool(getattr(getattr(self.settings, "series", None), "series_mode", False)) and str(
+                getattr(self.settings, "media_mode", "video") or "video"
+            ).strip().lower() == "video"
+            if is_series:
+                self._append_series_to_queue(qty)
+            else:
+                for _ in range(qty):
+                    self._pipeline_run_queue.append(
+                        {"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1}
+                    )
             n = len(self._pipeline_run_queue)
             dprint("tasks", "pipeline queued (launch pending)", f"depth={n} batch_qty={qty}")
             self._append_log(
@@ -3130,13 +3388,56 @@ class MainWindow(QMainWindow):
                     return
 
                 qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
-                if qty > 1:
-                    for _ in range(qty - 1):
-                        self._pipeline_run_queue.append({"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1})
-                    dprint("tasks", "pipeline queued (with immediate start)", f"depth={len(self._pipeline_run_queue)} run_batch={qty}")
-                    self._append_log(f"Starting {qty} pipeline runs (1 now, {qty - 1} queued).")
-                    self._tasks_refresh()
-                self._attach_and_start_pipeline_worker(self.settings)
+                is_series = bool(getattr(getattr(self.settings, "series", None), "series_mode", False)) and str(
+                    getattr(self.settings, "media_mode", "video") or "video"
+                ).strip().lower() == "video"
+                if is_series:
+                    display = (self.settings.series.series_name or "").strip() or "Series"
+                    slug, record = find_or_create_series(
+                        get_paths(),
+                        self.settings,
+                        display_name=display,
+                        episode_total=qty,
+                    )
+                    eff = rehydrate_settings_from_series_snapshot(
+                        live=self.settings,
+                        snapshot=record.settings_snapshot,
+                    )
+                    eff = self._maybe_offer_resume_partial(eff)
+                    ctx = self._build_series_context(slug=slug, episode_index=1, episode_total=qty, eff=eff)
+                    if qty > 1:
+                        for i in range(2, qty + 1):
+                            self._pipeline_run_queue.append(
+                                {
+                                    "kind": "series_episode",
+                                    "series_slug": slug,
+                                    "episode_index": i,
+                                    "episode_total": qty,
+                                    "is_first": i == 1,
+                                }
+                            )
+                        dprint(
+                            "tasks",
+                            "series queued (with immediate start)",
+                            f"depth={len(self._pipeline_run_queue)} batch={qty}",
+                        )
+                        self._append_log(f"Starting {qty} series episodes (1 now, {qty - 1} queued).")
+                        self._tasks_refresh()
+                    self._attach_and_start_pipeline_worker(eff, series_context=ctx)
+                else:
+                    if qty > 1:
+                        for _ in range(qty - 1):
+                            self._pipeline_run_queue.append(
+                                {"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1}
+                            )
+                        dprint(
+                            "tasks",
+                            "pipeline queued (with immediate start)",
+                            f"depth={len(self._pipeline_run_queue)} run_batch={qty}",
+                        )
+                        self._append_log(f"Starting {qty} pipeline runs (1 now, {qty - 1} queued).")
+                        self._tasks_refresh()
+                    self._attach_and_start_pipeline_worker(self.settings)
                 worker_started = True
             finally:
                 if not worker_started:
@@ -3150,6 +3451,9 @@ class MainWindow(QMainWindow):
             return
 
         dprint("ui", "_on_preview")
+        self._llm_chat_run_gate(self._on_preview_impl)
+
+    def _on_preview_impl(self) -> None:
         self._save_settings()
         if self._abort_if_custom_missing_instructions():
             return
@@ -3325,6 +3629,9 @@ class MainWindow(QMainWindow):
     def _on_storyboard_preview(self) -> None:
         if self.storyboard_worker and self.storyboard_worker.isRunning():
             return
+        self._llm_chat_run_gate(self._on_storyboard_preview_impl)
+
+    def _on_storyboard_preview_impl(self) -> None:
         self._save_settings()
         if self._abort_if_custom_missing_instructions():
             return
@@ -3697,9 +4004,15 @@ class MainWindow(QMainWindow):
         self._release_run_control()
         self._drain_pipeline_worker()
         dropped = len(self._pipeline_run_queue)
+        series_n = sum(
+            1
+            for q in self._pipeline_run_queue
+            if isinstance(q, dict) and str(q.get("kind") or "") == "series_episode"
+        )
         if dropped:
             self._pipeline_run_queue.clear()
-            self._append_log(f"Pipeline cancelled — dropped {dropped} queued job(s).")
+            extra = f" (including {series_n} series episode(s))" if series_n else ""
+            self._append_log(f"Pipeline cancelled — dropped {dropped} queued job(s){extra}.")
         else:
             self._append_log("Pipeline cancelled.")
         try:
@@ -3763,6 +4076,11 @@ class MainWindow(QMainWindow):
             return f"{m} · Queued pipeline (approved preview)"
         if k == "storyboard":
             return f"{m} · Queued pipeline (approved storyboard)"
+        if k == "series_episode":
+            ep = int(qitem.get("episode_index", 1) if isinstance(qitem, dict) else 1)
+            tot = int(qitem.get("episode_total", 1) if isinstance(qitem, dict) else 1)
+            slug = str((qitem.get("series_slug", "") if isinstance(qitem, dict) else "") or "")
+            return f"{m} · Series ep {ep}/{tot} ({slug})"
         return f"{m} · Queued pipeline run"
 
     def _tasks_refresh(self) -> None:
@@ -4260,9 +4578,19 @@ class MainWindow(QMainWindow):
         aquaduct_warning(self, t, m[:4500])
 
     def _on_failed(self, err: str) -> None:
+        sc = None
+        if self.worker is not None:
+            sc = getattr(self.worker, "series_context", None)
         self._release_run_control()
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
+        if sc is not None and not sc.continue_on_failure:
+            dropped = drop_queued_series_items_for_slug(self._pipeline_run_queue, sc.series_slug)
+            if dropped:
+                self._append_log(
+                    f"Series aborted at episode {sc.episode_index}/{sc.episode_total} — "
+                    f"dropped {dropped} remaining queued episode(s)."
+                )
         try:
             from src.settings.ui_settings import load_settings
 

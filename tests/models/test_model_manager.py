@@ -58,6 +58,27 @@ def test_resolve_pretrained_load_path_returns_repo_id_when_project_empty(tmp_pat
     assert resolve_pretrained_load_path("z/m", models_dir=tmp_path) == "z/m"
 
 
+def test_canonical_hub_repo_id_mochi_legacy():
+    from src.models.model_manager import canonical_hub_repo_id
+
+    assert canonical_hub_repo_id("genmo/mochi-1.5-final") == "genmo/mochi-1-preview"
+    assert canonical_hub_repo_id("Genmo/Mochi-1.5-Final") == "genmo/mochi-1-preview"
+    assert canonical_hub_repo_id("genmo/mochi-1-preview") == "genmo/mochi-1-preview"
+
+
+def test_resolve_pretrained_load_path_mochi_legacy_id_falls_back_to_preview_hub(tmp_path):
+    assert resolve_pretrained_load_path("genmo/mochi-1.5-final", models_dir=tmp_path) == "genmo/mochi-1-preview"
+
+
+def test_resolve_pretrained_load_path_reuses_legacy_mochi_snapshot_folder(tmp_path):
+    """Snapshots downloaded under the old Hub id folder name still load for preview."""
+    legacy = tmp_path / "genmo__mochi-1.5-final"
+    legacy.mkdir(parents=True)
+    (legacy / "weights.bin").write_bytes(b"x" * 300_000)
+    p = resolve_pretrained_load_path("genmo/mochi-1-preview", models_dir=tmp_path)
+    assert Path(p).resolve() == legacy.resolve()
+
+
 def test_prompt_conditioning_assigns_varied_scene_types():
     from src.content.prompt_conditioning import assign_scene_types
 

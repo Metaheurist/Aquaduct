@@ -30,7 +30,7 @@ from src.models.native_fps import (
 
 native_fps_for("THUDM/CogVideoX-5b")          # -> 8
 native_fps_for("Wan-AI/Wan2.2-T2V-A14B-Diffusers")  # -> 16
-native_fps_for("genmo/mochi-1.5-final")       # -> 30
+native_fps_for("genmo/mochi-1-preview")       # -> 30
 native_fps_for("Lightricks/LTX-2")            # -> 24
 native_fps_for("tencent/HunyuanVideo")        # -> 24
 native_fps_for("cerspense/zeroscope_v2_576w") # -> None  (use user fps)

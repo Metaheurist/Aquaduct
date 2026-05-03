@@ -864,7 +864,14 @@ def attach_settings_tab(win) -> None:
             lbl.setStyleSheet(_dl_badge_base_style() + "color:#5DFFB0;")
             lbl.setToolTip(_models_help_tip("Local files matched Hugging Face checksums.\n\n" + sizes_tooltip(), slide=2))
 
-        def set_badge(lbl: QLabel, *, kind: str, repo_id: str, pair_image_repo_id: str = "") -> None:
+        def set_badge(
+            lbl: QLabel,
+            *,
+            kind: str,
+            repo_id: str,
+            pair_image_repo_id: str = "",
+            quant_mode: str | None = None,
+        ) -> None:
             opt = win._model_opt_by_repo.get(repo_id)
             speed = opt.speed if opt else "slow"
             marker, why = rate_model_fit_for_repo(
@@ -874,6 +881,7 @@ def attach_settings_tab(win) -> None:
                 pair_image_repo_id=pair_image_repo_id,
                 vram_gb=_vram_for_kind(kind),
                 ram_gb=win._hw_info.ram_gb,
+                quant_mode=quant_mode,
             )
             lbl.setText(fit_marker_display(marker))
             lbl.setStyleSheet(_fit_badge_style(marker))
@@ -941,7 +949,7 @@ def attach_settings_tab(win) -> None:
         else:
             win.llm_vram_lbl.setText("—")
         if llm_repo:
-            set_badge(win.llm_fit, kind="script", repo_id=llm_repo)
+            set_badge(win.llm_fit, kind="script", repo_id=llm_repo, quant_mode=qm)
             set_dl_badge(win.llm_dl_badge, [llm_repo])
         else:
             win.llm_fit.setText("—")
@@ -969,7 +977,7 @@ def attach_settings_tab(win) -> None:
         else:
             win.img_vram_lbl.setText("—")
         if img_repo:
-            set_badge(win.img_fit, kind="image", repo_id=img_repo)
+            set_badge(win.img_fit, kind="image", repo_id=img_repo, quant_mode=qm)
             set_dl_badge(win.img_dl_badge, [img_repo])
         else:
             win.img_fit.setText("—")
@@ -998,7 +1006,7 @@ def attach_settings_tab(win) -> None:
         else:
             win.vid_vram_lbl.setText("—")
         if vid_repo:
-            set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id)
+            set_badge(win.vid_fit, kind="video", repo_id=str(vid_repo), pair_image_repo_id=pair_id, quant_mode=qm)
             set_dl_badge(win.vid_dl_badge, [vid_repo])
         else:
             win.vid_fit.setText("—")
@@ -1027,7 +1035,7 @@ def attach_settings_tab(win) -> None:
         else:
             win.voice_vram_lbl.setText("—")
         if voice_repo:
-            set_badge(win.voice_fit, kind="voice", repo_id=voice_repo)
+            set_badge(win.voice_fit, kind="voice", repo_id=voice_repo, quant_mode=qm)
             set_dl_badge(win.voice_dl_badge, [voice_repo])
         else:
             win.voice_fit.setText("—")

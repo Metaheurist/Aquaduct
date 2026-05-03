@@ -30,10 +30,10 @@ def map_llm_on_task_to_overall(task: str, stage_pct: int) -> int:
 
 
 class _AuxiliaryProgressShell(FramelessDialog):
-    """Borderless modal; no ✕ — job has no cancel. Ignore Escape while work runs."""
+    """Borderless modal; no ✕ — job has no cancel. Ignore Escape while work runs. Not draggable."""
 
     def __init__(self, parent: QWidget | None, *, title: str) -> None:
-        super().__init__(parent, title=title, close_button_visible=False)
+        super().__init__(parent, title=title, close_button_visible=False, title_bar_draggable=False)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]
         if event.key() == Qt.Key.Key_Escape:

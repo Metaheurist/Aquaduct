@@ -49,7 +49,10 @@ def analyze_stage_memory_budget(
     """
     Returns ``(warning, hard_block_message)``.
     Warn when free RAM is below heuristic peak; optionally emit ``hard_block_message`` when
-    the deficit is catastrophic (frontier checkpoints on tight hosts — avoids silent OS kills).
+    the deficit is catastrophic (frontier checkpoints on tight hosts — avoids silent OS kills),
+    or when ``AQUADUCT_MEMORY_PREFLIGHT_ERROR_ON_WARN_ROLES`` applies (default ``script``).
+
+    Hub snapshot size is scaled by the role's resolved quantization when ``settings`` is provided.
     """
     if os.environ.get("AQUADUCT_MEMORY_PREFLIGHT", "1").strip().lower() in ("0", "false", "no", "off"):
         return None, None
@@ -59,9 +62,30 @@ def analyze_stage_memory_budget(
         avail_gb = psutil.virtual_memory().available / (1024**3)
     except Exception:
         avail_gb = None
-    sz = hf_cache_size_estimate_gib(repo_id, hf_cache_root=hf_cache_root)
-    if avail_gb is None or sz is None:
+    sz_hub = hf_cache_size_estimate_gib(repo_id, hf_cache_root=hf_cache_root)
+    if avail_gb is None or sz_hub is None:
         return None, None
+
+    sz = float(sz_hub)
+    q_suffix = ""
+    if settings is not None:
+        try:
+            from src.models.quantization import (
+                host_ram_hf_snapshot_scale,
+                mode_label,
+                resolve_quant_mode,
+            )
+
+            r0 = role.strip().lower()
+            if r0 in ("script", "image", "video"):
+                qm = resolve_quant_mode(role=r0, settings=settings)  # type: ignore[arg-type]
+                sc = float(host_ram_hf_snapshot_scale(role=r0, mode=qm))
+                sz = float(sz_hub) * sc
+                if sc < 0.999:
+                    q_suffix = f" — adjusted for {mode_label(qm)} load (~×{sc:.2f} vs Hub snapshot)"
+        except Exception:
+            sz = float(sz_hub)
+
     need = sz * float(os.environ.get("AQUADUCT_HOST_RAM_PREFLIGHT_FACTOR", "2.0"))
     floor = float(os.environ.get("AQUADUCT_HOST_RAM_FLOOR_GIB", "5.0"))
     threshold_gib = max(floor, need)
@@ -76,19 +100,18 @@ def analyze_stage_memory_budget(
     if avail_gb + 1e-6 < threshold_gib:
         warn = (
             f"{stage_label} ({role}): low host RAM (~{avail_gb:.1f} GiB available) versus rough model footprint "
-            f"~{sz:.1f} GiB (+temp buffers). Prefer a lighter model variant, enable CPU offload, or close apps."
+            f"~{sz:.1f} GiB (+temp buffers){q_suffix}. Prefer a lighter model variant, enable CPU offload, or close apps."
         )
 
     block: str | None = None
     if warn is None:
         return None, None
-    roles_force: set[str]
-    raw_roles_raw = os.environ.get("AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES", "video")
-    raw_roles = str(raw_roles_raw or "").strip().lower()
-    if raw_roles == "":
-        roles_force = set()
+    raw_fail = os.environ.get("AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES", "video")
+    fs = str(raw_fail).strip().lower()
+    if fs == "":
+        roles_force: set[str] = set()
     else:
-        roles_force = {r.strip() for r in raw_roles.replace(";", ",").split(",") if r.strip()}
+        roles_force = {x.strip() for x in fs.replace(";", ",").split(",") if x.strip()}
         if not roles_force:
             roles_force = {"video"}
 
@@ -117,6 +140,26 @@ def analyze_stage_memory_budget(
             "raise free RAM (close apps), use video quantization CPU offload where supported, "
             "or see docs/pipeline/crash-resilience.md. Escape hatch (not recommended): set "
             'AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES="" to disable fatal shortfall gating.'
+        )
+        return warn, block
+
+    # Any-host-RAM shortfall (default: script): large LLM loads often OOM-kill Python on Windows without a traceback
+    # when free RAM is below this heuristic — even if not "catastrophic" vs the fractional gate above.
+    raw_we = os.environ.get("AQUADUCT_MEMORY_PREFLIGHT_ERROR_ON_WARN_ROLES", "script")
+    ws = str(raw_we).strip().lower()
+    if ws == "":
+        roles_warn_err: set[str] = set()
+    else:
+        roles_warn_err = {x.strip() for x in ws.replace(";", ",").split(",") if x.strip()}
+        if not roles_warn_err:
+            roles_warn_err = {"script"}
+    if block is None and r in roles_warn_err:
+        block = (
+            f"{stage_label}: refusing run — host RAM shortfall for current settings (~{avail_gb:.1f} GiB free vs "
+            f"~{threshold_gib:.1f} GiB heuristic need from ~{sz:.1f} GiB adjusted snapshot){q_suffix}. Loading can "
+            "exhaust Windows RAM and terminate Python with no traceback. Close other apps, use lighter models or "
+            "stronger quantization, or see docs/pipeline/crash-resilience.md. To allow the run anyway (not "
+            'recommended): set AQUADUCT_MEMORY_PREFLIGHT_ERROR_ON_WARN_ROLES=""'
         )
 
     return warn, block

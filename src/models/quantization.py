@@ -210,6 +210,36 @@ def predict_vram_gb(*, role: QuantRole, repo_id: str, base_low_gb: float | None,
     return PredictedVram(lo, hi, why)
 
 
+def host_ram_hf_snapshot_scale(*, role: str, mode: QuantMode) -> float:
+    """
+    Scale a raw Hub snapshot size (fp16-class total) for host-RAM preflight heuristics.
+
+    CPU offload lowers **VRAM** more than **host** footprint — use a conservative scale there.
+    """
+    m = _norm_mode(mode)
+    r = (role or "script").strip().lower()
+    if r == "script":
+        return {
+            "auto": 1.0,
+            "bf16": 1.0,
+            "fp16": 1.0,
+            "int8": 0.62,
+            "nf4_4bit": 0.38,
+            "cpu_offload": 1.0,
+        }.get(m, 1.0)
+    if r in ("image", "video"):
+        if m == "cpu_offload":
+            return 1.0
+        return {
+            "auto": 1.0,
+            "bf16": 1.0,
+            "fp16": 1.0,
+            "int8": 0.85,
+            "nf4_4bit": 0.85,
+        }.get(m, 1.0)
+    return 1.0
+
+
 def parse_vram_hint_gb(text: str) -> tuple[float | None, float | None]:
     """
     Parse a ``vram_requirement_hint()``-style string into a (low, high) range.

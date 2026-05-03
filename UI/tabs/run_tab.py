@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QTextEdit,
@@ -25,7 +30,19 @@ from UI.help.tutorial_links import help_tooltip_rich
 
 def attach_run_tab(win) -> None:
     w = QWidget()
-    lay = QVBoxLayout(w)
+    root = QVBoxLayout(w)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.setSpacing(0)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    inner = QWidget()
+    lay = QVBoxLayout(inner)
+    lay.setContentsMargins(0, 0, 0, 0)
+    scroll.setWidget(inner)
 
     header = QLabel("Run Aquaduct (one-shot)")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
@@ -33,14 +50,20 @@ def attach_run_tab(win) -> None:
 
     out_card, out_lay = section_card()
     out_lay.addWidget(section_title("Output", emphasis=True))
-    qty_row = QHBoxLayout()
+    _ser0_qty = getattr(win.settings, "series", None)
+    _init_batch = 1
+    if _ser0_qty and bool(getattr(_ser0_qty, "series_mode", False)):
+        _init_batch = max(1, min(50, int(getattr(_ser0_qty, "episode_count", 1) or 1)))
+    qty_wrap = QWidget()
+    qty_row = QHBoxLayout(qty_wrap)
+    qty_row.setContentsMargins(0, 0, 0, 0)
     qty_lbl = QLabel("Videos to generate")
     qty_lbl.setStyleSheet("color: #B7B7C2;")
     win._run_qty_label = qty_lbl
     qty_row.addWidget(qty_lbl)
     win.run_qty_spin = NoWheelSpinBox()
     win.run_qty_spin.setRange(1, 50)
-    win.run_qty_spin.setValue(1)
+    win.run_qty_spin.setValue(_init_batch)
     win.run_qty_spin.setToolTip(
         help_tooltip_rich(
             "Each count is one full pipeline run (one video). "
@@ -51,7 +74,8 @@ def attach_run_tab(win) -> None:
     )
     qty_row.addWidget(win.run_qty_spin)
     qty_row.addStretch(1)
-    out_lay.addLayout(qty_row)
+    out_lay.addWidget(qty_wrap)
+    win._run_qty_row_wrap = qty_wrap
 
     fmt_row = QHBoxLayout()
     win._video_format_label = QLabel("Video format")
@@ -130,6 +154,160 @@ def attach_run_tab(win) -> None:
     style_row.addWidget(win.art_style_preset_combo, 1)
     style_row.addStretch(1)
     out_lay.addLayout(style_row)
+
+    ser0 = getattr(win.settings, "series", None)
+    series_grp = QGroupBox("Video series (continuation)")
+    series_grp.setToolTip(
+        help_tooltip_rich(
+            "Queue N episodes that share style and continue the same story. Each episode is a separate pipeline job "
+            "run one after another. Episode 2+ sees a recap of prior episodes (series bible). "
+            "Output folders: videos/&lt;series&gt;/episode_NNN_&lt;title&gt;/.",
+            "run",
+            slide=0,
+        )
+    )
+    win._series_output_group = series_grp
+    series_grp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    sv = QVBoxLayout(series_grp)
+    sv.setSpacing(10)
+    win.series_mode_check = QCheckBox("Generate as multi-episode series")
+    win.series_mode_check.setChecked(bool(getattr(ser0, "series_mode", False)) if ser0 else False)
+    win.series_mode_check.setToolTip(
+        help_tooltip_rich(
+            "When enabled, set **Episodes to generate** below. Each episode is a full pipeline job run one after another; "
+            "later episodes use the rolling recap (series bible). The Output **Videos to generate** row hides while "
+            "series mode is on so the count lives in one place.",
+            "run",
+            slide=0,
+        )
+    )
+    sv.addWidget(win.series_mode_check)
+    ep_wrap = QWidget()
+    ep_row = QHBoxLayout(ep_wrap)
+    ep_row.setContentsMargins(0, 0, 0, 0)
+    ep_lbl = QLabel("Episodes to generate")
+    ep_lbl.setStyleSheet("color: #B7B7C2;")
+    ep_row.addWidget(ep_lbl)
+    win.series_episode_spin = NoWheelSpinBox()
+    win.series_episode_spin.setRange(1, 50)
+    win.series_episode_spin.setValue(win.run_qty_spin.value())
+    win.series_episode_spin.setToolTip(
+        help_tooltip_rich(
+            "How many episodes to queue for this series. Episode 2+ builds on the recap / series bible. "
+            "Same range as multi-video runs (1–50).",
+            "run",
+            slide=0,
+        )
+    )
+    ep_row.addWidget(win.series_episode_spin)
+    ep_row.addStretch(1)
+    sv.addWidget(ep_wrap)
+    win._series_episode_row_wrap = ep_wrap
+    win._series_episode_label = ep_lbl
+
+    def _mirror_series_ep_to_run_qty(v: int) -> None:
+        win.run_qty_spin.blockSignals(True)
+        win.run_qty_spin.setValue(int(v))
+        win.run_qty_spin.blockSignals(False)
+
+    win.series_episode_spin.valueChanged.connect(_mirror_series_ep_to_run_qty)
+
+    def _on_series_mode_toggled(checked: bool) -> None:
+        mm0 = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+        if mm0 == "photo":
+            return
+        if checked:
+            win.series_episode_spin.blockSignals(True)
+            win.series_episode_spin.setValue(win.run_qty_spin.value())
+            win.series_episode_spin.blockSignals(False)
+            _mirror_series_ep_to_run_qty(win.series_episode_spin.value())
+        else:
+            win.run_qty_spin.blockSignals(True)
+            win.run_qty_spin.setValue(win.series_episode_spin.value())
+            win.run_qty_spin.blockSignals(False)
+
+    win.series_mode_check.toggled.connect(_on_series_mode_toggled)
+    sn_lbl = QLabel("Series name")
+    sn_lbl.setStyleSheet("color: #B7B7C2;")
+    sn_lbl.setWordWrap(True)
+    sv.addWidget(sn_lbl)
+    win.series_name_edit = QLineEdit()
+    win.series_name_edit.setPlaceholderText("Optional — used for the folder name under videos/")
+    win.series_name_edit.setText(str(getattr(ser0, "series_name", "") or "") if ser0 else "")
+    win.series_name_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    sv.addWidget(win.series_name_edit)
+    st_lbl = QLabel("Source per episode")
+    st_lbl.setStyleSheet("color: #B7B7C2;")
+    st_lbl.setWordWrap(True)
+    sv.addWidget(st_lbl)
+    win.series_source_strategy_combo = NoWheelComboBox()
+    win.series_source_strategy_combo.addItem("Auto (by format)", "auto")
+    win.series_source_strategy_combo.addItem("Lock episode 1 sources", "lock_first")
+    win.series_source_strategy_combo.addItem("Fresh source each episode", "fresh_per_ep")
+    _ss = str(getattr(ser0, "source_strategy", "auto") or "auto") if ser0 else "auto"
+    _six = win.series_source_strategy_combo.findData(_ss)
+    win.series_source_strategy_combo.setCurrentIndex(_six if _six >= 0 else 0)
+    win.series_source_strategy_combo.setToolTip(
+        help_tooltip_rich(
+            "**Auto**: news / health → new headline each episode; other formats (and custom brief) → same sources as episode 1. "
+            "**Lock** / **Fresh** override Auto.",
+            "run",
+            slide=0,
+        )
+    )
+    win.series_source_strategy_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    sv.addWidget(win.series_source_strategy_combo)
+    win.series_lock_style_check = QCheckBox("Lock art style, models & characters\nacross episodes")
+    win.series_lock_style_check.setToolTip(
+        help_tooltip_rich(
+            "Keep the same art style preset, diffusion/checkpoint choices, and character selection for every episode in this run.",
+            "run",
+            slide=0,
+        )
+    )
+    win.series_lock_style_check.setChecked(bool(getattr(ser0, "lock_style", True)) if ser0 else True)
+    sv.addWidget(win.series_lock_style_check)
+    win.series_carry_recap_check = QCheckBox("Carry recap / series bible into\nthe next script")
+    win.series_carry_recap_check.setChecked(bool(getattr(ser0, "carry_recap", True)) if ser0 else True)
+    sv.addWidget(win.series_carry_recap_check)
+    win.series_continue_on_failure_check = QCheckBox("Continue series if an episode fails")
+    win.series_continue_on_failure_check.setChecked(bool(getattr(ser0, "continue_on_failure", False)) if ser0 else False)
+    win.series_continue_on_failure_check.setToolTip(
+        help_tooltip_rich(
+            "When off (default), a failed episode aborts remaining episodes in the same series queue batch.",
+            "run",
+            slide=0,
+        )
+    )
+    sv.addWidget(win.series_continue_on_failure_check)
+    out_lay.addWidget(series_grp)
+
+    def _series_controls_enabled(on: bool) -> None:
+        ep_lbl.setEnabled(on)
+        win.series_episode_spin.setEnabled(on)
+        sn_lbl.setEnabled(on)
+        st_lbl.setEnabled(on)
+        win.series_name_edit.setEnabled(on)
+        win.series_source_strategy_combo.setEnabled(on)
+        win.series_lock_style_check.setEnabled(on)
+        win.series_carry_recap_check.setEnabled(on)
+        win.series_continue_on_failure_check.setEnabled(on)
+
+    def _refresh_series_controls() -> None:
+        mm0 = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+        video = mm0 != "photo"
+        sm = bool(win.series_mode_check.isChecked()) and video
+        _series_controls_enabled(sm)
+        series_grp.setVisible(video)
+        if hasattr(win, "_run_qty_row_wrap"):
+            win._run_qty_row_wrap.setVisible(not sm if video else True)
+        if hasattr(win, "_series_episode_row_wrap"):
+            win._series_episode_row_wrap.setVisible(sm)
+
+    win.series_mode_check.stateChanged.connect(lambda *_: (_refresh_series_controls(), refresh_run_tab_for_media_mode(win)))
+    _refresh_series_controls()
+    win._run_tab_refresh_series_controls = _refresh_series_controls
+
     lay.addWidget(out_card)
 
     add_section_spacing(lay)
@@ -323,8 +501,6 @@ def attach_run_tab(win) -> None:
     c_row.addStretch(1)
     sc_lay.addLayout(c_row)
 
-    from PyQt6.QtWidgets import QCheckBox  # local import — avoid changing module top imports
-
     win.auto_save_generated_cast_check = QCheckBox("Save generated cast to Characters tab")
     win.auto_save_generated_cast_check.setChecked(
         bool(getattr(win.settings, "auto_save_generated_cast", True))
@@ -341,7 +517,8 @@ def attach_run_tab(win) -> None:
     sc_lay.addWidget(win.auto_save_generated_cast_check)
     lay.addWidget(sc_card)
 
-    add_section_spacing(lay)
+    lay.addStretch(1)
+
     act_card, act_lay = section_card()
     act_lay.addWidget(section_title("Actions", emphasis=True))
 
@@ -404,7 +581,10 @@ def attach_run_tab(win) -> None:
 
     row.addStretch(1)
     act_lay.addLayout(row)
-    lay.addWidget(act_card)
+
+    root.addWidget(scroll, 1)
+    add_section_spacing(root)
+    root.addWidget(act_card, 0)
 
     win.tabs.addTab(w, "Run")
 
@@ -416,7 +596,12 @@ def refresh_run_tab_for_media_mode(win) -> None:
     mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
     is_photo = mm == "photo"
     if hasattr(win, "_run_qty_label"):
-        win._run_qty_label.setText("Runs to generate" if is_photo else "Videos to generate")
+        if is_photo:
+            win._run_qty_label.setText("Runs to generate")
+        elif hasattr(win, "series_mode_check") and win.series_mode_check.isChecked():
+            win._run_qty_label.setText("Episodes")
+        else:
+            win._run_qty_label.setText("Videos to generate")
     if hasattr(win, "run_qty_spin"):
         if is_photo:
             win.run_qty_spin.setToolTip(
@@ -427,8 +612,20 @@ def refresh_run_tab_for_media_mode(win) -> None:
                 )
             )
         else:
+            _ep = (
+                bool(win.series_mode_check.isChecked())
+                if hasattr(win, "series_mode_check")
+                else bool(getattr(getattr(win.settings, "series", None), "series_mode", False))
+            )
             win.run_qty_spin.setToolTip(
                 help_tooltip_rich(
+                    "Each count is one **episode** (full pipeline). Episodes after the first are queued and start "
+                    "when the previous finishes. Continuity uses the series recap / bible.",
+                    "run",
+                    slide=0,
+                )
+                if _ep
+                else help_tooltip_rich(
                     "Each count is one full pipeline run (one video). "
                     "Runs after the first are queued and start automatically when the previous run finishes.",
                     "run",
@@ -469,6 +666,8 @@ def refresh_run_tab_for_media_mode(win) -> None:
         )
     if hasattr(win, "_sync_run_content_hints"):
         win._sync_run_content_hints()
+    if hasattr(win, "_run_tab_refresh_series_controls"):
+        win._run_tab_refresh_series_controls()
     if hasattr(win, "run_btn"):
         win.run_btn.setToolTip(
             help_tooltip_rich(
