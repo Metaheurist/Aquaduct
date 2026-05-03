@@ -49,6 +49,8 @@ pytest -q -m "not qt"
 
 (`torch` / CUDA wheels: use `python scripts/install_pytorch.py --with-rest` before or as documented in `requirements.txt`.)
 
+**Optional — AI spatial upscale** toward export resolution (Video tab **Spatial upscale → Auto**): install pip deps from [`requirements-optional-upscale.txt`](requirements-optional-upscale.txt) for the CUDA Real-ESRGAN path, and/or install **`realesrgan-ncnn-vulkan`** on your `PATH` (see [docs/reference/config.md](docs/reference/config.md)).
+
 `tests/runtime/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/ui/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`). API / packaging import smoke: `tests/runtime/test_import_smoke_api.py`.
 
 Run **Qt-only** UI tests:

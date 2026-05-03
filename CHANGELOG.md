@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Video / export — spatial AI upscale (Real-ESRGAN-class)
+
+- **`VideoSettings.spatial_upscale_mode`** ([`off` \| `auto`](src/core/config.py)): **Video** tab **Spatial upscale** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)); persisted in **`ui_settings.json`**. **`auto`** runs [`src/render/spatial_upscale.py`](src/render/spatial_upscale.py) after temporal smoothing on **local** T2V clips ([`src/render/clips.py`](src/render/clips.py)) and in the editor ([`src/render/editor.py`](src/render/editor.py)) for slideshow / motion-base paths — **PyTorch CUDA** (optional **`requirements-optional-upscale.txt`**) then **realesrgan-ncnn-vulkan**, else Lanczos. Local runs report **Spatial upscale clip i/n…** via pipeline progress while each clip is processed. Preflight notes + env table in [`docs/reference/config.md`](docs/reference/config.md); overview in [`docs/pipeline/video-quality.md`](docs/pipeline/video-quality.md). Tests: [`tests/render/test_spatial_upscale.py`](tests/render/test_spatial_upscale.py). Optional pip stack documented in [`README.md`](README.md).
+
+- **Video tab copy**: Preset block title is **Quality presets** (removed the **(v2)** suffix) in [`UI/tabs/video_tab.py`](UI/tabs/video_tab.py); [`docs/ui/ui.md`](docs/ui/ui.md) and [`docs/ui/video-tab-v2.md`](docs/ui/video-tab-v2.md) updated to match. [`DEPENDENCIES.md`](DEPENDENCIES.md) notes optional [`requirements-optional-upscale.txt`](requirements-optional-upscale.txt).
+
 ### Auxiliary UI (off-pipeline progress, portrait preview, diffusion offload)
 
 - **Off-pipeline progress + VRAM purge** ([`UI/dialogs/auxiliary_progress_dialog.py`](UI/dialogs/auxiliary_progress_dialog.py), [`UI/workers/impl.py`](UI/workers/impl.py)): **🧠** field expand ([`UI/services/brain_expand.py`](UI/services/brain_expand.py)), **Characters → Generate with LLM** / **Generate portrait**, and **Topics → Suggest with LLM** open a **frameless, fixed-size** modal with status text + progress bar wired to **`on_llm_task`** / **`on_image_progress`** (local) or coarse API-phase messages. Each job schedules **`purge_process_memory_aggressive()`** on the GUI thread after **done** / **failed** via **`schedule_auxiliary_job_memory_purge()`**.
@@ -88,7 +94,7 @@ This is an in-flight track; bullets land per phase as they ship.
   `video_scene_preset_id` / `video_fps_preset_id` /
   `video_resolution_preset_id` (all with `medium` / `balanced` /
   `standard_30` / `vertical_1080p` defaults). Video tab gains a
-  "Quality presets (v2)" form with five combo boxes; picking a preset
+  "Quality presets" form with five combo boxes; picking a preset
   snaps the matching legacy spinners through the existing
   `_applying_video_template` mutex. Tests:
   [`tests/render/test_video_quality_presets.py`](tests/render/test_video_quality_presets.py)

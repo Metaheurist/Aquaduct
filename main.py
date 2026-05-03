@@ -1623,6 +1623,9 @@ def run_once(
                 _rc(run_control)
                 clip_dir = assets_dir / "pro_clips"
                 def _run_pro_i2v(s: AppSettings, idx: int | None):
+                    def _spatial_prog(c: int, t: int) -> None:
+                        _pipe_progress(on_progress, 69, -1, f"Spatial upscale clip {c}/{t}…")
+
                     return generate_clips(
                         video_model_id=vid_slot,
                         prompts=pro_scenes,
@@ -1633,6 +1636,7 @@ def run_once(
                         seconds_per_clip=T,
                         cuda_device_index=idx,
                         inference_settings=s,
+                        on_spatial_upscale_progress=_spatial_prog,
                     )
 
                 gen_clips, app, _diffusion_cuda_idx = retry_stage(
@@ -1661,6 +1665,9 @@ def run_once(
                 _rc(run_control)
                 clip_dir = assets_dir / "pro_clips"
                 def _run_pro_t2v(s: AppSettings, idx: int | None):
+                    def _spatial_prog(c: int, t: int) -> None:
+                        _pipe_progress(on_progress, 69, -1, f"Spatial upscale clip {c}/{t}…")
+
                     return generate_clips(
                         video_model_id=vid_slot,
                         prompts=pro_scenes,
@@ -1671,6 +1678,7 @@ def run_once(
                         seconds_per_clip=T,
                         cuda_device_index=idx,
                         inference_settings=s,
+                        on_spatial_upscale_progress=_spatial_prog,
                     )
 
                 gen_clips, app, _diffusion_cuda_idx = retry_stage(
@@ -1732,6 +1740,7 @@ def run_once(
                 topic_tags=list(effective_topic_tags(app)),
                 video_format=str(getattr(app, "video_format", "news") or "news"),
                 clip_durations=clip_durations,
+                cuda_device_index=_diffusion_cuda_idx,
             )
             _pipe_progress(on_progress, 93, -1, "Encode complete")
             try:
@@ -1903,6 +1912,7 @@ def run_once(
                 max_clips: int,
                 fps: int,
                 seconds_per_clip: float,
+                on_spatial_upscale_progress: Callable[[int, int], None] | None = None,
             ):
                 nonlocal app, _diffusion_cuda_idx
 
@@ -1917,6 +1927,7 @@ def run_once(
                         seconds_per_clip=seconds_per_clip,
                         cuda_device_index=idx,
                         inference_settings=s,
+                        on_spatial_upscale_progress=on_spatial_upscale_progress,
                     )
 
                 out, app2, idx2 = retry_stage(
@@ -1971,6 +1982,9 @@ def run_once(
                         max_clips=1,
                         fps=int(video_settings.fps),
                         seconds_per_clip=float(getattr(video_settings, "pro_clip_seconds", 4.0)),
+                        on_spatial_upscale_progress=lambda c, t: _pipe_progress(
+                            on_progress, 71, -1, f"Spatial upscale clip {c}/{t}…"
+                        ),
                     )
                     if not zc:
                         raise RuntimeError("Pro mode produced no video segments (ZeroScope path).")
@@ -2134,6 +2148,7 @@ def run_once(
                     article_text=article_text,
                     topic_tags=list(effective_topic_tags(app)),
                     video_format=str(getattr(app, "video_format", "news") or "news"),
+                    cuda_device_index=_diffusion_cuda_idx,
                 )
             else:
                 assemble_microclips_then_concat(
@@ -2149,6 +2164,7 @@ def run_once(
                     article_text=article_text,
                     topic_tags=list(effective_topic_tags(app)),
                     video_format=str(getattr(app, "video_format", "news") or "news"),
+                    cuda_device_index=_diffusion_cuda_idx,
                 )
             _pipe_progress(on_progress, 93, -1, "Encode complete")
         else:
@@ -2271,6 +2287,9 @@ def run_once(
             _run_stage("video_motion", f"Motion mode: img2vid / scene clips with {_vid_id!r}")
 
             def _run_scene_clips(s: AppSettings, idx: int | None):
+                def _spatial_prog(c: int, t: int) -> None:
+                    _pipe_progress(on_progress, 87, -1, f"Spatial upscale clip {c}/{t}…")
+
                 return generate_clips(
                     video_model_id=_vid_id,
                     prompts=prompts,
@@ -2281,6 +2300,7 @@ def run_once(
                     seconds_per_clip=float(video_settings.clip_seconds),
                     cuda_device_index=idx,
                     inference_settings=s,
+                    on_spatial_upscale_progress=_spatial_prog,
                 )
 
             gen_clips, app, _diffusion_cuda_idx = retry_stage(
@@ -2331,6 +2351,7 @@ def run_once(
                 article_text=article_text,
                 topic_tags=list(effective_topic_tags(app)),
                 video_format=str(getattr(app, "video_format", "news") or "news"),
+                cuda_device_index=_diffusion_cuda_idx,
             )
             _pipe_progress(on_progress, 93, -1, "Encode complete")
     

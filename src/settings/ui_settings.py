@@ -239,6 +239,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         if str(video_raw.get("smoothness_mode", "off")) in ("off", "ffmpeg", "rife")
         else "off",
         smoothness_target_fps=int(video_raw.get("smoothness_target_fps", 24) or 24),
+        spatial_upscale_mode=str(video_raw.get("spatial_upscale_mode", "off") or "off")
+        if str(video_raw.get("spatial_upscale_mode", "off") or "off") in ("off", "auto")
+        else "off",
         video_length_preset_id=str(video_raw.get("video_length_preset_id", "medium") or "medium"),
         video_scene_preset_id=str(video_raw.get("video_scene_preset_id", "balanced") or "balanced"),
         video_fps_preset_id=str(video_raw.get("video_fps_preset_id", "standard_30") or "standard_30"),

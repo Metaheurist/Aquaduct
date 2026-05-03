@@ -86,6 +86,7 @@ Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@py
 ## Media
 - **moviepy**: video editing/assembly
 - **FFmpeg**: required by MoviePy for encoding; downloaded automatically into `.cache/ffmpeg/`
+- **Optional — spatial AI upscale** (Video tab **Spatial upscale → Auto**): [`requirements-optional-upscale.txt`](requirements-optional-upscale.txt) adds **CUDA** Real-ESRGAN-class deps; **Vulkan** users can use **`realesrgan-ncnn-vulkan`** instead (see [docs/reference/config.md](docs/reference/config.md#spatial-upscale-environment-optional)).
 - **Pillow**: caption rendering and image fallback generation
 - **numpy**: caption frame / image processing
 

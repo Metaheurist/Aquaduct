@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -850,6 +851,7 @@ def generate_clips(
     seconds_per_clip: float,
     cuda_device_index: int | None = None,
     inference_settings: AppSettings | None = None,
+    on_spatial_upscale_progress: Callable[[int, int], None] | None = None,
 ) -> list[GeneratedClip]:
     """
     Generates a small set of MP4 clips with the configured video model.
@@ -900,6 +902,12 @@ def generate_clips(
                 "Check the Model tab, GPU/CUDA, and that the repo downloaded completely (e.g. unet/vae weights)."
             )
         _maybe_smooth_clips(r, video_model_id=video_model_id, settings=inference_settings)
+        _maybe_spatial_upscale_clips(
+            r,
+            settings=inference_settings,
+            cuda_device_index=cuda_device_index,
+            on_clip_progress=on_spatial_upscale_progress,
+        )
         dprint("clips", "generate_clips done", f"count={len(r)}")
         return r
 
@@ -966,4 +974,47 @@ def _maybe_smooth_clips(
         f"mode_used={','.join(sorted(used))}",
         f"target_fps={target_fps}",
     )
+
+
+def _maybe_spatial_upscale_clips(
+    clips: list[GeneratedClip],
+    *,
+    settings: AppSettings | None,
+    cuda_device_index: int | None,
+    on_clip_progress: Callable[[int, int], None] | None = None,
+) -> None:
+    """Optional Real-ESRGAN / NCNN upscale toward export resolution (local only)."""
+    if settings is None:
+        return
+    try:
+        from src.runtime.model_backend import is_api_mode
+
+        if is_api_mode(settings):
+            return
+    except Exception:
+        pass
+    video_settings = getattr(settings, "video", None)
+    mode = str(getattr(video_settings, "spatial_upscale_mode", "off") or "off").strip().lower()
+    if mode != "auto":
+        return
+    tw = int(getattr(video_settings, "width", 1080) or 1080)
+    th = int(getattr(video_settings, "height", 1920) or 1920)
+    try:
+        from src.core.config import get_paths
+        from src.render.spatial_upscale import upscale_clips_inplace
+
+        paths = [Path(c.path) for c in clips]
+        upscale_clips_inplace(
+            paths,
+            target_w=tw,
+            target_h=th,
+            mode="auto",
+            ffmpeg_dir=get_paths().ffmpeg_dir,
+            cuda_device_index=cuda_device_index,
+            on_clip_progress=on_clip_progress,
+        )
+    except Exception as exc:
+        from debug import dprint as _dp
+
+        _dp("clips", f"spatial_upscale failed: {exc}")
 

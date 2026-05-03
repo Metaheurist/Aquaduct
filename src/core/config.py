@@ -194,6 +194,12 @@ class VideoSettings:
     #: Target encoded fps for the smoothing pass (output fps). Capped at 60.
     smoothness_target_fps: int = 24
 
+    # Spatial AI upscale (Real-ESRGAN / NCNN) toward export width×height before
+    # MoviePy resize; see ``src/render/spatial_upscale.py``.
+    # ``off`` -- classic Lanczos/PIL resize in the editor only.
+    # ``auto`` -- try PyTorch+CUDA when deps exist, else NCNN Vulkan, else skip.
+    spatial_upscale_mode: Literal["off", "auto"] = "off"
+
     # Video tab v2 (Phase 5): named knobs that drive the legacy spinners
     # below them. Empty string = the user picked Custom in the Advanced
     # disclosure and the spinner values should be honoured verbatim. See

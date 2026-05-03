@@ -29,6 +29,37 @@ from .ffmpeg_slideshow import build_motion_slideshow
 from .utils_ffmpeg import configure_moviepy_ffmpeg, ensure_ffmpeg
 
 
+def _default_ffmpeg_dir() -> Path:
+    from src.core.config import get_paths
+
+    return get_paths().ffmpeg_dir
+
+
+def editor_maybe_spatial_upscale_path(
+    path: Path,
+    *,
+    settings: VideoSettings,
+    ffmpeg_dir: Path,
+    cuda_device_index: int | None = None,
+) -> Path:
+    mode = str(getattr(settings, "spatial_upscale_mode", "off") or "off").strip().lower()
+    if mode != "auto":
+        return Path(path)
+    try:
+        from src.render.spatial_upscale import maybe_spatial_upscale_path
+
+        return maybe_spatial_upscale_path(
+            Path(path),
+            target_w=int(settings.width),
+            target_h=int(settings.height),
+            mode=mode,
+            ffmpeg_dir=ffmpeg_dir,
+            cuda_device_index=cuda_device_index,
+        )
+    except Exception:
+        return Path(path)
+
+
 def _ensure_rgba_np(pic: np.ndarray) -> np.ndarray:
     """
     MoviePy composites require matching channel counts; caption/facts overlays are RGBA.
@@ -206,8 +237,22 @@ def _ffmpeg_align_wav_to_duration(ffmpeg_exe: Path, in_wav: Path, out_wav: Path,
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
 
-def _pro_single_frame_clip(img_path: Path, *, duration: float, settings: VideoSettings) -> ImageClip:
-    base = ImageClip(str(img_path)).set_duration(max(0.001, float(duration)))
+def _pro_single_frame_clip(
+    img_path: Path,
+    *,
+    duration: float,
+    settings: VideoSettings,
+    ffmpeg_dir: Path | None = None,
+    cuda_device_index: int | None = None,
+) -> ImageClip:
+    fd = ffmpeg_dir if ffmpeg_dir is not None else _default_ffmpeg_dir()
+    p = editor_maybe_spatial_upscale_path(
+        Path(img_path),
+        settings=settings,
+        ffmpeg_dir=fd,
+        cuda_device_index=cuda_device_index,
+    )
+    base = ImageClip(str(p)).set_duration(max(0.001, float(duration)))
     iw, ih = base.w, base.h
     l, t, r, b = _fit_crop_9x16(iw, ih, settings.width, settings.height)
     base = base.crop(x1=l, y1=t, x2=r, y2=b).resize((settings.width, settings.height))
@@ -263,6 +308,7 @@ def assemble_microclips_then_concat(
     article_text: str | None = None,
     topic_tags: list[str] | None = None,
     video_format: str | None = None,
+    cuda_device_index: int | None = None,
 ) -> None:
     """
     Builds 9:16 final video as concatenation of few-second micro-clips (one per image/beat).
@@ -347,6 +393,12 @@ def assemble_microclips_then_concat(
                 transition_strength=str(getattr(settings, "transition_strength", "low") or "low"),
                 xfade_transition=str(getattr(settings, "xfade_transition", "fade") or "fade"),
             )
+            base_mp4 = editor_maybe_spatial_upscale_path(
+                base_mp4,
+                settings=settings,
+                ffmpeg_dir=ffmpeg_dir,
+                cuda_device_index=cuda_device_index,
+            )
 
             base = VideoFileClip(str(base_mp4)).set_duration(total_dur).resize((settings.width, settings.height))
             base = base.fl_image(_rgb_u8_for_moviepy_imageclip)
@@ -393,7 +445,13 @@ def assemble_microclips_then_concat(
     clip_bitrate = {"low": "2500k", "med": "4500k", "high": "6500k"}.get(settings.bitrate_preset, "4500k")
     for idx, (t0, t1, img_path) in enumerate(clip_specs, start=1):
         dur = max(0.25, t1 - t0)
-        base = ImageClip(str(img_path)).set_duration(dur)
+        img_u = editor_maybe_spatial_upscale_path(
+            Path(img_path),
+            settings=settings,
+            ffmpeg_dir=ffmpeg_dir,
+            cuda_device_index=cuda_device_index,
+        )
+        base = ImageClip(str(img_u)).set_duration(dur)
 
         # Crop to 9:16 and resize, add subtle zoom
         iw, ih = base.w, base.h
@@ -467,6 +525,7 @@ def assemble_pro_frame_sequence_then_concat(
     article_text: str | None = None,
     topic_tags: list[str] | None = None,
     video_format: str | None = None,
+    cuda_device_index: int | None = None,
 ) -> None:
     """
     One generated still per output frame at ``settings.fps``; total timeline ``timeline_seconds``.
@@ -525,11 +584,26 @@ def assemble_pro_frame_sequence_then_concat(
 
     fps = max(1, int(settings.fps))
     frame_dur = 1.0 / float(fps)
-    frame_clips = [_pro_single_frame_clip(Path(p), duration=frame_dur, settings=settings) for p in imgs]
+    frame_clips = [
+        _pro_single_frame_clip(
+            Path(p),
+            duration=frame_dur,
+            settings=settings,
+            ffmpeg_dir=ffmpeg_dir,
+            cuda_device_index=cuda_device_index,
+        )
+        for p in imgs
+    ]
     base_video = concatenate_videoclips(frame_clips, method="compose")
     d_vid = float(base_video.duration)
     if d_vid < T - 1e-2:
-        tail = _pro_single_frame_clip(Path(imgs[-1]), duration=max(frame_dur, T - d_vid), settings=settings)
+        tail = _pro_single_frame_clip(
+            Path(imgs[-1]),
+            duration=max(frame_dur, T - d_vid),
+            settings=settings,
+            ffmpeg_dir=ffmpeg_dir,
+            cuda_device_index=cuda_device_index,
+        )
         base_video = concatenate_videoclips([base_video, tail], method="compose")
     elif d_vid > T + 1e-2:
         base_video = base_video.subclip(0, T)
@@ -579,6 +653,7 @@ def assemble_generated_clips_then_concat(
     topic_tags: list[str] | None = None,
     video_format: str | None = None,
     clip_durations: list[float] | None = None,
+    cuda_device_index: int | None = None,
 ) -> None:
     """
     Concats pre-generated MP4 clips into a final 9:16 video, applying the same word-by-word caption overlay
@@ -655,7 +730,13 @@ def assemble_generated_clips_then_concat(
     out_clips = []
     cursor = 0.0
     for idx, clip_path in enumerate(src, start=1):
-        vsrc = VideoFileClip(str(clip_path))
+        cp = editor_maybe_spatial_upscale_path(
+            Path(clip_path),
+            settings=settings,
+            ffmpeg_dir=ffmpeg_dir,
+            cuda_device_index=cuda_device_index,
+        )
+        vsrc = VideoFileClip(str(cp))
         v_dur = float(getattr(vsrc, "duration", 0.0) or 0.0)
         dur = _resolve_duration(idx - 1, clip_path, v_dur)
         dur = max(0.25, dur)

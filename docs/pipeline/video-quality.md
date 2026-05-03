@@ -69,6 +69,25 @@ For every clip mp4 that the T2V/I2V code writes, we now also persist
 Both `_try_text_to_video` and `_try_image_to_video` write this sidecar; the
 LTX-2 audio-aware export path (`encode_video(...)`) also writes it.
 
+## Spatial AI upscale (export resolution)
+
+**Temporal** quality (raising clip playback fps) is handled by **Smoothness**
+([`temporal_smooth.py`](../../src/render/temporal_smooth.py) — FFmpeg `minterpolate` or optional RIFE).
+
+**Spatial** quality (sharper pixels when T2V outputs are smaller than the Video tab
+width×height) is handled by [`spatial_upscale.py`](../../src/render/spatial_upscale.py):
+
+- **`spatial_upscale_mode=auto`** on [`VideoSettings`](../../src/core/config.py) runs after
+  optional smoothing in [`clips.py`](../../src/render/clips.py) (local runs only), and again in the
+  editor for slideshow assets, so low-res clips are super-resolved **before** Lanczos resize + captions.
+- Order: **PyTorch Real-ESRGAN** on CUDA when optional deps are installed; else
+  **realesrgan-ncnn-vulkan**; else plain resize.
+- During **local** `generate_clips`, the pipeline emits progress messages **Spatial upscale clip i/n…** so long SR passes do not look hung ([`main.py`](../../main.py)).
+- **API** cloud runs skip this path (preflight warns that `auto` has no effect).
+
+See [Config — spatial upscale env](../reference/config.md#spatial-upscale-environment-optional) and
+[`requirements-optional-upscale.txt`](../../requirements-optional-upscale.txt).
+
 ## Editor: per-clip duration alignment (no more equal-T chunking)
 
 `src/render/editor.py::assemble_generated_clips_then_concat` accepts a new
