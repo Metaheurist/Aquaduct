@@ -287,6 +287,55 @@ def aquaduct_critical(parent, title: str, text: str) -> None:
     aquaduct_information(parent, title, text)
 
 
+def aquaduct_memory_preflight_choice(parent, title: str, text: str) -> str:
+    """
+    Memory preflight prompt for conservative RAM gating.
+
+    Returns one of:
+    - "ok" (dismiss)
+    - "run_anyway" (ignore for this session via env override)
+    - "dont_warn_session" (ignore + suppress future memory-preflight popups this session)
+    """
+    d = FramelessDialog(parent, title=title)
+    d.setMinimumWidth(560)
+    d.body_layout.addWidget(_muted_label(text))
+    row = QHBoxLayout()
+    ok = styled_outline_button("OK", "danger", min_width=88)
+    run = styled_outline_button("Ignore (this session)", "accent_icon", min_width=160)
+    quiet = QPushButton("Ignore + don't show again (this session)")
+    quiet.setProperty("buttonRole", "secondary")
+    row.addStretch(1)
+    row.addWidget(ok)
+    row.addWidget(quiet)
+    row.addWidget(run)
+    d.body_layout.addLayout(row)
+
+    result = {"v": "ok"}
+
+    def _ok() -> None:
+        result["v"] = "ok"
+        d.reject()
+
+    def _run() -> None:
+        result["v"] = "run_anyway"
+        d.accept()
+
+    def _quiet() -> None:
+        result["v"] = "dont_warn_session"
+        d.accept()
+
+    ok.clicked.connect(_ok)
+    run.clicked.connect(_run)
+    quiet.clicked.connect(_quiet)
+    run.setDefault(True)
+    run.setAutoDefault(True)
+    try:
+        d.exec()
+    finally:
+        FramelessDialog._blur_release(d)
+    return str(result["v"])
+
+
 def aquaduct_resume_checkpoint_choice(parent, title: str, text: str) -> str:
     """
     Three-way resume prompt. Returns ``\"resume\"``, ``\"no\"``, or ``\"discard\"``

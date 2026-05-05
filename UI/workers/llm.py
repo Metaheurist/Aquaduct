@@ -11,7 +11,7 @@ from src.content.brain_api import (
     generate_character_from_preset_openai,
 )
 from src.content.character_presets import CharacterAutoPreset, GeneratedCharacterFields
-from src.content.topic_discovery import discover_topics_from_items
+from src.content.topic_discovery import discover_mature_topics_safe, discover_topics_from_items
 from src.content.topic_research_assets import write_topic_research_pack
 from src.content.topics import (
     topic_tags_for_mode,
@@ -48,6 +48,10 @@ class TopicDiscoverWorker(QThread):
         try:
             dprint("topics", "TopicDiscoverWorker", f"limit={self.limit}", f"mode={self.topic_mode}")
             app = self.settings
+            if str(self.topic_mode or "").strip().lower() == "nsfw":
+                topics = discover_mature_topics_safe(limit=int(self.limit))
+                self.done.emit(topics)
+                return
             items = fetch_latest_items(
                 limit=max(5, int(self.limit)),
                 topic_tags=topic_tags_for_mode(app, self.topic_mode),
@@ -359,8 +363,10 @@ class CharacterPortraitWorker(QThread):
             )
             if self.allow_nsfw:
                 prompt += (
-                    ", adult editorial portrait, tasteful lingerie or implied intimacy optional, "
-                    "studio lighting, single consenting adult performer 21 plus, no minors"
+                    ", mature glamour / boudoir portrait, sensual but non-explicit, "
+                    "tasteful lingerie or implied intimacy, confident flirtatious expression, "
+                    "soft cinematic lighting, glossy editorial finish, "
+                    "single consenting adult performer (21+), no minors, no explicit sex acts"
                 )
             dest = base / "portrait.png"
             if self.app_settings is not None and is_api_mode(self.app_settings):

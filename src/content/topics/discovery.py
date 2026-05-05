@@ -471,3 +471,47 @@ def discover_topics_from_items(
         out = _fallback_topics_from_titles(item_list, limit=limit, topic_mode=topic_mode)
     return out
 
+
+def discover_mature_topics_safe(*, limit: int = 30) -> list[str]:
+    """
+    Mature-topic suggestions for NSFW mode without explicit pornographic content.
+
+    This is intentionally non-explicit: it avoids sex acts, porn categories, or position/pose lists.
+    """
+    base = [
+        "Dating App Disasters",
+        "Red Flag Stories",
+        "Green Flag Stories",
+        "Relationship Advice Myths",
+        "Romantic Comedy Plot Twists",
+        "Texting Etiquette Drama",
+        "Late-Night Confessions (PG-13)",
+        "Flirty Banter & Boundaries",
+        "Breakup Glow-Up Montage",
+        "Couple’s Q&A (Tasteful)",
+        "Hot Takes on Modern Romance",
+        "Consent & Communication 101",
+        "Lingerie Fashion Trends",
+        "After-Dark Humor (Non-Explicit)",
+        "Spicy Food Date Night Ideas",
+        "Jealousy vs Trust Scenarios",
+        "First Date Fail Stories",
+        "Awkward Compliment Generator",
+        "Confidence Tips (Tasteful)",
+        "Roommate Romance Tropes",
+    ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in base:
+        s = " ".join(str(t).split()).strip()
+        if not s:
+            continue
+        k = s.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(s)
+        if len(out) >= max(1, int(limit)):
+            break
+    return out
+
