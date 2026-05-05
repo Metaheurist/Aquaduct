@@ -37,6 +37,7 @@ from src.content.characters_store import (
     load_all,
     new_character,
     save_all,
+    subject_token_phrase,
     upsert,
 )
 from src.runtime.model_backend import api_role_ready, is_api_mode
@@ -265,6 +266,26 @@ def attach_characters_tab(win) -> None:
     lbl_name.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     edit_lay.addWidget(lbl_name)
     edit_lay.addWidget(win.character_name_edit)
+
+    tok_row = QHBoxLayout()
+    tok_row.setSpacing(8)
+    for _lbl_txt, _attr in (
+        ("Gender", "character_gender_edit"),
+        ("Ethnicity", "character_ethnicity_edit"),
+        ("Age band", "character_age_range_edit"),
+    ):
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        t_l = QLabel(_lbl_txt)
+        t_l.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+        col.addWidget(t_l)
+        le = QLineEdit()
+        le.setPlaceholderText("Optional — anchors narration + stills")
+        le.setMaximumHeight(26)
+        setattr(win, _attr, le)
+        col.addWidget(le)
+        tok_row.addLayout(col)
+    edit_lay.addLayout(tok_row)
 
     lbl_id = QLabel("Identity / persona (script + on-screen)")
     lbl_id.setStyleSheet("color: #B7B7C2; font-size: 11px;")
@@ -552,6 +573,9 @@ def attach_characters_tab(win) -> None:
 
     def _load_form(c: Character) -> None:
         win.character_name_edit.setText(c.name)
+        win.character_gender_edit.setText(c.gender)
+        win.character_ethnicity_edit.setText(c.ethnicity)
+        win.character_age_range_edit.setText(c.age_range)
         win.character_identity_edit.setPlainText(c.identity)
         win.character_visual_edit.setPlainText(c.visual_style)
         win.character_negatives_edit.setPlainText(c.negatives)
@@ -593,6 +617,9 @@ def attach_characters_tab(win) -> None:
             identity=win.character_identity_edit.toPlainText(),
             visual_style=win.character_visual_edit.toPlainText(),
             negatives=win.character_negatives_edit.toPlainText(),
+            gender=win.character_gender_edit.text().strip(),
+            ethnicity=win.character_ethnicity_edit.text().strip(),
+            age_range=win.character_age_range_edit.text().strip(),
             reference_image_rel=str(getattr(base, "reference_image_rel", "") or "").strip(),
             use_default_voice=bool(win.character_default_voice_chk.isChecked()),
             pyttsx3_voice_id=str(win.character_voice_combo.currentData() or "").strip(),
@@ -650,6 +677,9 @@ def attach_characters_tab(win) -> None:
             identity=ch.identity,
             visual_style=ch.visual_style,
             negatives=ch.negatives,
+            gender=ch.gender,
+            ethnicity=ch.ethnicity,
+            age_range=ch.age_range,
             reference_image_rel=ref_rel,
             use_default_voice=ch.use_default_voice,
             pyttsx3_voice_id=ch.pyttsx3_voice_id,
@@ -729,6 +759,9 @@ def attach_characters_tab(win) -> None:
             if not isinstance(fields, GeneratedCharacterFields):
                 return
             win.character_name_edit.setText(fields.name)
+            win.character_gender_edit.setText(fields.gender)
+            win.character_ethnicity_edit.setText(fields.ethnicity)
+            win.character_age_range_edit.setText(fields.age_range)
             win.character_identity_edit.setPlainText(fields.identity)
             win.character_visual_edit.setPlainText(fields.visual_style)
             win.character_negatives_edit.setPlainText(fields.negatives)
@@ -797,6 +830,7 @@ def attach_characters_tab(win) -> None:
             image_model_id=img_id,
             character_id=base.id,
             visual_style=vs,
+            subject_prefix=subject_token_phrase(base),
             allow_nsfw=(
                 bool(getattr(win.settings, "allow_nsfw", False))
                 or normalize_video_format(_current_vf_for_char_presets()) == "nsfw"

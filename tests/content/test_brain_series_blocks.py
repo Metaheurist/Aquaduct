@@ -13,7 +13,9 @@ def test_series_continuity_empty_omitted_from_prompt(monkeypatch):
             '"segments":[{"narration":"N","visual_prompt":"V","on_screen_text":"O"}],"cta":"C"}'
         )
 
-    monkeypatch.setattr(brain_mod, "_infer_text_with_optional_holder", fake_infer)
+    from src.content.brain import api as brain_api
+
+    monkeypatch.setattr(brain_api, "_infer_text_with_optional_holder", fake_infer)
     brain_mod.generate_script(
         model_id="x",
         items=[{"title": "Headline", "url": "u", "source": "s"}],
@@ -35,7 +37,9 @@ def test_series_continuity_inserts_recap_and_bible(monkeypatch):
             '"segments":[{"narration":"N","visual_prompt":"V","on_screen_text":"O"}],"cta":"C"}'
         )
 
-    monkeypatch.setattr(brain_mod, "_infer_text_with_optional_holder", fake_infer)
+    from src.content.brain import api as brain_api
+
+    monkeypatch.setattr(brain_api, "_infer_text_with_optional_holder", fake_infer)
     brain_mod.generate_script(
         model_id="x",
         items=[{"title": "Headline", "url": "u", "source": "s"}],

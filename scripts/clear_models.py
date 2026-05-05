@@ -16,15 +16,17 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts._common import clear_path_robust, ensure_repo_on_path
+
+ensure_repo_on_path(root=ROOT)
+
 from src.core.config import get_paths
-from src.util.fs_delete import rmtree_robust
 
 
 def main() -> None:
@@ -32,39 +34,10 @@ def main() -> None:
     parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
     args = parser.parse_args()
 
-    p = get_paths().models_dir
-    print(f"Target: {p}")
-
-    if not args.yes:
-        try:
-            r = input("Delete ALL contents of models/? Type YES: ").strip()
-        except EOFError:
-            r = ""
-        if r != "YES":
-            print("Aborted.")
-            sys.exit(1)
-
-    for attempt in range(1, 6):
-        err = rmtree_robust(p, attempts=10, base_delay_s=0.25)
-        if err is None:
-            if not p.exists():
-                break
-            try:
-                if not any(p.iterdir()):
-                    break
-            except OSError:
-                break
-        print(f"Attempt {attempt}: {err}")
-        time.sleep(1.5)
-
-    p.mkdir(parents=True, exist_ok=True)
-
-    try:
-        still_has_files = p.exists() and any(p.iterdir())
-    except OSError:
-        still_has_files = True
-
-    if still_has_files:
+    err = clear_path_robust(get_paths().models_dir, label="models/", skip_confirm=args.yes)
+    if err == "aborted":
+        sys.exit(1)
+    if err is not None:
         print(
             "\nCould not fully clear models/ (files still locked).\n"
             "Close the app and any download scripts, then run:\n"

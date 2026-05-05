@@ -55,6 +55,7 @@ from UI.dialogs.frameless_dialog import aquaduct_information
 from UI.widgets.model_execution_toggle import ModelExecutionModeToggle
 from UI.widgets.models_storage_toggle import ModelsStorageModeToggle
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSlider, QuantAccentSlider
+from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_title
 from UI.help.tutorial_links import help_tooltip_rich, help_tooltip_rich_unless_already
 from UI.workers import ModelSizePingWorker
@@ -226,11 +227,10 @@ def attach_settings_tab(win) -> None:
         "QScrollArea#modelLocalScroll { background: transparent; border: none; }"
         "QScrollArea#modelLocalScroll > QWidget > QWidget { background: transparent; }"
     )
-    local_page = QWidget()
-    ll = QVBoxLayout(local_page)
+    inner_root, _, _, ll = make_tab_root()
     ll.setContentsMargins(0, 0, 10, 0)
     ll.setSpacing(8)
-    win._local_model_shell = local_page
+    win._local_model_shell = inner_root
 
     ll.addWidget(section_title("Models (select + download)", emphasis=True))
 
@@ -1503,7 +1503,7 @@ def attach_settings_tab(win) -> None:
     al.addWidget(scroll, 1)
     win._model_api_gen_scroll = scroll
 
-    local_scroll.setWidget(local_page)
+    local_scroll.setWidget(inner_root)
     win._model_local_scroll = local_scroll
     win._model_mode_stack.addWidget(local_scroll)
     win._model_mode_stack.addWidget(api_page)

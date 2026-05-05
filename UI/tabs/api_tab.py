@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 
 
@@ -32,32 +33,27 @@ def attach_api_tab(win) -> None:
     scroll.setMinimumHeight(420)
     scroll.setMaximumHeight(620)
 
-    inner = QWidget()
-    scroll.setWidget(inner)
-    il = QVBoxLayout(inner)
-    il.setContentsMargins(0, 0, 0, 0)
-
-    header = QLabel("Keys & social accounts")
-    header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    il.addWidget(header)
-
-    sub = QLabel("Saved on this computer. Environment variables override what you type here when both are set.")
-    sub.setWordWrap(True)
-    sub.setStyleSheet("color: #B7B7C2; font-size: 12px;")
-    sub.setToolTip(
-        help_tooltip_rich(
-            "HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.",
-            "api_social",
-            slide=0,
-        )
-    )
-    il.addWidget(sub)
-
     from UI.services.api_model_widgets import build_generation_api_panel
 
     win.generation_api_panel = build_generation_api_panel(win)
-    il.insertWidget(2, win.generation_api_panel)
-    win._api_gen_panel_parent_layout = il
+    _api_gen_strip = QWidget()
+    win._api_gen_panel_parent_layout = QVBoxLayout(_api_gen_strip)
+    win._api_gen_panel_parent_layout.setContentsMargins(0, 0, 0, 0)
+    win._api_gen_panel_parent_layout.setSpacing(0)
+    win._api_gen_panel_parent_layout.addWidget(win.generation_api_panel)
+
+    inner_root, _, _, lay = make_tab_root(
+        title="Keys & social accounts",
+        intro_text="Saved on this computer. Environment variables override what you type here when both are set.",
+        intro_tooltip=help_tooltip_rich(
+            "HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.",
+            "api_social",
+            slide=0,
+        ),
+        before_card=(_api_gen_strip,),
+    )
+    scroll.setWidget(inner_root)
+    il = lay
 
     # ---- Hugging Face ----
     hf_card, hf_lay = section_card()

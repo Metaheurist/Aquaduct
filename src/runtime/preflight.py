@@ -57,14 +57,19 @@ def _preflight_smoothness_warnings(settings: AppSettings) -> list[str]:
         return out
     free_mb: int | None = None
     try:
-        import torch
+        from src.util.vram_watchdog import torch_cuda_free_mb
 
-        if torch.cuda.is_available():
-            free_b, _ = torch.cuda.mem_get_info()  # type: ignore[no-untyped-call]
-            free_mb = int(free_b) // (1024 * 1024)
+        mb = torch_cuda_free_mb(None)
+        if mb is not None:
+            free_mb = int(mb)
     except Exception:
         free_mb = None
-    if not rife_vram_budget_ok(free_vram_mb=free_mb):
+        out.append(
+            f"Smoothness 'rife' needs ≥{RIFE_VRAM_BUDGET_MB} MB free VRAM; pipeline will fall back "
+            "to FFmpeg minterpolate. Free GPU memory or pick 'ffmpeg' to silence this warning."
+        )
+        return out
+    if free_mb is not None and not rife_vram_budget_ok(free_vram_mb=free_mb):
         out.append(
             f"Smoothness 'rife' needs ≥{RIFE_VRAM_BUDGET_MB} MB free VRAM; pipeline will fall back "
             "to FFmpeg minterpolate. Free GPU memory or pick 'ffmpeg' to silence this warning."
@@ -106,11 +111,11 @@ def _preflight_spatial_upscale_warnings(settings: AppSettings) -> list[str]:
 
     free_mb: int | None = None
     try:
-        import torch
+        from src.util.vram_watchdog import torch_cuda_free_mb
 
-        if torch.cuda.is_available():
-            free_b, _ = torch.cuda.mem_get_info()  # type: ignore[no-untyped-call]
-            free_mb = int(free_b) // (1024 * 1024)
+        mb = torch_cuda_free_mb(None)
+        if mb is not None:
+            free_mb = int(mb)
     except Exception:
         pass
     if (

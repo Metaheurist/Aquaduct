@@ -12,6 +12,8 @@ visible in the `Two_Sentenced_Horror_Stories` run:
 | Clips drifted toward stock animation regardless of cast | Cartoon/unhinged path used only segment text | Cast names parsed out of `character_context` and injected into each scene |
 | 2-segment scripts produced 2 identical clips | Builder returned exactly `len(segments)` scenes | Optional LLM expansion tops up to `n_scenes` |
 
+`character_context` includes an **Identity tokens** line when the profile sets gender / ethnicity / age band; slideshow / storyboard stages prepend a compact **subject token phrase** before **Visual style** for single-host runs so diffusion sees explicit anchoring cues every frame.
+
 ## Public API
 
 ```python

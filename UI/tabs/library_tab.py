@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.services.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
+from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 
@@ -34,24 +35,17 @@ def attach_library_tab(win) -> None:
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    inner = QWidget()
-    lay = QVBoxLayout(inner)
-    lay.setSpacing(10)
-
-    header = QLabel("Library")
-    header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
-
     sub = QLabel()
     sub.setWordWrap(True)
-    sub.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    sub.setStyleSheet("color: #8A96A3; font-size: 11px; margin-bottom: 8px;")
     win._library_intro_label = sub
-    lay.addWidget(sub)
 
-    _sty = w.style()
-    tool_row = QHBoxLayout()
+    tool_strip = QWidget()
+    tool_row = QHBoxLayout(tool_strip)
+    tool_row.setContentsMargins(0, 0, 0, 0)
     tool_row.setSpacing(8)
 
+    _sty = w.style()
     win.library_refresh_btn = QPushButton()
     win.library_refresh_btn.setIcon(_sty.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
     win.library_refresh_btn.setObjectName("libraryRefreshBtn")
@@ -81,7 +75,12 @@ def attach_library_tab(win) -> None:
     tool_row.addWidget(win.library_open_runs_root_btn)
 
     tool_row.addStretch(1)
-    lay.addLayout(tool_row)
+
+    inner_root, _, _, lay = make_tab_root(
+        title="Library",
+        before_card=(sub, tool_strip),
+    )
+    lay.setSpacing(10)
 
     add_section_spacing(lay, px=10)
 
@@ -176,7 +175,7 @@ def attach_library_tab(win) -> None:
     runs_lay.addLayout(rbtn)
     lay.addWidget(runs_card)
 
-    scroll.setWidget(inner)
+    scroll.setWidget(inner_root)
     outer.addWidget(scroll, 1)
 
     win._library_tab_widget = w

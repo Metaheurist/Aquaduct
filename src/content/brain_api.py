@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, MutableMapping, Sequence
 
 from src.content.character_presets import (
     CharacterAutoPreset,
     GeneratedCharacterFields,
     coerce_generated_character_fields,
-    extract_first_json_object,
 )
+from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
 from src.content.brain import (
     VideoPackage,
     _prompt_for_creative_brief,
@@ -215,7 +215,7 @@ def generate_topic_tag_grounding_notes_openai(
 
 CHARACTER_JSON_SYSTEM = (
     "Return ONLY valid JSON for one character profile. Keys: name, identity, visual_style, "
-    "negatives, use_default_voice (boolean). No markdown or commentary."
+    "negatives, use_default_voice (boolean), gender, ethnicity, age_range. No markdown or commentary."
 )
 
 
@@ -250,10 +250,13 @@ def generate_character_from_preset_openai(
         '- "visual_style": string to prepend to image prompts — look, lighting, wardrobe, set (several short sentences)\n'
         '- "negatives": comma-separated diffusion negative prompts to reduce artifacts (string)\n'
         '- "use_default_voice": boolean — true if a generic project TTS is fine; false if the character needs a distinct voice pick\n'
+        '- "gender": short free-form gender presentation (string)\n'
+        '- "ethnicity": short free-form broad ethnicity / heritage label (string; no slurs; no real-person imitation)\n'
+        '- "age_range": optional string (e.g. "late 20s"); may be empty\n'
         "\n"
         "Rules:\n"
         "- Output ONLY valid JSON. No markdown fences, no commentary before or after.\n"
-        "- Do not include keys other than the five above.\n"
+        "- Do not include keys other than the eight above.\n"
         "- Keep everything original; no real-person imitation.\n"
     )
     if on_llm_task:
@@ -267,7 +270,7 @@ def generate_character_from_preset_openai(
     )
     if on_llm_task:
         on_llm_task("llm_generate", 100, "Character JSON received")
-    blob = extract_first_json_object(raw or "")
+    blob = parse_first_json_dict_from_llm_text(raw or "")
     coerced = coerce_generated_character_fields(blob)
     if coerced is None:
         raise ValueError("Model did not return usable JSON with name, identity, and visual fields.")
@@ -277,4 +280,48 @@ def generate_character_from_preset_openai(
         visual_style=coerced.visual_style[:CHARACTER_FIELD_MAX_LEN],
         negatives=coerced.negatives[:CHARACTER_FIELD_MAX_LEN],
         use_default_voice=coerced.use_default_voice,
+        gender=coerced.gender[:256],
+        ethnicity=coerced.ethnicity[:256],
+        age_range=coerced.age_range[:256],
+    )
+
+
+def dispose_causal_lm_pair(model: Any, tokenizer: Any) -> None:
+    """Release a loaded causal LM pair and best-effort clear CUDA cache."""
+    from src.content.brain import _dispose_causal_lm_pair
+
+    _dispose_causal_lm_pair(model, tokenizer)
+
+
+def infer_text_with_optional_holder(
+    model_id: str,
+    prompt: str,
+    *,
+    llm_holder: MutableMapping[str, Any] | None = None,
+    messages: list[dict[str, str]] | None = None,
+    on_llm_task: Callable[[str, int, str], None] | None = None,
+    max_new_tokens: int = 650,
+    try_llm_4bit: bool = True,
+    llm_cuda_device_index: int | None = None,
+    inference_settings: AppSettings | None = None,
+    quant_mode: str | None = None,
+    cancel_event: Any | None = None,
+    relax_short_json_batch: bool = False,
+) -> str:
+    """Public alias for the local causal-LM one-shot / holder inference entrypoint."""
+    from src.content.brain import _infer_text_with_optional_holder
+
+    return _infer_text_with_optional_holder(
+        model_id,
+        prompt,
+        llm_holder=llm_holder,
+        messages=messages,
+        on_llm_task=on_llm_task,
+        max_new_tokens=max_new_tokens,
+        try_llm_4bit=try_llm_4bit,
+        llm_cuda_device_index=llm_cuda_device_index,
+        inference_settings=inference_settings,
+        quant_mode=quant_mode,
+        cancel_event=cancel_event,
+        relax_short_json_batch=relax_short_json_batch,
     )

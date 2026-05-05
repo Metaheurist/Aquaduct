@@ -355,7 +355,9 @@ class AppSettings:
     elevenlabs_enabled: bool = False
     elevenlabs_api_key: str = ""  # optional cloud TTS; see docs/integrations/elevenlabs.md
     personality_id: str = "auto"
-    active_character_id: str = ""  # empty = no character; see data/characters.json
+    active_character_id: str = ""  # empty = no character; see data/characters.json (lead = first of active_character_ids when set)
+    #: Ordered Run-tab character tags (first = lead: voice + portrait reference). Persisted in ui_settings when non-empty.
+    active_character_ids: tuple[str, ...] = ()
     #: When True (default), auto-generated casts are promoted to ``data/characters.json`` so they
     #: appear in the Characters tab for re-use; deduplicated by name + video_format. See
     #: ``docs/pipeline/character-persistence.md``.

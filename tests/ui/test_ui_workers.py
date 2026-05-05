@@ -22,7 +22,7 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
     from src.content.brain import ScriptSegment, VideoPackage
     from src.core.config import AppSettings
 
-    import UI.workers.impl as wmod
+    import UI.workers.pipeline as wmod
 
     monkeypatch.setattr(wmod, "get_scored_items", lambda *a, **k: (_ for _ in ()).throw(AssertionError("news cache should not load")))
     monkeypatch.setattr(wmod, "get_latest_items", lambda *a, **k: (_ for _ in ()).throw(AssertionError("news cache should not load")))
@@ -31,9 +31,9 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
         root = Path("/tmp/aquaduct_preview_test")
         return SimpleNamespace(news_cache_dir=root / "news_cache", videos_dir=root / "videos")
 
-    monkeypatch.setattr(wmod.pipeline_main, "get_paths", fake_paths)
+    monkeypatch.setattr(wmod, "get_paths", fake_paths)
     monkeypatch.setattr(
-        wmod.pipeline_main,
+        wmod,
         "get_models",
         lambda: SimpleNamespace(llm_id="m", sdxl_turbo_id="i", kokoro_id="k"),
     )

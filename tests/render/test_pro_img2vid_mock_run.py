@@ -154,7 +154,9 @@ def test_pro_stable_video_diffusion_pipeline_mock(monkeypatch: pytest.MonkeyPatc
     assert (assets / "pro_prompt.txt").is_file()
     assert (assets / "pro_keyframes").is_dir()
     text = (assets / "pro_prompt.txt").read_text(encoding="utf-8")
-    assert "Mock headline for Pro" in text
+    # Phase 4: the headline is intentionally *not* forced into every Pro scene prompt; it belongs in overlays.
+    assert "Mock headline for Pro" not in text
+    assert "v1" in text
     img_kw = capture.get("image_kw") or {}
     clip_kw = capture.get("clip_kw") or {}
     assert img_kw.get("sdxl_turbo_model_id") == "stabilityai/sdxl-turbo-1.0"

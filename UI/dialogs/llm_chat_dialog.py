@@ -34,7 +34,7 @@ from UI.dialogs.frameless_dialog import FramelessDialog
 from UI.widgets.tab_sections import section_card, section_title
 from UI.widgets.title_bar_outline_button import styled_outline_button
 
-from src.content.brain import _dispose_causal_lm_pair, _infer_text_with_optional_holder
+from src.content.brain_api import dispose_causal_lm_pair, infer_text_with_optional_holder
 from src.content.llm_chat_rag import format_retrieval_block
 from src.content.llm_chat_system_prompt import DEFAULT_SYSTEM_PROMPT
 from src.core.config import AppSettings, LLMChatGeometry, get_paths
@@ -279,7 +279,7 @@ class _LLMChatWorker(QThread):
 
         try:
             if self._local_messages is not None:
-                raw = _infer_text_with_optional_holder(
+                raw = infer_text_with_optional_holder(
                     self._model_key,
                     "",
                     llm_holder=self._holder,
@@ -290,7 +290,7 @@ class _LLMChatWorker(QThread):
                     cancel_event=self._cancel,
                 )
             else:
-                raw = _infer_text_with_optional_holder(
+                raw = infer_text_with_optional_holder(
                     self._model_key,
                     self._local_prompt,
                     llm_holder=self._holder,
@@ -740,7 +740,7 @@ class LLMChatDialog(FramelessDialog):
             self._worker.wait(3000)
         if self._llm_holder.get("model") is not None:
             try:
-                _dispose_causal_lm_pair(self._llm_holder.get("model"), self._llm_holder.get("tokenizer"))
+                dispose_causal_lm_pair(self._llm_holder.get("model"), self._llm_holder.get("tokenizer"))
             except Exception:
                 pass
             self._llm_holder.clear()

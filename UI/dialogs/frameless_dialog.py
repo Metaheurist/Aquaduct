@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QPushButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -284,6 +285,51 @@ def aquaduct_warning(parent, title: str, text: str) -> None:
 
 def aquaduct_critical(parent, title: str, text: str) -> None:
     aquaduct_information(parent, title, text)
+
+
+def aquaduct_resume_checkpoint_choice(parent, title: str, text: str) -> str:
+    """
+    Three-way resume prompt. Returns ``\"resume\"``, ``\"no\"``, or ``\"discard\"``
+    (discard clears the checkpoint for the discovered project).
+    """
+    d = FramelessDialog(parent, title=title)
+    d.setMinimumWidth(520)
+    d.body_layout.addWidget(_muted_label(text))
+    row = QHBoxLayout()
+    resume_b = styled_outline_button("Resume", "accent_icon", min_width=88)
+    no_b = QPushButton("Not now")
+    no_b.setProperty("buttonRole", "secondary")
+    discard_b = styled_outline_button("Discard checkpoint", "danger", min_width=140)
+    row.addStretch(1)
+    row.addWidget(discard_b)
+    row.addWidget(no_b)
+    row.addWidget(resume_b)
+    d.body_layout.addLayout(row)
+
+    result = {"v": "no"}
+
+    def _resume() -> None:
+        result["v"] = "resume"
+        d.accept()
+
+    def _no() -> None:
+        result["v"] = "no"
+        d.reject()
+
+    def _discard() -> None:
+        result["v"] = "discard"
+        d.accept()
+
+    resume_b.clicked.connect(_resume)
+    no_b.clicked.connect(_no)
+    discard_b.clicked.connect(_discard)
+    resume_b.setDefault(True)
+    resume_b.setAutoDefault(True)
+    try:
+        d.exec()
+    finally:
+        FramelessDialog._blur_release(d)
+    return str(result["v"])
 
 
 def aquaduct_question(parent, title: str, text: str, *, default_no: bool = True) -> bool:

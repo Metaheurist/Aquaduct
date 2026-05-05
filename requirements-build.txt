@@ -1,0 +1,3 @@
+# Minimal deps for PyInstaller EXE builds after `scripts/install_pytorch.py` + runtime requirements.
+# Used by build/build.ps1. For day-to-day dev + tests, use requirements-dev.txt in your normal .venv.
+pyinstaller>=6.6.0

@@ -15,17 +15,18 @@ $ScriptRoot = $PSScriptRoot
 $DefaultAquaductRepo = "C:\Users\OnceU\OneDrive\Documents\GitHub\Aquaduct"
 
 $parent = Split-Path -Parent $ScriptRoot
-if (Test-Path -LiteralPath (Join-Path $parent "src\torch_install.py")) {
+$torchMarker = "src\models\torch_install.py"
+if (Test-Path -LiteralPath (Join-Path $parent $torchMarker)) {
     $RepoRoot = $parent
 }
-elseif (Test-Path -LiteralPath (Join-Path $ScriptRoot "src\torch_install.py")) {
+elseif (Test-Path -LiteralPath (Join-Path $ScriptRoot $torchMarker)) {
     $RepoRoot = $ScriptRoot
 }
-elseif (Test-Path -LiteralPath (Join-Path $DefaultAquaductRepo "src\torch_install.py")) {
+elseif (Test-Path -LiteralPath (Join-Path $DefaultAquaductRepo $torchMarker)) {
     $RepoRoot = $DefaultAquaductRepo
 }
 else {
-    Write-Error "Could not find Aquaduct (src\torch_install.py). Edit `$DefaultAquaductRepo in this script to your clone path."
+    Write-Error "Could not find Aquaduct ($torchMarker). Edit `$DefaultAquaductRepo in this script to your clone path."
 }
 
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
@@ -59,9 +60,9 @@ function Import-DotEnv {
 Import-DotEnv (Join-Path $RepoRoot ".env")
 
 $ReqFile = Join-Path $RepoRoot "requirements.txt"
-$TorchInstallSrc = Join-Path $RepoRoot "src\torch_install.py"
+$TorchInstallSrc = Join-Path $RepoRoot $torchMarker
 if (-not (Test-Path -LiteralPath $ReqFile) -or -not (Test-Path -LiteralPath $TorchInstallSrc)) {
-    Write-Error "Not an Aquaduct repo (missing requirements.txt or src\torch_install.py): $RepoRoot"
+    Write-Error "Not an Aquaduct repo (missing requirements.txt or $torchMarker): $RepoRoot"
 }
 
 $LogsDir = Join-Path $ScriptRoot "logs"
@@ -92,7 +93,7 @@ def main() -> int:
     p = str(root_p)
     if p not in sys.path:
         sys.path.insert(0, p)
-    from src.torch_install import main as run
+    from src.models.torch_install import main as run
 
     return int(run())
 
@@ -264,7 +265,7 @@ try {
     & $VenvPython -m pip install --upgrade pip setuptools wheel
     if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
 
-    Write-Host "=== PyTorch + requirements (embedded bootstrap -> src.torch_install) ==="
+    Write-Host "=== PyTorch + requirements (embedded bootstrap -> src.models.torch_install) ==="
     & $VenvPython $PyTorchBootstrap --with-rest
     if ($LASTEXITCODE -ne 0) { throw "torch install failed" }
 
