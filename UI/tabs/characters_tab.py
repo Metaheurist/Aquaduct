@@ -25,6 +25,10 @@ from src.content.character_presets import (
     GeneratedCharacterFields,
     character_auto_presets_for_ui,
     get_character_auto_preset_by_id,
+    CHARACTER_AGE_RANGE_OPTIONS,
+    CHARACTER_ETHNICITY_OPTIONS,
+    CHARACTER_GENDER_OPTIONS,
+    CHARACTER_VOICE_INSTRUCTION_OPTIONS,
 )
 from src.content.characters_store import (
     Character,
@@ -54,6 +58,19 @@ from UI.help.tutorial_links import help_tooltip_rich
 from UI.theme import resolve_palette
 from UI.widgets.toolbar_svg_icons import qicon_toolbar
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
+
+
+def _fill_fixed_combo(combo: QComboBox, options: list[tuple[str, str]], current_value: str) -> None:
+    combo.blockSignals(True)
+    combo.clear()
+    cur = (current_value or "").strip()
+    for label, value in options:
+        combo.addItem(label, value)
+    if cur and combo.findData(cur) < 0:
+        combo.addItem(f"[custom] {cur[:48]}", cur)
+    idx = combo.findData(cur) if cur else 0
+    combo.setCurrentIndex(idx if idx >= 0 else 0)
+    combo.blockSignals(False)
 
 
 class _PortraitThumbLabel(QLabel):
@@ -269,21 +286,21 @@ def attach_characters_tab(win) -> None:
 
     tok_row = QHBoxLayout()
     tok_row.setSpacing(8)
-    for _lbl_txt, _attr in (
-        ("Gender", "character_gender_edit"),
-        ("Ethnicity", "character_ethnicity_edit"),
-        ("Age band", "character_age_range_edit"),
+    for _lbl_txt, _attr, _options in (
+        ("Gender", "character_gender_combo", CHARACTER_GENDER_OPTIONS),
+        ("Ethnicity", "character_ethnicity_combo", CHARACTER_ETHNICITY_OPTIONS),
+        ("Age band", "character_age_range_combo", CHARACTER_AGE_RANGE_OPTIONS),
     ):
         col = QVBoxLayout()
         col.setSpacing(2)
         t_l = QLabel(_lbl_txt)
         t_l.setStyleSheet("color: #B7B7C2; font-size: 11px;")
         col.addWidget(t_l)
-        le = QLineEdit()
-        le.setPlaceholderText("Optional — anchors narration + stills")
-        le.setMaximumHeight(26)
-        setattr(win, _attr, le)
-        col.addWidget(le)
+        cb = NoWheelComboBox()
+        cb.setMaximumHeight(26)
+        setattr(win, _attr, cb)
+        _fill_fixed_combo(cb, _options, "")
+        col.addWidget(cb)
         tok_row.addLayout(col)
     edit_lay.addLayout(tok_row)
 
@@ -401,14 +418,13 @@ def attach_characters_tab(win) -> None:
         )
     )
     edit_lay.addWidget(lbl_vi)
-    win.character_voice_instruction_edit = QTextEdit()
-    win.character_voice_instruction_edit.setPlaceholderText(
-        'Example: "Young woman, raspy, speaks fast" - only when MOSS is your voice model in Settings.'
+    win.character_voice_instruction_combo = NoWheelComboBox()
+    win.character_voice_instruction_combo.setMaximumHeight(26)
+    win.character_voice_instruction_combo.setToolTip(
+        'Used by MOSS-VoiceGenerator and ElevenLabs. Choose "(LLM decides)" to let generation pick.'
     )
-    win.character_voice_instruction_edit.setAcceptRichText(False)
-    win.character_voice_instruction_edit.setFixedHeight(56)
-    win.character_voice_instruction_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-    edit_lay.addWidget(win.character_voice_instruction_edit)
+    _fill_fixed_combo(win.character_voice_instruction_combo, CHARACTER_VOICE_INSTRUCTION_OPTIONS, "")
+    edit_lay.addWidget(win.character_voice_instruction_combo)
 
     win.character_el_container = QWidget()
     el_outer = QVBoxLayout(win.character_el_container)
@@ -573,16 +589,16 @@ def attach_characters_tab(win) -> None:
 
     def _load_form(c: Character) -> None:
         win.character_name_edit.setText(c.name)
-        win.character_gender_edit.setText(c.gender)
-        win.character_ethnicity_edit.setText(c.ethnicity)
-        win.character_age_range_edit.setText(c.age_range)
+        _fill_fixed_combo(win.character_gender_combo, CHARACTER_GENDER_OPTIONS, c.gender)
+        _fill_fixed_combo(win.character_ethnicity_combo, CHARACTER_ETHNICITY_OPTIONS, c.ethnicity)
+        _fill_fixed_combo(win.character_age_range_combo, CHARACTER_AGE_RANGE_OPTIONS, c.age_range)
         win.character_identity_edit.setPlainText(c.identity)
         win.character_visual_edit.setPlainText(c.visual_style)
         win.character_negatives_edit.setPlainText(c.negatives)
         win.character_default_voice_chk.setChecked(c.use_default_voice)
         _fill_voice_combo(win.character_voice_combo, c.pyttsx3_voice_id)
         win.character_kokoro_edit.setText(c.kokoro_voice)
-        win.character_voice_instruction_edit.setPlainText(c.voice_instruction)
+        _fill_fixed_combo(win.character_voice_instruction_combo, CHARACTER_VOICE_INSTRUCTION_OPTIONS, c.voice_instruction)
         if elevenlabs_available_for_app(win.settings):
             _fill_el_voice_combo(win.character_el_voice_combo, c.elevenlabs_voice_id, _el_voices_cache)
         else:
@@ -617,14 +633,14 @@ def attach_characters_tab(win) -> None:
             identity=win.character_identity_edit.toPlainText(),
             visual_style=win.character_visual_edit.toPlainText(),
             negatives=win.character_negatives_edit.toPlainText(),
-            gender=win.character_gender_edit.text().strip(),
-            ethnicity=win.character_ethnicity_edit.text().strip(),
-            age_range=win.character_age_range_edit.text().strip(),
+            gender=str(win.character_gender_combo.currentData() or "").strip(),
+            ethnicity=str(win.character_ethnicity_combo.currentData() or "").strip(),
+            age_range=str(win.character_age_range_combo.currentData() or "").strip(),
             reference_image_rel=str(getattr(base, "reference_image_rel", "") or "").strip(),
             use_default_voice=bool(win.character_default_voice_chk.isChecked()),
             pyttsx3_voice_id=str(win.character_voice_combo.currentData() or "").strip(),
             kokoro_voice=win.character_kokoro_edit.text().strip(),
-            voice_instruction=win.character_voice_instruction_edit.toPlainText().strip(),
+            voice_instruction=str(win.character_voice_instruction_combo.currentData() or "").strip(),
             elevenlabs_voice_id=str(win.character_el_voice_combo.currentData() or "").strip(),
         )
 
@@ -759,13 +775,18 @@ def attach_characters_tab(win) -> None:
             if not isinstance(fields, GeneratedCharacterFields):
                 return
             win.character_name_edit.setText(fields.name)
-            win.character_gender_edit.setText(fields.gender)
-            win.character_ethnicity_edit.setText(fields.ethnicity)
-            win.character_age_range_edit.setText(fields.age_range)
+            _fill_fixed_combo(win.character_gender_combo, CHARACTER_GENDER_OPTIONS, fields.gender)
+            _fill_fixed_combo(win.character_ethnicity_combo, CHARACTER_ETHNICITY_OPTIONS, fields.ethnicity)
+            _fill_fixed_combo(win.character_age_range_combo, CHARACTER_AGE_RANGE_OPTIONS, fields.age_range)
             win.character_identity_edit.setPlainText(fields.identity)
             win.character_visual_edit.setPlainText(fields.visual_style)
             win.character_negatives_edit.setPlainText(fields.negatives)
             win.character_default_voice_chk.setChecked(fields.use_default_voice)
+            _fill_fixed_combo(
+                win.character_voice_instruction_combo,
+                CHARACTER_VOICE_INSTRUCTION_OPTIONS,
+                getattr(fields, "voice_instruction", ""),
+            )
             if hasattr(win, "_append_log"):
                 win._append_log(f"Generated character fields - preset “{preset.label}”. Click Save character to keep.")
 
