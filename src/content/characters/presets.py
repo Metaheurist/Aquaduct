@@ -13,6 +13,47 @@ from typing import Any
 from src.content.topics import normalize_video_format
 
 
+CHARACTER_GENDER_OPTIONS: list[tuple[str, str]] = [
+    ("(LLM decides)", ""),
+    ("Female", "female"),
+    ("Male", "male"),
+    ("Non-binary", "non-binary"),
+]
+
+CHARACTER_ETHNICITY_OPTIONS: list[tuple[str, str]] = [
+    ("(LLM decides)", ""),
+    ("East Asian", "east asian"),
+    ("South Asian", "south asian"),
+    ("Southeast Asian", "southeast asian"),
+    ("Middle Eastern", "middle eastern"),
+    ("Black", "black"),
+    ("White", "white"),
+    ("Latino / Hispanic", "latino"),
+    ("Indigenous", "indigenous"),
+    ("Mixed", "mixed"),
+]
+
+CHARACTER_AGE_RANGE_OPTIONS: list[tuple[str, str]] = [
+    ("(LLM decides)", ""),
+    ("Teen", "teen"),
+    ("Early 20s", "early 20s"),
+    ("Late 20s", "late 20s"),
+    ("30s", "30s"),
+    ("40s", "40s"),
+    ("50s+", "50s+"),
+]
+
+CHARACTER_VOICE_INSTRUCTION_OPTIONS: list[tuple[str, str]] = [
+    ("(LLM decides)", ""),
+    ("Neutral narrator", "neutral narrator"),
+    ("Warm & friendly", "warm, friendly, clear"),
+    ("Deadpan / dry", "deadpan, dry humor, steady pace"),
+    ("High energy", "high energy, upbeat, fast pace"),
+    ("Calm & slow", "calm, slow, soothing"),
+    ("Gravelly", "gravelly, mature, steady"),
+]
+
+
 @dataclass(frozen=True)
 class CharacterAutoPreset:
     """Parameters passed into the script LLM to shape the generated profile."""
@@ -33,6 +74,7 @@ class GeneratedCharacterFields:
     gender: str = ""
     ethnicity: str = ""
     age_range: str = ""
+    voice_instruction: str = ""
 
 
 def get_character_auto_presets() -> list[CharacterAutoPreset]:
@@ -189,6 +231,20 @@ def coerce_generated_character_fields(raw: Any) -> GeneratedCharacterFields | No
     gender = str(raw.get("gender", "") or "").strip()
     ethnicity = str(raw.get("ethnicity", "") or "").strip()
     age_range = str(raw.get("age_range", "") or "").strip()
+    voice_instruction = str(raw.get("voice_instruction", "") or "").strip()
+
+    allowed_gender = {v for _l, v in CHARACTER_GENDER_OPTIONS}
+    allowed_eth = {v for _l, v in CHARACTER_ETHNICITY_OPTIONS}
+    allowed_age = {v for _l, v in CHARACTER_AGE_RANGE_OPTIONS}
+    allowed_vi = {v for _l, v in CHARACTER_VOICE_INSTRUCTION_OPTIONS}
+    if gender and gender not in allowed_gender:
+        gender = ""
+    if ethnicity and ethnicity not in allowed_eth:
+        ethnicity = ""
+    if age_range and age_range not in allowed_age:
+        age_range = ""
+    if voice_instruction and voice_instruction not in allowed_vi:
+        voice_instruction = ""
     return GeneratedCharacterFields(
         name=name,
         identity=identity,
@@ -198,4 +254,5 @@ def coerce_generated_character_fields(raw: Any) -> GeneratedCharacterFields | No
         gender=gender[:256],
         ethnicity=ethnicity[:256],
         age_range=age_range[:256],
+        voice_instruction=voice_instruction[:256],
     )

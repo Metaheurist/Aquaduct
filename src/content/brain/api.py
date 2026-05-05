@@ -594,6 +594,12 @@ def generate_character_from_preset_llm(
     Does not assign pyttsx3 / ElevenLabs IDs — user picks voices in the UI.
     """
     from ..characters_store import CHARACTER_FIELD_MAX_LEN, CHARACTER_NAME_MAX_LEN
+    from ..characters.presets import (
+        CHARACTER_AGE_RANGE_OPTIONS,
+        CHARACTER_ETHNICITY_OPTIONS,
+        CHARACTER_GENDER_OPTIONS,
+        CHARACTER_VOICE_INSTRUCTION_OPTIONS,
+    )
 
     notes = (extra_notes or "").strip()
     notes_block = f"Extra notes from the user (optional):\n{notes}\n" if notes else ""
@@ -605,6 +611,10 @@ def generate_character_from_preset_llm(
     if vf == "nsfw" or pid.startswith("nsfw_"):
         gblk = nsfw_llm_guardrails_block()
         guard = (gblk + "\n") if gblk else ""
+    allowed_gender = [v for _l, v in CHARACTER_GENDER_OPTIONS]
+    allowed_eth = [v for _l, v in CHARACTER_ETHNICITY_OPTIONS]
+    allowed_age = [v for _l, v in CHARACTER_AGE_RANGE_OPTIONS]
+    allowed_vi = [v for _l, v in CHARACTER_VOICE_INSTRUCTION_OPTIONS]
     prompt = (
         "You help users of a desktop short-form video app (9:16 vertical).\n"
         f"{guard}"
@@ -612,19 +622,25 @@ def generate_character_from_preset_llm(
         f"Archetype label: {preset.label}\n"
         f"Creative direction for this archetype:\n{arch}\n\n"
         f"{notes_block}"
+        "The UI uses dropdowns for a few fields. You MUST choose from the allowed values exactly.\n"
+        f"Allowed gender values: {allowed_gender}\n"
+        f"Allowed ethnicity values: {allowed_eth}\n"
+        f"Allowed age_range values: {allowed_age}\n"
+        f"Allowed voice_instruction values: {allowed_vi}\n\n"
         "Output a single JSON object with EXACTLY these keys:\n"
         '- "name": short memorable display name (string)\n'
         '- "identity": persona for script + on-screen context — tone, audience, how they talk (string, several sentences)\n'
         '- "visual_style": string to prepend to image prompts — look, lighting, wardrobe, set (several short sentences)\n'
         '- "negatives": comma-separated diffusion negative prompts to reduce artifacts (string)\n'
         '- "use_default_voice": boolean — true if a generic project TTS is fine; false if the character needs a distinct voice pick\n'
-        '- "gender": short free-form gender presentation for narration + visuals (string, e.g. "woman", "non-binary host")\n'
-        '- "ethnicity": short free-form broad ethnicity / heritage label for consistent visuals (string; avoid slurs; no real-person imitation)\n'
-        '- "age_range": optional string (e.g. "late 20s", "40s"); may be empty\n'
+        '- "gender": one of the allowed gender values above (string)\n'
+        '- "ethnicity": one of the allowed ethnicity values above (string)\n'
+        '- "age_range": one of the allowed age_range values above (string)\n'
+        '- "voice_instruction": one of the allowed voice_instruction values above (string)\n'
         "\n"
         "Rules:\n"
         "- Output ONLY valid JSON. No markdown fences, no commentary before or after.\n"
-        "- Do not include keys other than the eight above.\n"
+        "- Do not include keys other than the nine above.\n"
         "- Keep everything original; no real-person imitation.\n"
     )
     with vram_guard():
@@ -649,6 +665,7 @@ def generate_character_from_preset_llm(
         gender=coerced.gender[:256],
         ethnicity=coerced.ethnicity[:256],
         age_range=coerced.age_range[:256],
+        voice_instruction=coerced.voice_instruction[:256],
     )
 
 
