@@ -1,9 +1,9 @@
 from src.content.character_presets import (
     coerce_generated_character_fields,
-    extract_first_json_object,
     get_character_auto_preset_by_id,
     get_character_auto_presets,
 )
+from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
 
 
 def test_character_presets_cover_key_archetypes():
@@ -20,9 +20,9 @@ def test_get_character_auto_preset_by_id():
     assert get_character_auto_preset_by_id("nosuch") is None
 
 
-def test_extract_first_json_object():
+def test_parse_first_json_dict_character_shape():
     raw = 'Here you go:\n```json\n{"name": "X", "identity": "a", "visual_style": "v", "negatives": "n", "use_default_voice": true}\n```'
-    d = extract_first_json_object(raw)
+    d = parse_first_json_dict_from_llm_text(raw)
     assert d == {
         "name": "X",
         "identity": "a",
@@ -40,11 +40,17 @@ def test_coerce_generated_character_fields():
             "visual_style": "Neon",
             "negatives": "blur",
             "use_default_voice": False,
+            "gender": "non-binary host",
+            "ethnicity": "Latine",
+            "age_range": "30s",
         }
     )
     assert g is not None
     assert g.name == "Pat"
     assert g.use_default_voice is False
+    assert g.gender == "non-binary host"
+    assert g.ethnicity == "Latine"
+    assert g.age_range == "30s"
 
 
 def test_coerce_requires_name_and_some_content():

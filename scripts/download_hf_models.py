@@ -35,45 +35,35 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts._common import ensure_repo_on_path, load_repo_dotenv
+
+ensure_repo_on_path(root=ROOT)
+load_repo_dotenv(root=ROOT)
+
+from src.models.model_manager import model_options
+
 # Paste your Hugging Face token here (e.g. hf_...). Leave empty to use --token or env instead.
 # Precedence: --token CLI > this variable > HF_TOKEN / HUGGINGFACEHUB_API_TOKEN env.
 HF_TOKEN = ""
 
-# Same defaults as src/config.py get_models()
-MINIMAL_REPOS = [
-    "Qwen/Qwen3-14B",
-    "black-forest-labs/FLUX.1-schnell",
-    "hexgrad/Kokoro-82M",
-]
 
-# Same repo ids as src/models/model_manager.py model_options() (dedupe order-preserving)
-ALL_REPOS = [
-    # Script (LLM)
-    "Qwen/Qwen3-14B",
-    "Sao10K/Fimbulvetr-11B-v2",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "sophosympatheia/Midnight-Miqu-70B-v1.5",
-    "deepseek-ai/DeepSeek-V3",
-    # Image (T2I)
-    "black-forest-labs/FLUX.1.1-pro-ultra",
-    "black-forest-labs/FLUX.1-dev",
-    "black-forest-labs/FLUX.1-schnell",
-    "stabilityai/stable-diffusion-3.5-large",
-    "stabilityai/stable-diffusion-3.5-medium",
-    "stabilityai/stable-diffusion-3.5-large-turbo",
-    # Video / motion
-    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
-    "genmo/mochi-1-preview",
-    "THUDM/CogVideoX-5b",
-    "Tencent/HunyuanVideo",
-    "Lightricks/LTX-2",
-    # Voice (TTS)
-    "hexgrad/Kokoro-82M",
-    "OpenMOSS-Team/MOSS-VoiceGenerator",
-]
-
-
+def curated_repo_ids(*, full: bool) -> list[str]:
+    opts = model_options()
+    if full:
+        return list(dict.fromkeys(o.repo_id for o in opts))
+    picked: list[str] = []
+    seen_kind: set[str] = set()
+    for kind in ("script", "image", "voice"):
+        for o in sorted(opts, key=lambda x: (x.kind, x.ui_sequence, x.order, x.repo_id)):
+            if o.kind == kind and kind not in seen_kind:
+                seen_kind.add(kind)
+                picked.append(o.repo_id)
+                break
+    return picked
 def _safe_repo_dirname(repo_id: str) -> str:
     s = repo_id.strip().replace("/", "__")
     s = re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
@@ -144,7 +134,7 @@ def main() -> int:
         return 1
 
     token = _resolve_token(args.token)
-    repos = ALL_REPOS if args.all else MINIMAL_REPOS
+    repos = curated_repo_ids(full=args.all)
     seen: set[str] = set()
     repos = [r for r in repos if not (r in seen or seen.add(r))]
 

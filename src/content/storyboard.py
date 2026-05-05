@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Literal
 
 from .brain import VideoPackage
-from .characters_store import Character, character_reference_image_resolved
+from .characters_store import Character, character_reference_image_resolved, subject_token_phrase
 from debug import dprint
-from .prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt
+from .prompt_conditioning import assign_scene_types, condition_prompt, default_negative_prompt, scene_type_from_prompt_text
 
 
 SceneRole = Literal["broll", "infographic", "product_shot", "portrait", "timeline", "map"]
@@ -44,18 +44,7 @@ class Storyboard:
 
 
 def _guess_role(prompt: str) -> SceneRole:
-    p = (prompt or "").lower()
-    if any(k in p for k in ("timeline", "roadmap", "over time", "before/after")):
-        return "timeline"
-    if any(k in p for k in ("map", "world", "country", "region", "location")):
-        return "map"
-    if any(k in p for k in ("infographic", "chart", "graph", "stats", "numbers")):
-        return "infographic"
-    if any(k in p for k in ("portrait", "founder", "creator", "developer", "person")):
-        return "portrait"
-    if any(k in p for k in ("ui", "dashboard", "app", "interface", "product")):
-        return "product_shot"
-    return "broll"
+    return scene_type_from_prompt_text(prompt)  # type: ignore[return-value]
 
 
 def _rotate_no_repeat(seq: list[SceneRole]) -> list[SceneRole]:
@@ -115,9 +104,18 @@ def build_storyboard(
     dprint("storyboard", "build_storyboard", f"title={pkg.title[:80]!r}", f"max_scenes={max_scenes}")
     segs = list(pkg.segments or [])[: max(1, int(max_scenes))]
     raw_prompts = [_merge_narration_into_weak_prompt(s.narration, s.visual_prompt) for s in segs]
-    if character is not None and (character.visual_style or "").strip():
-        vs = character.visual_style.strip()
-        prompts = [f"{vs}, {p}" if (p or "").strip() else vs for p in raw_prompts]
+    if character is not None:
+        vs = (character.visual_style or "").strip()
+        st = subject_token_phrase(character)
+        if vs or st:
+            name_lower = (character.name or "").strip().lower()
+            if name_lower.startswith("cast:"):
+                merged_vs = vs if vs else st
+            else:
+                merged_vs = f"{st}, {vs}" if st and vs else (st or vs)
+            prompts = [f"{merged_vs}, {p}" if (p or "").strip() else merged_vs for p in raw_prompts]
+        else:
+            prompts = list(raw_prompts)
     else:
         prompts = list(raw_prompts)
     if (

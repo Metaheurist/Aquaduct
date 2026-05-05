@@ -105,9 +105,11 @@ def test_generate_character_from_preset_openai_prepends_guardrails_for_nsfw():
 
 
 def test_generate_character_from_preset_openai_omits_guardrails_when_session_guardrail_bypass(monkeypatch: pytest.MonkeyPatch):
-    import src.content.nsfw_guardrails as ng
-
-    monkeypatch.setattr(ng, "dev_content_guardrails_disabled", lambda: True)
+    # Patch defining module: star-import shim re-exports funcs whose globals stay on ``nsfw.guardrails``.
+    monkeypatch.setattr(
+        "src.content.nsfw.guardrails.dev_content_guardrails_disabled",
+        lambda: True,
+    )
     app = replace(_minimal_app(), video_format="nsfw")
     raw = (
         '{"name":"Alex","identity":"Warm host.","visual_style":"Studio lighting, casual blazer.",'

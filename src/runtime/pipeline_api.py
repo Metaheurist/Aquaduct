@@ -888,3 +888,14 @@ def run_once_api(
     _pipe_progress(on_progress, 100, 100, "Done (API)")
     dprint("pipeline", "run_once_api complete", "slideshow", str(video_dir))
     return video_dir
+
+
+def run_once(**kwargs):
+    """
+    Desktop / local pipeline entry point (non-API mode dispatches inside ``main.run_once``).
+
+    Avoids importing ``main`` from worker modules; delegates to the single choke point in ``main.py``.
+    """
+    import main as m
+
+    return m.run_once(**kwargs)

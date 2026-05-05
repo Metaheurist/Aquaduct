@@ -1203,6 +1203,15 @@ def run_once(
             _ck_assets_cast = _ckpt_target_assets()
             _reuse_cast_fp = (_ck_assets_cast / "generated_cast.json") if _ck_assets_cast is not None else None
             _cast_loaded = False
+            # Tests and API-style entrypoints often provide a prebuilt package/prompts; avoid loading the LLM
+            # just to invent a cast. Fall back to the deterministic heuristic cast.
+            if prebuilt_pkg is not None:
+                cast = fallback_cast_for_show(
+                    video_format=vf_cast2,
+                    topic_tags=list(effective_topic_tags(app)),
+                    headline_seed=_head_seed,
+                )
+                _cast_loaded = True
             if (
                 bool(getattr(video_settings, "resume_partial_pipeline", False))
                 and _reuse_cast_fp is not None

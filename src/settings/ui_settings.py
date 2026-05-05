@@ -48,6 +48,18 @@ def _sanitize_tags(tags: Any) -> list[str]:
     return out[:50]
 
 
+def _sanitize_character_ids(raw: Any) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        return ()
+    out: list[str] = []
+    for x in raw:
+        s = str(x or "").strip()
+        if not s or s in out:
+            continue
+        out.append(s)
+    return tuple(out[:24])
+
+
 def _norm_video_format(s: Any) -> VideoFormat:
     t = str(s or "news").strip().lower()
     return t if t in VIDEO_FORMATS else "news"
@@ -364,6 +376,12 @@ def app_settings_from_dict(data: Any) -> AppSettings:
     if isinstance(data, dict) and _video_model_id.strip().lower().replace("\\", "/") == "genmo/mochi-1.5-final":
         _video_model_id = "genmo/mochi-1-preview"
 
+    legacy_active = str(data.get("active_character_id", "") or "").strip() if isinstance(data, dict) else ""
+    id_tuple = _sanitize_character_ids(data.get("active_character_ids")) if isinstance(data, dict) else ()
+    if not id_tuple and legacy_active:
+        id_tuple = (legacy_active,)
+    lead_id = id_tuple[0] if id_tuple else ""
+
     return AppSettings(
         topic_tags_by_mode=topic_map,
         topic_tag_notes=_sanitize_topic_tag_notes_for_settings(data.get("topic_tag_notes"))
@@ -398,7 +416,8 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         art_style_preset_id=str(data.get("art_style_preset_id", "balanced") or "balanced")
         if isinstance(data, dict)
         else "balanced",
-        active_character_id=str(data.get("active_character_id", "")) if isinstance(data, dict) else "",
+        active_character_id=lead_id if isinstance(data, dict) else "",
+        active_character_ids=id_tuple if isinstance(data, dict) else (),
         auto_save_generated_cast=bool(data.get("auto_save_generated_cast", True))
         if isinstance(data, dict)
         else True,

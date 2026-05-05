@@ -23,7 +23,9 @@ from src.core.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
 from src.content.characters_store import load_all
 from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
+from UI.widgets.character_tag_picker import CharacterTagPicker
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 
@@ -39,14 +41,8 @@ def attach_run_tab(win) -> None:
     scroll.setFrameShape(QScrollArea.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    inner = QWidget()
-    lay = QVBoxLayout(inner)
-    lay.setContentsMargins(0, 0, 0, 0)
-    scroll.setWidget(inner)
-
-    header = QLabel("Run Aquaduct (one-shot)")
-    header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
+    inner_root, _, _, lay = make_tab_root(title="Run Aquaduct (one-shot)")
+    scroll.setWidget(inner_root)
 
     out_card, out_lay = section_card()
     out_lay.addWidget(section_title("Output", emphasis=True))
@@ -503,29 +499,50 @@ def attach_run_tab(win) -> None:
     sc_lay.addWidget(win.personality_hint)
 
     c_row = QHBoxLayout()
-    c_lbl = QLabel("Character")
+    c_lbl = QLabel("Characters")
     c_lbl.setStyleSheet("color: #B7B7C2;")
     c_row.addWidget(c_lbl)
-    win.character_combo = NoWheelComboBox()
-    win.character_combo.addItem("(None)", "")
+    win.character_tag_picker = CharacterTagPicker()
     try:
-        for ch in load_all():
-            win.character_combo.addItem(ch.name, ch.id)
+        chars = load_all()
     except Exception:
-        pass
-    cur_cid = str(getattr(win.settings, "active_character_id", "") or "").strip()
-    if cur_cid:
-        idx_c = win.character_combo.findData(cur_cid)
-        if idx_c >= 0:
-            win.character_combo.setCurrentIndex(idx_c)
-    win.character_combo.setToolTip(
+        chars = []
+    ids = list(getattr(win.settings, "active_character_ids", ()) or ())
+    if not ids:
+        one = str(getattr(win.settings, "active_character_id", "") or "").strip()
+        if one:
+            ids = [one]
+    win.character_tag_picker.set_state(characters=chars, selected_ids=ids)
+    win.character_tag_picker.setToolTip(
         help_tooltip_rich(
-            "Optional character ties voice and visuals to a profile from the Characters tab.",
+            "Pick one or more saved characters. First in the list is Lead (voice + portrait reference). "
+            "Drag rows to reorder. Add with the button; remove via right-click.",
             "run",
             slide=2,
         )
     )
-    c_row.addWidget(win.character_combo, 1)
+    c_row.addWidget(win.character_tag_picker, 1)
+    # Legacy single-select API: hidden combo synced to Lead for code that still calls currentData().
+    win.character_combo = NoWheelComboBox()
+    win.character_combo.setVisible(False)
+
+    def _sync_character_combo_shim() -> None:
+        win.character_combo.blockSignals(True)
+        win.character_combo.clear()
+        win.character_combo.addItem("(None)", "")
+        try:
+            for ch in load_all():
+                win.character_combo.addItem(ch.name, ch.id)
+        except Exception:
+            pass
+        lead_ids = win.character_tag_picker.get_ordered_ids()
+        lead = lead_ids[0] if lead_ids else ""
+        idx = win.character_combo.findData(lead) if lead else 0
+        win.character_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        win.character_combo.blockSignals(False)
+
+    win.character_tag_picker.orderChanged.connect(_sync_character_combo_shim)
+    _sync_character_combo_shim()
     c_row.addStretch(1)
     sc_lay.addLayout(c_row)
 

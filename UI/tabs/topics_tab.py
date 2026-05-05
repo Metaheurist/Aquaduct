@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from src.content.topics import discover_uses_headline_sources, normalize_video_format
 from src.core.config import VIDEO_FORMATS
 from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 
@@ -201,16 +202,15 @@ def _no_topics_dialog(
 
 def attach_topics_tab(win) -> None:
     w = QWidget()
-    lay = QVBoxLayout(w)
+    root_lay = QVBoxLayout(w)
+    root_lay.setContentsMargins(0, 0, 0, 0)
+    root_lay.setSpacing(0)
 
-    header = QLabel("Topics")
-    header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
-
-    intro = QLabel("Per-mode tag lists - same modes as Run. Details: hover Help or the mode control.")
-    intro.setStyleSheet("color: #B7B7C2; font-size: 12px;")
-    intro.setWordWrap(True)
-    lay.addWidget(intro)
+    inner_root, _, _, lay = make_tab_root(
+        title="Topics",
+        intro_text="Per-mode tag lists - same modes as Run. Details: hover Help or the mode control.",
+    )
+    root_lay.addWidget(inner_root, 1)
 
     tags_card, tags_lay = section_card()
     tags_lay.addWidget(section_title("Tags for selected mode", emphasis=True))

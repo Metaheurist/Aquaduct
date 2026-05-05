@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 from debug import pipeline_console
 
@@ -108,29 +107,18 @@ def check_cuda_headroom(device_index: int | None, *, stage: str) -> None:
         return
 
 
-def cuda_mem_snapshot(device_index: int | None) -> dict[str, Any] | None:
-    """Best-effort VRAM snapshot for logging (torch ``mem_get_info``)."""
-    if device_index is None:
-        return None
+def torch_cuda_free_mb(device_index: int | None = None) -> float | None:
+    """Free VRAM in MiB for ``cuda:device_index``, or ``None`` if unavailable."""
     try:
         import torch
 
-        if not cuda_device_reported_by_torch():
+        if not torch.cuda.is_available():
             return None
-        ix = int(device_index)
-        if ix < 0 or ix >= int(torch.cuda.device_count()):
+        ix = int(torch.cuda.current_device()) if device_index is None else int(device_index)
+        n = int(torch.cuda.device_count())
+        if ix < 0 or ix >= n:
             return None
-        free_b, total_b = torch.cuda.mem_get_info(ix)
-        total_b = float(total_b)
-        free_b = float(free_b)
-        if total_b <= 0:
-            return None
-        used_b = total_b - free_b
-        return {
-            "device_index": ix,
-            "free_gib": free_b / (1024**3),
-            "total_gib": total_b / (1024**3),
-            "used_frac": max(0.0, min(1.0, used_b / total_b)),
-        }
+        free_b, _ = torch.cuda.mem_get_info(ix)  # type: ignore[no-untyped-call]
+        return float(free_b) / (1024.0 * 1024.0)
     except Exception:
         return None

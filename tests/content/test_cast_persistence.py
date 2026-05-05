@@ -36,7 +36,9 @@ def isolated_data_dir(monkeypatch, tmp_path: Path) -> Path:
     def _fake_path() -> Path:
         return target
 
-    monkeypatch.setattr(cs, "characters_path", _fake_path)
+    # `characters_store` re-exports functions from `src.content.characters.store`; patch the source module
+    # so all callers (including imported function globals) see it.
+    monkeypatch.setattr("src.content.characters.store.characters_path", _fake_path)
     return tmp_path
 
 

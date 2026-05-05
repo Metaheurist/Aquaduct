@@ -4,18 +4,14 @@ import os
 import sys
 from pathlib import Path
 
-# Allow running as a script from repo root without installing as a package.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Same as the desktop app: load HF_TOKEN / HUGGINGFACEHUB_API_TOKEN from repo `.env`.
-try:
-    from dotenv import load_dotenv
+from scripts._common import ensure_repo_on_path, load_repo_dotenv
 
-    load_dotenv(ROOT / ".env")
-except Exception:
-    pass
+ensure_repo_on_path(root=ROOT)
+load_repo_dotenv(root=ROOT)
 
 from src.core.config import get_paths
 from src.models.model_manager import download_model_to_project, model_options

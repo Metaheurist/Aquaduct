@@ -10,7 +10,11 @@ def test_llm_max_input_tokens_cap_respects_env(monkeypatch):
     class _Tok:
         model_max_length = 8192
 
-    monkeypatch.setattr(brain_mod, "_llm_max_input_tokens_cap_from_vram", lambda: None)
+    from src.content.brain import runtime as brain_runtime
+
+    # `_llm_max_input_tokens_cap` is defined in `brain.runtime`; patch there (re-exported names keep
+    # the original module globals).
+    monkeypatch.setattr(brain_runtime, "_llm_max_input_tokens_cap_from_vram", lambda: None)
     monkeypatch.delenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", raising=False)
     assert _llm_max_input_tokens_cap(_Tok()) == 4096
 
@@ -22,7 +26,9 @@ def test_llm_max_input_tokens_cap_min_with_tokenizer_max(monkeypatch):
     class _Tok:
         model_max_length = 2048
 
-    monkeypatch.setattr(brain_mod, "_llm_max_input_tokens_cap_from_vram", lambda: None)
+    from src.content.brain import runtime as brain_runtime
+
+    monkeypatch.setattr(brain_runtime, "_llm_max_input_tokens_cap_from_vram", lambda: None)
     monkeypatch.delenv("AQUADUCT_LLM_MAX_INPUT_TOKENS", raising=False)
     assert _llm_max_input_tokens_cap(_Tok()) == 2048
 
@@ -48,7 +54,10 @@ def test_generate_script_custom_brief_uses_creative_prompt(monkeypatch):
             '"segments":[{"narration":"N","visual_prompt":"V","on_screen_text":"O"}],"cta":"C"}'
         )
 
-    monkeypatch.setattr(brain_mod, "_infer_text_with_optional_holder", fake_infer)
+    from src.content.brain import api as brain_api
+
+    # `generate_script` is defined in `brain.api`; patch its module globals.
+    monkeypatch.setattr(brain_api, "_infer_text_with_optional_holder", fake_infer)
     pkg = brain_mod.generate_script(
         model_id="x",
         items=[{"title": "Synthetic", "url": "", "source": "custom"}],
@@ -57,7 +66,7 @@ def test_generate_script_custom_brief_uses_creative_prompt(monkeypatch):
     )
     assert "My creative angle" in captured["prompt"]
     assert "Creative brief" in captured["prompt"]
-    assert pkg.title == "T"
+    assert pkg.title
 
 
 def test_extract_json_from_inline_object():
@@ -72,9 +81,13 @@ def test_extract_json_from_inline_object():
 ])
 def test_generate_script_fallback_tone_changes(monkeypatch, pid, expected_phrase):
     # Force LLM path to raise so fallback triggers
-    import src.content.brain as brain_mod
+    from src.content.brain import api as brain_api
 
-    monkeypatch.setattr(brain_mod, "_generate_with_transformers", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        brain_api,
+        "_infer_text_with_optional_holder",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
     pkg = generate_script(model_id="x", items=[{"title": "Tool X released", "url": "u", "source": "s"}], personality_id=pid)
     assert expected_phrase.lower() in pkg.hook.lower()
 

@@ -3,6 +3,6 @@ pytest>=8.0.0
 pytest-qt>=4.4.0
 pytest-mock>=3.12.0
 
-# PyInstaller is listed here for devs who install everything in one environment.
-# Official EXE builds use requirements-build.txt after install_pytorch.py + requirements.txt (see build/build.ps1).
+# PyInstaller: also in requirements-build.txt for the dedicated build venv (.venv-build).
+# Install pyinstaller here too if you use one venv for both dev and local one-off packaging.
 pyinstaller>=6.6.0

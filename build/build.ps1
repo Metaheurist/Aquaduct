@@ -5,7 +5,9 @@ Param(
   [switch]$OneFile,
   [switch]$UI,
   # Use repo-root aquaduct-ui.spec (portable paths). Builds onefile windowless per spec; use for parity checks.
-  [switch]$UseSpec
+  [switch]$UseSpec,
+  # Legacy: install full dev stack (pytest, pytest-qt, …) into the build venv instead of PyInstaller-only.
+  [switch]$IncludeDevDeps
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,8 +47,14 @@ Write-Host "Installing PyTorch (CUDA if NVIDIA GPU, else CPU) + runtime dependen
 python scripts/install_pytorch.py --with-rest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Installing build dependencies (pytest + PyInstaller, etc.)"
-pip install -r requirements-dev.txt
+Write-Host "Installing build dependencies"
+if ($IncludeDevDeps) {
+  Write-Host "(full requirements-dev.txt — debugging / legacy only)"
+  pip install -r requirements-dev.txt
+} else {
+  Write-Host "(requirements-build.txt — PyInstaller only; use dev .venv for pytest)"
+  pip install -r requirements-build.txt
+}
 
 if ($UseSpec) {
   if (-not $UI) { throw "-UseSpec requires -UI (desktop UI spec)." }

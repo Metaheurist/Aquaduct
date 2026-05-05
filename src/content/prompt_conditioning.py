@@ -7,6 +7,22 @@ from typing import Literal
 SceneType = Literal["broll", "infographic", "portrait", "product_shot", "timeline", "map"]
 
 
+def scene_type_from_prompt_text(p: str) -> SceneType:
+    """Infer scene type from a single prompt string (shared with storyboard role guessing)."""
+    pl = (p or "").lower()
+    if any(k in pl for k in ("timeline", "before/after", "roadmap", "over time")):
+        return "timeline"
+    if any(k in pl for k in ("map", "world", "country", "region")):
+        return "map"
+    if any(k in pl for k in ("infographic", "chart", "graph", "stats", "numbers")):
+        return "infographic"
+    if any(k in pl for k in ("portrait", "person", "founder", "creator", "developer")):
+        return "portrait"
+    if any(k in pl for k in ("dashboard", "ui", "app", "product", "interface")):
+        return "product_shot"
+    return "broll"
+
+
 def assign_scene_types(prompts: list[str]) -> list[SceneType]:
     """
     Assign a scene type per prompt, enforcing variety (no repeats back-to-back).
@@ -17,20 +33,7 @@ def assign_scene_types(prompts: list[str]) -> list[SceneType]:
     ci = 0
 
     for p in prompts or []:
-        pl = (p or "").lower()
-        guess: SceneType | None = None
-        if any(k in pl for k in ("timeline", "before/after", "roadmap", "over time")):
-            guess = "timeline"
-        elif any(k in pl for k in ("map", "world", "country", "region")):
-            guess = "map"
-        elif any(k in pl for k in ("infographic", "chart", "graph", "stats", "numbers")):
-            guess = "infographic"
-        elif any(k in pl for k in ("portrait", "person", "founder", "creator", "developer")):
-            guess = "portrait"
-        elif any(k in pl for k in ("dashboard", "ui", "app", "product", "interface")):
-            guess = "product_shot"
-        else:
-            guess = "broll"
+        guess = scene_type_from_prompt_text(p)
 
         if last is not None and guess == last:
             # rotate to next in cycle

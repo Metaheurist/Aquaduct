@@ -23,7 +23,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QTabWidget,
     QPushButton,
     QStyle,
@@ -37,6 +36,7 @@ from UI.dialogs.frameless_dialog import (
     aquaduct_information,
     aquaduct_message_with_details,
     aquaduct_question,
+    aquaduct_resume_checkpoint_choice,
     aquaduct_warning,
     show_hf_token_dialog,
 )
@@ -50,16 +50,9 @@ from UI.widgets.title_bar_outline_button import TitleBarOutlineButton, styled_ou
 from UI.theme import resolve_palette
 
 from src.core.config import (
-    MAX_CUSTOM_VIDEO_INSTRUCTIONS,
-    ApiModelRuntimeSettings,
-    ApiRoleConfig,
     AppSettings,
-    BrandingSettings,
     PictureSettings,
-    SeriesSettings,
-    VideoSettings,
     VIDEO_FORMATS,
-    default_api_models,
     get_paths,
     media_output_root,
 )
@@ -1260,6 +1253,28 @@ class MainWindow(QMainWindow):
             pass
 
     def _refresh_character_combo(self) -> None:
+        if hasattr(self, "character_tag_picker"):
+            from src.content.characters_store import load_all
+
+            try:
+                chars = load_all()
+            except Exception:
+                chars = []
+            by_id = {c.id: c for c in chars}
+            cur = self.character_tag_picker.get_ordered_ids()
+            pruned = [i for i in cur if i in by_id]
+            self.character_tag_picker.set_state(characters=chars, selected_ids=pruned)
+            if hasattr(self, "character_combo"):
+                lead = pruned[0] if pruned else ""
+                self.character_combo.blockSignals(True)
+                self.character_combo.clear()
+                self.character_combo.addItem("(None)", "")
+                for ch in chars:
+                    self.character_combo.addItem(ch.name, ch.id)
+                idx = self.character_combo.findData(lead) if lead else 0
+                self.character_combo.setCurrentIndex(idx if idx >= 0 else 0)
+                self.character_combo.blockSignals(False)
+            return
         if not hasattr(self, "character_combo"):
             return
         from src.content.characters_store import load_all
@@ -1737,497 +1752,9 @@ class MainWindow(QMainWindow):
         aquaduct_message_with_details(self, "Topic grounding (LLM) failed", headline, "", details_text=msg)
 
     def _collect_settings_from_ui(self) -> AppSettings:
-        if hasattr(self, "topics_mode_combo"):
-            self._flush_topic_list_to_mode(str(self.topics_mode_combo.currentData() or "news"))
+        from src.settings.ui_harvest import collect_settings_from_ui
 
-        fmt = (self.settings.video.width, self.settings.video.height)
-        if hasattr(self, "format_combo"):
-            try:
-                d = self.format_combo.currentData()
-                if isinstance(d, tuple) and len(d) == 2:
-                    fmt = (int(d[0]), int(d[1]))
-            except Exception:
-                pass
-
-        video = VideoSettings(
-            width=int(fmt[0]),
-            height=int(fmt[1]),
-            fps=int(self.fps_spin.value()),
-            microclip_min_s=float(self.min_clip_spin.value()),
-            microclip_max_s=float(self.max_clip_spin.value()),
-            music_volume=self.settings.video.music_volume,
-            voice_volume=self.settings.video.voice_volume,
-            images_per_video=int(self.images_spin.value()),
-            export_microclips=bool(self.export_microclips_chk.isChecked()),
-            bitrate_preset=self.bitrate_combo.currentText(),  # type: ignore[arg-type]
-            # Video mode is always Pro; slideshow is disabled.
-            use_image_slideshow=False,
-            pro_mode=True,
-            pro_clip_seconds=float(self.pro_clip_seconds_spin.value()) if hasattr(self, "pro_clip_seconds_spin") else 4.0,
-            clips_per_video=int(self.clips_spin.value()) if hasattr(self, "clips_spin") else 3,
-            clip_seconds=float(self.clip_seconds_spin.value()) if hasattr(self, "clip_seconds_spin") else 4.0,
-            cleanup_images_after_run=bool(self.cleanup_images_chk.isChecked()) if hasattr(self, "cleanup_images_chk") else False,
-            high_quality_topic_selection=bool(self.hq_topics_chk.isChecked()) if hasattr(self, "hq_topics_chk") else True,
-            fetch_article_text=bool(self.fetch_article_chk.isChecked()) if hasattr(self, "fetch_article_chk") else True,
-            llm_factcheck=bool(getattr(self.settings.video, "llm_factcheck", True)),
-            prompt_conditioning=bool(self.prompt_cond_chk.isChecked()) if hasattr(self, "prompt_cond_chk") else True,
-            story_multistage_enabled=bool(self.story_multistage_chk.isChecked()) if hasattr(self, "story_multistage_chk") else False,
-            story_web_context=bool(self.story_web_chk.isChecked()) if hasattr(self, "story_web_chk") else False,
-            story_reference_images=bool(self.story_refimg_chk.isChecked()) if hasattr(self, "story_refimg_chk") else False,
-            resume_partial_pipeline=bool(self.resume_partial_chk.isChecked()) if hasattr(self, "resume_partial_chk") else False,
-            seed_base=int(str(self.seed_base_input.text()).strip())
-            if hasattr(self, "seed_base_input") and str(self.seed_base_input.text()).strip().lstrip("-").isdigit()
-            else None,
-            quality_retries=int(self.quality_retries_spin.value()) if hasattr(self, "quality_retries_spin") else 2,
-            enable_motion=bool(self.enable_motion_chk.isChecked()) if hasattr(self, "enable_motion_chk") else True,
-            transition_strength=str(self.transition_combo.currentData() or "low") if hasattr(self, "transition_combo") else "low",
-            xfade_transition=str(self.xfade_transition_combo.currentData() or "fade")
-            if hasattr(self, "xfade_transition_combo")
-            else str(getattr(self.settings.video, "xfade_transition", "fade") or "fade"),
-            audio_polish=str(self.audio_polish_combo.currentData() or "basic") if hasattr(self, "audio_polish_combo") else "basic",
-            music_ducking=bool(self.music_ducking_chk.isChecked()) if hasattr(self, "music_ducking_chk") else True,
-            music_ducking_amount=float(self.ducking_spin.value()) / 100.0 if hasattr(self, "ducking_spin") else float(getattr(self.settings.video, "music_ducking_amount", 0.7)),
-            music_fade_s=float(self.music_fade_spin.value()) if hasattr(self, "music_fade_spin") else 1.2,
-            sfx_mode=str(self.sfx_combo.currentData() or "off") if hasattr(self, "sfx_combo") else "off",
-            captions_enabled=bool(self.captions_enabled_chk.isChecked()) if hasattr(self, "captions_enabled_chk") else True,
-            caption_highlight_intensity=str(self.caption_highlight_combo.currentData() or "strong")
-            if hasattr(self, "caption_highlight_combo")
-            else "strong",
-            caption_max_words=int(self.caption_max_words_spin.value()) if hasattr(self, "caption_max_words_spin") else 8,
-            facts_card_enabled=bool(self.facts_card_chk.isChecked()) if hasattr(self, "facts_card_chk") else True,
-            facts_card_position=str(self.facts_card_pos_combo.currentData() or "top_left")
-            if hasattr(self, "facts_card_pos_combo")
-            else "top_left",
-            facts_card_duration=str(self.facts_card_dur_combo.currentData() or "short")
-            if hasattr(self, "facts_card_dur_combo")
-            else "short",
-            platform_preset_id=(
-                str(getattr(self, "_video_platform_preset_id", "") or "").strip()
-                if hasattr(self, "_video_platform_preset_id")
-                else str(getattr(self.settings.video, "platform_preset_id", "") or "")
-            ),
-            effects_preset_id=(
-                str(getattr(self, "_effects_preset_id", "") or "").strip()
-                if hasattr(self, "_effects_preset_id")
-                else str(getattr(self.settings.video, "effects_preset_id", "") or "")
-            ),
-            smoothness_mode=(
-                str(self.video_smoothness_combo.currentData() or "off")
-                if hasattr(self, "video_smoothness_combo")
-                else str(getattr(self.settings.video, "smoothness_mode", "off") or "off")
-            ),
-            smoothness_target_fps=int(getattr(self.settings.video, "smoothness_target_fps", 24) or 24),
-            spatial_upscale_mode=(
-                str(self.video_spatial_upscale_combo.currentData() or "off")
-                if hasattr(self, "video_spatial_upscale_combo")
-                else str(getattr(self.settings.video, "spatial_upscale_mode", "off") or "off")
-            ),
-            video_length_preset_id=(
-                str(self.video_length_preset_combo.currentData() or "medium")
-                if hasattr(self, "video_length_preset_combo")
-                else str(getattr(self.settings.video, "video_length_preset_id", "medium") or "medium")
-            ),
-            video_scene_preset_id=(
-                str(self.video_scene_preset_combo.currentData() or "balanced")
-                if hasattr(self, "video_scene_preset_combo")
-                else str(getattr(self.settings.video, "video_scene_preset_id", "balanced") or "balanced")
-            ),
-            video_fps_preset_id=(
-                str(self.video_fps_preset_combo.currentData() or "standard_30")
-                if hasattr(self, "video_fps_preset_combo")
-                else str(getattr(self.settings.video, "video_fps_preset_id", "standard_30") or "standard_30")
-            ),
-            video_resolution_preset_id=(
-                str(self.video_resolution_preset_combo.currentData() or "vertical_1080p")
-                if hasattr(self, "video_resolution_preset_combo")
-                else str(getattr(self.settings.video, "video_resolution_preset_id", "vertical_1080p") or "vertical_1080p")
-            ),
-            article_relevance_screen=bool(getattr(self.settings.video, "article_relevance_screen", True)),
-        )
-
-        branding = getattr(self.settings, "branding", BrandingSettings())
-        if hasattr(self, "brand_theme_enable") and hasattr(self, "brand_palette_combo"):
-            try:
-                branding = BrandingSettings(
-                    theme_enabled=bool(self.brand_theme_enable.isChecked()),
-                    palette_id=str(self.brand_palette_combo.currentData() or "default"),
-                    bg_enabled=bool(self.brand_bg_chk.isChecked()) if hasattr(self, "brand_bg_chk") else False,
-                    bg_hex=str(self.brand_bg_hex.text()).strip() if hasattr(self, "brand_bg_hex") else branding.bg_hex,
-                    panel_enabled=bool(self.brand_panel_chk.isChecked()) if hasattr(self, "brand_panel_chk") else False,
-                    panel_hex=str(self.brand_panel_hex.text()).strip() if hasattr(self, "brand_panel_hex") else branding.panel_hex,
-                    text_enabled=bool(self.brand_text_chk.isChecked()) if hasattr(self, "brand_text_chk") else False,
-                    text_hex=str(self.brand_text_hex.text()).strip() if hasattr(self, "brand_text_hex") else branding.text_hex,
-                    muted_enabled=bool(self.brand_muted_chk.isChecked()) if hasattr(self, "brand_muted_chk") else False,
-                    muted_hex=str(self.brand_muted_hex.text()).strip() if hasattr(self, "brand_muted_hex") else branding.muted_hex,
-                    accent_enabled=bool(self.brand_accent_chk.isChecked()) if hasattr(self, "brand_accent_chk") else False,
-                    accent_hex=str(self.brand_accent_hex.text()).strip() if hasattr(self, "brand_accent_hex") else branding.accent_hex,
-                    danger_enabled=bool(self.brand_danger_chk.isChecked()) if hasattr(self, "brand_danger_chk") else False,
-                    danger_hex=str(self.brand_danger_hex.text()).strip() if hasattr(self, "brand_danger_hex") else branding.danger_hex,
-                    watermark_enabled=bool(self.brand_watermark_enable.isChecked())
-                    if hasattr(self, "brand_watermark_enable")
-                    else bool(getattr(branding, "watermark_enabled", False)),
-                    watermark_path=str(self.brand_watermark_path.text()).strip()
-                    if hasattr(self, "brand_watermark_path")
-                    else str(getattr(branding, "watermark_path", "")),
-                    watermark_opacity=float(self.brand_watermark_opacity.value()) / 100.0
-                    if hasattr(self, "brand_watermark_opacity")
-                    else float(getattr(branding, "watermark_opacity", 0.22)),
-                    watermark_scale=float(self.brand_watermark_scale.value()) / 100.0
-                    if hasattr(self, "brand_watermark_scale")
-                    else float(getattr(branding, "watermark_scale", 0.18)),
-                    watermark_position=str(self.brand_watermark_pos.currentData() or "top_right")
-                    if hasattr(self, "brand_watermark_pos")
-                    else str(getattr(branding, "watermark_position", "top_right")),
-                    video_style_enabled=bool(self.brand_video_style_enable.isChecked())
-                    if hasattr(self, "brand_video_style_enable")
-                    else bool(getattr(branding, "video_style_enabled", False)),
-                    video_style_strength=str(self.brand_video_style_strength.currentData() or "subtle")
-                    if hasattr(self, "brand_video_style_strength")
-                    else str(getattr(branding, "video_style_strength", "subtle")),
-                    photo_style_enabled=bool(self.brand_photo_style_enable.isChecked())
-                    if hasattr(self, "brand_photo_style_enable")
-                    else bool(getattr(branding, "photo_style_enabled", False)),
-                    photo_frame_enabled=bool(self.brand_photo_frame_enable.isChecked())
-                    if hasattr(self, "brand_photo_frame_enable")
-                    else bool(getattr(branding, "photo_frame_enabled", False)),
-                    photo_frame_width=int(self.brand_photo_frame_width.value())
-                    if hasattr(self, "brand_photo_frame_width")
-                    else int(getattr(branding, "photo_frame_width", 24)),
-                    photo_paper_hex=str(self.brand_photo_paper_hex.text()).strip()
-                    if hasattr(self, "brand_photo_paper_hex")
-                    else str(getattr(branding, "photo_paper_hex", "#F2F0E9") or "#F2F0E9"),
-                )
-            except Exception:
-                branding = getattr(self.settings, "branding", BrandingSettings())
-
-        image_model_id = (
-            str(self.img_combo.currentData()) if hasattr(self, "img_combo") else str(getattr(self.settings, "image_model_id", "") or "")
-        )
-        video_model_id = (
-            str(self.vid_combo.currentData()) if hasattr(self, "vid_combo") else str(getattr(self.settings, "video_model_id", "") or "")
-        )
-
-        hf_tok = (
-            str(self.api_hf_token_edit.text()).strip()
-            if hasattr(self, "api_hf_token_edit")
-            else str(getattr(self.settings, "hf_token", "") or "")
-        )
-        hf_en = (
-            bool(self.api_hf_enabled_chk.isChecked())
-            if hasattr(self, "api_hf_enabled_chk")
-            else bool(getattr(self.settings, "hf_api_enabled", True))
-        )
-        fc_en = (
-            bool(self.api_fc_enabled_chk.isChecked())
-            if hasattr(self, "api_fc_enabled_chk")
-            else bool(getattr(self.settings, "firecrawl_enabled", False))
-        )
-        fc_key = (
-            str(self.api_fc_key_edit.text()).strip()
-            if hasattr(self, "api_fc_key_edit")
-            else str(getattr(self.settings, "firecrawl_api_key", "") or "")
-        )
-        el_en = (
-            bool(self.api_el_enabled_chk.isChecked())
-            if hasattr(self, "api_el_enabled_chk")
-            else bool(getattr(self.settings, "elevenlabs_enabled", False))
-        )
-        el_key = (
-            str(self.api_el_key_edit.text()).strip()
-            if hasattr(self, "api_el_key_edit")
-            else str(getattr(self.settings, "elevenlabs_api_key", "") or "")
-        )
-
-        tt_en = bool(self.api_tt_enabled_chk.isChecked()) if hasattr(self, "api_tt_enabled_chk") else bool(getattr(self.settings, "tiktok_enabled", False))
-        tt_ck = str(self.api_tt_client_key.text()).strip() if hasattr(self, "api_tt_client_key") else str(getattr(self.settings, "tiktok_client_key", "") or "")
-        tt_cs = str(self.api_tt_client_secret.text()).strip() if hasattr(self, "api_tt_client_secret") else str(getattr(self.settings, "tiktok_client_secret", "") or "")
-        tt_ru = str(self.api_tt_redirect_uri.text()).strip() if hasattr(self, "api_tt_redirect_uri") else str(getattr(self.settings, "tiktok_redirect_uri", "") or "")
-        tt_port = int(self.api_tt_oauth_port.value()) if hasattr(self, "api_tt_oauth_port") else int(getattr(self.settings, "tiktok_oauth_port", 8765))
-        tt_at = str(self.settings.tiktok_access_token or "")  # refreshed via worker / OAuth only
-        tt_rt = str(self.settings.tiktok_refresh_token or "")
-        tt_exp = float(getattr(self.settings, "tiktok_token_expires_at", 0.0) or 0.0)
-        tt_oid = str(getattr(self.settings, "tiktok_open_id", "") or "")
-        tt_mode = (
-            str(self.api_tt_pub_mode.currentData() or "inbox") if hasattr(self, "api_tt_pub_mode") else str(getattr(self.settings, "tiktok_publishing_mode", "inbox"))
-        )
-        if tt_mode not in ("inbox", "direct"):
-            tt_mode = "inbox"
-        tt_auto = bool(self.api_tt_auto_upload_chk.isChecked()) if hasattr(self, "api_tt_auto_upload_chk") else bool(getattr(self.settings, "tiktok_auto_upload_after_render", False))
-
-        yt_en = bool(self.api_yt_enabled_chk.isChecked()) if hasattr(self, "api_yt_enabled_chk") else bool(getattr(self.settings, "youtube_enabled", False))
-        yt_cid = str(self.api_yt_client_id.text()).strip() if hasattr(self, "api_yt_client_id") else str(getattr(self.settings, "youtube_client_id", "") or "")
-        yt_sec = str(self.api_yt_client_secret.text()).strip() if hasattr(self, "api_yt_client_secret") else str(getattr(self.settings, "youtube_client_secret", "") or "")
-        yt_ru = str(self.api_yt_redirect_uri.text()).strip() if hasattr(self, "api_yt_redirect_uri") else str(getattr(self.settings, "youtube_redirect_uri", "") or "")
-        yt_port = int(self.api_yt_oauth_port.value()) if hasattr(self, "api_yt_oauth_port") else int(getattr(self.settings, "youtube_oauth_port", 8888))
-        yt_at = str(self.settings.youtube_access_token or "")
-        yt_rt = str(self.settings.youtube_refresh_token or "")
-        yt_exp = float(getattr(self.settings, "youtube_token_expires_at", 0.0) or 0.0)
-        yt_priv = (
-            str(self.api_yt_privacy.currentData() or "private") if hasattr(self, "api_yt_privacy") else str(getattr(self.settings, "youtube_privacy_status", "private"))
-        )
-        if yt_priv not in ("public", "unlisted", "private"):
-            yt_priv = "private"
-        yt_shorts_tag = bool(self.api_yt_shorts_tag_chk.isChecked()) if hasattr(self, "api_yt_shorts_tag_chk") else bool(getattr(self.settings, "youtube_add_shorts_hashtag", True))
-        yt_auto = bool(self.api_yt_auto_upload_chk.isChecked()) if hasattr(self, "api_yt_auto_upload_chk") else bool(getattr(self.settings, "youtube_auto_upload_after_render", False))
-
-        vfmt = (
-            normalize_video_format(str(self.video_format_combo.currentData() or "news"))
-            if hasattr(self, "video_format_combo")
-            else normalize_video_format(str(getattr(self.settings, "video_format", "news")))
-        )
-        topic_map = {str(k): list(v) for k, v in (self.settings.topic_tags_by_mode or {}).items()}
-
-        mex = (
-            str(self.model_execution_mode_combo.currentData() or "local")
-            if hasattr(self, "model_execution_mode_combo")
-            else str(getattr(self.settings, "model_execution_mode", "local") or "local")
-        )
-        if mex not in ("local", "api"):
-            mex = "local"
-        msm = (
-            str(self.models_storage_mode_combo.currentData() or "default")
-            if hasattr(self, "models_storage_mode_combo")
-            else str(getattr(self.settings, "models_storage_mode", "default") or "default")
-        )
-        if msm not in ("default", "external"):
-            msm = "default"
-        mext = (
-            str(self.models_external_path_edit.text()).strip()
-            if hasattr(self, "models_external_path_edit")
-            else str(getattr(self.settings, "models_external_path", "") or "")
-        )
-        api_openai_key = (
-            str(self.api_gen_openai_key.text()).strip()
-            if hasattr(self, "api_gen_openai_key")
-            else str(getattr(self.settings, "api_openai_key", "") or "")
-        )
-        api_replicate_token = (
-            str(self.api_gen_replicate_token.text()).strip()
-            if hasattr(self, "api_gen_replicate_token")
-            else str(getattr(self.settings, "api_replicate_token", "") or "")
-        )
-        if hasattr(self, "api_gen_llm_provider"):
-            api_models = ApiModelRuntimeSettings(
-                llm=ApiRoleConfig(
-                    provider=str(self.api_gen_llm_provider.currentData() or "").strip(),
-                    model=str(self.api_gen_llm_model.currentText() or "").strip(),
-                    base_url=str(self.api_gen_llm_base.text()).strip() if hasattr(self, "api_gen_llm_base") else "",
-                    org_id=str(self.api_gen_llm_org.text()).strip() if hasattr(self, "api_gen_llm_org") else "",
-                    voice_id="",
-                ),
-                image=ApiRoleConfig(
-                    provider=str(self.api_gen_image_provider.currentData() or "").strip(),
-                    model=str(self.api_gen_image_model.currentText() or "").strip(),
-                ),
-                video=ApiRoleConfig(
-                    provider=str(self.api_gen_video_provider.currentData() or "").strip(),
-                    model=str(self.api_gen_video_model.currentText() or "").strip(),
-                ),
-                voice=ApiRoleConfig(
-                    provider=str(self.api_gen_voice_provider.currentData() or "").strip(),
-                    model=str(self.api_gen_voice_model.currentText() or "").strip(),
-                    voice_id=str(self.api_gen_voice_id.text()).strip() if hasattr(self, "api_gen_voice_id") else "",
-                ),
-            )
-        else:
-            api_models = getattr(self.settings, "api_models", None) or default_api_models()
-
-        mm = (
-            str(self.media_mode_toggle.currentData() or "video").strip()
-            if hasattr(self, "media_mode_toggle")
-            else str(getattr(self.settings, "media_mode", "video") or "video").strip()
-        )
-        if mm not in ("video", "photo"):
-            mm = "video"
-
-        pic = getattr(self.settings, "picture", PictureSettings())
-        try:
-            if hasattr(self, "picture_template_combo"):
-                d = self.picture_template_combo.currentData()
-                if isinstance(d, tuple) and len(d) == 3:
-                    pic = replace(pic, template_id=str(d[0]), width=int(d[1]), height=int(d[2]))
-            if hasattr(self, "picture_output_type_combo"):
-                pic = replace(pic, output_type=str(self.picture_output_type_combo.currentData() or "single_image"))  # type: ignore[arg-type]
-            if hasattr(self, "picture_count_spin"):
-                pic = replace(pic, image_count=int(self.picture_count_spin.value()))
-            if hasattr(self, "picture_format_combo"):
-                pic = replace(pic, picture_format=str(self.picture_format_combo.currentData() or "poster"))  # type: ignore[arg-type]
-        except Exception:
-            pic = getattr(self.settings, "picture", PictureSettings())
-
-        if hasattr(self, "gpu_policy_toggle"):
-            _gpu_mode = str(self.gpu_policy_toggle.currentData() or "auto")
-        else:
-            _gpu_mode = str(getattr(self.settings, "gpu_selection_mode", "auto") or "auto")
-        _gpu_mode = (_gpu_mode or "auto").strip().lower()
-        if _gpu_mode not in ("auto", "single"):
-            _gpu_mode = "auto"
-        _gpu_dev_idx = (
-            int(self.gpu_device_combo.currentData())
-            if hasattr(self, "gpu_device_combo") and self.gpu_device_combo.currentData() is not None
-            else int(getattr(self.settings, "gpu_device_index", 0) or 0)
-        )
-        if hasattr(self, "multi_gpu_shard_combo") and self.multi_gpu_shard_combo.currentData() is not None:
-            _mgsm = str(self.multi_gpu_shard_combo.currentData() or "off").strip().lower()
-        else:
-            _mgsm = str(getattr(self.settings, "multi_gpu_shard_mode", "off") or "off").strip().lower()
-        if _mgsm not in ("off", "vram_first_auto"):
-            _mgsm = "off"
-        _rg_mon = getattr(self.settings, "resource_graph_monitor_gpu_index", None)
-        _rg_split = bool(getattr(self.settings, "resource_graph_split_view", False))
-        _rg_compact = bool(getattr(self.settings, "resource_graph_compact", True))
-
-        def _quant_mode_from_ui(role_key: str, prefix: str, settings_attr: str) -> str:
-            auto_chk = getattr(self, f"{prefix}_quant_auto_chk", None)
-            slider = getattr(self, f"{prefix}_quant_slider", None)
-            if auto_chk is None or slider is None:
-                return str(getattr(self.settings, settings_attr, "auto") or "auto")
-            modes = (getattr(self, "_quant_manual_modes", {}) or {}).get(role_key) or ()
-            try:
-                if auto_chk.isChecked() or not modes:
-                    return "auto"
-                i = max(0, min(int(slider.value()), len(modes) - 1))
-                return str(modes[i])
-            except Exception:
-                return str(getattr(self.settings, settings_attr, "auto") or "auto")
-
-        script_q = _quant_mode_from_ui("script", "llm", "script_quant_mode")
-        image_q = _quant_mode_from_ui("image", "img", "image_quant_mode")
-        video_q = _quant_mode_from_ui("video", "vid", "video_quant_mode")
-        voice_q = _quant_mode_from_ui("voice", "voice", "voice_quant_mode")
-        auto_q_down = (
-            bool(self.auto_quant_downgrade_on_failure_chk.isChecked())
-            if hasattr(self, "auto_quant_downgrade_on_failure_chk")
-            else bool(getattr(self.settings, "auto_quant_downgrade_on_failure", False))
-        )
-
-        topic_notes_out = sanitize_topic_tag_notes(self._merge_topic_notes_edits_into_dict())
-
-        _ser0 = getattr(self.settings, "series", None)
-        _qty_spin = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
-        _ser_mode_ui = bool(self.series_mode_check.isChecked()) if hasattr(self, "series_mode_check") else bool(getattr(_ser0, "series_mode", False))
-        _ss = (
-            str(self.series_source_strategy_combo.currentData() or "auto")
-            if hasattr(self, "series_source_strategy_combo")
-            else str(getattr(_ser0, "source_strategy", "auto") or "auto")
-        )
-        if _ss not in ("auto", "lock_first", "fresh_per_ep"):
-            _ss = "auto"
-        series_out = SeriesSettings(
-            series_mode=_ser_mode_ui and mm == "video",
-            series_name=(
-                str(self.series_name_edit.text()).strip()
-                if hasattr(self, "series_name_edit")
-                else str(getattr(_ser0, "series_name", "") or "")
-            ),
-            episode_count=_qty_spin if _ser_mode_ui and mm == "video" else 1,
-            lock_style=(
-                bool(self.series_lock_style_check.isChecked())
-                if hasattr(self, "series_lock_style_check")
-                else bool(getattr(_ser0, "lock_style", True))
-            ),
-            carry_recap=(
-                bool(self.series_carry_recap_check.isChecked())
-                if hasattr(self, "series_carry_recap_check")
-                else bool(getattr(_ser0, "carry_recap", True))
-            ),
-            source_strategy=_ss,  # type: ignore[arg-type]
-            continue_on_failure=(
-                bool(self.series_continue_on_failure_check.isChecked())
-                if hasattr(self, "series_continue_on_failure_check")
-                else bool(getattr(_ser0, "continue_on_failure", False))
-            ),
-        )
-        if mm != "video":
-            series_out = replace(series_out, series_mode=False, episode_count=1)
-
-        return AppSettings(
-            topic_tags_by_mode=topic_map,
-            topic_tag_notes=topic_notes_out,
-            media_mode=mm,  # type: ignore[arg-type]
-            video_format=vfmt,
-            model_execution_mode=mex,  # type: ignore[arg-type]
-            models_storage_mode=msm,  # type: ignore[arg-type]
-            models_external_path=mext,
-            api_models=api_models,
-            api_openai_key=api_openai_key,
-            api_replicate_token=api_replicate_token,
-            prefer_gpu=bool(self.prefer_gpu_chk.isChecked()) if hasattr(self, "prefer_gpu_chk") else bool(getattr(self.settings, "prefer_gpu", True)),
-            try_llm_4bit=bool(getattr(self.settings, "try_llm_4bit", True)),
-            try_sdxl_turbo=bool(getattr(self.settings, "try_sdxl_turbo", True)),
-            script_quant_mode=script_q,  # type: ignore[arg-type]
-            image_quant_mode=image_q,  # type: ignore[arg-type]
-            video_quant_mode=video_q,  # type: ignore[arg-type]
-            voice_quant_mode=voice_q,  # type: ignore[arg-type]
-            auto_quant_downgrade_on_failure=auto_q_down,
-            background_music_path=str(self.music_path.text()).strip(),
-            hf_token=hf_tok,
-            hf_api_enabled=hf_en,
-            firecrawl_enabled=fc_en,
-            firecrawl_api_key=fc_key,
-            elevenlabs_enabled=el_en,
-            elevenlabs_api_key=el_key,
-            tiktok_enabled=tt_en,
-            tiktok_client_key=tt_ck,
-            tiktok_client_secret=tt_cs,
-            tiktok_redirect_uri=tt_ru or "http://127.0.0.1:8765/callback/",
-            tiktok_oauth_port=tt_port,
-            tiktok_access_token=tt_at,
-            tiktok_refresh_token=tt_rt,
-            tiktok_token_expires_at=tt_exp,
-            tiktok_open_id=tt_oid,
-            tiktok_publishing_mode=tt_mode,  # type: ignore[arg-type]
-            tiktok_auto_upload_after_render=tt_auto,
-            youtube_enabled=yt_en,
-            youtube_client_id=yt_cid,
-            youtube_client_secret=yt_sec,
-            youtube_redirect_uri=yt_ru or "http://127.0.0.1:8888/callback/",
-            youtube_oauth_port=yt_port,
-            youtube_access_token=yt_at,
-            youtube_refresh_token=yt_rt,
-            youtube_token_expires_at=yt_exp,
-            youtube_privacy_status=yt_priv,  # type: ignore[arg-type]
-            youtube_add_shorts_hashtag=yt_shorts_tag,
-            youtube_auto_upload_after_render=yt_auto,
-            tutorial_completed=bool(getattr(self.settings, "tutorial_completed", False)),
-            gpu_selection_mode=_gpu_mode,  # type: ignore[arg-type]
-            gpu_device_index=_gpu_dev_idx,
-            multi_gpu_shard_mode=_mgsm,  # type: ignore[arg-type]
-            resource_graph_monitor_gpu_index=_rg_mon,
-            resource_graph_split_view=_rg_split,
-            resource_graph_compact=_rg_compact,
-            personality_id=str(self.personality_combo.currentData()) if hasattr(self, "personality_combo") else getattr(self.settings, "personality_id", "auto"),
-            art_style_preset_id=(
-                str(self.art_style_preset_combo.currentData())
-                if hasattr(self, "art_style_preset_combo")
-                else str(getattr(self.settings, "art_style_preset_id", "balanced") or "balanced")
-            ),
-            active_character_id=str(self.character_combo.currentData()) if hasattr(self, "character_combo") else str(getattr(self.settings, "active_character_id", "") or ""),
-            auto_save_generated_cast=(
-                bool(self.auto_save_generated_cast_check.isChecked())
-                if hasattr(self, "auto_save_generated_cast_check")
-                else bool(getattr(self.settings, "auto_save_generated_cast", True))
-            ),
-            run_content_mode=(
-                "custom"
-                if hasattr(self, "run_content_custom_radio") and self.run_content_custom_radio.isChecked()
-                else "preset"
-            ),
-            custom_video_instructions=(
-                (self.custom_instructions_edit.toPlainText()[:MAX_CUSTOM_VIDEO_INSTRUCTIONS])
-                if hasattr(self, "custom_instructions_edit")
-                else str(getattr(self.settings, "custom_video_instructions", "") or "")[:MAX_CUSTOM_VIDEO_INSTRUCTIONS]
-            ),
-            llm_model_id=script_llm_model_id_from_ui(self),
-            image_model_id=image_model_id,
-            video_model_id=video_model_id,
-            voice_model_id=str(self.voice_combo.currentData()) if hasattr(self, "voice_combo") else self.settings.voice_model_id,
-            allow_nsfw=bool(self.allow_nsfw_chk.isChecked()) if hasattr(self, "allow_nsfw_chk") else bool(getattr(self.settings, "allow_nsfw", False)),
-            video=video,
-            picture=pic,
-            branding=branding,
-            series=series_out,
-        )
+        return collect_settings_from_ui(self)
 
     def effective_models_dir(self) -> Path:
         """Folder for Hugging Face snapshots: default ``.Aquaduct_data/models`` or configured external path."""
@@ -3205,25 +2732,16 @@ class MainWindow(QMainWindow):
             cand = find_latest_resumable_video_project(root, settings)
             if cand is None:
                 return settings
-            m = QMessageBox(self)
-            m.setIcon(QMessageBox.Icon.Question)
-            m.setWindowTitle("Resume partial pipeline?")
-            m.setText(
+            choice = aquaduct_resume_checkpoint_choice(
+                self,
+                "Resume partial pipeline?",
                 f"Found an unfinished video project:\n{cand}\n\n"
-                "Resume using run_checkpoint.json (completed stages such as script or voice may be skipped)?"
+                "Resume using run_checkpoint.json (completed stages such as script or voice may be skipped)?",
             )
-            yes = QMessageBox.StandardButton.Yes
-            no = QMessageBox.StandardButton.No
-            discard = QMessageBox.StandardButton.Help
-            m.setStandardButtons(yes | no | discard)
-            db = m.button(discard)
-            if db is not None:
-                db.setText("Discard checkpoint")
-            choice = m.exec()
-            if choice == discard:
+            if choice == "discard":
                 clear_checkpoint(cand / "assets", settings)
                 return settings
-            if choice == yes:
+            if choice == "resume":
                 return replace(settings, resume_partial_project_directory=str(cand.resolve()))
             return settings
         except Exception:
