@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from UI.dialogs.frameless_dialog import FramelessDialog
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -30,6 +31,9 @@ def _is_health_topics_mode(topic_mode: str | None) -> bool:
 
 def _is_web_firecrawl_discover_mode(topic_mode: str | None) -> bool:
     """Headline RSS discover vs Firecrawl-first (creative + health_advice)."""
+    tm = normalize_video_format(str(topic_mode or "news"))
+    if tm == "nsfw":
+        return False
     return not discover_uses_headline_sources(str(topic_mode or "news"))
 
 
@@ -42,9 +46,12 @@ def _pick_topics_dialog(
 ) -> list[str]:
     web_fc = _is_web_firecrawl_discover_mode(topic_mode)
     health = _is_health_topics_mode(topic_mode)
+    mature = normalize_video_format(str(topic_mode or "news")) == "nsfw"
     win_title = (
         "Discover: approve wellness topic ideas"
         if health
+        else "Discover: approve mature topic ideas"
+        if mature
         else "Discover: approve creative seeds"
         if web_fc
         else "Discover: approve topic ideas (news)"
@@ -55,6 +62,8 @@ def _pick_topics_dialog(
     header = QLabel(
         "Wellness topics from the web"
         if health
+        else "Mature topics (non-explicit)"
+        if mature
         else "Creative seeds from the web"
         if web_fc
         else "Topic ideas from headlines"
@@ -62,7 +71,12 @@ def _pick_topics_dialog(
     header.setStyleSheet("font-size: 14px; font-weight: 700;")
     d.body_layout.addWidget(header)
 
-    if health:
+    if mature:
+        sub = QLabel(
+            "These suggestions are adult-themed but intentionally non-explicit. "
+            "Nothing is added until you click Add selected."
+        )
+    elif health:
         sub = QLabel(
             "Phrases are parsed from page titles Firecrawl found while searching for wellness tips, healthy habits, "
             "and general health-education pages (not Google News headlines). "
@@ -139,16 +153,24 @@ def _no_topics_dialog(
 ) -> None:
     web_fc = _is_web_firecrawl_discover_mode(topic_mode)
     health = _is_health_topics_mode(topic_mode)
+    mature = normalize_video_format(str(topic_mode or "news")) == "nsfw"
     win_title = (
         "Discover: wellness topics"
         if health
+        else "Discover: mature topics"
+        if mature
         else "Discover: creative seeds"
         if web_fc
         else "Discover: topic ideas"
     )
     d = FramelessDialog(parent, title=win_title)
     d.setMinimumSize(520, 260)
-    if health:
+    if mature:
+        header = QLabel("No mature topics yet")
+        header.setStyleSheet("font-size: 14px; font-weight: 700;")
+        d.body_layout.addWidget(header)
+        sub = QLabel("Try Discover again.")
+    elif health:
         header = QLabel("No wellness topics yet")
         header.setStyleSheet("font-size: 14px; font-weight: 700;")
         d.body_layout.addWidget(header)
@@ -226,6 +248,21 @@ def attach_topics_tab(win) -> None:
     win.topics_mode_combo.addItem("Cartoon (unhinged)", "unhinged")
     win.topics_mode_combo.addItem("Creepypasta", "creepypasta")
     win.topics_mode_combo.addItem("Health advice", "health_advice")
+
+    # NSFW bucket: always present; enabled only when project video_format is nsfw.
+    win.topics_mode_combo.addItem("NSFW (mature)", "nsfw")
+    try:
+        nsfw_ok = normalize_video_format(str(getattr(win.settings, "video_format", "news") or "news")) == "nsfw"
+        model = win.topics_mode_combo.model()
+        ix = win.topics_mode_combo.findData("nsfw")
+        if model is not None and ix >= 0:
+            item = model.item(ix)
+            if item is not None:
+                item.setEnabled(bool(nsfw_ok))
+                if not nsfw_ok:
+                    item.setToolTip("Enable NSFW video format to edit NSFW tags.")
+    except Exception:
+        pass
     tm = str(getattr(win.settings, "video_format", "news") or "news")
     if tm not in VIDEO_FORMATS:
         tm = "news"

@@ -250,6 +250,7 @@ class MainWindow(QMainWindow):
         )
         chat_btn.clicked.connect(self._show_chat_dialog)
         title_row.addWidget(chat_btn, 0, Qt.AlignmentFlag.AlignRight)
+        self._title_chat_btn = chat_btn
 
         image_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="image_gen")
         image_btn.setFixedSize(44, 32)
@@ -262,6 +263,7 @@ class MainWindow(QMainWindow):
         )
         image_btn.clicked.connect(self._show_image_playground_dialog)
         title_row.addWidget(image_btn, 0, Qt.AlignmentFlag.AlignRight)
+        self._title_image_btn = image_btn
 
         video_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="video_gen")
         video_btn.setFixedSize(44, 32)
@@ -274,6 +276,7 @@ class MainWindow(QMainWindow):
         )
         video_btn.clicked.connect(self._show_video_playground_dialog)
         title_row.addWidget(video_btn, 0, Qt.AlignmentFlag.AlignRight)
+        self._title_video_btn = video_btn
 
         help_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="help")
         help_btn.setFixedSize(44, 32)
@@ -445,6 +448,35 @@ class MainWindow(QMainWindow):
                     btn.set_chrome_colors(accent, danger, muted, text)
         except Exception:
             pass
+
+    def _any_pipeline_like_task_running(self) -> bool:
+        """True when pipeline/preview/storyboard workers are active (disables playground buttons)."""
+        try:
+            if self.worker is not None and self.worker.isRunning():
+                return True
+        except Exception:
+            pass
+        try:
+            if self.preview_worker is not None and self.preview_worker.isRunning():
+                return True
+        except Exception:
+            pass
+        try:
+            if self.storyboard_worker is not None and self.storyboard_worker.isRunning():
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _set_title_playground_buttons_enabled(self, enabled: bool) -> None:
+        for attr in ("_title_chat_btn", "_title_image_btn", "_title_video_btn"):
+            b = getattr(self, attr, None)
+            if b is None:
+                continue
+            try:
+                b.setEnabled(bool(enabled))
+            except Exception:
+                pass
 
     def _video_format_from_upload_task_id(self, task_id: str) -> str | None:
         """Read ``video_format`` from a finished render's ``meta.json`` if present."""
@@ -745,8 +777,12 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def _preflight_failed_ui(self, pf: PreflightResult) -> None:
-        """Focus Model tab when errors are model/API related; show a blocking dialog."""
+    def _preflight_failed_ui(self, pf: PreflightResult) -> bool:
+        """
+        Focus Model tab when errors are model/API related; show a blocking dialog.
+
+        Returns True when the user chose a bypass (caller may re-run preflight and proceed).
+        """
         needs_model_tab = any(
             ("local mode:" in e.lower() or "api mode:" in e.lower() or "model tab" in e.lower())
             for e in pf.errors
@@ -759,7 +795,53 @@ class MainWindow(QMainWindow):
             title = "Download models before running"
         else:
             title = "Cannot run yet"
-        aquaduct_warning(self, title, "\n".join(pf.errors))
+        msg = "\n".join(pf.errors)
+
+        # Reduce spam: if the same preflight is raised repeatedly within a short window, don't re-popup.
+        try:
+            import time
+
+            key = title + "\n" + msg
+            now = float(time.time())
+            last_key = str(getattr(self, "_last_preflight_dialog_key", "") or "")
+            last_t = float(getattr(self, "_last_preflight_dialog_t", 0.0) or 0.0)
+            if key == last_key and (now - last_t) < 12.0:
+                return False
+            self._last_preflight_dialog_key = key
+            self._last_preflight_dialog_t = now
+        except Exception:
+            pass
+
+        # Memory-budget gating: allow a session bypass (some hosts run fine despite the heuristic).
+        is_mem_gate = any(
+            "memory preflight" in e.lower()
+            or "host ram shortfall" in e.lower()
+            or "catastrophic host ram shortfall" in e.lower()
+            or "aquaduct_memory_preflight_error_on_warn_roles" in e.lower()
+            for e in pf.errors
+        )
+        try:
+            if bool(getattr(self, "_suppress_memory_preflight_popups", False)) and is_mem_gate:
+                return False
+        except Exception:
+            pass
+
+        if is_mem_gate:
+            from UI.dialogs.frameless_dialog import aquaduct_memory_preflight_choice
+
+            choice = aquaduct_memory_preflight_choice(self, title, msg)
+            if choice in ("run_anyway", "dont_warn_session"):
+                try:
+                    os.environ["AQUADUCT_MEMORY_PREFLIGHT_ERROR_ON_WARN_ROLES"] = ""
+                except Exception:
+                    pass
+                if choice == "dont_warn_session":
+                    self._suppress_memory_preflight_popups = True
+                return True
+            return False
+
+        aquaduct_warning(self, title, msg)
+        return False
 
     def _maybe_prompt_cuda_torch_mismatch(self) -> None:
         """
@@ -1794,6 +1876,8 @@ class MainWindow(QMainWindow):
 
     def _show_chat_dialog(self) -> None:
         """Open or focus the title-bar LLM chat (non-modal)."""
+        if self._any_pipeline_like_task_running():
+            return
         if self._llm_chat_dialog is None:
             self._llm_chat_dialog = LLMChatDialog(self)
         self._llm_chat_dialog.show()
@@ -1802,6 +1886,8 @@ class MainWindow(QMainWindow):
 
     def _show_image_playground_dialog(self) -> None:
         """Open or focus the F4 image playground (non-modal)."""
+        if self._any_pipeline_like_task_running():
+            return
         if self._image_playground_dialog is None:
             self._image_playground_dialog = ImagePlaygroundDialog(self)
         self._image_playground_dialog.show()
@@ -1810,6 +1896,8 @@ class MainWindow(QMainWindow):
 
     def _show_video_playground_dialog(self) -> None:
         """Open or focus the F6 video playground (non-modal)."""
+        if self._any_pipeline_like_task_running():
+            return
         if self._video_playground_dialog is None:
             self._video_playground_dialog = VideoPlaygroundDialog(self)
         self._video_playground_dialog.show()
@@ -2822,6 +2910,7 @@ class MainWindow(QMainWindow):
             settings = self._maybe_offer_resume_partial(settings)
 
         if prebuilt_pkg is not None:
+            self._set_title_playground_buttons_enabled(False)
             self._set_tasks_active_row(
                 self._pipeline_tasks_title(settings, branch="prebuilt"),
                 format_status_line("pipeline_run", 0, -1, "Queued (approved preview)…"),
@@ -2846,6 +2935,7 @@ class MainWindow(QMainWindow):
             return
 
         if prebuilt_prompts is not None and prebuilt_seeds is not None:
+            self._set_title_playground_buttons_enabled(False)
             self._set_tasks_active_row(
                 self._pipeline_tasks_title(settings, branch="storyboard"),
                 format_status_line("pipeline_run", 0, -1, "Queued (approved storyboard)…"),
@@ -2870,6 +2960,7 @@ class MainWindow(QMainWindow):
             self._set_run_btn_allow_queue_while_pipeline_runs()
             return
 
+        self._set_title_playground_buttons_enabled(False)
         self._set_tasks_active_row(
             self._pipeline_tasks_title(settings, branch="run"),
             format_status_line("pipeline_run", 0, -1, "Queued…"),
@@ -2993,10 +3084,17 @@ class MainWindow(QMainWindow):
                     self._append_log("Preflight failed for queued job:")
                     for e in pf.errors:
                         self._append_log(f"- {e}")
-                    self._preflight_failed_ui(pf)
-                    self._pipeline_launch_pending = False
-                    self._try_start_next_queued_pipeline()
-                    return
+                    if not self._preflight_failed_ui(pf):
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
+                    pf2 = preflight_check(settings=settings, strict=True)  # type: ignore[arg-type]
+                    for w in pf2.warnings:
+                        self._append_log(f"Warning: {w}")
+                    if not pf2.ok:
+                        self._pipeline_launch_pending = False
+                        self._try_start_next_queued_pipeline()
+                        return
 
                 if kind == "pipeline":
                     self._attach_and_start_pipeline_worker(settings)
@@ -3040,8 +3138,12 @@ class MainWindow(QMainWindow):
         if self._pipeline_run_should_queue():
             pfq = preflight_check(settings=self.settings, strict=True)
             if not pfq.ok:
-                self._preflight_failed_ui(pfq)
-                return
+                if self._preflight_failed_ui(pfq):
+                    pfq2 = preflight_check(settings=self.settings, strict=True)
+                    if not pfq2.ok:
+                        return
+                else:
+                    return
             qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
             is_series = bool(getattr(getattr(self.settings, "series", None), "series_mode", False)) and str(
                 getattr(self.settings, "media_mode", "video") or "video"
@@ -3066,8 +3168,12 @@ class MainWindow(QMainWindow):
         if self._pipeline_launch_pending:
             pfq = preflight_check(settings=self.settings, strict=True)
             if not pfq.ok:
-                self._preflight_failed_ui(pfq)
-                return
+                if self._preflight_failed_ui(pfq):
+                    pfq2 = preflight_check(settings=self.settings, strict=True)
+                    if not pfq2.ok:
+                        return
+                else:
+                    return
             qty = max(1, int(self.run_qty_spin.value()) if hasattr(self, "run_qty_spin") else 1)
             is_series = bool(getattr(getattr(self.settings, "series", None), "series_mode", False)) and str(
                 getattr(self.settings, "media_mode", "video") or "video"
@@ -3105,8 +3211,12 @@ class MainWindow(QMainWindow):
                     self._append_log("Preflight failed. Fix these issues before running:")
                     for e in pf.errors:
                         self._append_log(f"- {e}")
-                    self._preflight_failed_ui(pf)
-                    return
+                    if self._preflight_failed_ui(pf):
+                        pf2 = preflight_check(settings=self.settings, strict=True)
+                        if not pf2.ok:
+                            return
+                    else:
+                        return
 
                 if self._abort_if_custom_missing_instructions():
                     return
@@ -3274,8 +3384,12 @@ class MainWindow(QMainWindow):
         if self._pipeline_run_should_queue():
             pfb = preflight_check(settings=self.settings, strict=True)
             if not pfb.ok:
-                self._preflight_failed_ui(pfb)
-                return
+                if self._preflight_failed_ui(pfb):
+                    pfb2 = preflight_check(settings=self.settings, strict=True)
+                    if not pfb2.ok:
+                        return
+                else:
+                    return
             self._pipeline_run_queue.append(
                 {
                     "kind": "prebuilt",
@@ -3297,8 +3411,12 @@ class MainWindow(QMainWindow):
         if self._pipeline_launch_pending:
             pfb = preflight_check(settings=self.settings, strict=True)
             if not pfb.ok:
-                self._preflight_failed_ui(pfb)
-                return
+                if self._preflight_failed_ui(pfb):
+                    pfb2 = preflight_check(settings=self.settings, strict=True)
+                    if not pfb2.ok:
+                        return
+                else:
+                    return
             self._pipeline_run_queue.append(
                 {
                     "kind": "prebuilt",
@@ -3333,8 +3451,12 @@ class MainWindow(QMainWindow):
                     self._append_log("Preflight failed. Fix these issues before running:")
                     for e in pf.errors:
                         self._append_log(f"- {e}")
-                    self._preflight_failed_ui(pf)
-                    return
+                    if self._preflight_failed_ui(pf):
+                        pf2 = preflight_check(settings=self.settings, strict=True)
+                        if not pf2.ok:
+                            return
+                    else:
+                        return
 
                 self._attach_and_start_pipeline_worker(
                     self.settings,
@@ -3441,8 +3563,12 @@ class MainWindow(QMainWindow):
         if self._pipeline_run_should_queue():
             pfs = preflight_check(settings=self.settings, strict=True)
             if not pfs.ok:
-                self._preflight_failed_ui(pfs)
-                return
+                if self._preflight_failed_ui(pfs):
+                    pfs2 = preflight_check(settings=self.settings, strict=True)
+                    if not pfs2.ok:
+                        return
+                else:
+                    return
             self._pipeline_run_queue.append(
                 {
                     "kind": "storyboard",
@@ -3463,8 +3589,12 @@ class MainWindow(QMainWindow):
         if self._pipeline_launch_pending:
             pfs = preflight_check(settings=self.settings, strict=True)
             if not pfs.ok:
-                self._preflight_failed_ui(pfs)
-                return
+                if self._preflight_failed_ui(pfs):
+                    pfs2 = preflight_check(settings=self.settings, strict=True)
+                    if not pfs2.ok:
+                        return
+                else:
+                    return
             self._pipeline_run_queue.append(
                 {
                     "kind": "storyboard",
@@ -3496,8 +3626,12 @@ class MainWindow(QMainWindow):
                     self._append_log("Preflight failed. Fix these issues before running:")
                     for e in pf.errors:
                         self._append_log(f"- {e}")
-                    self._preflight_failed_ui(pf)
-                    return
+                    if self._preflight_failed_ui(pf):
+                        pf2 = preflight_check(settings=self.settings, strict=True)
+                        if not pf2.ok:
+                            return
+                    else:
+                        return
                 self._attach_and_start_pipeline_worker(
                     self.settings,
                     prebuilt_prompts=prompts,
@@ -3515,6 +3649,7 @@ class MainWindow(QMainWindow):
         self._release_run_control()
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
+        self._set_title_playground_buttons_enabled(True)
         try:
             from src.settings.ui_settings import load_settings
 
@@ -3727,6 +3862,7 @@ class MainWindow(QMainWindow):
         self._clear_tasks_active_row()
         self._release_run_control()
         self._drain_pipeline_worker()
+        self._set_title_playground_buttons_enabled(True)
         dropped = len(self._pipeline_run_queue)
         series_n = sum(
             1
@@ -4322,6 +4458,7 @@ class MainWindow(QMainWindow):
         self._release_run_control()
         self._clear_tasks_active_row()
         self._drain_pipeline_worker()
+        self._set_title_playground_buttons_enabled(True)
         if sc is not None and not sc.continue_on_failure:
             dropped = drop_queued_series_items_for_slug(self._pipeline_run_queue, sc.series_slug)
             if dropped:

@@ -35,6 +35,7 @@ from src.content.brain import (
 from src.content.characters_store import (
     cast_to_ephemeral_character,
     character_context_for_brain,
+    character_reference_image_resolved,
     character_selected_in_settings,
     fallback_cast_for_show,
     merge_cast_into_store,
@@ -1374,6 +1375,14 @@ def run_once(
 
             img_dir = assets_dir / "images"
             def _run_images(s: AppSettings, idx: int | None):
+                _ref_kw: dict = {}
+                try:
+                    if character_selected_in_settings(s) and active_character is not None:
+                        p_ref = character_reference_image_resolved(active_character)
+                        if p_ref is not None and p_ref.exists():
+                            _ref_kw = {"external_reference_image": p_ref, "external_reference_strength": 0.55}
+                except Exception:
+                    _ref_kw = {}
                 return generate_images(
                     sdxl_turbo_model_id=img_id,
                     prompts=prompts_img,
@@ -1385,6 +1394,7 @@ def run_once(
                     use_style_continuity=True,
                     cuda_device_index=idx,
                     inference_settings=s,
+                    **_ref_kw,
                 )
 
             gen, app, _diffusion_cuda_idx = retry_stage(
@@ -1670,15 +1680,22 @@ def run_once(
             _allow_nsfw = True
         _art_style_id = str(getattr(app, "art_style_preset_id", None) or "balanced")
         _diffusion_ref_kw: dict = {}
-        if (
+        try:
+            p_ref = (
+                character_reference_image_resolved(active_character)
+                if active_character is not None and character_selected_in_settings(app)
+                else None
+            )
+        except Exception:
+            p_ref = None
+        if p_ref is not None and p_ref.exists():
+            _diffusion_ref_kw = {"external_reference_image": p_ref, "external_reference_strength": 0.55}
+        elif (
             diffusion_reference_image is not None
             and diffusion_reference_image.exists()
             and bool(getattr(video_settings, "story_reference_images", False))
         ):
-            _diffusion_ref_kw = {
-                "external_reference_image": diffusion_reference_image,
-                "external_reference_strength": 0.55,
-            }
+            _diffusion_ref_kw = {"external_reference_image": diffusion_reference_image, "external_reference_strength": 0.55}
     
         # Pro mode: scene-by-scene video — text-to-video (Video slot) and/or image model → img2vid (e.g. SVD).
         if bool(getattr(video_settings, "pro_mode", False)):
@@ -2444,6 +2461,7 @@ def run_once(
                                     use_style_continuity=False,
                                     cuda_device_index=idx,
                                     inference_settings=s,
+                                    **_diffusion_ref_kw,
                                 )
 
                             regen, app, _diffusion_cuda_idx = retry_stage(

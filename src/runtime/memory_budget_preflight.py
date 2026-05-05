@@ -98,9 +98,15 @@ def analyze_stage_memory_budget(
 
     warn: str | None = None
     if avail_gb + 1e-6 < threshold_gib:
+        rid = (repo_id or "").strip()
+        rid_line = f"\nModel: {rid}" if rid else ""
         warn = (
-            f"{stage_label} ({role}): low host RAM (~{avail_gb:.1f} GiB available) versus rough model footprint "
-            f"~{sz:.1f} GiB (+temp buffers){q_suffix}. Prefer a lighter model variant, enable CPU offload, or close apps."
+            f"{stage_label} warning\n"
+            f"Role: {role.strip().lower()}{rid_line}\n"
+            f"Free RAM: ~{avail_gb:.1f} GiB\n"
+            f"Estimated footprint: ~{sz:.1f} GiB (+temp buffers){q_suffix}\n"
+            f"Heuristic threshold: ~{threshold_gib:.1f} GiB\n"
+            "Tip: close other apps, pick a smaller model, or use stronger quantization/CPU offload where supported."
         )
 
     block: str | None = None
@@ -133,13 +139,17 @@ def analyze_stage_memory_budget(
         tier_ok = True
     catastrophic = tier_ok and (r in roles_force) and (avail_gb + 1e-6) < frac * threshold_gib
     if catastrophic:
+        rid = (repo_id or "").strip()
+        rid_line = f"\nModel: {rid}" if rid else ""
         block = (
-            f"{stage_label}: refusing run — catastrophic host RAM shortfall (~{avail_gb:.1f} GiB free vs "
-            f"~{threshold_gib:.1f} GiB heuristic threshold for footprint ~{sz:.1f} GiB snapshot). Loading this "
-            "checkpoint can exhaust Windows RAM and terminate Python with no traceback. Pick a lighter model, "
-            "raise free RAM (close apps), use video quantization CPU offload where supported, "
-            "or see docs/pipeline/crash-resilience.md. Escape hatch (not recommended): set "
-            'AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES="" to disable fatal shortfall gating.'
+            f"{stage_label} blocked (catastrophic RAM shortfall)\n"
+            f"Role: {role.strip().lower()}{rid_line}\n"
+            f"Free RAM: ~{avail_gb:.1f} GiB\n"
+            f"Heuristic threshold: ~{threshold_gib:.1f} GiB (footprint ~{sz:.1f} GiB){q_suffix}\n\n"
+            "This gate is conservative on Windows because some large loads can kill Python with no traceback.\n"
+            "If you’ve successfully run this configuration before, you can ignore it for this session.\n\n"
+            "Recommended fixes: close apps, choose a smaller model, or use stronger quantization/CPU offload.\n"
+            "Escape hatch (not recommended): set AQUADUCT_MEMORY_PREFLIGHT_FAIL_ROLES=\"\""
         )
         return warn, block
 
@@ -154,12 +164,16 @@ def analyze_stage_memory_budget(
         if not roles_warn_err:
             roles_warn_err = {"script"}
     if block is None and r in roles_warn_err:
+        rid = (repo_id or "").strip()
+        rid_line = f"\nModel: {rid}" if rid else ""
         block = (
-            f"{stage_label}: refusing run — host RAM shortfall for current settings (~{avail_gb:.1f} GiB free vs "
-            f"~{threshold_gib:.1f} GiB heuristic need from ~{sz:.1f} GiB adjusted snapshot){q_suffix}. Loading can "
-            "exhaust Windows RAM and terminate Python with no traceback. Close other apps, use lighter models or "
-            "stronger quantization, or see docs/pipeline/crash-resilience.md. To allow the run anyway (not "
-            'recommended): set AQUADUCT_MEMORY_PREFLIGHT_ERROR_ON_WARN_ROLES=""'
+            f"{stage_label} blocked (RAM shortfall)\n"
+            f"Role: {role.strip().lower()}{rid_line}\n"
+            f"Free RAM: ~{avail_gb:.1f} GiB\n"
+            f"Heuristic threshold: ~{threshold_gib:.1f} GiB (footprint ~{sz:.1f} GiB){q_suffix}\n\n"
+            "This gate is conservative. If this exact config runs fine on your machine, ignore it for this session.\n\n"
+            "Recommended fixes: close apps, choose a smaller model, or use stronger quantization/CPU offload.\n"
+            "Escape hatch (not recommended): set AQUADUCT_MEMORY_PREFLIGHT_ERROR_ON_WARN_ROLES=\"\""
         )
 
     return warn, block
