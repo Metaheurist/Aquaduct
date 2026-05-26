@@ -109,9 +109,14 @@ def _strip_negative_and_cap_for_clip(model_id: str, prompt: str) -> str:
 # Keep in sync when adding Hub entries used by ``generate_clips``.
 CURATED_VIDEO_CLIP_REPO_IDS: frozenset[str] = frozenset(
     {
+        "thudm/cogvideox-5b",
+        "wan-ai/wan2.2-ti2v-5b-diffusers",
         "wan-ai/wan2.2-t2v-a14b-diffusers",
         "genmo/mochi-1-preview",
-        "thudm/cogvideox-5b",
+        "hunyuanvideo-community/hunyuanvideo-1.5-diffusers-480p_i2v_step_distilled",
+        "skywork/skyreels-v2-i2v-1.3b-540p-diffusers",
+        "lllyasviel/framepacki2v_hy",
+        "lllyasviel/framepack_f1_i2v_hy_20250503",
         "tencent/hunyuanvideo",
         "lightricks/ltx-2",
     }
@@ -159,6 +164,15 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
     mid = _norm_repo_id(model_id)
     nf = max(8, int(num_frames))
 
+    if mid == "wan-ai/wan2.2-ti2v-5b-diffusers":
+        nf_w = min(max(17, nf), 81)
+        return {
+            "num_frames": nf_w,
+            "num_inference_steps": 24,
+            "height": 480,
+            "width": 832,
+            "guidance_scale": 4.5,
+        }
     if mid == "wan-ai/wan2.2-t2v-a14b-diffusers":
         # 480P-style defaults; 720P needs more VRAM (see Wan model card / diffusers example).
         nf_w = min(max(17, nf), 97)
@@ -176,6 +190,25 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "num_frames": nf_m,
             "num_inference_steps": 28,
             "guidance_scale": 3.5,
+        }
+    if mid == "hunyuanvideo-community/hunyuanvideo-1.5-diffusers-480p_i2v_step_distilled":
+        return {
+            "num_frames": min(max(17, nf), 121),
+            "num_inference_steps": 12,
+        }
+    if mid == "skywork/skyreels-v2-i2v-1.3b-540p-diffusers":
+        return {
+            "num_frames": min(max(17, nf), 97),
+            "num_inference_steps": 30,
+            "height": 544,
+            "width": 960,
+            "guidance_scale": 6.0,
+        }
+    if mid in ("lllyasviel/framepacki2v_hy", "lllyasviel/framepack_f1_i2v_hy_20250503"):
+        return {
+            "num_frames": min(max(17, nf), 121),
+            "num_inference_steps": 25,
+            "guidance_scale": 4.0,
         }
     if mid == "lightricks/ltx-2":
         # 9:16 "4K" vertical for Shorts: both dims divisible by 32 (LTX-2 constraint). Heavy VRAM.
@@ -296,6 +329,25 @@ def _video_pipe_kwargs(model_id: str, *, num_frames: int) -> dict:
             "num_frames": min(max(9, nf), 49),
             "num_inference_steps": 50,
             "guidance_scale": 6.0,
+        }
+    if "hunyuanvideo-1.5" in mid and "i2v" in mid:
+        return {
+            "num_frames": min(max(17, nf), 121),
+            "num_inference_steps": 12,
+        }
+    if "skyreels-v2" in mid and "i2v" in mid:
+        return {
+            "num_frames": min(max(17, nf), 97),
+            "num_inference_steps": 30,
+            "height": 544,
+            "width": 960,
+            "guidance_scale": 6.0,
+        }
+    if "framepack" in mid:
+        return {
+            "num_frames": min(max(17, nf), 121),
+            "num_inference_steps": 25,
+            "guidance_scale": 4.0,
         }
     if "ltx-2" in mid:
         nf_l = min(max(9, nf), 241)
@@ -484,6 +536,12 @@ def is_image_to_video_motion_model(model_id: str) -> bool:
     if "stable-video-diffusion" in mid:
         return True
     if "img2vid" in mid and "zeroscope" not in mid:
+        return True
+    if "hunyuanvideo-1.5" in mid and "i2v" in mid:
+        return True
+    if "skyreels-v2" in mid and "i2v" in mid:
+        return True
+    if "framepack" in mid:
         return True
     return False
 

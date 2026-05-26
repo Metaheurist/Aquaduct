@@ -34,12 +34,23 @@ def test_model_options_video_clip_models_match_clip_registry():
 def test_video_pipe_kwargs_for_each_curated_clip_model():
     for rid in CURATED_VIDEO_CLIP_REPO_IDS:
         kw = _video_pipe_kwargs(rid, num_frames=24)
-        if rid == "wan-ai/wan2.2-t2v-a14b-diffusers":
+        if rid == "wan-ai/wan2.2-ti2v-5b-diffusers":
+            assert kw["height"] == 480 and kw["width"] == 832 and kw["guidance_scale"] == 4.5
+        elif rid == "wan-ai/wan2.2-t2v-a14b-diffusers":
             assert kw["height"] == 480 and kw["width"] == 832
         elif rid == "genmo/mochi-1-preview":
             assert kw["num_frames"] == 24
         elif rid == "thudm/cogvideox-5b":
             assert kw["num_frames"] == 24 and kw["guidance_scale"] == 6.0
+        elif rid == "hunyuanvideo-community/hunyuanvideo-1.5-diffusers-480p_i2v_step_distilled":
+            assert kw["num_frames"] == 24 and kw["num_inference_steps"] == 12
+        elif rid == "skywork/skyreels-v2-i2v-1.3b-540p-diffusers":
+            assert kw["width"] == 960 and kw["height"] == 544 and kw["guidance_scale"] == 6.0
+        elif rid in {
+            "lllyasviel/framepacki2v_hy",
+            "lllyasviel/framepack_f1_i2v_hy_20250503",
+        }:
+            assert kw["num_frames"] == 24 and kw["guidance_scale"] == 4.0
         elif rid == "tencent/hunyuanvideo":
             assert kw["width"] == 960 and kw["height"] == 544 and kw["num_frames"] == 24
         elif rid == "lightricks/ltx-2":

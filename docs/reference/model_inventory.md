@@ -24,9 +24,14 @@ Curated **local** models come from `model_options()`; **API** providers from `ap
 | image | `stabilityai/stable-diffusion-3.5-large` | Pro | ~14-20GB | slow | ~ 14-20 GB VRAM |
 | image | `stabilityai/stable-diffusion-3.5-medium` | Standard | ~10-14GB | faster | ~ 10-14 GB VRAM |
 | image | `stabilityai/stable-diffusion-3.5-large-turbo` | Lite | ~8-12GB | fastest | ~ 8-12 GB VRAM |
+| video | `THUDM/CogVideoX-5b` | Lite | ~6-10GB | fastest | ~ 6-10 GB VRAM |
+| video | `Wan-AI/Wan2.2-TI2V-5B-Diffusers` | Lite | ~8-12GB | fastest | ~ 8-12 GB VRAM |
 | video | `Wan-AI/Wan2.2-T2V-A14B-Diffusers` | Standard | ~12-16GB | faster | ~ 12-16 GB VRAM |
 | video | `genmo/mochi-1-preview` | Standard | ~10-14GB | faster | ~ 10-14 GB VRAM |
-| video | `THUDM/CogVideoX-5b` | Lite | ~6-10GB | fastest | ~ 6-10 GB VRAM |
+| video | `hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v_step_distilled` | Standard | ~10-14GB | faster | ~ 10-14 GB VRAM |
+| video | `Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers` | Standard | ~14-16GB | slow | ~ 14-16 GB VRAM |
+| video | `lllyasviel/FramePackI2V_HY` | Lite | ~6-8GB | slow | ~ 6-8 GB VRAM |
+| video | `lllyasviel/FramePack_F1_I2V_HY_20250503` | Lite | ~6-8GB | slow | ~ 6-8 GB VRAM |
 | video | `Tencent/HunyuanVideo` | Pro | ~16-24GB+ | slow | ~ 16-24+ GB VRAM |
 | video | `Lightricks/LTX-2` | Pro | ~24-40GB+ | slow | ~ 24-40+ GB VRAM at 4K-class settings (LTX-2; lower res/CPU offload may fit less) |
 | voice | `hexgrad/Kokoro-82M` | Lite | 82M | fastest | CPU OK |

@@ -500,16 +500,26 @@ def vram_requirement_hint(
         if pair:
             return "~ 10-12 GB VRAM"
         rl = rid.lower()
+        if "framepack" in rl:
+            return "~ 6-8 GB VRAM"
+        if "wan2.2-ti2v-5b" in rl:
+            return "~ 8-12 GB VRAM"
         if "wan-ai" in rl or "wan2.2" in rl or ("/wan" in rl and "t2v" in rl):
             return "~ 12-16 GB VRAM"
+        if "hunyuanvideo-1.5" in rl and "480p" in rl and "i2v" in rl:
+            return "~ 10-14 GB VRAM"
         if "mochi" in rl:
             return "~ 10-14 GB VRAM"
         if "cogvideox-5b" in rl:
             return "~ 6-10 GB VRAM"
         if "cogvideox" in rl:
             return "~ 12-16 GB VRAM"
+        if "skyreels-v2" in rl and "1.3b" in rl:
+            return "~ 14-16 GB VRAM"
         if "hunyuanvideo" in rl:
             return "~ 16-24+ GB VRAM"
+        if "ltx-2.3" in rl:
+            return "~ 24-40+ GB VRAM (official local guidance still targets very large GPUs)"
         if "ltx-2" in rl:
             return "~ 24-40+ GB VRAM at 4K-class settings (LTX-2; lower res/CPU offload may fit less)"
         if "ltx-video" in rl or ("lightricks/ltx" in rl and "ltx-2" not in rl):
@@ -646,10 +656,22 @@ def rate_model_fit_for_repo(
             need_ok = 12.0
             need_ex = 16.0
             why = "Paired pipeline (keyframes + img->vid) is heavier; unloading between stages helps."
+        elif "framepack" in rid:
+            need_ok = 6.0
+            need_ex = 8.0
+            why = "FramePack keeps VRAM low, but it trades memory for slower progressive generation."
+        elif "wan2.2-ti2v-5b" in rid:
+            need_ok = 8.0
+            need_ex = 12.0
+            why = "Wan 2.2 TI2V 5B is the low-VRAM open-weight hybrid option."
         elif "wan-ai" in rid or "wan2.2" in rid or ("t2v" in rid and "wan" in rid and "a14b" in rid):
             need_ok = 12.0
             need_ex = 18.0
             why = "Wan 2.2 14B-class T2V is large; 480P-style settings reduce peak VRAM."
+        elif "hunyuanvideo-1.5" in rid and "480p" in rid and "i2v" in rid:
+            need_ok = 10.0
+            need_ex = 14.0
+            why = "HunyuanVideo 1.5 480p step-distilled I2V is the lighter practical Hunyuan path."
         elif "mochi" in rid:
             need_ok = 10.0
             need_ex = 14.0
@@ -662,10 +684,18 @@ def rate_model_fit_for_repo(
             need_ok = 12.0
             need_ex = 16.0
             why = "CogVideoX 2B-class stacks still need headroom for coherent clips."
+        elif "skyreels-v2" in rid and "1.3b" in rid:
+            need_ok = 14.0
+            need_ex = 18.0
+            why = "SkyReels V2 1.3B 540P is lighter than the 14B releases, but still not a tiny model."
         elif "hunyuanvideo" in rid:
             need_ok = 16.0
             need_ex = 24.0
             why = "HunyuanVideo is frontier-class; full settings want high VRAM."
+        elif "ltx-2.3" in rid:
+            need_ok = 24.0
+            need_ex = 40.0
+            why = "LTX-2.3 improves quality, but official local guidance still assumes very large GPUs."
         elif "ltx-2" in rid:
             need_ok = 24.0
             need_ex = 40.0
@@ -808,8 +838,13 @@ _IMAGE_PREF_ORDER: tuple[str, ...] = (
 
 _MOTION_VIDEO_PREF_ORDER: tuple[str, ...] = (
     "thudm/cogvideox-5b",
+    "wan-ai/wan2.2-ti2v-5b-diffusers",
+    "lllyasviel/framepacki2v_hy",
+    "lllyasviel/framepack_f1_i2v_hy_20250503",
     "genmo/mochi-1-preview",
+    "hunyuanvideo-community/hunyuanvideo-1.5-diffusers-480p_i2v_step_distilled",
     "wan-ai/wan2.2-t2v-a14b-diffusers",
+    "skywork/skyreels-v2-i2v-1.3b-540p-diffusers",
     "tencent/hunyuanvideo",
     "lightricks/ltx-2",
 )

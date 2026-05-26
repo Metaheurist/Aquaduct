@@ -19,6 +19,7 @@ Sources
 - Mochi 1.x: 30 fps
 - LTX-Video / LTX-2: 24 fps (already honored by ``frame_rate`` kwarg)
 - HunyuanVideo: 24 fps
+- SkyReels V2 / FramePack variants: 24 fps
 - ZeroScope / ModelScope and unknown ids: ``None`` (caller uses the user fps).
 
 Override: set ``AQUADUCT_NATIVE_FPS_OVERRIDE_<KEY>`` where ``<KEY>`` is the
@@ -77,6 +78,8 @@ def native_fps_for(model_id: str | None) -> int | None:
         return 16
     if "mochi" in mid:
         return 30
+    if "skyreels-v2" in mid or "framepack" in mid:
+        return 24
     if "ltx-2" in mid or "ltx-video" in mid or "lightricks/ltx" in mid:
         return 24
     if "hunyuanvideo" in mid:

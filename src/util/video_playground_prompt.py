@@ -88,6 +88,11 @@ def video_playground_prompt_char_limit(
             1800,
             "CogVideoX allows long prompts in the pipeline (~200 words); ~1800 characters keeps paste-sized prompts safe.",
         )
+    if "framepack" in low or "skyreels-v2" in low or ("hunyuanvideo-1.5" in low and "i2v" in low):
+        return (
+            1800,
+            "This image-to-video checkpoint accepts text conditioning; ~1800 characters is a safe upper bound for descriptive prompts.",
+        )
     if "ltx-video" in low or "lightricks/ltx" in low:
         return (
             1200,

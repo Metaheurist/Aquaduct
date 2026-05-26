@@ -131,9 +131,14 @@ def _build_registry() -> dict[tuple[str, str], ShardRegistryRow]:
         )
 
     for rid in (
+        "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
         "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
         "genmo/mochi-1-preview",
         "THUDM/CogVideoX-5b",
+        "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v_step_distilled",
+        "Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers",
+        "lllyasviel/FramePackI2V_HY",
+        "lllyasviel/FramePack_F1_I2V_HY_20250503",
         "Tencent/HunyuanVideo",
         "Lightricks/LTX-2",
     ):

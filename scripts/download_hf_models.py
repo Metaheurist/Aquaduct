@@ -50,11 +50,23 @@ from src.models.model_manager import model_options
 # Precedence: --token CLI > this variable > HF_TOKEN / HUGGINGFACEHUB_API_TOKEN env.
 HF_TOKEN = ""
 
+# Download-only extras that are useful for transfer drives / external ComfyUI workflows but are
+# not exposed as first-class runnable local dropdown entries in the desktop app.
+EXTRA_TRANSFER_REPOS = [
+    "QuantStack/Wan2.2-TI2V-5B-GGUF",
+    "QuantStack/Wan2.2-T2V-A14B-GGUF",
+    "QuantStack/Wan2.2-I2V-A14B-GGUF",
+    "tencent/HunyuanVideo-1.5",
+    "Lightricks/LTX-2.3",
+]
+
 
 def curated_repo_ids(*, full: bool) -> list[str]:
     opts = model_options()
     if full:
-        return list(dict.fromkeys(o.repo_id for o in opts))
+        ids = [o.repo_id for o in opts]
+        ids.extend(EXTRA_TRANSFER_REPOS)
+        return list(dict.fromkeys(ids))
     picked: list[str] = []
     seen_kind: set[str] = set()
     for kind in ("script", "image", "voice"):
