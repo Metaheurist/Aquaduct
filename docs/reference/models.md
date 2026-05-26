@@ -7,7 +7,7 @@ The canonical id list is defined in [`src/models/model_manager.py`](../../src/mo
 |------|-----------|
 | **Script (LLM)** | **Qwen3 14B Instruct** (curated default), **Fimbulvetr 11B v2** (prose / Solar), **Midnight Miqu 70B v1.5** (heavyweight), **DeepSeek-V3** (`deepseek-ai/DeepSeek-V3` — 671B MoE, complex plot / reasoning at scale) — see [`model_options()`](../../src/models/model_manager.py) |
 | **Image** | **FLUX.1.1 [pro] ultra** (`black-forest-labs/FLUX.1.1-pro-ultra`), **FLUX.1 [dev]**, **FLUX.1 [schnell]**, **SD3.5** Large / Medium, **SD3 Turbo** — see [`model_options()`](../../src/models/model_manager.py) |
-| **Video** | **Wan 2.2 T2V A14B** (`Wan-AI/Wan2.2-T2V-A14B-Diffusers`), **Mochi 1** (`genmo/mochi-1-preview`), **CogVideoX 5B**, **HunyuanVideo**, **LTX-2** (`Lightricks/LTX-2` — 4K-class Shorts) — see [`model_options()`](../../src/models/model_manager.py) |
+| **Video** | **CogVideoX 5B**, **Wan 2.2 TI2V 5B** (`Wan-AI/Wan2.2-TI2V-5B-Diffusers`), **Wan 2.2 T2V A14B**, **Mochi 1**, **HunyuanVideo 1.5 480p I2V Step Distilled** (`hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v_step_distilled`), **SkyReels V2 I2V 1.3B 540P**, **FramePack** / **FramePack F1**, **HunyuanVideo**, **LTX-2** (`Lightricks/LTX-2` — 4K-class Shorts) — see [`model_options()`](../../src/models/model_manager.py) |
 | **Voice** | Kokoro-82M, MOSS-VoiceGenerator |
 
 ### Quick comparison (text-to-video, rough guide)
@@ -15,15 +15,19 @@ At-a-glance for **planning VRAM** and **license vibe**; minimum VRAM depends on 
 
 | Model | Size | Minimum VRAM (typical, quantized / efficient path) | License | Vibe |
 |-------|------|---------------------------------------------------|---------|------|
-| **Wan 2.2** | ~14B | ~14 GB | Apache 2.0 (check release card) | Balanced & smart |
+| **CogVideoX 5B** | 5B | ~6-10 GB | Apache 2.0 | Lightest curated local T2V |
+| **Wan 2.2 TI2V 5B** | 5B | ~8-12 GB | Apache 2.0 | Best low-VRAM hybrid T2V/I2V |
+| **Wan 2.2 T2V A14B** | ~14B | ~12-18 GB | Apache 2.0 (check release card) | Balanced & smart |
 | **Mochi 1** (`genmo/mochi-1-preview`) | ~10B+ | ~12 GB+ | Apache 2.0 (check release card) | Genmo T2V via **MochiPipeline**; Aquaduct uses the public **preview** weights (the `mochi-1.5-final` Hub id is not available). |
+| **HunyuanVideo 1.5 480p I2V Step Distilled** | 8.3B-class | ~10-14 GB | community / upstream terms on card | Practical low-VRAM Hunyuan path when you already have a start frame |
+| **SkyReels V2 I2V 1.3B 540P** | 1.3B | ~14-18 GB | check release card | Human-centric I2V, lighter than SkyReels 14B |
+| **FramePack / FramePack F1** | compact I2V | ~6-8 GB | check release card | Very low VRAM, but slower progressive generation |
 | **LTX-2** | 19B-class | 24 GB+ at 4K (tiling/ offload common) | [Community license](https://huggingface.co/Lightricks/LTX-2) | Native 4K AV T2V (optional **PyAV** / `av` for muxed export) |
-| **CogVideoX 5B** | 5B | ~6 GB (quantized / tight setups) | Apache 2.0 | Efficient & stylized |
 | **Hunyuan** (large) | Large | ~16 GB+ | Open-weight / custom terms (see [Tencent/HunyuanVideo](https://huggingface.co/Tencent/HunyuanVideo) card) | Frontier fidelity |
 
-**Aquaduct local video slot** ([`model_options()`](../../src/models/model_manager.py), [`clips.py`](../../src/render/clips.py)) wires the table rows above: **Wan 2.2**, **Mochi 1** (`genmo/mochi-1-preview`), **CogVideoX 5B**, **HunyuanVideo**, **LTX-2** (`LTX2Pipeline` + optional `encode_video` with audio when **PyAV** is installed: `pip install av`). SVD, ZeroScope, ModelScope, and **LTX-Video** remain supported if you type those Hub ids manually.
+**Aquaduct local video slot** ([`model_options()`](../../src/models/model_manager.py), [`clips.py`](../../src/render/clips.py)) now wires the current diffusers-friendly additions too: **Wan 2.2 TI2V 5B**, **HunyuanVideo 1.5 480p I2V Step Distilled**, **SkyReels V2 I2V 1.3B 540P**, **FramePack**, and **FramePack F1**, alongside **Wan 2.2 T2V A14B**, **Mochi 1**, **CogVideoX 5B**, **HunyuanVideo**, and **LTX-2**. SVD, ZeroScope, ModelScope, and **LTX-Video** remain supported if you type those Hub ids manually.
 
-**CLI bulk download** (same ids, `./models` layout as the app): `python scripts/download_hf_models.py --all` from the repo root. The list matches [`scripts/download_hf_models.py`](../../scripts/download_hf_models.py) `ALL_REPOS` and the [embedded copy in `scripts/download_all_for_transfer.ps1`](../../scripts/download_all_for_transfer.ps1).
+**CLI bulk download** (same ids, `./models` layout as the app): `python scripts/download_hf_models.py --all` from the repo root. The full list includes the runnable local models above **plus** transfer-only extras such as **Wan 2.2 GGUF**, **official HunyuanVideo-1.5**, and **LTX-2.3** for external ComfyUI / offsite workflows. See [`scripts/download_hf_models.py`](../../scripts/download_hf_models.py) and the [embedded copy in `scripts/download_all_for_transfer.ps1`](../../scripts/download_all_for_transfer.ps1).
 
 **Windows copy (optional):** if you use a second standalone downloader (for example `H:\AI Models\download_all_for_transfer.ps1` on a transfer drive), keep its embedded `ALL_REPOS` in lockstep with `scripts/download_hf_models.py` — it is the same full curated set as the app’s bulk download.
 

@@ -27,8 +27,11 @@ from src.models.native_fps import (
 
 def test_native_fps_registry_known_models() -> None:
     assert native_fps_for("THUDM/CogVideoX-5b") == 8
+    assert native_fps_for("Wan-AI/Wan2.2-TI2V-5B-Diffusers") == 16
     assert native_fps_for("Wan-AI/Wan2.2-T2V-A14B-Diffusers") == 16
     assert native_fps_for("genmo/mochi-1-preview") == 30
+    assert native_fps_for("Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers") == 24
+    assert native_fps_for("lllyasviel/FramePackI2V_HY") == 24
     assert native_fps_for("Lightricks/LTX-2") == 24
     assert native_fps_for("Lightricks/LTX-Video") == 24
     assert native_fps_for("tencent/HunyuanVideo") == 24
@@ -51,6 +54,7 @@ def test_encoded_fps_prefers_explicit_frame_rate_kwarg() -> None:
 
 def test_encoded_fps_uses_native_when_no_kwarg() -> None:
     assert encoded_fps_for("THUDM/CogVideoX-5b", user_fps=30) == 8
+    assert encoded_fps_for("lllyasviel/FramePack_F1_I2V_HY_20250503", user_fps=30) == 24
     assert encoded_fps_for("Wan-AI/Wan2.2-T2V-A14B-Diffusers", user_fps=30) == 16
 
 

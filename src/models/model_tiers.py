@@ -60,9 +60,14 @@ _LOCAL_TIER: dict[str, str] = {
     "stabilityai/stable-diffusion-3.5-medium": TIER_STANDARD,
     "stabilityai/stable-diffusion-3.5-large-turbo": TIER_LITE,
     # Video
+    "Wan-AI/Wan2.2-TI2V-5B-Diffusers": TIER_LITE,
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers": TIER_STANDARD,
-        "genmo/mochi-1-preview": TIER_STANDARD,
+    "genmo/mochi-1-preview": TIER_STANDARD,
     "THUDM/CogVideoX-5b": TIER_LITE,
+    "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v_step_distilled": TIER_STANDARD,
+    "Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers": TIER_STANDARD,
+    "lllyasviel/FramePackI2V_HY": TIER_LITE,
+    "lllyasviel/FramePack_F1_I2V_HY_20250503": TIER_LITE,
     "Tencent/HunyuanVideo": TIER_PRO,
     "Lightricks/LTX-2": TIER_PRO,
     # Voice
