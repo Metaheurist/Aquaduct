@@ -13,3 +13,7 @@
 Lines look like ``[Aquaduct:crawler] ...`` on stderr and under ``logs/debug.log`` when enabled.
 
 ← [Debug index](../README.md) · [debug_log.py](../debug_log.py)
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

@@ -4,10 +4,17 @@
 
 The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format** (News, Cartoon, Explainer, Unhinged, Creepypasta, Health advice, NSFW — same buckets as Run). Tags drive crawls, Discover seeds, and the script LLM.
 
-## Tags
+## Tags (chip flow)
 
-- **Mode** dropdown: choose which format’s list you are editing (`UI/tabs/topics_tab.py`).
-- **Add tag** appends to the current mode list; selections can be removed or cleared.
+- **Mode** dropdown: choose which format’s list you are editing ([`UI/tabs/topics_tab.py`](../../UI/tabs/topics_tab.py)).
+- Tags render as **removable chips** in a capped scroll area (~160px) using [`FlowLayout`](../../UI/widgets/flow_layout.py) and [`TopicChip`](../../UI/widgets/topic_chip.py).
+- **Add tag** appends to the current mode list; click a chip to select it; use the chip **remove** control or bulk actions to clear tags.
+
+## Selected-tag notes (grounding)
+
+- One optional note field targets the **currently selected chip** only (replaces the old per-tag notes block).
+- Persisted as `topic_tag_notes` in `ui_settings.json` (keys: tag text **normalized** to lowercase, single-line notes **≤ 240 chars** after sanitisation — [`sanitize_topic_tag_notes`](../../src/content/topic_constraints.py)).
+- At run time, `main.py` merges these into [`topic_constraints_block`](../../src/content/topic_constraints.py) alongside active tags (`effective_topic_tags`).
 
 ## Discover
 
@@ -16,18 +23,13 @@ The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format**
 
 See [Desktop UI overview](ui.md) and [Crawler](../integrations/crawler.md).
 
-## Per-tag grounding notes (hard constraints layer)
+## Suggest with LLM
 
-Below the tag list, **Per-tag notes (grounding)** shows one optional line per tag for the **currently selected Topics mode**.
-
-- Persisted as `topic_tag_notes` in `ui_settings.json` (keys: tag text **normalized** to lowercase, single-line notes **≤ 240 chars** after sanitisation — [`sanitize_topic_tag_notes`](../../src/content/topic_constraints.py)).
-- At run time, `main.py` merges these into [`topic_constraints_block`](../../src/content/topic_constraints.py) alongside active tags (`effective_topic_tags`) so the script model sees tags as **hard** constraints plus your short cue per tag.
-- Tags are global by **string**: the same wording in two formats shares one note unless you rename one tag.
-
-**Suggest with LLM** batches missing grounding lines via the **Script (LLM)** model (local or API). Progress uses the **`AuxiliaryProgressDialog`** chrome as Characters / 🧠 expand ([`UI/dialogs/auxiliary_progress_dialog.py`](../../UI/dialogs/auxiliary_progress_dialog.py)) — **fixed** (not draggable); **`purge_process_memory_aggressive()`** runs when the worker finishes.
+**Suggest with LLM** batches missing grounding lines via the **Script (LLM)** model (local or API). Progress uses **`AuxiliaryProgressDialog`** chrome as Characters / field expand ([`UI/dialogs/auxiliary_progress_dialog.py`](../../UI/dialogs/auxiliary_progress_dialog.py)).
 
 ## Related pipeline docs
 
 - [Brain — topic tags & hard constraints](../pipeline/brain.md#topic-tags--hard-constraints)
 - [Prompt context fusion](../pipeline/prompt-context.md)
 - [Config — `topic_tag_notes`](../reference/config.md#app-settings-ui--pipeline)
+- [Shared UI widgets](shared-widgets.md)

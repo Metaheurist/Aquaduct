@@ -127,3 +127,7 @@ Tick all four to call this review pass:
 Optional:
 
 - [ ] One **G3** run (Photo mode) completed.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

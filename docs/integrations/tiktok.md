@@ -38,3 +38,7 @@ Aquaduct can send finished `final.mp4` files to your **TikTok creator inbox** so
 - [Upload video (inbox)](https://developers.tiktok.com/doc/content-posting-api-reference-upload-video)
 - [OAuth token management](https://developers.tiktok.com/doc/oauth-user-access-token-management)
 - [Login Kit for Desktop](https://developers.tiktok.com/doc/login-kit-desktop)
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

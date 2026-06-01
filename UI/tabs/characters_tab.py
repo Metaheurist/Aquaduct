@@ -55,7 +55,10 @@ from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedu
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
-from UI.theme import resolve_palette
+from UI.theme import resolve_palette, token
+from UI.widgets.flow_layout import FlowLayout
+from UI.widgets.character_card import CharacterCard
+from UI.widgets.two_column import two_column_row
 from UI.widgets.toolbar_svg_icons import qicon_toolbar
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
 
@@ -168,22 +171,15 @@ def attach_characters_tab(win) -> None:
     lay.setContentsMargins(6, 4, 6, 4)
     lay.setSpacing(2)
 
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-    scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-    inner = QWidget()
-    inner_lay = QVBoxLayout(inner)
-    inner_lay.setContentsMargins(0, 0, 4, 8)
-    inner_lay.setSpacing(3)
+    left_panel = QWidget()
+    left_lay = QVBoxLayout(left_panel)
+    left_lay.setContentsMargins(0, 0, 4, 0)
+    left_lay.setSpacing(3)
 
     list_card, list_lay = section_card(margins=10, spacing=8)
     list_lay.addWidget(section_title("Characters", emphasis=True))
 
-    hint = QLabel("Host identity and visuals - assign on the Run tab.")
+    hint = QLabel("Host identity and visuals - assign on the Pipeline tab.")
     hint.setWordWrap(True)
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     list_lay.addWidget(hint)
@@ -237,10 +233,23 @@ def attach_characters_tab(win) -> None:
     win.character_preset_notes_edit.setMaximumHeight(26)
     list_lay.addWidget(win.character_preset_notes_edit)
 
-    win.characters_list = QListWidget()
-    win.characters_list.setMinimumHeight(56)
-    win.characters_list.setMaximumHeight(100)
-    list_lay.addWidget(win.characters_list)
+    cards_scroll = QScrollArea()
+    cards_scroll.setWidgetResizable(True)
+    cards_scroll.setMinimumHeight(180)
+    cards_scroll.setMaximumHeight(320)
+    cards_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    win.characters_cards_inner = QWidget()
+    win.characters_cards_layout = FlowLayout(win.characters_cards_inner, margin=4, h_spacing=10, v_spacing=10)
+    cards_scroll.setWidget(win.characters_cards_inner)
+    list_lay.addWidget(cards_scroll)
+
+    win.characters_empty_hint = QLabel(
+        "No characters yet. Use the + button or \u201cGenerate with LLM\u201d to add your first profile."
+    )
+    win.characters_empty_hint.setWordWrap(True)
+    win.characters_empty_hint.setStyleSheet(f"color: {token('muted', '#8A96A3')}; font-size: 11px;")
+    win.characters_empty_hint.setVisible(False)
+    list_lay.addWidget(win.characters_empty_hint)
 
     btn_row = QHBoxLayout()
     btn_row.setSpacing(6)
@@ -269,9 +278,16 @@ def attach_characters_tab(win) -> None:
     btn_row.addWidget(win.characters_del_btn)
     btn_row.addStretch(1)
     list_lay.addLayout(btn_row)
-    inner_lay.addWidget(list_card)
+    left_lay.addWidget(list_card)
 
-    add_section_spacing(inner_lay, px=14)
+    right_scroll = QScrollArea()
+    right_scroll.setWidgetResizable(True)
+    right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    right_inner = QWidget()
+    right_lay = QVBoxLayout(right_inner)
+    right_lay.setContentsMargins(0, 0, 0, 8)
+    right_lay.setSpacing(3)
 
     edit_card, edit_lay = section_card(margins=10, spacing=6)
     edit_lay.addWidget(section_title("Profile", emphasis=True))
@@ -462,9 +478,11 @@ def attach_characters_tab(win) -> None:
     el_outer.addLayout(el_row)
     edit_lay.addWidget(win.character_el_container)
 
-    inner_lay.addWidget(edit_card)
+    right_lay.addWidget(edit_card)
+    right_scroll.setWidget(right_inner)
 
-    scroll.setWidget(inner)
+    split = two_column_row(left_panel, right_scroll, ratio=(2, 3))
+    lay.addWidget(split, 1)
 
     foot = QWidget()
     foot_lay = QHBoxLayout(foot)
@@ -476,13 +494,10 @@ def attach_characters_tab(win) -> None:
     win.characters_save_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
     foot_lay.addWidget(win.characters_save_btn)
     foot_lay.addStretch(1)
-
-    lay.addWidget(scroll, 1)
     lay.addWidget(foot)
 
     w.setStyleSheet(
         """
-        QListWidget { font-size: 11px; padding: 2px; }
         QTextEdit { font-size: 11px; padding: 2px 4px; }
         QLineEdit { font-size: 11px; padding: 2px 4px; }
         """
@@ -521,9 +536,7 @@ def attach_characters_tab(win) -> None:
                     if isinstance(item, (list, tuple)) and len(item) >= 2:
                         parsed.append((str(item[0]), str(item[1])))
             _el_voices_cache = parsed
-            it = win.characters_list.currentItem()
-            cid = str(it.data(256) or "") if it else ""
-            ch = get_by_id(all_chars, cid) if cid else None
+            ch = get_by_id(all_chars, str(_current_id or "")) if _current_id else None
             el_id = (ch.elevenlabs_voice_id if ch else "") or ""
             _fill_el_voice_combo(win.character_el_voice_combo, el_id, _el_voices_cache)
             th.deleteLater()
@@ -542,24 +555,45 @@ def attach_characters_tab(win) -> None:
         _el_voices_cache = []
         _start_el_fetch()
 
+    def _select_character_id(cid: str | None, *, load_form: bool = True) -> None:
+        nonlocal _current_id
+        _current_id = str(cid) if cid else None
+        cards = getattr(win, "_character_card_widgets", {}) or {}
+        for card_id, card in cards.items():
+            try:
+                card.set_selected(card_id == _current_id)
+            except Exception:
+                pass
+        if load_form and _current_id:
+            ch = get_by_id(all_chars, _current_id)
+            if ch:
+                _load_form(ch)
+
     def _refresh_list(select_id: str | None = None) -> None:
         nonlocal all_chars, _current_id
         all_chars = load_all()
-        win.characters_list.clear()
-        for c in all_chars:
-            it = QListWidgetItem(c.name)
-            it.setData(256, c.id)
-            win.characters_list.addItem(it)
+        lay_cards = win.characters_cards_layout
+        while lay_cards.count():
+            item = lay_cards.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        win._character_card_widgets = {}
         sid = select_id if select_id is not None else _current_id
-        if sid:
-            _current_id = sid
-            for i in range(win.characters_list.count()):
-                it = win.characters_list.item(i)
-                if it and it.data(256) == sid:
-                    win.characters_list.setCurrentRow(i)
-                    break
-        elif win.characters_list.count():
-            win.characters_list.setCurrentRow(0)
+        for c in all_chars:
+            card = CharacterCard(c, is_selected=(c.id == sid), parent=win.characters_cards_inner)
+            card.selected.connect(lambda cid=c.id: _select_character_id(cid))
+            lay_cards.addWidget(card)
+            win._character_card_widgets[c.id] = card
+        if hasattr(win, "characters_empty_hint"):
+            win.characters_empty_hint.setVisible(not all_chars)
+        if select_id:
+            _current_id = select_id
+            _select_character_id(select_id)
+        elif all_chars and not _current_id:
+            _select_character_id(all_chars[0].id)
+        elif sid and sid in win._character_card_widgets:
+            _select_character_id(sid)
 
     def _refresh_portrait_thumb() -> None:
         ch = get_by_id(all_chars, str(_current_id)) if _current_id else None
@@ -606,17 +640,7 @@ def attach_characters_tab(win) -> None:
         _refresh_portrait_thumb()
 
     def _on_select() -> None:
-        nonlocal _current_id
-        it = win.characters_list.currentItem()
-        if not it:
-            _current_id = None
-            return
-        cid = it.data(256)
-        _current_id = str(cid) if cid else None
-
-        ch = get_by_id(all_chars, str(_current_id)) if _current_id else None
-        if ch:
-            _load_form(ch)
+        _select_character_id(_current_id, load_form=True)
 
     def _read_form() -> Character | None:
         nonlocal _current_id
@@ -919,11 +943,10 @@ def attach_characters_tab(win) -> None:
 
     def _on_delete() -> None:
         nonlocal all_chars, _current_id
-        it = win.characters_list.currentItem()
-        if not it:
+        if not _current_id:
             return
 
-        ch = get_by_id(all_chars, str(it.data(256) or ""))
+        ch = get_by_id(all_chars, str(_current_id))
         if not ch:
             return
         if not aquaduct_question(
@@ -961,7 +984,6 @@ def attach_characters_tab(win) -> None:
         dlg.showMaximized()
         dlg.exec()
 
-    win.characters_list.currentRowChanged.connect(lambda _r: _on_select())
     win.characters_save_btn.clicked.connect(_on_save)
     win.characters_add_btn.clicked.connect(_on_add)
     win.characters_dup_btn.clicked.connect(_on_duplicate)
@@ -979,8 +1001,5 @@ def attach_characters_tab(win) -> None:
     win._characters_refresh_elevenlabs = _update_el_visibility  # main_window calls when switching to Characters tab
 
     _refresh_list()
-    if win.characters_list.count():
-        win.characters_list.setCurrentRow(0)
-        _on_select()
 
     win.tabs.addTab(w, "Characters")

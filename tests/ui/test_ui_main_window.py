@@ -19,14 +19,19 @@ def test_main_window_constructs(qtbot, monkeypatch, patch_paths, write_ui_settin
 
 @pytest.mark.qt
 def test_remove_selected_tags_does_not_raise_frozen(qtbot, monkeypatch, patch_paths, write_ui_settings):
-    write_ui_settings({"topic_tags": ["A", "B", "C"]})
+    write_ui_settings({"topic_tags": ["A", "B", "C"], "topic_tags_by_mode": {"news": ["A", "B", "C"]}})
     from UI.main_window import MainWindow
 
     w = MainWindow()
     qtbot.addWidget(w)
     w.show()
-    # select first item
-    w.tag_list.setCurrentRow(0)
+    w._sync_tags_to_ui()
+    # Select first chip
+    first = w.tag_chips_layout.itemAt(0)
+    assert first is not None
+    chip = first.widget()
+    assert chip is not None
+    w._on_topic_chip_selected(chip.tag)
     w._remove_selected_tags()
     assert "A" not in (w.settings.topic_tags_by_mode.get("news") or [])
 

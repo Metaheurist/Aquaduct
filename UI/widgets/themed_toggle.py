@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QSizePolicy, QToolButton, QWidget
 
 from UI.help.tutorial_links import help_tooltip_rich
+from UI.theme import token
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    c = QColor(hex_color)
+    if not c.isValid():
+        c = QColor("#25F4EE")
+    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha})"
 
 
 class ThemedToggle(QWidget):
@@ -101,8 +110,8 @@ class ThemedToggle(QWidget):
 
         self._shell.setStyleSheet(
             f"QFrame#{object_name_shell} {{"
-            "  background-color: #121218;"
-            "  border: 1px solid #2E2E38;"
+            f"  background-color: {token('control_bg', '#121218')};"
+            f"  border: 1px solid {token('border', '#2E2E38')};"
             "  border-radius: 12px;"
             "}"
         )
@@ -117,8 +126,9 @@ class ThemedToggle(QWidget):
         self.currentIndexChanged.emit(int(index))
 
     def _restyle_segments(self) -> None:
-        accent = "rgba(37, 244, 238, 0.22)"
-        accent_border = "rgba(37, 244, 238, 0.55)"
+        accent_hex = token("accent", "#25F4EE")
+        accent = _rgba(accent_hex, 0.22)
+        accent_border = _rgba(accent_hex, 0.55)
         self._left_btn.setStyleSheet(
             self._segment_qss(left=True, checked=self._left_btn.isChecked(), accent=accent, accent_border=accent_border)
         )

@@ -31,3 +31,6 @@ Which **CUDA device** holds the local LLM vs diffusion for a run follows **GPU p
 
 **Diffusion offload** ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)): with multiple CUDA devices, **`AQUADUCT_DIFFUSION_CPU_OFFLOAD=auto`** defaults to **sequential** staging on the diffusion GPU to reduce peak VRAM; see [Performance](../pipeline/performance.md#diffusion-vram-vs-system-ram-cpu-offload) and [Config](config.md#diffusion-cpu-offload-local-image--video).
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

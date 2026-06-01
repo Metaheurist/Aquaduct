@@ -96,3 +96,7 @@ OpenAI, Replicate, Magic Hour, and other HTTP clients in this path use a small *
 ## See also
 
 - [API mode review checklist](../review/api_mode_checklist.md) — step-by-step QA runbook for verifying API-mode runs end to end.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

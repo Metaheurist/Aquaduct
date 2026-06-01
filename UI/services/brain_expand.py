@@ -111,7 +111,12 @@ class BrainAugmentedEditor(QWidget):
 
         self._btn = QToolButton(self)
         self._btn.setObjectName("brainExpandBtn")
-        self._btn.setText("\u2009🧠")
+        self._btn.setText("")
+        from UI.theme import token as _tok
+        from UI.widgets.toolbar_svg_icons import qicon_toolbar
+
+        self._btn.setIcon(qicon_toolbar("sparkles", _tok("accent", "#25F4EE"), 18))
+        self._btn.setIconSize(QSize(18, 18))
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn.setToolTip(
             help_tooltip_rich(

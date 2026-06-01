@@ -83,3 +83,7 @@ See also [performance.md](../pipeline/performance.md).
 
 ## Quant-aware fit & VRAM prediction
 The **Settings → Model** tab adds a per-row **quant** dropdown beside each repo combo. The VRAM label and `rate_model_fit_for_repo` then reflect the **predicted** memory at the chosen mode (e.g. `~7-9 GB · NF4 4-bit`) using `predict_vram_gb` in [`src/models/quantization.py`](../../src/models/quantization.py). `Auto` resolves through `pick_auto_mode` against the **effective per-role VRAM** (so it tracks the same GPU policy as the fit badges). **Auto-fit for this PC** now selects both the repo and the quant mode per row — see [quantization](quantization.md).
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

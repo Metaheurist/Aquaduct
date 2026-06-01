@@ -115,3 +115,7 @@ covers (19 cases):
 - [`docs/pipeline/scene-prompts.md`](../pipeline/scene-prompts.md) —
   Phase 4 scene-prompt builder which receives `clips_per_video` as the
   scene-count budget.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

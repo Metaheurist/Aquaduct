@@ -26,6 +26,9 @@ IconKind = Literal[
     "image_gen",
     "video_gen",
     "trash",
+    "pause",
+    "arrow_left",
+    "arrow_right",
 ]
 
 
@@ -86,7 +89,7 @@ class TitleBarOutlineButton(QPushButton):
             painter.setOpacity(0.42)
 
         full = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        radius = 10.0
+        radius = min(16.0, full.height() / 2.0)
         path = QPainterPath()
         path.addRoundedRect(full, radius, radius)
 

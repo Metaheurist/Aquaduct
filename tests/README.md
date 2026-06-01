@@ -5,7 +5,7 @@ Run the suite from the repository root; `pytest` collects everything under this 
 | Subfolder | What lives here |
 |-----------|-----------------|
 | [`cli/`](cli/) | Headless CLI parser, config merge, `ui_settings` roundtrips |
-| [`ui/`](ui/) | PyQt6 / `pytest-qt` desktop UI (`@pytest.mark.qt` where applicable); F4 image playground ([`test_image_playground_dialog.py`](test_image_playground_dialog.py)); NSFW Run tab / session bypass ([`test_run_tab_nsfw_combo.py`](test_run_tab_nsfw_combo.py)) |
+| [`ui/`](ui/) | PyQt6 / `pytest-qt` desktop UI (`@pytest.mark.qt` where applicable); F4 image playground ([`test_image_playground_dialog.py`](test_image_playground_dialog.py)); NSFW Run tab / session bypass ([`test_run_tab_nsfw_combo.py`](test_run_tab_nsfw_combo.py)); **UI modernization** widgets/tabs/preflight ([`test_ui_modernization_widgets.py`](test_ui_modernization_widgets.py), [`test_ui_modernization_tabs.py`](test_ui_modernization_tabs.py), [`test_ui_preflight_install_prompt.py`](test_ui_preflight_install_prompt.py)) |
 | [`models/`](models/) | Local HF model manager, VRAM / CUDA policy, diffusion presets, `torch` dtypes, inference profiles |
 | [`platform/`](platform/) | Remote API clients (OpenAI-shaped, Kling, Replicate, ElevenLabs, …) |
 | [`runtime/`](runtime/) | `api_generation`, preflight, pipeline control, import smoke, run-queue contract; NSFW preflight + **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** ([`test_preflight_nsfw_uploads.py`](runtime/test_preflight_nsfw_uploads.py)) |

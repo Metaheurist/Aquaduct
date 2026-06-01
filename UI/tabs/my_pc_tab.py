@@ -86,6 +86,7 @@ def attach_my_pc_tab(win) -> None:
     policy_row = QHBoxLayout()
     policy_row.addWidget(QLabel("GPU policy"))
     win.gpu_policy_toggle = GpuPolicyToggle()
+    win.gpu_policy_toggle.setMinimumHeight(34)
     policy_row.addWidget(win.gpu_policy_toggle, 0)
     policy_row.addStretch(1)
     sys_lay.addLayout(policy_row)
@@ -93,6 +94,7 @@ def attach_my_pc_tab(win) -> None:
     shard_row = QHBoxLayout()
     shard_row.addWidget(QLabel("VRAM-first sharding"))
     win.multi_gpu_shard_combo = NoWheelComboBox()
+    win.multi_gpu_shard_combo.setMinimumHeight(32)
     win.multi_gpu_shard_combo.setToolTip(
         help_tooltip_rich(
             "Experimental intra-model splitting: lowers peak VRAM per GPU when Auto routing is enabled "
@@ -112,6 +114,7 @@ def attach_my_pc_tab(win) -> None:
     dev_row.setContentsMargins(0, 0, 0, 0)
     dev_row.addWidget(QLabel("Device"))
     win.gpu_device_combo = NoWheelComboBox()
+    win.gpu_device_combo.setMinimumHeight(32)
     dev_row.addWidget(win.gpu_device_combo, 1)
     sys_lay.addWidget(dev_wrap)
     win._my_pc_device_row = dev_wrap
@@ -119,6 +122,10 @@ def attach_my_pc_tab(win) -> None:
     lay.addWidget(sys_f)
 
     table = QTableWidget()
+    table.setObjectName("myPcModelFitTable")
+    table.setAlternatingRowColors(True)
+    table.setShowGrid(False)
+    table.horizontalHeader().setStretchLastSection(True)
     opts = model_options()
     table.setColumnCount(4)
     table.setHorizontalHeaderLabels(["Kind", "Model", "Fit", "Why"])

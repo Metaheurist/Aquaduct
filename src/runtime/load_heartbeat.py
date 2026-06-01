@@ -111,7 +111,7 @@ def diffusion_load_watch(
                 tail = ""
                 try:
                     if free_gib < 6.0 or pct >= 93.0:
-                        tail = f" ⚠ host free RAM low (~{free_gib:.1f} GiB free, ~{pct:.0f}% used)"
+                        tail = f"; host free RAM low (~{free_gib:.1f} GiB free, ~{pct:.0f}% used)"
                 except Exception:
                     pass
                 msg_fn(

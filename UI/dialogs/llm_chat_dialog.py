@@ -347,6 +347,14 @@ class LLMChatDialog(FramelessDialog):
         self._clear_btn = styled_outline_button("Clear", "muted_icon", min_width=72)
         self._model_btn = styled_outline_button("Model tab", "muted_icon", min_width=88)
         self._api_btn = styled_outline_button("API tab", "muted_icon", min_width=88)
+        self._stop_btn.setToolTip("Stop the current response.")
+        self._stop_btn.setAccessibleName("Stop response")
+        self._clear_btn.setToolTip("Clear this conversation (asks for confirmation).")
+        self._clear_btn.setAccessibleName("Clear conversation")
+        self._model_btn.setToolTip("Open the Model tab to pick the script model.")
+        self._model_btn.setAccessibleName("Open Model tab")
+        self._api_btn.setToolTip("Open the API tab to set provider keys.")
+        self._api_btn.setAccessibleName("Open API tab")
         self._stop_btn.clicked.connect(self._on_stop)
         self._clear_btn.clicked.connect(self._on_clear)
         self._model_btn.clicked.connect(lambda: _switch_main_tab(self._win, "Model"))
@@ -365,6 +373,14 @@ class LLMChatDialog(FramelessDialog):
         self._transcript_host = QWidget()
         self._transcript_lay = QVBoxLayout(self._transcript_host)
         self._transcript_lay.setContentsMargins(0, 0, 0, 0)
+        self._chat_empty_hint = QLabel(
+            "Ask about Aquaduct - how the pipeline works, what a setting does, or how to set up a model. "
+            "Enter sends; Shift+Enter adds a newline."
+        )
+        self._chat_empty_hint.setWordWrap(True)
+        self._chat_empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._chat_empty_hint.setStyleSheet("color: #8A96A3; font-size: 12px; padding: 18px;")
+        self._transcript_lay.addWidget(self._chat_empty_hint)
         self._transcript_lay.addStretch(1)
         scroll.setWidget(self._transcript_host)
         self.body_layout.addWidget(scroll, 1)
@@ -401,6 +417,11 @@ class LLMChatDialog(FramelessDialog):
         # Header matches live Model/API selection when the window is re-focused.
         self._refresh_target()
         self._refresh_composer_budget()
+        # Land focus in the composer so the user can type immediately.
+        try:
+            QTimer.singleShot(0, self._input.setFocus)
+        except Exception:
+            pass
 
     def _apply_initial_geometry(self) -> None:
         pr = self.parent()
@@ -564,11 +585,17 @@ class LLMChatDialog(FramelessDialog):
         except Exception:
             pass
 
+    def _update_chat_empty_hint(self) -> None:
+        hint = getattr(self, "_chat_empty_hint", None)
+        if hint is not None:
+            hint.setVisible(not self._messages)
+
     def _rebuild_transcript_widgets(self) -> None:
-        while self._transcript_lay.count() > 1:
-            item = self._transcript_lay.takeAt(0)
-            w = item.widget()
-            if w is not None:
+        # Remove only transcript rows; keep the empty hint and the trailing stretch.
+        for i in reversed(range(self._transcript_lay.count())):
+            w = self._transcript_lay.itemAt(i).widget()
+            if w is not None and w is not getattr(self, "_chat_empty_hint", None):
+                self._transcript_lay.takeAt(i)
                 w.deleteLater()
         for m in self._messages:
             role = str(m.get("role", ""))
@@ -579,12 +606,14 @@ class LLMChatDialog(FramelessDialog):
             bubble.setPlainText(text)
             _style_transcript_bubble(bubble, role=role)
             self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, _wrap_transcript_row(role, bubble))
+        self._update_chat_empty_hint()
 
     def _append_user_bubble(self, text: str) -> None:
         b = QTextBrowser()
         b.setPlainText(text)
         _style_transcript_bubble(b, role="user")
         self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, _wrap_transcript_row("user", b))
+        self._update_chat_empty_hint()
 
     def _append_assistant_shell(self) -> QTextBrowser:
         b = QTextBrowser()
@@ -592,6 +621,7 @@ class LLMChatDialog(FramelessDialog):
         _style_transcript_bubble(b, role="assistant")
         self._transcript_lay.insertWidget(self._transcript_lay.count() - 1, _wrap_transcript_row("assistant", b))
         self._current_assist_browser = b
+        self._update_chat_empty_hint()
         return b
 
     def _scroll_end(self) -> None:
@@ -722,6 +752,16 @@ class LLMChatDialog(FramelessDialog):
         self._status.setText("Stopping…")
 
     def _on_clear(self) -> None:
+        if self._messages:
+            from UI.dialogs.frameless_dialog import aquaduct_question
+
+            if not aquaduct_question(
+                self,
+                "Clear conversation?",
+                "This removes the current chat transcript. This cannot be undone.",
+                default_no=True,
+            ):
+                return
         self._messages.clear()
         self._rebuild_transcript_widgets()
         mode, _l, key, err = resolve_chat_target(self._win)

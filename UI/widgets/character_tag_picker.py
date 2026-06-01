@@ -6,16 +6,18 @@ from PyQt6.QtCore import QModelIndex, QPoint, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
+    QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from src.content.characters_store import Character
+from UI.theme import token
+from UI.widgets.title_bar_outline_button import styled_outline_button
 
 
 class CharacterTagPicker(QWidget):
@@ -34,9 +36,22 @@ class CharacterTagPicker(QWidget):
         self._list.model().rowsMoved.connect(self._on_rows_moved)  # type: ignore[attr-defined]
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._ctx_menu)
+        self._list.setAccessibleName("Selected characters for this run (drag to reorder; first is Lead)")
+        self._list.setToolTip(
+            "Characters for this run. Drag to reorder - the first is the Lead (voice + portrait reference). "
+            "Right-click a row to remove it."
+        )
 
-        self._add_btn = QPushButton("Add character…")
+        self._add_btn = styled_outline_button("Add character…", "muted_icon", min_width=120)
+        self._add_btn.setAccessibleName("Add character to run")
+        self._add_btn.setToolTip("Add a character profile to this run.")
         self._add_btn.clicked.connect(self._on_add_clicked)
+
+        self._empty_hint = QLabel(
+            "No character selected - a cast is generated automatically. Add one to pin voice and looks."
+        )
+        self._empty_hint.setWordWrap(True)
+        self._empty_hint.setStyleSheet(f"color: {token('muted', '#8A96A3')}; font-size: 11px;")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -46,6 +61,7 @@ class CharacterTagPicker(QWidget):
         row.addWidget(self._list, 1)
         row.addWidget(self._add_btn, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(row)
+        root.addWidget(self._empty_hint)
 
     def _on_rows_moved(
         self,
@@ -67,6 +83,9 @@ class CharacterTagPicker(QWidget):
             name = ch.name if ch else cid[:8]
             label = f"Lead — {name}" if i == 0 else name
             it.setText(label)
+        empty = getattr(self, "_empty_hint", None)
+        if empty is not None:
+            empty.setVisible(self._list.count() == 0)
 
     def get_ordered_ids(self) -> list[str]:
         out: list[str] = []

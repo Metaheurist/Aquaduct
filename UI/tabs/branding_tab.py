@@ -23,7 +23,8 @@ from PyQt6.QtWidgets import (
 from src.core.config import BrandingSettings
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
-from UI.theme import PRESET_PALETTES, build_qss, resolve_palette
+from UI.widgets.tab_sections import section_title
+from UI.theme import PRESET_PALETTES, build_qss, resolve_palette, set_active_palette
 from UI.widgets.title_bar_outline_button import refresh_open_main_window_title_chrome
 
 
@@ -63,11 +64,11 @@ def attach_branding_tab(win) -> None:
     content_lay = QVBoxLayout(content)
     content_lay.setContentsMargins(0, 0, 0, 0)
 
-    header = QLabel("Branding (theme + logo watermark)")
+    header = QLabel("Branding")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     content_lay.addWidget(header)
 
-    sub = QLabel("Each section below is optional-turn on what you want.")
+    sub = QLabel("Optional theme, output styling, and logo watermark. Turn on only what you need.")
     sub.setStyleSheet("color: #B7B7C2;")
     sub.setToolTip(
         help_tooltip_rich(
@@ -202,6 +203,9 @@ def attach_branding_tab(win) -> None:
     )
     form.addRow("", danger_row)
 
+    content_lay.addWidget(section_title("Theme", emphasis=True))
+    content_lay.addLayout(form)
+
     def _apply_preset_to_color_rows(palette_id: str, *, skip_checked_rows: bool = False) -> None:
         """Fill theme hex fields + chips from PRESET_PALETTES when a named preset is chosen."""
         pid = str(palette_id or "default").strip().lower()
@@ -230,14 +234,17 @@ def attach_branding_tab(win) -> None:
     content_lay.addWidget(divider)
 
     # ---- Video style section (palette affects prompts + captions) ----
-    vs_header = QLabel("Video look (colors also steer prompts and captions)")
+    win.brand_video_style_section = QWidget()
+    vs_section_lay = QVBoxLayout(win.brand_video_style_section)
+    vs_section_lay.setContentsMargins(0, 0, 0, 0)
+    vs_header = QLabel("Video look")
     vs_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
     win.brand_video_style_section_header = vs_header
-    content_lay.addWidget(vs_header)
+    vs_section_lay.addWidget(vs_header)
 
     win.brand_video_style_enable = QCheckBox("Apply branding to generated video style")
     win.brand_video_style_enable.setChecked(bool(getattr(b, "video_style_enabled", False)))
-    content_lay.addWidget(win.brand_video_style_enable)
+    vs_section_lay.addWidget(win.brand_video_style_enable)
 
     vs_row = QHBoxLayout()
     vs_lbl = QLabel("Strength")
@@ -251,24 +258,28 @@ def attach_branding_tab(win) -> None:
     win.brand_video_style_strength.setCurrentIndex(idx if idx >= 0 else 0)
     vs_row.addWidget(win.brand_video_style_strength)
     vs_row.addStretch(1)
-    content_lay.addLayout(vs_row)
+    vs_section_lay.addLayout(vs_row)
+    content_lay.addWidget(win.brand_video_style_section)
 
     # ---- Photo style section (layouts) ----
-    photo_header = QLabel("Photo style (layouts)")
+    win.brand_photo_section = QWidget()
+    photo_section_lay = QVBoxLayout(win.brand_photo_section)
+    photo_section_lay.setContentsMargins(0, 0, 0, 0)
+    photo_header = QLabel("Photo layouts")
     photo_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
     win.brand_photo_section_header = photo_header
-    content_lay.addWidget(photo_header)
+    photo_section_lay.addWidget(photo_header)
 
-    win.brand_photo_style_enable = QCheckBox("Apply branding to photo layouts (poster/newspaper/comic)")
+    win.brand_photo_style_enable = QCheckBox("Apply branding to photo layouts (poster, newspaper, comic)")
     win.brand_photo_style_enable.setChecked(bool(getattr(b, "photo_style_enabled", False)))
-    content_lay.addWidget(win.brand_photo_style_enable)
+    photo_section_lay.addWidget(win.brand_photo_style_enable)
 
     pf_row = QHBoxLayout()
     win.brand_photo_frame_enable = QCheckBox("Add frame border")
     win.brand_photo_frame_enable.setChecked(bool(getattr(b, "photo_frame_enabled", False)))
     pf_row.addWidget(win.brand_photo_frame_enable)
     pf_row.addStretch(1)
-    content_lay.addLayout(pf_row)
+    photo_section_lay.addLayout(pf_row)
 
     pf_form = QFormLayout()
     win.brand_photo_frame_width = NoWheelSpinBox()
@@ -280,23 +291,27 @@ def attach_branding_tab(win) -> None:
     win.brand_photo_paper_hex.setPlaceholderText("#F2F0E9 (paper tint)")
     win.brand_photo_paper_hex.setText(str(getattr(b, "photo_paper_hex", "#F2F0E9") or "#F2F0E9"))
     pf_form.addRow("Paper tint", win.brand_photo_paper_hex)
-    content_lay.addLayout(pf_form)
+    photo_section_lay.addLayout(pf_form)
+    content_lay.addWidget(win.brand_photo_section)
 
-    wmark_header = QLabel("Logo watermark (videos)")
+    win.brand_watermark_section = QWidget()
+    wm_section_lay = QVBoxLayout(win.brand_watermark_section)
+    wm_section_lay.setContentsMargins(0, 0, 0, 0)
+    wmark_header = QLabel("Logo watermark")
     wmark_header.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 6px;")
     win.brand_watermark_section_header = wmark_header
-    content_lay.addWidget(wmark_header)
+    wm_section_lay.addWidget(wmark_header)
 
     win.brand_watermark_enable = QCheckBox("Watermark generated videos with a logo")
     win.brand_watermark_enable.setChecked(bool(getattr(b, "watermark_enabled", False)))
-    content_lay.addWidget(win.brand_watermark_enable)
+    wm_section_lay.addWidget(win.brand_watermark_enable)
 
     wm_row = QHBoxLayout()
     win.brand_watermark_path = QLineEdit()
     win.brand_watermark_path.setPlaceholderText("Logo image path (.png/.jpg/.webp)…")
     win.brand_watermark_path.setText(str(getattr(b, "watermark_path", "") or ""))
     wm_row.addWidget(win.brand_watermark_path, 1)
-    pick_logo = QPushButton("Browse…")
+    win.brand_watermark_browse_btn = QPushButton("Browse…")
 
     def pick_logo_file() -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -308,9 +323,9 @@ def attach_branding_tab(win) -> None:
         if path:
             win.brand_watermark_path.setText(path)
 
-    pick_logo.clicked.connect(pick_logo_file)
-    wm_row.addWidget(pick_logo)
-    content_lay.addLayout(wm_row)
+    win.brand_watermark_browse_btn.clicked.connect(pick_logo_file)
+    wm_row.addWidget(win.brand_watermark_browse_btn)
+    wm_section_lay.addLayout(wm_row)
 
     wm_form = QFormLayout()
 
@@ -343,9 +358,9 @@ def attach_branding_tab(win) -> None:
         help_tooltip_rich("Watermark width as a percent of video frame width.", "branding", slide=0)
     )
     wm_form.addRow("Size", win.brand_watermark_scale)
-    content_lay.addLayout(wm_form)
+    wm_section_lay.addLayout(wm_form)
+    content_lay.addWidget(win.brand_watermark_section)
 
-    content_lay.addLayout(form)
     content_lay.addStretch(1)
 
     def _branding_from_ui() -> BrandingSettings:
@@ -387,6 +402,7 @@ def attach_branding_tab(win) -> None:
             branding = _branding_from_ui()
             pal = resolve_palette(branding)
             app.setStyleSheet(build_qss(pal))
+            set_active_palette(pal)
             refresh_open_main_window_title_chrome()
         except Exception:
             pass
@@ -412,7 +428,8 @@ def attach_branding_tab(win) -> None:
 
         enabled_wm = bool(win.brand_watermark_enable.isChecked())
         win.brand_watermark_path.setEnabled(enabled_wm)
-        pick_logo.setEnabled(enabled_wm)
+        if hasattr(win, "brand_watermark_browse_btn"):
+            win.brand_watermark_browse_btn.setEnabled(enabled_wm)
         win.brand_watermark_pos.setEnabled(enabled_wm)
         win.brand_watermark_opacity.setEnabled(enabled_wm)
         win.brand_watermark_scale.setEnabled(enabled_wm)

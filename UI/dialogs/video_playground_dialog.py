@@ -572,6 +572,21 @@ class VideoPlaygroundDialog(FramelessDialog):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         if self._worker is not None and self._worker.isRunning():
+            from UI.dialogs.frameless_dialog import aquaduct_question
+
+            if not aquaduct_question(
+                self,
+                "Close while generating?",
+                "A video is still being generated. Close anyway? The current job will be "
+                "interrupted at the next safe point.",
+                default_no=True,
+            ):
+                event.ignore()
+                return
+            try:
+                self._worker.requestInterruption()
+            except Exception:
+                pass
             self._worker.wait(2500)
         try:
             shutil.rmtree(self._work_root, ignore_errors=True)

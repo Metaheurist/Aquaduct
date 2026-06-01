@@ -88,3 +88,7 @@ formats grow.
 covers: known voice locks, conflict reconciliation per format/personality
 pair, art-style affix lookup, branding block disabled/enabled, T2V affix
 format hints, and merge idempotency.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
+from UI.widgets.collapsible import CollapsibleSection
 from UI.widgets.tab_sections import add_section_spacing, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 from src.settings.video_platform_presets import (
@@ -500,7 +501,17 @@ def attach_video_tab(win) -> None:
     lay.addWidget(info)
 
     add_section_spacing(lay)
-    lay.addWidget(section_title("Advanced", emphasis=True))
+
+    def _on_adv_toggled(_checked: bool) -> None:
+        fn = getattr(win, "_resize_to_current_tab", None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
+
+    adv = CollapsibleSection("Advanced", expanded=False, on_toggled=_on_adv_toggled)
+    lay.addWidget(adv)
 
     row = QHBoxLayout()
     row.setSpacing(10)
@@ -512,7 +523,7 @@ def attach_video_tab(win) -> None:
     pick = QPushButton("Browse…")
     pick.clicked.connect(win._pick_music)
     row.addWidget(pick)
-    lay.addLayout(row)
+    adv.setContentLayout(row)
 
     cache_row = QHBoxLayout()
     cache_row.setSpacing(10)
@@ -521,7 +532,7 @@ def attach_video_tab(win) -> None:
     clear_seen.clicked.connect(win._clear_seen_cache)
     cache_row.addWidget(clear_seen)
     cache_row.addStretch(1)
-    lay.addLayout(cache_row)
+    adv.setContentLayout(cache_row)
 
     hint = lay.sizeHint()
     content.setMinimumHeight(max(hint.height(), 400))

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtCore import QEvent, QPoint, QObject, Qt
+from PyQt6.QtCore import QEvent, QPoint, QObject, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -85,10 +85,12 @@ class FramelessDialog(QDialog):
         self._title_bar = QWidget()
         self._title_bar_layout = QHBoxLayout(self._title_bar)
         self._title_bar_layout.setContentsMargins(0, 0, 0, 8)
+        from UI.theme import token as _tok
+
         self._title_lbl = QLabel(title)
-        self._title_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #FFFFFF;")
+        self._title_lbl.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {_tok('text', '#FFFFFF')};")
         self._title_bar_layout.addWidget(self._title_lbl, 1)
-        close_btn = styled_outline_button("✕", "danger", fixed=(44, 32))
+        close_btn = styled_outline_button("", "danger", fixed=(44, 32), icon_kind="close")
         close_btn.setToolTip("Close")
         close_btn.clicked.connect(self.reject)
         self._title_bar_layout.addWidget(close_btn)
@@ -253,9 +255,11 @@ class FramelessDialog(QDialog):
 
 
 def _muted_label(text: str, *, rich: bool = False) -> QLabel:
+    from UI.theme import token
+
     lab = QLabel(text)
     lab.setWordWrap(True)
-    lab.setStyleSheet("color: #B7B7C2;")
+    lab.setStyleSheet(f"color: {token('muted', '#B7B7C2')};")
     if rich:
         lab.setTextFormat(Qt.TextFormat.RichText)
         lab.setOpenExternalLinks(True)
@@ -381,6 +385,50 @@ def aquaduct_resume_checkpoint_choice(parent, title: str, text: str) -> str:
     return str(result["v"])
 
 
+def aquaduct_save_discard_cancel_choice(parent, title: str, text: str) -> str:
+    """
+    Three-way unsaved-changes prompt. Returns ``"save"``, ``"discard"``, or ``"cancel"``.
+    """
+    d = FramelessDialog(parent, title=title)
+    d.setMinimumWidth(480)
+    d.body_layout.addWidget(_muted_label(text))
+    row = QHBoxLayout()
+    save_b = styled_outline_button("Save & close", "accent_icon", min_width=120)
+    discard_b = QPushButton("Discard")
+    discard_b.setProperty("buttonRole", "secondary")
+    cancel_b = styled_outline_button("Cancel", "muted_icon", min_width=88)
+    row.addStretch(1)
+    row.addWidget(cancel_b)
+    row.addWidget(discard_b)
+    row.addWidget(save_b)
+    d.body_layout.addLayout(row)
+
+    result = {"v": "cancel"}
+
+    def _save() -> None:
+        result["v"] = "save"
+        d.accept()
+
+    def _discard() -> None:
+        result["v"] = "discard"
+        d.accept()
+
+    def _cancel() -> None:
+        result["v"] = "cancel"
+        d.reject()
+
+    save_b.clicked.connect(_save)
+    discard_b.clicked.connect(_discard)
+    cancel_b.clicked.connect(_cancel)
+    save_b.setDefault(True)
+    save_b.setAutoDefault(True)
+    try:
+        d.exec()
+    finally:
+        FramelessDialog._blur_release(d)
+    return str(result["v"])
+
+
 def aquaduct_question(parent, title: str, text: str, *, default_no: bool = True) -> bool:
     """Yes / No. Returns True if Yes."""
     d = FramelessDialog(parent, title=title)
@@ -489,7 +537,9 @@ def show_hf_token_dialog(parent) -> tuple[bool, str]:
     inp = QLineEdit()
     inp.setPlaceholderText("hf_... (paste your token here)")
     inp.setEchoMode(QLineEdit.EchoMode.Password)
+    inp.setAccessibleName("Hugging Face access token")
     dlg.body_layout.addWidget(inp)
+    QTimer.singleShot(0, inp.setFocus)
 
     row = QHBoxLayout()
     cancel = styled_outline_button("Cancel", "muted_icon", min_width=96)

@@ -40,7 +40,7 @@ def help_tooltip_rich(
     base_plain: str,
     topic_id: str,
     *,
-    link_label: str = "Open in Help →",
+    link_label: str = "Open in Help",
     slide: int | None = None,
 ) -> str:
     """
@@ -64,7 +64,7 @@ def help_tooltip_rich_unless_already(
     base_plain: str,
     topic_id: str,
     *,
-    link_label: str = "Open in Help →",
+    link_label: str = "Open in Help",
     slide: int | None = None,
 ) -> str:
     """

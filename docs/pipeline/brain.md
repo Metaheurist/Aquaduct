@@ -113,3 +113,6 @@ Multistage pipeline calls that already have a **loaded** causal LM (script JSON 
 
 Sampling (**`temperature`**, **`top_p`**, **`repetition_penalty`**) and **`max_new_tokens`** behavior match the previous pipeline; only formatting and stop-token handling change on chat-templated models.
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

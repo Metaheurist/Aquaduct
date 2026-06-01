@@ -28,12 +28,8 @@ class PreviewDialog(FramelessDialog):
         on_regenerate: Callable[[], None],
         on_approve_run: Callable[[], None],
     ) -> None:
-        super().__init__(parent, title="Preview")
+        super().__init__(parent, title="Preview (script + storyboard)")
         self.setMinimumSize(980, 720)
-
-        header = QLabel("Preview (script + storyboard)")
-        header.setStyleSheet("font-size: 16px; font-weight: 800;")
-        self.body_layout.addWidget(header)
 
         conf_line = f"<br><b>Confidence</b>: {confidence}" if confidence else ""
         meta = QLabel(f"<b>Title</b>: {title}<br><b>Personality</b>: {personality_id}{conf_line}")

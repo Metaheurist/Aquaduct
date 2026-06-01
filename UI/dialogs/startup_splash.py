@@ -24,13 +24,36 @@ class StartupSplash(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setFixedSize(420, 140)
+        # Splash shows before the saved branding palette is applied, so source colors from the
+        # default palette (single source of truth) rather than duplicating literal hex here.
+        try:
+            from UI.theme import resolve_palette
+
+            pal = resolve_palette(None)
+        except Exception:
+            pal = {
+                "bg": "#0F0F10",
+                "accent": "#25F4EE",
+                "text": "#E8E8EE",
+                "muted": "#8A96A3",
+                "border": "#2A2A34",
+                "control_bg": "#15151B",
+            }
         self.setStyleSheet(
-            "#StartupSplash { background-color: #0F0F10; border: 1px solid #25F4EE; border-radius: 12px; }"
-            "#StartupSplash QLabel { color: #E8E8EE; }"
-            "#splashTitle { color: #25F4EE; font-weight: 800; font-size: 18px; }"
-            "#splashElapsed { color: #8A96A3; font-size: 11px; }"
-            "#StartupSplash QProgressBar { border: 1px solid #2A2A34; border-radius: 6px; background: #15151B; height: 14px; text-align: center; color: #E8E8EE; }"
-            "#StartupSplash QProgressBar::chunk { background: #25F4EE; border-radius: 5px; }"
+            "#StartupSplash { background-color: %(bg)s; border: 1px solid %(accent)s; border-radius: 12px; }"
+            "#StartupSplash QLabel { color: %(text)s; }"
+            "#splashTitle { color: %(accent)s; font-weight: 800; font-size: 18px; }"
+            "#splashElapsed { color: %(muted)s; font-size: 11px; }"
+            "#StartupSplash QProgressBar { border: 1px solid %(border)s; border-radius: 6px; background: %(control_bg)s; height: 14px; text-align: center; color: %(text)s; }"
+            "#StartupSplash QProgressBar::chunk { background: %(accent)s; border-radius: 5px; }"
+            % {
+                "bg": pal.get("bg", "#0F0F10"),
+                "accent": pal.get("accent", "#25F4EE"),
+                "text": pal.get("text", "#E8E8EE"),
+                "muted": pal.get("muted", "#8A96A3"),
+                "border": pal.get("border", "#2A2A34"),
+                "control_bg": pal.get("control_bg", "#15151B"),
+            }
         )
 
         title = QLabel("Aquaduct")

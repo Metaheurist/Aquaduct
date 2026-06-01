@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 
-from UI.theme import TIKTOK_QSS, build_qss, resolve_palette
+from UI.theme import TIKTOK_QSS, build_qss, resolve_palette, set_active_palette
 from src.util.single_instance import single_instance_guard
 from src.settings.ui_settings import load_settings
 
@@ -77,6 +77,7 @@ def main() -> None:
         settings = load_settings()
         pal = resolve_palette(getattr(settings, "branding", None))
         app.setStyleSheet(build_qss(pal))
+        set_active_palette(pal)
     except Exception:
         app.setStyleSheet(TIKTOK_QSS)
 

@@ -127,19 +127,25 @@ QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QListWidget:focus, QSpin
   border: 1px solid {accent};
 }}
 QPushButton {{
-  background: {control_bg}; border: 1px solid {border}; border-radius: 12px; padding: 10px 12px; color: {text};
+  background: {control_bg}; border: 1px solid {border}; border-radius: 14px; padding: 10px 12px; color: {text};
   font-weight: 600;
 }}
 QPushButton:hover {{ border: 1px solid {accent}; }}
 QPushButton:pressed {{ border: 1px solid {danger}; }}
 QPushButton[buttonRole="secondary"] {{
-  background: {panel}; color: {text}; border: 1px solid {border}; border-radius: 10px;
+  background: {panel}; color: {text}; border: 1px solid {border}; border-radius: 12px;
   padding: 8px 14px; font-weight: 700; min-height: 26px;
 }}
 QPushButton[buttonRole="secondary"]:hover {{
   background: {control_bg}; border: 1px solid {accent};
 }}
 QPushButton[buttonRole="secondary"]:pressed {{ border: 1px solid {danger}; }}
+QPushButton[shape="pill"] {{
+  border-radius: 999px; padding: 6px 14px;
+}}
+QPushButton[shape="circle"] {{
+  border-radius: 999px; padding: 6px; min-width: 28px; max-width: 34px; min-height: 28px; max-height: 34px;
+}}
 QPushButton#primary {{ background: {accent}; color: {panel}; border: 1px solid {accent}; font-weight: 600; }}
 QPushButton#danger {{ background: {danger}; color: {text}; border: 1px solid {danger}; font-weight: 600; }}
 /* Frameless ✕, download popups, and main-window title pills use TitleBarOutlineButton (custom paint); strip QSS borders so Fusion does not rasterize dotted arcs. */
@@ -364,3 +370,31 @@ def build_qss(palette: Palette) -> str:
 
 # Back-compat constant used by existing code.
 TIKTOK_QSS = build_qss(resolve_palette(None))
+
+
+# Module-level cache of the palette currently applied to the QApplication. Dialogs and
+# standalone widgets read this (via ``active_palette()`` / ``token()``) instead of hardcoding
+# hex so that branding presets propagate everywhere, not just QSS-styled object names.
+_ACTIVE_PALETTE: Palette = resolve_palette(None)
+
+
+def set_active_palette(palette: Palette) -> None:
+    """Record the palette currently applied app-wide. Call whenever QSS is (re)applied."""
+    global _ACTIVE_PALETTE
+    try:
+        _ACTIVE_PALETTE = dict(palette)  # type: ignore[assignment]
+    except Exception:
+        pass
+
+
+def active_palette() -> Palette:
+    """Return the palette currently applied app-wide (falls back to defaults)."""
+    return _ACTIVE_PALETTE
+
+
+def token(name: str, fallback: str = "#FFFFFF") -> str:
+    """Look up a single color token from the active palette (e.g. ``token('muted')``)."""
+    try:
+        return str(_ACTIVE_PALETTE.get(name, fallback))  # type: ignore[union-attr]
+    except Exception:
+        return fallback

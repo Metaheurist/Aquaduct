@@ -2,34 +2,35 @@
 
 User-defined **characters** store a host identity, optional diffusion visual style and negatives, and optional narration voice overrides. They are saved in `data/characters.json` under the project root.
 
+## Layout
+
+- **Left**: scrollable **card grid** — round avatar, name, and one-line identity snippet ([`CharacterCard`](../../UI/widgets/character_card.py), [`FlowLayout`](../../UI/widgets/flow_layout.py)).
+- **Right**: profile editor (form fields, portrait, voice options).
+- Toolbar (**add** / **duplicate** / **delete**) uses SVG icons ([`UI/widgets/toolbar_svg_icons.py`](../../UI/widgets/toolbar_svg_icons.py)).
+
 ## Fields
 
-- **Name** — list label and script context.
-- **Identity / persona** — fed to the LLM as extra context so narration and on-screen text stay consistent with the chosen **Personality** preset on the Run tab (personality controls tone; character adds who-the-host-is). A **🧠** control in the field corner can **expand or improve** the text using the project **Script (LLM)** (see [`UI/brain_expand.py`](../../UI/brain_expand.py), [`expand_custom_field_text`](../../src/content/brain/__init__.py) in the `brain` package, [Brain](../pipeline/brain.md)).
-- **Visual style** — prepended to each scene’s image prompt in the storyboard (and merged with the usual conditioning and negatives). Same optional **🧠** expansion.
-- **Negatives** — extra comma-separated phrases merged into the default negative prompt for diffusion. Same optional **🧠** expansion.
+- **Name** — card label and script context.
+- **Identity / persona** — LLM context for narration consistency. Optional **sparkles** (LLM expand) in the field corner ([`UI/services/brain_expand.py`](../../UI/services/brain_expand.py), [Brain](../pipeline/brain.md)).
+- **Visual style** / **Negatives** — storyboard and diffusion hints; optional LLM expand on each.
+- **Gender**, **Ethnicity**, **Age band** — optional anchoring strings for script and storyboard.
 
-- **Gender**, **Ethnicity**, **Age band** — optional free-form strings for narration and storyboard anchoring; included in the script LLM `character_context` and prepended (with **Visual style**) in `build_storyboard` / portrait prompts when set.
+## Auto presets (LLM)
 
-The tab uses a **compact** layout (short character list, horizontal add/duplicate/delete, capped text heights) so more fits on screen at once.
-
-### Auto presets (LLM)
-
-At the top, **Preset** lists built-in archetypes (e.g. **Unhinged comedy**, **Gen Z / chronically online**, deadpan anchor, cozy host, tech-bro satire, anime mascot energy, noir narrator, …). Definitions live in [`src/content/character_presets.py`](../../src/content/character_presets.py). **Generate with LLM** uses the **Script (LLM)** model selected on the **Model** tab (same resolution as 🧠 expand — see [`resolve_llm_model_id`](../../UI/brain_expand.py) in [Models](../reference/models.md)). It calls [`generate_character_from_preset_llm`](../../src/content/brain/__init__.py) and expects a JSON object with `name`, `identity`, `visual_style`, `negatives`, `use_default_voice`, and identity slots `gender`, `ethnicity`, `age_range` (optional). **Gated** Hub models require **API → Hugging Face** token + license acceptance on the model page. The form is filled in place; click **Save character** to persist. Optional **extra notes** steer the generation without replacing the preset. Pyttsx3 / Kokoro / ElevenLabs voice IDs are **not** auto-picked — choose those after the text profile is generated.
-
-- **Use project default voice** — when checked, global **Voice model** from Settings/API is used. When unchecked, you can use **System TTS** (`pyttsx3`), optional **Kokoro speaker** (when that path is enabled), or **ElevenLabs** if enabled under the API tab with a valid key (see [elevenlabs.md](../integrations/elevenlabs.md)).
-- **ElevenLabs voice** — when the API tab has ElevenLabs enabled and a key present, the Characters tab lists cloud voices; stored as `elevenlabs_voice_id`. Used for narration only when default voice is off and ElevenLabs is configured.
+**Preset** lists built-in archetypes ([`src/content/character_presets.py`](../../src/content/character_presets.py)). **Generate with LLM** uses the **Script (LLM)** model from the **Model** tab ([`resolve_llm_model_id`](../../UI/services/brain_expand.py)). Click **Save character** to persist.
 
 ## Run tab
 
-Pick **one or more** saved characters (ordered list — **first = Lead** for voice + reference portrait). The ordered IDs are stored as `active_character_ids` in `ui_settings.json`; `active_character_id` is kept in sync as the lead id for older code paths. Choose none to let the pipeline invent an ephemeral cast (or use generated cast when applicable).
+Pick **one or more** saved characters (ordered list — **first = Lead**). Stored as `active_character_ids` in `ui_settings.json`.
 
 ## Portrait preview
 
-Beside **Generate portrait**, the small thumbnail shows the resolved reference image when a file exists. **Click** the thumbnail to open a **maximized** borderless preview (`FramelessDialog`, title **`Portrait — <character name>`**); the image scales with the window **keeping aspect ratio**. The **No portrait** placeholder is not clickable until you generate or assign an image path.
+**Generate portrait** updates the card avatar. Click the thumbnail for a maximized preview dialog.
 
 ## Pipeline
 
-- **Script**: character context is appended to the brain prompt after the personality block.
-- **Images**: **Identity tokens** (gender / ethnicity / age band) plus visual style are threaded through `build_storyboard` so each scene prompt stays anchored to the host(s); merged **Cast:** names skip a duplicate token prefix when the merged visual line already encodes per-cast tokens.
-- **TTS**: when default voice is off, `synthesize()` may use ElevenLabs (if enabled + voice id), else Kokoro, else `pyttsx3`.
+- **Script**: character context appended after personality block.
+- **Images**: identity tokens + visual style in storyboard prompts.
+- **TTS**: ElevenLabs / Kokoro / pyttsx3 when default voice is off.
+
+See [shared widgets](shared-widgets.md) and [Desktop UI](ui.md).

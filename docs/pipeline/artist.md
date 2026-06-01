@@ -25,3 +25,6 @@ Written into:
 ## Quantization
 The image loaders (`_load_auto_t2i_pipeline` / `_load_auto_i2i_pipeline`) accept a per-row **`quant_mode`** sourced from `AppSettings.image_quant_mode` (`auto | bf16 | fp16 | int8 | cpu_offload`). `auto` resolves against the **effective image VRAM**; `cpu_offload` forces `place_diffusion_pipeline(..., force_offload="model")`. Experimental int8 / 4-bit attempts a `BitsAndBytesConfig` only when the installed `diffusers` stack exposes it — failures fall back to the stable dtype path with a status message. See [Quantization](../reference/quantization.md).
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

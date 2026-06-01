@@ -104,3 +104,7 @@ Adjust image name and working directory to match your Dockerfile.
 
 - [`main.md`](../pipeline/main.md) — orchestrator and legacy `--cli` flags.
 - [`hardware.md`](hardware.md) — VRAM / fit hints for local models.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

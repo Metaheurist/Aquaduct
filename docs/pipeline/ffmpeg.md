@@ -16,3 +16,6 @@ so MoviePy can encode MP4.
 - Downloads are cached; subsequent runs reuse the existing binary.
 - If you already have FFmpeg on PATH, you can still let this run; it will just use the local cached one.
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

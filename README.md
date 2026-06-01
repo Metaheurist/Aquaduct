@@ -53,11 +53,14 @@ pytest -q -m "not qt"
 
 `tests/runtime/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/ui/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`). API / packaging import smoke: `tests/runtime/test_import_smoke_api.py`.
 
-Run **Qt-only** UI tests:
+Run **Qt-only** UI tests (set `QT_QPA_PLATFORM=offscreen` on headless hosts):
 
 ```powershell
-pytest -q -m qt
+$env:QT_QPA_PLATFORM='offscreen'
+pytest -q -m qt tests/ui/test_ui_modernization_widgets.py tests/ui/test_ui_modernization_tabs.py tests/ui/test_ui_preflight_install_prompt.py
 ```
+
+UI modernization coverage: [`tests/ui/test_ui_modernization_widgets.py`](tests/ui/test_ui_modernization_widgets.py), [`test_ui_modernization_tabs.py`](tests/ui/test_ui_modernization_tabs.py), [`test_ui_preflight_install_prompt.py`](tests/ui/test_ui_preflight_install_prompt.py).
 
 Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt):
 
@@ -140,19 +143,19 @@ python -m UI
 
 The title bar includes a **Photo \| Video** toggle (persists as `media_mode` in `ui_settings.json`) to switch between the picture pipeline and the video pipeline; **Library** and open-folder actions follow the active mode.
 
-Alerts, confirmations, and most modal dialogs are **borderless** with a custom **✕** and **rounded outline** buttons drawn like the main window title bar (not legacy square Fusion borders); native **file/folder** pickers stay OS-standard. The title bar and compact toolbars (e.g. Characters, Tasks **Run controls**) use **SVG** icons (crisp at any DPI); theme palettes include several named dark presets on the **Branding** tab. **LLM chat** (speech-bubble) opens a non-modal window for the selected script model (size and position are saved in **`ui_settings.json`**); **`pip install -r requirements.txt`** must include **`cryptography`** for encrypted chat transcripts and **`hnswlib`** for optional large-corpus ANN retrieval in chat RAG. **F12** toggles a **session-only** bypass of NSFW-related guardrails (see [Desktop UI](docs/ui/ui.md) and [Config](docs/reference/config.md#session-guardrail-bypass)).
+Alerts, confirmations, and most modal dialogs are **borderless** with a custom **close** icon and **rounded outline** buttons drawn like the main window title bar. **LLM chat** opens a non-modal window for the selected script model. **F12** toggles a **session-only** NSFW guardrail bypass ([Desktop UI](docs/ui/ui.md)).
 
 Tabs:
 - **Run**: in **Video** mode, set **Videos to generate** to queue **that many independent full runs** when **multi-episode series** is off; with **Video series (continuation)** on, use **Episodes to generate** in that group instead (Output quantity hides). **click Run while a job is running** to **queue** more runs (FIFO; settings snapshotted per click). **Stop** clears the queue. **Preset** (news cache + topics) vs **Custom** (your instructions, two LLM passes) + **video format** (News / Cartoon / Explainer / Cartoon unhinged / Creepypasta / Health advice) + **Personality** + optional **Character** + open `videos/`
-- **Topics**: topic tags **per format** (mode selector); optional **🧠** expand on the tag line (local LLM); **Discover** suggests tags from Firecrawl for creative modes and **Health advice** (wellness/education pages + saved pack under `data/topic_research/`); **News** / **Explainer** use headline-style sourcing. Approved picks are added to that format’s list ([UI](docs/ui/ui.md), [Crawler](docs/integrations/crawler.md))
-- **Characters**: create/edit **characters** (identity, visuals, voice); optional **🧠** expand on multi-line fields; optional **ElevenLabs** voice when API is enabled
+- **Topics**: per-format **chip flow**; optional **sparkles** LLM expand; **Discover** for Firecrawl/creative modes ([UI](docs/ui/ui.md), [Topics](docs/ui/topics.md))
+- **Characters**: **card grid** + side editor; optional **sparkles** LLM expand on fields; optional **ElevenLabs** voice when API is enabled
 - **Tasks**: finished videos queue; live **stage + %** on the active row; **Pause** / **Stop** for long jobs; open/play, copy caption; **TikTok** and **YouTube** uploads when enabled (separate API toggles)
 - **Library**: browse finished **video** or **photo** projects under **`.Aquaduct_data/videos`** or **`.Aquaduct_data/pictures`** (depending on **Photo \| Video**), plus **`runs/`** workspaces; refresh or open the library roots
 - **Video** (shown in **Video** mode): **platform template tiles** (social presets + Custom), **resolution**, FPS, micro-scene timing, bitrate, slideshow vs **motion (scene) mode**, optional **NSFW allow** for diffusion, performance toggles, music, cache utilities
 - **Picture** (shown in **Photo** mode): image templates, layout/export options, and branding for still-image runs ([`docs/ui/ui.md`](docs/ui/ui.md))
 - **API**: Hugging Face token (optional), **Firecrawl** toggle and key, **ElevenLabs** (optional cloud TTS), **TikTok** OAuth + upload settings, **YouTube** OAuth + upload settings (independent enables)
 - **Branding**: theme palette overrides (presets sync hex rows) + logo watermark
-- **Model**: **Local \| API** toggle; **Model files location** (**Default** \| **External** folder for Hub snapshots); Download menu (including **verify checksums** + result dialog); **Verified / Missing / Corrupt** badges after checks; **Install dependencies** (modal: live pip log + progress bar with **%** when pip reports it); dependency check; model select/download (script/video/voice); skips repos already present on disk under the active models folder
+- **Model**: **Local | API** toggle; **Model files location** always visible above the model list; Download menu (verify checksums); **Check Python dependencies** in Download menu; missing deps prompt at **Run** time (Install / Not now); model select/download (script/video/voice)
 - **My PC**: GPU lines in the spec (name + VRAM per adapter), **Auto** \| **Select GPU** policy control, model **Fit** table aligned with **Model** tab (`rate_model_fit_for_repo` + effective VRAM per role). See [Hardware + model fit](docs/reference/hardware.md). Optional env **`AQUADUCT_CUDA_DEVICE`** overrides saved policy.
 
 Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/reference/models.md)).
@@ -205,3 +208,6 @@ Parts of Aquaduct (including crash‑resilience work, docs, and fixes) benefit f
 - **Local inference profiles:** for **local** model execution, the app applies **VRAM-band** defaults (resolution, steps, frame counts, LLM token caps) per model id using the same **effective GPU VRAM** as the **My PC** / **Model** fit badges; see [docs/reference/inference_profiles.md](docs/reference/inference_profiles.md). A summary prints at pipeline start with prefix `[Aquaduct][inference_profile]`.
 - **Multiple NVIDIA GPUs:** configure **Auto** vs **Single** on the **My PC** tab; settings persist in `ui_settings.json`. In **Auto**, **LLM** and **diffusion** use **different** CUDA ordinals when at least two GPUs exist (script vs image/video routing; if max-VRAM and compute heuristics would pick the same card, the LLM moves to the best other GPU). **Diffusion** **`auto`** offload defaults to **sequential** CPU offload when multiple CUDA devices are present, so peak VRAM on the diffusion GPU stays low. Override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`** (`auto`, `model`, `sequential`, or `off` for full-GPU). The title-bar **resource graph** charts VRAM per **Monitor** selection. Details: [docs/reference/hardware.md](docs/reference/hardware.md), [docs/pipeline/performance.md](docs/pipeline/performance.md#diffusion-vram-vs-system-ram-cpu-offload), [docs/reference/config.md](docs/reference/config.md#multi-gpu-cuda-policy-override).
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

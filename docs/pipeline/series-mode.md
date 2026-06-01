@@ -48,3 +48,7 @@ Canceling the pipeline clears the whole queue (existing behavior). The log notes
 - `tests/ui/test_series_failure_abort.py` — queue pruning helper used on failure.
 - `tests/ui/test_series_queue.py` — Run queue behavior for series batches.
 - `tests/settings/test_series_settings_roundtrip.py` — series fields round-trip in settings.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

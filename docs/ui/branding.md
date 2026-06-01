@@ -1,43 +1,40 @@
-# Branding (theme + logo watermark)
+# Branding
 
-The **Branding** tab lets you customize the app’s look and optionally add a logo watermark to generated videos.
+The **Branding** tab lets you customize the app theme and optionally add logo watermarks (video mode) or photo layout styling (photo mode).
+
+## Layout
+
+1. **Theme** — palette presets and per-color overrides (shown first).
+2. **Video look** — optional video style strength (video mode only; whole section hidden in Photo mode).
+3. **Photo layouts** — frame and paper tint (photo mode only).
+4. **Logo watermark** — path, position, opacity, size (video mode only).
+
+Each mode-specific block lives in its own section container so **Photo | Video** toggling hides labels and controls together ([`MainWindow._apply_media_mode_ui`](../../UI/main_window.py)).
 
 ## Theme (optional)
+
 - Enable **“Enable theme overrides”** to apply a custom palette.
-- Choose a **preset palette** (e.g. Default, Ocean, Sunset, Monochrome, Amber night, Dracula, Ember, Forest, Lavender, Nord night, Rose, Slate — see `PRESET_PALETTES` in [`UI/theme/palette.py`](../../UI/theme/palette.py)) or **Custom**.
-- When you pick a **named preset** (not Custom), the **Theme color** rows below update to that preset’s canonical colors (hex + swatches). If you had **per-row overrides** checked, those rows keep their saved colors on load; changing the palette again applies the full preset to every row.
-- If you select **Custom**, each color override has its own checkbox:
-  - Background
-  - Panel
-  - Text
-  - Muted text
-  - Accent
-  - Danger
-
-### Hex input + color picker
-- You can type a hex color like `#25F4EE`.
-- Or click **Pick…** to choose a color and auto-fill the hex value.
-
-Invalid hex values are ignored and safely fall back to the selected preset.
+- Choose a **preset palette** (see `PRESET_PALETTES` in [`UI/theme/palette.py`](../../UI/theme/palette.py)) or **Custom**.
+- When you pick a **named preset** (not Custom), the **Theme color** rows update to that preset’s canonical colors. Per-row override checkboxes keep saved colors on load when checked.
+- **Hex input + Pick…** for each color row. Invalid hex values fall back safely.
 
 ## Logo watermark (videos)
-- Enable **“Watermark generated videos with a logo”**
-- Select an image file (`.png`, `.jpg`, `.webp`)
-- Configure:
-  - position
-  - opacity
-  - size (as a fraction of video width)
 
-### Validation
-If watermarking is enabled but the file path is missing/invalid, **preflight will fail** (strict mode blocks runs) so you don’t start a run that can’t complete.
+- Enable **“Watermark generated videos with a logo”**
+- **Browse…** to select `.png` / `.jpg` / `.webp`
+- Configure position, opacity, and size (fraction of video width)
+
+If watermarking is enabled but the path is invalid, **preflight fails** before Run.
 
 ## Video style (palette → prompts + captions)
-If enabled, the Branding palette also influences the generated video:
 
-- **Prompts**: the palette is appended to each segment’s `visual_prompt` so image/video generation trends toward the same vibe.
-- **Captions**: the caption highlight bar uses the palette accent color; text remains high-contrast for readability.
+When enabled, the Branding palette influences generated video prompts and caption accent colors.
 
-### Strength
-- **Subtle**: small accent usage; keep the original “cyberpunk UI” look, just nudged toward the palette.
-- **Strong**: more dominant palette language in prompts so visuals lean heavily toward the selected colors.
+- **Subtle** — readability first.
+- **Strong** — more dominant palette in prompts.
 
+## Photo layouts (photo mode)
+
+Optional frame border width and paper tint for poster / newspaper / comic outputs.
+
+See [Desktop UI overview](ui.md) and [shared widgets](shared-widgets.md).
