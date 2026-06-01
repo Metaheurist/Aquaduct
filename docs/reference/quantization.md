@@ -90,3 +90,7 @@ Experimental quantization is **opt-in and capability-checked**. `optimum-quanto`
 - [Models + downloads](models.md) — curated repos
 - [Settings tab](../ui/ui.md) — UI placement of dropdowns and Auto-fit
 - [Brain](../pipeline/brain.md), [Artist](../pipeline/artist.md) — loader paths
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

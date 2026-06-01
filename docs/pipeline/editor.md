@@ -35,3 +35,7 @@ If enabled in the UI Branding tab, a logo is overlaid during composition (positi
 Per video folder:
 - `videos/<title>/final.mp4`
 - `videos/<title>/assets/clip_01.mp4` … (intermediate micro-scene MP4s when **Export intermediate micro-scenes** is on in the UI; filename prefix unchanged)
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

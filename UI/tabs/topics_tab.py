@@ -283,7 +283,7 @@ def attach_topics_tab(win) -> None:
 
     row = QHBoxLayout()
     win.tag_input = QLineEdit()
-    win.tag_input.setPlaceholderText("Add a topic tag, e.g. “AI video editor”, “agentic workflow”, “LLM IDE”…")
+    win.tag_input.setPlaceholderText("Add a topic tag, e.g. AI video editor, agentic workflow, LLM IDE…")
     row.addWidget(win.tag_input, 1)
 
     add_btn = QPushButton("Add tag")
@@ -292,27 +292,37 @@ def attach_topics_tab(win) -> None:
     row.addWidget(add_btn)
     tags_lay.addLayout(row)
 
-    win.tag_list = QListWidget()
-    tags_lay.addWidget(win.tag_list, 1)
+    from UI.widgets.flow_layout import FlowLayout
 
-    notes_intro = QLabel(
-        "Optional grounding line per tag: the script LLM treats topic tags as hard constraints - "
-        "these notes add extra direction (tone, must-mention angles, things to avoid)."
+    chips_scroll = QScrollArea()
+    chips_scroll.setWidgetResizable(True)
+    chips_scroll.setMaximumHeight(160)
+    chips_scroll.setMinimumHeight(72)
+    chips_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    win.tag_chips_inner = QWidget()
+    win.tag_chips_layout = FlowLayout(win.tag_chips_inner, margin=4, h_spacing=8, v_spacing=8)
+    chips_scroll.setWidget(win.tag_chips_inner)
+    tags_lay.addWidget(chips_scroll)
+
+    win.topics_empty_hint = QLabel(
+        "No tags for this format yet. Add a few above, or use Discover to seed ideas."
     )
-    notes_intro.setWordWrap(True)
-    notes_intro.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    tags_lay.addWidget(section_title("Per-tag notes (grounding)", emphasis=False))
-    tags_lay.addWidget(notes_intro)
+    win.topics_empty_hint.setWordWrap(True)
+    win.topics_empty_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    win.topics_empty_hint.setVisible(False)
+    tags_lay.addWidget(win.topics_empty_hint)
 
-    topic_notes_scroll = QScrollArea()
-    topic_notes_scroll.setWidgetResizable(True)
-    topic_notes_scroll.setMinimumHeight(100)
-    topic_notes_scroll.setMaximumHeight(240)
-    win.topic_notes_inner = QWidget()
-    win.topic_notes_layout = QVBoxLayout(win.topic_notes_inner)
-    win.topic_notes_layout.setContentsMargins(4, 4, 4, 4)
-    topic_notes_scroll.setWidget(win.topic_notes_inner)
-    tags_lay.addWidget(topic_notes_scroll)
+    tags_lay.addWidget(section_title("Grounding for selected tag", emphasis=False))
+    win.topic_selected_label = QLabel("Select a tag to add optional grounding notes.")
+    win.topic_selected_label.setWordWrap(True)
+    win.topic_selected_label.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    tags_lay.addWidget(win.topic_selected_label)
+
+    win.topic_selected_note_edit = QLineEdit()
+    win.topic_selected_note_edit.setPlaceholderText("Optional grounding (tone, anchors, bans)…")
+    win.topic_selected_note_edit.setEnabled(False)
+    win.topic_selected_note_edit.editingFinished.connect(lambda: win._flush_selected_topic_note())
+    tags_lay.addWidget(win.topic_selected_note_edit)
 
     notes_btns = QHBoxLayout()
     win.topic_notes_llm_btn = QPushButton("Suggest with LLM")
@@ -345,7 +355,7 @@ def attach_topics_tab(win) -> None:
     win.discover_btn.clicked.connect(win._discover_topics)
     btn_row.addWidget(win.discover_btn)
 
-    rm_btn = QPushButton("Remove selected")
+    rm_btn = QPushButton("Remove tag")
     rm_btn.setObjectName("danger")
     rm_btn.clicked.connect(win._remove_selected_tags)
     btn_row.addWidget(rm_btn)
@@ -356,7 +366,7 @@ def attach_topics_tab(win) -> None:
     btn_row.addStretch(1)
     tags_lay.addLayout(btn_row)
 
-    lay.addWidget(tags_card, 1)
+    lay.addWidget(tags_card, 0)
 
     win.topics_mode_combo.currentIndexChanged.connect(win._on_topics_mode_changed)
     win._sync_tags_to_ui()

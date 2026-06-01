@@ -158,7 +158,7 @@ class PreviewWorker(QThread):
             if str(getattr(app, "run_content_mode", "preset")) == "custom":
                 raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
                 if not raw_inst:
-                    self.failed.emit("No video instructions (custom mode). Enter instructions in the Run tab.")
+                    self.failed.emit("No video instructions (custom mode). Enter instructions in the Pipeline tab.")
                     return
                 first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
                 sources = [{"title": first_line, "url": "", "source": "custom"}]
@@ -373,7 +373,7 @@ class StoryboardWorker(QThread):
             if str(getattr(app, "run_content_mode", "preset")) == "custom":
                 raw_inst = str(getattr(app, "custom_video_instructions", "") or "").strip()
                 if not raw_inst:
-                    self.failed.emit("No video instructions (custom mode). Enter instructions in the Run tab.")
+                    self.failed.emit("No video instructions (custom mode). Enter instructions in the Pipeline tab.")
                     return
                 first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
                 sources = [{"title": first_line, "url": "", "source": "custom"}]

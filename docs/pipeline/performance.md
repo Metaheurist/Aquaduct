@@ -84,3 +84,7 @@ Checkpoint / resume (optional): enable **Resume partial pipeline** on the Video 
 
 - Desktop UX (wheel guard, tabs): [ui.md](../ui/ui.md)
 - Build + import smoke for frozen EXEs: [building_windows_exe.md](../build/building_windows_exe.md), [`../build/README.md`](../../build/README.md)
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

@@ -20,7 +20,8 @@ from PyQt6.QtWidgets import (
 
 from UI.services.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
 from UI.widgets.tab_scaffold import make_tab_root
-from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.tab_sections import add_section_spacing, empty_state_panel, section_card, section_title
+from UI.widgets.two_column import two_column_row
 from UI.help.tutorial_links import help_tooltip_rich
 
 
@@ -54,6 +55,7 @@ def attach_library_tab(win) -> None:
     win.library_refresh_btn.setMinimumWidth(30)
     win.library_refresh_btn.setMaximumWidth(34)
     win.library_refresh_btn.setMaximumHeight(28)
+    win.library_refresh_btn.setProperty("shape", "circle")
     tool_row.addWidget(win.library_refresh_btn)
 
     win.library_open_videos_root_btn = QPushButton("Open videos folder")
@@ -107,6 +109,13 @@ def attach_library_tab(win) -> None:
     win.library_videos_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_video_dir())
     media_lay.addWidget(win.library_videos_table)
 
+    win.library_media_empty = empty_state_panel(
+        "Finished renders show up here. Run a job from the Pipeline tab, then press Refresh.",
+        title="No finished projects yet",
+    )
+    win.library_media_empty.setVisible(False)
+    media_lay.addWidget(win.library_media_empty)
+
     vbtn = QHBoxLayout()
     vbtn.setSpacing(8)
     win.library_video_open_btn = QPushButton("Open folder")
@@ -133,9 +142,8 @@ def attach_library_tab(win) -> None:
 
     vbtn.addStretch(1)
     media_lay.addLayout(vbtn)
-    lay.addWidget(media_card)
 
-    add_section_spacing(lay, px=14)
+    add_section_spacing(lay, px=10)
 
     runs_card, runs_lay = section_card()
     runs_lay.addWidget(section_title("runs/ - intermediate workspaces", emphasis=True))
@@ -173,7 +181,8 @@ def attach_library_tab(win) -> None:
 
     rbtn.addStretch(1)
     runs_lay.addLayout(rbtn)
-    lay.addWidget(runs_card)
+
+    lay.addWidget(two_column_row(media_card, runs_card, spacing=12))
 
     scroll.setWidget(inner_root)
     outer.addWidget(scroll, 1)
@@ -202,6 +211,11 @@ def attach_library_tab(win) -> None:
             win.library_videos_table.setItem(r, 1, QTableWidgetItem(v.folder_name[:120]))
             win.library_videos_table.setItem(r, 2, QTableWidgetItem(_fmt_ts(v.modified_ts)))
             win.library_videos_table.setItem(r, 3, QTableWidgetItem(format_byte_size(v.final_bytes)))
+
+        if hasattr(win, "library_media_empty"):
+            has_media = win.library_videos_table.rowCount() > 0
+            win.library_media_empty.setVisible(not has_media)
+            win.library_videos_table.setVisible(has_media)
 
         win.library_runs_table.setRowCount(0)
         for rw in scan_run_workspaces(win.paths.runs_dir):

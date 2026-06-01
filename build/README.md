@@ -82,3 +82,7 @@ The build script bundles `requirements.txt`, optional `docs/**/*.md` (UI builds)
 - **ElevenLabs / HTTPS**: If the frozen app fails to reach the API with SSL errors, verify `certifi` is bundled (the script uses `--collect-all certifi`). Stay on a current **PyInstaller** from `requirements-build.txt` (installed by `build.ps1` before building).
 
 For a longer operator-focused guide (prereqs, troubleshooting, data locations), see [`docs/build/building_windows_exe.md`](../docs/build/building_windows_exe.md).
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

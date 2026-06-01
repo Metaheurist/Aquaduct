@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.collapsible import CollapsibleSection
 from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 
@@ -39,14 +40,23 @@ def attach_api_tab(win) -> None:
     _api_gen_strip = QWidget()
     win._api_gen_panel_parent_layout = QVBoxLayout(_api_gen_strip)
     win._api_gen_panel_parent_layout.setContentsMargins(0, 0, 0, 0)
-    win._api_gen_panel_parent_layout.setSpacing(0)
+    win._api_gen_panel_parent_layout.setSpacing(6)
+    win.generation_api_panel.setToolTip(
+        help_tooltip_rich(
+            "Cloud generation providers. The same panel appears on the Model tab when it runs in API mode.",
+            "api_social",
+            slide=0,
+        )
+    )
     win._api_gen_panel_parent_layout.addWidget(win.generation_api_panel)
 
     inner_root, _, _, lay = make_tab_root(
-        title="Keys & social accounts",
-        intro_text="Saved on this computer. Environment variables override what you type here when both are set.",
+        title="API & accounts",
+        intro_text="Store API keys and social logins on this computer.",
         intro_tooltip=help_tooltip_rich(
-            "HF_TOKEN / FIRECRAWL_API_KEY / ELEVENLABS_API_KEY in the environment override saved keys when set.",
+            "Values are saved in your Aquaduct data folder. "
+            "When set, environment variables override saved keys "
+            "(HF_TOKEN, FIRECRAWL_API_KEY, ELEVENLABS_API_KEY, and similar).",
             "api_social",
             slide=0,
         ),
@@ -241,8 +251,14 @@ def attach_api_tab(win) -> None:
         win.api_tt_status_lbl.setText("Status: not connected")
     tt_lay.addWidget(win.api_tt_status_lbl)
 
-    il.addWidget(tt_card)
-    add_section_spacing(il)
+    _social_expanded = bool(getattr(win.settings, "tiktok_enabled", False)) or bool(
+        getattr(win.settings, "youtube_enabled", False)
+    )
+    social = CollapsibleSection(
+        "Social uploads (TikTok, YouTube) - optional", expanded=_social_expanded
+    )
+    il.addWidget(social)
+    social.addWidget(tt_card)
 
     # ---- YouTube (optional Shorts / uploads) ----
     yt_card, yt_lay = section_card()
@@ -328,7 +344,7 @@ def attach_api_tab(win) -> None:
         win.api_yt_status_lbl.setText("Status: not connected")
     yt_lay.addWidget(win.api_yt_status_lbl)
 
-    il.addWidget(yt_card)
+    social.addWidget(yt_card)
 
     il.addStretch(1)
 

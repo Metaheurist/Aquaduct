@@ -78,7 +78,7 @@ Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@py
 ## Core runtime libraries
 - **requests / beautifulsoup4 / lxml**: scraping (Google News RSS + MarkTechPost fallback). Optional **Firecrawl** HTTP APIs when enabled in the app (API key via UI or `FIRECRAWL_API_KEY`). Optional **ElevenLabs** TTS when enabled (API key via UI or `ELEVENLABS_API_KEY`).
 - **torch** / **torchvision** / **torchaudio**: install these **first** via [`scripts/install_pytorch.py`](scripts/install_pytorch.py) — it picks **CUDA 12.4** wheels when `nvidia-smi` (or WMI on Windows) sees an NVIDIA GPU, **CPU** wheels otherwise, and default **PyPI** builds on **macOS**. Then install the rest with `python scripts/install_pytorch.py --with-rest` or `pip install -r requirements.txt` (runtime deps live in one file; **`torch` is not listed** so CUDA wheels are not skipped).
-- **Desktop UI**: **Model → Install dependencies** runs the same PyTorch-then-`requirements.txt` flow in a modal dialog ([`UI/install_deps_dialog.py`](UI/install_deps_dialog.py)) with streamed pip output. The bar is **indeterminate** until pip emits tqdm-style lines with a **`%`**, then shows **determinate 0–100%** ([`src/torch_install.py`](src/torch_install.py): `run_subprocess_streaming`, `pip_download_percent`, `--progress-bar on` injection). If pip stays quiet (large wheels, older pip), the bar may remain indeterminate; the log and status line still update when lines appear.
+- **Desktop UI**: **Run** may offer **Install / Not now** when Python packages or CUDA PyTorch are missing ([`UI/main_window.py`](UI/main_window.py), [`UI/dialogs/install_deps_dialog.py`](UI/install_deps_dialog.py)). The same PyTorch-then-`requirements.txt` flow is available from **Model → Download → Check Python dependencies**. Streaming pip output uses [`src/models/torch_install.py`](src/models/torch_install.py).
 - **transformers / accelerate / bitsandbytes**: local LLM inference (4-bit where supported)
 - **diffusers / safetensors**: SDXL Turbo image generation
 - **huggingface_hub**: “zero-touch” model download on first run; also used by the desktop **verify checksums** action (compare local `models/` snapshots to the Hub)
@@ -100,3 +100,6 @@ Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@py
 ## Notes on Windows + 4-bit LLM
 `bitsandbytes` support can be brittle on native Windows depending on the build and CUDA setup. This MVP includes a **fallback script template** if the LLM cannot be loaded, so the pipeline can still produce videos end-to-end.
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

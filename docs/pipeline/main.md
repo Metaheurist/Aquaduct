@@ -47,3 +47,6 @@ For cloud / SSH / automation, use subcommands that share **`ui_settings.json`** 
 
 Import-time and cold-start notes (including `main`, `pipeline_api`, and `UI.app` profiling) are summarized in [performance.md](performance.md). Packaging verification for frozen builds: [building_windows_exe.md](../build/building_windows_exe.md).
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

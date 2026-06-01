@@ -76,6 +76,18 @@ _SVGS: dict[str, str] = {
   <polyline points="3,9 3,3 9,3"/>
   <polyline points="21,9 21,3 15,3"/>
 </svg>""",
+    "pause": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="10" y1="5" x2="10" y2="19"/>
+  <line x1="14" y1="5" x2="14" y2="19"/>
+</svg>""",
+    "arrow_left": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="19" y1="12" x2="5" y2="12"/>
+  <polyline points="12 19 5 12 12 5"/>
+</svg>""",
+    "arrow_right": f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{_COLOR}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="5" y1="12" x2="19" y2="12"/>
+  <polyline points="12 5 19 12 12 19"/>
+</svg>""",
 }
 
 

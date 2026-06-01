@@ -123,6 +123,33 @@ def qapplication():
     return app
 
 
+@pytest.fixture(autouse=True)
+def _fast_main_window_for_qt_tests(monkeypatch, request):
+    """Skip heavy background work when constructing MainWindow in @pytest.mark.qt tests."""
+    if request.node.get_closest_marker("qt") is None:
+        return
+    monkeypatch.setattr(
+        "src.content.llm_chat_rag.build_chat_docs_index",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        "UI.main_window.MainWindow._start_chat_docs_index_build",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        "UI.main_window.MainWindow._tasks_refresh",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        "UI.main_window.MainWindow._maybe_prompt_hf_token",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        "UI.main_window.MainWindow._maybe_show_first_run_tutorial",
+        lambda self: None,
+    )
+
+
 @pytest.fixture()
 def qtbot(qapplication):
     """

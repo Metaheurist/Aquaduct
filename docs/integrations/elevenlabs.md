@@ -15,3 +15,7 @@ Enable **ElevenLabs** on the **API** tab and paste your API key (or set the envi
 ## API reference
 
 See [ElevenLabs API documentation](https://elevenlabs.io/docs/api-reference/) for voice listing and text-to-speech endpoints.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

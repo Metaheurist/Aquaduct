@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
-from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QObject, pyqtSignal, QThread
+from PyQt6.QtCore import QCoreApplication, QTimer, QUrl, Qt, QPoint, QRect, QObject, pyqtSignal, QThread
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -188,6 +188,9 @@ class MainWindow(QMainWindow):
         title = QLabel("Aquaduct")
         title.setStyleSheet("font-size: 14px; font-weight: 800; color: #FFFFFF;")
         title_row.addWidget(title, 0)
+        self._title_label = title
+        self._settings_dirty = False
+        self._saved_settings_repr: str | None = None
 
         self.media_mode_toggle = MediaModeToggle()
         try:
@@ -219,12 +222,13 @@ class MainWindow(QMainWindow):
         save_btn.setFixedSize(44, 32)
         save_btn.setToolTip(
             help_tooltip_rich(
-                "Save - writes every tab’s settings to ui_settings.json (same as Run → Save settings). Press F5 anytime.",
+                "Save - writes every tab’s settings to ui_settings.json (same as the Pipeline tab’s Save settings). Press F5 anytime.",
                 "welcome",
                 slide=1,
             )
         )
         save_btn.clicked.connect(self._save_settings)
+        save_btn.setAccessibleName("Save settings (F5)")
         title_row.addWidget(save_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         graph_btn = TitleBarOutlineButton("", variant="accent_icon", icon_kind="graph")
@@ -237,18 +241,21 @@ class MainWindow(QMainWindow):
             )
         )
         graph_btn.clicked.connect(self._show_resource_graph)
+        graph_btn.setAccessibleName("Resource usage graph (F3)")
         title_row.addWidget(graph_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         chat_btn = TitleBarOutlineButton("", variant="muted_icon", icon_kind="chat")
         chat_btn.setFixedSize(44, 32)
         chat_btn.setToolTip(
             help_tooltip_rich(
-                "LLM chat - talk with the selected script model (Model tab / API tab). Opens in a separate window. Press F2 anytime.",
+                "Assistant chat - ask how Aquaduct works or what a setting does; it answers using the selected "
+                "script model (Model tab / API tab) plus built-in docs. Opens in a separate window. Press F2 anytime.",
                 "welcome",
                 slide=0,
             )
         )
         chat_btn.clicked.connect(self._show_chat_dialog)
+        chat_btn.setAccessibleName("Assistant chat (F2)")
         title_row.addWidget(chat_btn, 0, Qt.AlignmentFlag.AlignRight)
         self._title_chat_btn = chat_btn
 
@@ -262,6 +269,7 @@ class MainWindow(QMainWindow):
             )
         )
         image_btn.clicked.connect(self._show_image_playground_dialog)
+        image_btn.setAccessibleName("Image playground (F4)")
         title_row.addWidget(image_btn, 0, Qt.AlignmentFlag.AlignRight)
         self._title_image_btn = image_btn
 
@@ -275,6 +283,7 @@ class MainWindow(QMainWindow):
             )
         )
         video_btn.clicked.connect(self._show_video_playground_dialog)
+        video_btn.setAccessibleName("Video playground (F6)")
         title_row.addWidget(video_btn, 0, Qt.AlignmentFlag.AlignRight)
         self._title_video_btn = video_btn
 
@@ -288,6 +297,7 @@ class MainWindow(QMainWindow):
             )
         )
         help_btn.clicked.connect(lambda: self._show_tutorial_dialog(first_run=False))
+        help_btn.setAccessibleName("Help and tutorial (F1)")
         title_row.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignRight)
         _ctx = Qt.ShortcutContext.ApplicationShortcut
         sc1 = QShortcut(QKeySequence(Qt.Key.Key_F1), self)
@@ -315,6 +325,7 @@ class MainWindow(QMainWindow):
         close_btn = TitleBarOutlineButton("", variant="danger", icon_kind="close")
         close_btn.setFixedSize(44, 32)
         close_btn.clicked.connect(self.close)
+        close_btn.setAccessibleName("Close Aquaduct")
         title_row.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
         self._title_outline_buttons = (save_btn, graph_btn, chat_btn, image_btn, video_btn, help_btn, close_btn)
         self._sync_title_bar_outline_colors()
@@ -338,18 +349,28 @@ class MainWindow(QMainWindow):
         root_lay.addWidget(self.tabs, 0)
         self.setCentralWidget(self._root)
 
+        # Tabs are ordered into logical groups (left to right):
+        #   Create:          Pipeline, Topics, Characters
+        #   Style & Output:  Model, Video, Picture, Effects, Captions, API, Branding
+        #   Results:         Tasks, Library
+        #   System:          My PC
+        # Group adjacency improves discoverability; visibility per media mode is handled by tab text.
+        # Create
         attach_run_tab(self)
-        attach_characters_tab(self)
         attach_topics_tab(self)
-        attach_tasks_tab(self)
-        attach_library_tab(self)
+        attach_characters_tab(self)
+        # Style & Output
+        attach_settings_tab(self)
         attach_video_tab(self)
         attach_picture_tab(self)
         attach_effects_tab(self)
         attach_captions_tab(self)
-        attach_branding_tab(self)
         attach_api_tab(self)
-        attach_settings_tab(self)
+        attach_branding_tab(self)
+        # Results
+        attach_tasks_tab(self)
+        attach_library_tab(self)
+        # System
         attach_my_pc_tab(self)
 
         self._sync_nsfw_upload_checkbox_state()
@@ -380,6 +401,8 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._on_tab_changed)
         QTimer.singleShot(0, self._resize_to_current_tab)
         QTimer.singleShot(0, self._tasks_refresh)
+        # Establish the saved-settings baseline once the UI is fully built (for dirty tracking).
+        QTimer.singleShot(0, self._mark_settings_clean)
         # Prompt for HF token once the window is ready (if needed).
         QTimer.singleShot(0, self._maybe_prompt_hf_token)
         # After optional HF token modal (same startup tick), so the help window does not stack on it.
@@ -522,6 +545,7 @@ class MainWindow(QMainWindow):
             self._append_log(
                 "F12: content guardrails restored (LLM blocks, topic/crawl filters, upload preflight/Task gates)."
             )
+            self._toast("Content guardrails ON (restored)", kind="success", msec=3500)
         else:
             os.environ[AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS] = "1"
             self._ensure_topic_modes()
@@ -538,13 +562,14 @@ class MainWindow(QMainWindow):
             self._append_log(
                 "F12: session guardrails off — NSFW format, Allow NSFW, topic lists synced to all modes."
             )
+            self._toast("Content guardrails OFF (this session)", kind="warning", msec=4000)
             if hasattr(self, "video_format_combo"):
                 ix = self.video_format_combo.findData("nsfw")
                 if ix >= 0:
                     self.video_format_combo.setCurrentIndex(ix)
             if hasattr(self, "allow_nsfw_chk"):
                 self.allow_nsfw_chk.setChecked(True)
-            if hasattr(self, "tag_list"):
+            if hasattr(self, "tag_chips_layout"):
                 self._sync_tags_to_ui()
         self._sync_nsfw_upload_checkbox_state()
         if hasattr(self, "_refresh_character_preset_combo"):
@@ -699,31 +724,12 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if hasattr(self, "brand_video_style_section_header"):
-                self.brand_video_style_section_header.setVisible(not is_photo)
-            if hasattr(self, "brand_watermark_section_header"):
-                self.brand_watermark_section_header.setVisible(not is_photo)
-            if hasattr(self, "brand_photo_section_header"):
-                self.brand_photo_section_header.setVisible(is_photo)
-            for name in (
-                "brand_video_style_enable",
-                "brand_video_style_strength",
-                "brand_watermark_enable",
-                "brand_watermark_path",
-                "brand_watermark_pos",
-                "brand_watermark_opacity",
-                "brand_watermark_scale",
-            ):
-                if hasattr(self, name):
-                    getattr(self, name).setVisible(not is_photo)
-            for name in (
-                "brand_photo_style_enable",
-                "brand_photo_frame_enable",
-                "brand_photo_frame_width",
-                "brand_photo_paper_hex",
-            ):
-                if hasattr(self, name):
-                    getattr(self, name).setVisible(is_photo)
+            if hasattr(self, "brand_video_style_section"):
+                self.brand_video_style_section.setVisible(not is_photo)
+            if hasattr(self, "brand_watermark_section"):
+                self.brand_watermark_section.setVisible(not is_photo)
+            if hasattr(self, "brand_photo_section"):
+                self.brand_photo_section.setVisible(is_photo)
         except Exception:
             pass
 
@@ -760,9 +766,9 @@ class MainWindow(QMainWindow):
             return False
         mm = str(getattr(self.settings, "media_mode", "video") or "video").strip().lower()
         self._append_log(
-            "Custom mode: enter instructions in the Run tab first."
+            "Custom mode: enter instructions in the Pipeline tab first."
             if mm == "photo"
-            else "Custom mode: enter video instructions in the Run tab first."
+            else "Custom mode: enter video instructions in the Pipeline tab first."
         )
         return True
 
@@ -776,6 +782,51 @@ class MainWindow(QMainWindow):
                     break
         except Exception:
             pass
+
+    def _offer_runtime_install_for_preflight(self, pf: PreflightResult) -> bool:
+        """Offer to install missing Python packages or CUDA PyTorch before a run. Returns True if install succeeded."""
+        missing_msg = next((e for e in pf.errors if e.lower().startswith("missing python packages")), None)
+        cuda_msg = next(
+            (e for e in pf.errors if "cpu-only pytorch" in e.lower() or "cuda-enabled build" in e.lower()),
+            None,
+        )
+        if not missing_msg and not cuda_msg:
+            return False
+
+        from UI.dialogs.frameless_dialog import aquaduct_question, aquaduct_warning
+
+        lines = ["Aquaduct needs to install a few components before this run."]
+        if missing_msg:
+            lines.append("Some required Python packages are missing.")
+        if cuda_msg:
+            lines.append("CUDA PyTorch is needed to use your NVIDIA GPU.")
+        lines.append("\nInstall now? Large downloads can take several minutes.")
+        if not aquaduct_question(self, "Install required components?", "\n".join(lines), default_no=True):
+            return False
+
+        try:
+            if missing_msg:
+                from UI.dialogs.install_deps_dialog import install_dependencies_with_dialog
+
+                code, _out = install_dependencies_with_dialog(self)
+            else:
+                from UI.dialogs.install_deps_dialog import install_pytorch_only_with_dialog
+
+                code, _out = install_pytorch_only_with_dialog(self)
+            if int(code or 1) != 0:
+                aquaduct_warning(self, "Install incomplete", "Setup did not finish. Check the log and try again.")
+                return False
+            self._toast("Components installed. Restart Aquaduct if GPU builds were added.")
+            fn = getattr(self, "_refresh_run_readiness", None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    pass
+            return True
+        except Exception as exc:
+            aquaduct_warning(self, "Install failed", str(exc)[:800])
+            return False
 
     def _preflight_failed_ui(self, pf: PreflightResult) -> bool:
         """
@@ -838,6 +889,14 @@ class MainWindow(QMainWindow):
                 if choice == "dont_warn_session":
                     self._suppress_memory_preflight_popups = True
                 return True
+            return False
+
+        if any(e.lower().startswith("missing python packages") for e in pf.errors) or any(
+            "cpu-only pytorch" in e.lower() for e in pf.errors
+        ):
+            if self._offer_runtime_install_for_preflight(pf):
+                return True
+            aquaduct_warning(self, title, msg)
             return False
 
         aquaduct_warning(self, title, msg)
@@ -1197,7 +1256,10 @@ class MainWindow(QMainWindow):
 
         base_w = int(getattr(self, "_default_window_width", 1000) or 1000)
         model_w = int(getattr(self, "_model_tab_window_width", 1080) or 1080)
-        w = model_w if tab_txt == "Model" else base_w
+        # Keep a single fixed width across all tabs (the documented contract is "fixed width;
+        # height follows the active tab"). Use the widest requirement so the Model tab still fits
+        # and switching tabs never shifts the window horizontally.
+        w = max(base_w, model_w)
         try:
             scr = QGuiApplication.primaryScreen()
             if scr is not None:
@@ -1313,12 +1375,22 @@ class MainWindow(QMainWindow):
         self._resize_to_current_tab()
         self._update_hf_api_warnings()
         try:
+            self._refresh_dirty_state()
+        except Exception:
+            pass
+        try:
             self._sync_generation_api_panel_parent()
         except Exception:
             pass
         try:
             if self.tabs.tabText(idx) == "Pipeline":
                 self._refresh_character_combo()
+                r = getattr(self, "_refresh_getting_started", None)
+                if callable(r):
+                    r()
+                rr = getattr(self, "_refresh_run_readiness", None)
+                if callable(rr):
+                    rr()
             if self.tabs.tabText(idx) == "Library":
                 self._library_refresh()
             if self.tabs.tabText(idx) == "Characters" and hasattr(self, "_characters_refresh_elevenlabs"):
@@ -1416,12 +1488,25 @@ class MainWindow(QMainWindow):
             self.personality_combo.setToolTip(help_tooltip_rich(tip, "run", slide=2))
         self._resize_to_current_tab()
 
+    def _point_in_title_bar(self, pos: QPoint) -> bool:
+        """True when ``pos`` (main-window coords) falls within the custom title bar band."""
+        tb = getattr(self, "_title_bar", None)
+        if tb is None:
+            return False
+        try:
+            top_left = tb.mapTo(self, tb.rect().topLeft())
+            return QRect(top_left, tb.size()).contains(pos)
+        except Exception:
+            return False
+
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Store offset between cursor and window top-left
+        # Only the title bar drags the frameless window; clicking anywhere else used to move it,
+        # which made it easy to nudge the window while interacting with tab content.
+        if event.button() == Qt.MouseButton.LeftButton and self._point_in_title_bar(event.position().toPoint()):
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
         else:
+            self._drag_pos = None
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
@@ -1446,13 +1531,24 @@ class MainWindow(QMainWindow):
             append_ui_log(msg)
         except Exception:
             pass
-        if hasattr(self, "log_box"):
+        box = getattr(self, "log_box", None)
+        if box is not None:
             try:
-                self.log_box.append(msg)
+                ts = datetime.now().strftime("%H:%M:%S")
+                box.append(f"[{ts}] {msg}")
                 return
             except Exception:
                 pass
         print(msg)
+
+    def _toast(self, message: str, *, kind: str = "info", msec: int = 2600) -> None:
+        """Show a non-modal, auto-dismissing toast for routine feedback (safe no-op on failure)."""
+        try:
+            from UI.widgets.toast import show_toast
+
+            show_toast(self, message, kind=kind, msec=msec)
+        except Exception:
+            pass
 
     def _ensure_topic_modes(self) -> None:
         d = self.settings.topic_tags_by_mode
@@ -1466,19 +1562,63 @@ class MainWindow(QMainWindow):
         return normalize_video_format(str(getattr(self.settings, "video_format", "news")))
 
     def _flush_topic_list_to_mode(self, mode: str) -> None:
-        if not hasattr(self, "tag_list"):
+        """Persist the selected-tag note editor; tag lists live in settings already."""
+        self._flush_selected_topic_note()
+
+    def _flush_selected_topic_note(self) -> None:
+        tag = getattr(self, "_topics_selected_tag", None)
+        if not tag or not hasattr(self, "topic_selected_note_edit"):
             return
-        mode = normalize_video_format(mode)
-        tags: list[str] = []
-        for i in range(self.tag_list.count()):
-            it = self.tag_list.item(i)
-            if it is None:
-                continue
-            t = it.text().strip()
-            if t:
-                tags.append(t)
+        nk = " ".join(str(tag).split()).strip().lower()
+        if not nk:
+            return
+        notes = dict(self.settings.topic_tag_notes or {})
+        try:
+            txt = str(self.topic_selected_note_edit.text() or "").strip()
+        except Exception:
+            txt = ""
+        if txt:
+            notes[nk] = txt
+        else:
+            notes.pop(nk, None)
+        self.settings = replace(self.settings, topic_tag_notes=sanitize_topic_tag_notes(notes))
+
+    def _on_topic_chip_selected(self, tag: str) -> None:
+        self._flush_selected_topic_note()
+        self._topics_selected_tag = str(tag).strip()
+        chips = getattr(self, "_topic_chip_widgets", {}) or {}
+        for t, chip in chips.items():
+            try:
+                chip.set_selected(t == self._topics_selected_tag)
+            except Exception:
+                pass
+        nk = " ".join(self._topics_selected_tag.split()).strip().lower()
+        notes = dict(self.settings.topic_tag_notes or {})
+        note = notes.get(nk, "")
+        if hasattr(self, "topic_selected_label"):
+            self.topic_selected_label.setText(f"Grounding for: {self._topics_selected_tag}")
+        if hasattr(self, "topic_selected_note_edit"):
+            self.topic_selected_note_edit.blockSignals(True)
+            self.topic_selected_note_edit.setText(note)
+            self.topic_selected_note_edit.setEnabled(True)
+            self.topic_selected_note_edit.blockSignals(False)
+
+    def _on_topic_chip_removed(self, tag: str) -> None:
+        t = str(tag).strip()
+        if not t:
+            return
         self._ensure_topic_modes()
-        self.settings.topic_tags_by_mode[mode] = tags
+        key = self._topics_bucket_key()
+        bucket = self.settings.topic_tags_by_mode.setdefault(key, [])
+        self.settings.topic_tags_by_mode[key] = [x for x in bucket if x != t]
+        if getattr(self, "_topics_selected_tag", None) == t:
+            self._topics_selected_tag = None
+            if hasattr(self, "topic_selected_note_edit"):
+                self.topic_selected_note_edit.clear()
+                self.topic_selected_note_edit.setEnabled(False)
+            if hasattr(self, "topic_selected_label"):
+                self.topic_selected_label.setText("Select a tag to add optional grounding notes.")
+        self._sync_tags_to_ui()
 
     def _on_topics_mode_changed(self, _idx: int) -> None:
         if not hasattr(self, "topics_mode_combo"):
@@ -1520,67 +1660,48 @@ class MainWindow(QMainWindow):
         self.discover_btn.setToolTip(help_tooltip_rich(tip, "topics_chars", slide=0))
 
     def _sync_tags_to_ui(self) -> None:
-        from PyQt6.QtWidgets import QListWidgetItem
-
-        if not hasattr(self, "tag_list"):
+        if not hasattr(self, "tag_chips_layout"):
             return
+        from UI.widgets.topic_chip import TopicChip
+
         self._ensure_topic_modes()
-        self.tag_list.clear()
-        key = self._topics_bucket_key()
-        for t in self.settings.topic_tags_by_mode.get(key, []):
-            self.tag_list.addItem(QListWidgetItem(t))
-        self._sync_topic_notes_rows()
-
-    def _merge_topic_notes_edits_into_dict(self) -> dict[str, str]:
-        """Flatten current per-tag ``QLineEdit`` rows into a normalized note map."""
-        base = dict(self.settings.topic_tag_notes or {})
-        edits = getattr(self, "topic_note_edits_by_tag_norm", None)
-        if isinstance(edits, dict):
-            for nk, widget in list(edits.items()):
-                nk2 = str(nk or "").strip().lower()
-                if not nk2:
-                    continue
-                try:
-                    txt = str(widget.text() or "").strip() if widget is not None else ""
-                except Exception:
-                    txt = ""
-                if txt:
-                    base[nk2] = txt
-                else:
-                    base.pop(nk2, None)
-        return sanitize_topic_tag_notes(base)
-
-    def _sync_topic_notes_rows(self) -> None:
-        if not hasattr(self, "topic_notes_layout"):
-            return
-        lay = self.topic_notes_layout
+        lay = self.tag_chips_layout
         while lay.count():
             item = lay.takeAt(0)
-            iw = item.widget()
-            if iw is not None:
-                iw.deleteLater()
-        self.topic_note_edits_by_tag_norm = {}
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self._topic_chip_widgets = {}
         key = self._topics_bucket_key()
-        notes_map = dict(self.settings.topic_tag_notes or {})
-        for raw in self.settings.topic_tags_by_mode.get(key, []) or []:
-            tag_disp = str(raw).strip()
-            nk = " ".join(tag_disp.split()).strip().lower()
-            if not nk:
-                continue
-            row_w = QWidget()
-            rlay = QHBoxLayout(row_w)
-            rlay.setContentsMargins(0, 2, 0, 2)
-            lab = QLabel(tag_disp[:80] + ("…" if len(tag_disp) > 80 else ""))
-            lab.setMinimumWidth(140)
-            lab.setToolTip(tag_disp)
-            lab.setStyleSheet("color: #E6E6E6; font-size: 12px;")
-            ed = QLineEdit()
-            ed.setPlaceholderText("Optional grounding (tone, anchors, bans)…")
-            ed.setText(topic_notes_for(notes_map, tag_disp))
-            rlay.addWidget(lab)
-            rlay.addWidget(ed, 1)
-            lay.addWidget(row_w)
-            self.topic_note_edits_by_tag_norm[nk] = ed
+        tags = self.settings.topic_tags_by_mode.get(key, [])
+        selected = getattr(self, "_topics_selected_tag", None)
+        if selected and selected not in tags:
+            selected = None
+            self._topics_selected_tag = None
+        for t in tags:
+            chip = TopicChip(t, is_selected=(t == selected), parent=self.tag_chips_inner)
+            chip.selected.connect(self._on_topic_chip_selected)
+            chip.removed.connect(self._on_topic_chip_removed)
+            lay.addWidget(chip)
+            self._topic_chip_widgets[t] = chip
+        if hasattr(self, "topics_empty_hint"):
+            try:
+                self.topics_empty_hint.setVisible(not tags)
+            except Exception:
+                pass
+        if selected and selected in tags:
+            self._on_topic_chip_selected(selected)
+        elif not tags:
+            if hasattr(self, "topic_selected_note_edit"):
+                self.topic_selected_note_edit.clear()
+                self.topic_selected_note_edit.setEnabled(False)
+            if hasattr(self, "topic_selected_label"):
+                self.topic_selected_label.setText("Select a tag to add optional grounding notes.")
+
+    def _merge_topic_notes_edits_into_dict(self) -> dict[str, str]:
+        """Flatten the selected-tag note editor into a normalized note map."""
+        self._flush_selected_topic_note()
+        return sanitize_topic_tag_notes(dict(self.settings.topic_tag_notes or {}))
 
     def _add_tag(self) -> None:
         self._ensure_topic_modes()
@@ -1595,15 +1716,10 @@ class MainWindow(QMainWindow):
         self.tag_input.clear()
 
     def _remove_selected_tags(self) -> None:
-        selected = self.tag_list.selectedItems()
-        if not selected:
+        tag = getattr(self, "_topics_selected_tag", None)
+        if not tag:
             return
-        self._ensure_topic_modes()
-        remove = {it.text() for it in selected}
-        key = self._topics_bucket_key()
-        bucket = self.settings.topic_tags_by_mode.setdefault(key, [])
-        self.settings.topic_tags_by_mode[key] = [x for x in bucket if x not in remove]
-        self._sync_tags_to_ui()
+        self._on_topic_chip_removed(str(tag))
 
     def _clear_tags(self) -> None:
         self._ensure_topic_modes()
@@ -1622,6 +1738,7 @@ class MainWindow(QMainWindow):
                 self.discover_btn.setText("Discovering…")
             except Exception:
                 pass
+        self._toast("Discovering topic ideas…", kind="info", msec=2600)
         self.topic_worker = TopicDiscoverWorker(
             settings=self._collect_settings_from_ui(),
             limit=24,
@@ -1714,7 +1831,7 @@ class MainWindow(QMainWindow):
         w = getattr(self, "topic_grounding_worker", None)
         if w is not None and w.isRunning():
             return
-        if not hasattr(self, "topic_note_edits_by_tag_norm"):
+        if not hasattr(self, "topic_selected_note_edit"):
             return
         self._flush_topic_list_to_mode(self._topics_bucket_key())
         bucket = normalize_video_format(self._topics_bucket_key())
@@ -1794,13 +1911,12 @@ class MainWindow(QMainWindow):
         base.update(notes)
         self.settings = replace(self.settings, topic_tag_notes=sanitize_topic_tag_notes(base))
 
-        edits = getattr(self, "topic_note_edits_by_tag_norm", None)
-        if isinstance(edits, dict):
-            for nk, text in notes.items():
-                ew = edits.get(nk)
+        sel = getattr(self, "_topics_selected_tag", None)
+        if sel:
+            nk = " ".join(str(sel).split()).strip().lower()
+            if nk in notes and hasattr(self, "topic_selected_note_edit"):
                 try:
-                    if ew is not None:
-                        ew.setText(text)
+                    self.topic_selected_note_edit.setText(str(notes.get(nk, "")))
                 except Exception:
                     pass
 
@@ -1998,6 +2114,55 @@ class MainWindow(QMainWindow):
             return
         self._show_tutorial_dialog(first_run=True)
 
+    def _open_help(self, topic_id: str | None = None, slide: int | None = None) -> None:
+        """Open the Help tutorial, optionally jumping to a topic/slide (for card help glyphs)."""
+        self._show_tutorial_dialog(first_run=False, topic_id=topic_id, slide=int(slide or 0))
+
+    def _settings_repr(self, settings: AppSettings | None = None) -> str:
+        """Stable serialization of settings for dirty-state comparison (best-effort)."""
+        s = settings if settings is not None else self.settings
+        try:
+            from dataclasses import asdict
+
+            return json.dumps(asdict(s), sort_keys=True, default=str)
+        except Exception:
+            try:
+                return repr(s)
+            except Exception:
+                return ""
+
+    def _mark_settings_clean(self) -> None:
+        """Record the current settings as the saved baseline and clear the dirty indicator."""
+        self._saved_settings_repr = self._settings_repr()
+        self._settings_dirty = False
+        self._update_dirty_indicator()
+
+    def _refresh_dirty_state(self) -> None:
+        """Recompute whether unsaved edits exist by comparing the UI against the saved baseline."""
+        if self._saved_settings_repr is None:
+            # No baseline yet (startup) - treat as clean.
+            self._saved_settings_repr = self._settings_repr()
+            self._settings_dirty = False
+            self._update_dirty_indicator()
+            return
+        try:
+            current = self._settings_repr(self._collect_settings_from_ui())
+        except Exception:
+            return
+        dirty = current != self._saved_settings_repr
+        if dirty != self._settings_dirty:
+            self._settings_dirty = dirty
+            self._update_dirty_indicator()
+
+    def _update_dirty_indicator(self) -> None:
+        """Reflect dirty state in the title label (trailing dot) and Save button tooltip."""
+        lab = getattr(self, "_title_label", None)
+        if lab is not None:
+            try:
+                lab.setText("Aquaduct \u2022" if self._settings_dirty else "Aquaduct")
+            except Exception:
+                pass
+
     def _save_settings(self) -> None:
         self.settings = self._collect_settings_from_ui()
         ok = save_settings(self.settings)
@@ -2014,12 +2179,22 @@ class MainWindow(QMainWindow):
         self._sync_tasks_upload_buttons(self.settings)
         if ok:
             self._append_log("Saved settings.")
+            self._mark_settings_clean()
+            self._toast("Settings saved", kind="success")
+            for _hook in ("_refresh_getting_started", "_refresh_run_readiness"):
+                fn = getattr(self, _hook, None)
+                if callable(fn):
+                    try:
+                        fn()
+                    except Exception:
+                        pass
         else:
             self._append_log(
                 "Could not save settings to disk (permission denied). "
                 "Close other copies of Aquaduct, pause OneDrive sync for this repo’s .Aquaduct_data folder, "
                 "or check that ui_settings.json is not open in another program - your current choices still apply until you quit."
             )
+            self._toast("Could not save settings - see Activity log", kind="error", msec=4000)
 
     def _open_videos(self) -> None:
         root = media_output_root(self.paths, getattr(self.settings, "media_mode", "video"))
@@ -2127,8 +2302,13 @@ class MainWindow(QMainWindow):
             removed = clear_news_seen_cache_files(d)
             if removed:
                 self._append_log(f"Cleared news URL/title cache ({removed} file(s)).")
+                self._toast(f"Cleared cache ({removed} file{'s' if removed != 1 else ''})", kind="success")
+            else:
+                self._append_log("News URL/title cache already empty.")
+                self._toast("Cache already empty", kind="info")
         except Exception as e:
             self._append_log(f"Failed to clear cache: {e}")
+            self._toast("Could not clear cache - see Activity log", kind="error", msec=3500)
 
     def _check_deps(self) -> None:
         mods = [
@@ -2516,6 +2696,7 @@ class MainWindow(QMainWindow):
             "Verifying local files against Hugging Face (SHA-256 / git blob ids). "
             "Large models can take several minutes."
         )
+        self._toast(f"Verifying {len(repo_ids)} model{'s' if len(repo_ids) != 1 else ''}…", kind="info", msec=3000)
         self._integrity_worker = ModelIntegrityVerifyWorker(
             repo_ids=repo_ids,
             models_dir=self.effective_models_dir(),
@@ -2715,6 +2896,24 @@ class MainWindow(QMainWindow):
         self._download_popup = None
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        # Offer to save unsaved edits before quitting (settings live in widgets until Save/Run).
+        try:
+            self._refresh_dirty_state()
+            if getattr(self, "_settings_dirty", False):
+                from UI.dialogs.frameless_dialog import aquaduct_save_discard_cancel_choice
+
+                choice = aquaduct_save_discard_cancel_choice(
+                    self,
+                    "Unsaved changes",
+                    "You have unsaved settings changes. Save before closing?",
+                )
+                if choice == "cancel":
+                    event.ignore()
+                    return
+                if choice == "save":
+                    self._save_settings()
+        except Exception:
+            pass
         try:
             if self._llm_chat_dialog is not None:
                 self._llm_chat_dialog.close()
@@ -2770,10 +2969,12 @@ class MainWindow(QMainWindow):
             self._append_log(
                 'FFmpeg is still downloading - wait for "FFmpeg is ready" in the log, then click Run again.'
             )
+            self._toast("FFmpeg still downloading…", kind="info")
             return False
         self._append_log(
             "First-time setup: downloading FFmpeg to .Aquaduct_data/.cache/ffmpeg/ (needs internet; may take a few minutes)…"
         )
+        self._toast("First-time setup: downloading FFmpeg…", kind="info", msec=4000)
         self._ffmpeg_run_after = then
         w = FFmpegEnsureWorker(self.paths.ffmpeg_dir)
         self._ffmpeg_ensure_worker = w
@@ -2785,6 +2986,7 @@ class MainWindow(QMainWindow):
     def _on_ffmpeg_install_done(self) -> None:
         self._ffmpeg_ensure_worker = None
         self._append_log("FFmpeg is ready.")
+        self._toast("FFmpeg is ready", kind="success")
         fn = self._ffmpeg_run_after
         self._ffmpeg_run_after = None
         if fn:
@@ -2796,6 +2998,7 @@ class MainWindow(QMainWindow):
         self._pipeline_launch_pending = False
         self._append_log("FFmpeg download failed:")
         self._append_log(err[:4000])
+        self._toast("FFmpeg download failed - see Activity log", kind="error", msec=4000)
 
     def _set_run_btn_allow_queue_while_pipeline_runs(self) -> None:
         """Keep **Run** enabled after a pipeline starts so another click can enqueue (FIFO)."""
@@ -3159,6 +3362,8 @@ class MainWindow(QMainWindow):
             dprint("tasks", "pipeline queued (waiting)", f"depth={n} batch_qty={qty}")
             self._append_log(f"Run queued ({n} job(s) waiting after the current one).")
             self._tasks_refresh()
+            self._toast(f"Queued {qty} video{'s' if qty != 1 else ''} ({n} waiting)", kind="success")
+            self._focus_tasks_tab()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -3191,6 +3396,8 @@ class MainWindow(QMainWindow):
                 f"Run queued ({n} job(s) waiting - pipeline launch already in progress)."
             )
             self._tasks_refresh()
+            self._toast(f"Queued {qty} video{'s' if qty != 1 else ''} ({n} waiting)", kind="success")
+            self._focus_tasks_tab()
             try:
                 self.run_btn.setEnabled(True)
             except Exception:
@@ -3740,6 +3947,7 @@ class MainWindow(QMainWindow):
         folder: str = "-",
     ) -> None:
         c = created or (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M") + " UTC")
+        first_active = not self._tasks_active_row
         self._tasks_active_row = {
             "title": title,
             "status": status,
@@ -3749,6 +3957,19 @@ class MainWindow(QMainWindow):
         }
         self._tasks_refresh()
         self._update_tasks_control_buttons()
+        # Bring progress into view the moment work begins so users are not left on the Pipeline
+        # tab wondering where the run went.
+        if first_active:
+            self._focus_tasks_tab()
+
+    def _focus_tasks_tab(self) -> None:
+        """Switch the active tab to Tasks (where run/preview/storyboard progress is shown)."""
+        try:
+            w = getattr(self, "_tasks_tab_widget", None)
+            if w is not None:
+                self.tabs.setCurrentWidget(w)
+        except Exception:
+            pass
 
     def _update_tasks_active_progress(
         self, task_id: str, overall_pct: int, task_pct: int, message: str
@@ -3848,6 +4069,18 @@ class MainWindow(QMainWindow):
             f"preview={self.preview_worker is not None and self.preview_worker.isRunning()}",
             f"storyboard={self.storyboard_worker is not None and self.storyboard_worker.isRunning()}",
         )
+        # Stop cancels the active job AND drops everything still queued. Confirm when the user
+        # would lose queued work, so an accidental Stop does not silently wipe a batch/series.
+        queued = len(getattr(self, "_pipeline_run_queue", []) or [])
+        if queued > 0:
+            if not aquaduct_question(
+                self,
+                "Stop and clear the queue?",
+                f"Stopping cancels the current job and discards {queued} queued job"
+                f"{'s' if queued != 1 else ''}. This cannot be undone.\n\nStop anyway?",
+                default_no=True,
+            ):
+                return
         if self._pipeline_control is not None:
             self._pipeline_control.request_cancel()
         if self.worker is not None and self.worker.isRunning():
@@ -4000,6 +4233,14 @@ class MainWindow(QMainWindow):
             row += 1
         self._update_tasks_tab_badge()
         self._sync_tasks_upload_buttons()
+        es = getattr(self, "tasks_empty_state", None)
+        if es is not None:
+            try:
+                empty = self.tasks_table.rowCount() == 0
+                es.setVisible(empty)
+                self.tasks_table.setVisible(not empty)
+            except Exception:
+                pass
 
     @staticmethod
     def _tiktok_upload_ui_ready(settings: AppSettings) -> bool:

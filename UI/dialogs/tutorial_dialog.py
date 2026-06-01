@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QSizePolicy,
@@ -47,7 +48,7 @@ TUTORIAL_TOPICS: list[_Topic] = [
             ),
             (
                 "Title bar & saving",
-                "Save - writes every tab’s settings to ui_settings.json (same as Run → Save settings).\n\n"
+                "Save - writes every tab’s settings to ui_settings.json (same as the Pipeline tab’s Save settings button).\n\n"
                 "Resource graph - opens the Resource usage window (about once per second). Default is a compact "
                 "**summary** (numbers only); use the title-bar toggle to switch to **live charts** for CPU, RAM, "
                 "and GPU VRAM. The next slide explains Monitor GPU, split view, and Purge memory.\n\n"
@@ -311,6 +312,16 @@ class TutorialDialog(FramelessDialog):
         root.setSpacing(0)
         root.setContentsMargins(0, 0, 0, 0)
 
+        topics_col = QVBoxLayout()
+        topics_col.setSpacing(6)
+        topics_col.setContentsMargins(0, 0, 0, 0)
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search help…")
+        self._search.setClearButtonEnabled(True)
+        self._search.setAccessibleName("Search help topics")
+        self._search.textChanged.connect(self._on_search_changed)
+        topics_col.addWidget(self._search, 0)
+
         self._list = QListWidget()
         self._list.setObjectName("tutorialTopicList")
         self._list.setFixedWidth(220)
@@ -320,7 +331,8 @@ class TutorialDialog(FramelessDialog):
             item.setData(Qt.ItemDataRole.UserRole, t.topic_id)
             self._list.addItem(item)
         self._list.currentRowChanged.connect(self._on_topic_row_changed)
-        root.addWidget(self._list, 0)
+        topics_col.addWidget(self._list, 1)
+        root.addLayout(topics_col, 0)
 
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.VLine)
@@ -352,11 +364,11 @@ class TutorialDialog(FramelessDialog):
 
         nav.addStretch(1)
 
-        self._prev_btn = styled_outline_button("◀  Previous", "muted_icon", min_width=120)
+        self._prev_btn = styled_outline_button("Previous", "muted_icon", min_width=120)
         self._prev_btn.clicked.connect(self._prev_slide)
         nav.addWidget(self._prev_btn)
 
-        self._next_btn = styled_outline_button("Next  ▶", "accent_icon", min_width=120)
+        self._next_btn = styled_outline_button("Next", "accent_icon", min_width=120)
         self._next_btn.clicked.connect(self._next_slide)
         nav.addWidget(self._next_btn)
 
@@ -395,6 +407,33 @@ class TutorialDialog(FramelessDialog):
                 self._updating_topic_list = False
             self._sync_slide()
             return
+
+    def _topic_matches(self, topic: _Topic, q: str) -> bool:
+        if q in topic.label.lower():
+            return True
+        for title, text in topic.slides:
+            if q in title.lower() or q in text.lower():
+                return True
+        return False
+
+    def _on_search_changed(self, text: str) -> None:
+        q = str(text or "").strip().lower()
+        first_visible = -1
+        for i, t in enumerate(self._topics):
+            match = (not q) or self._topic_matches(t, q)
+            self._list.setRowHidden(i, not match)
+            if match and first_visible < 0:
+                first_visible = i
+        # If the current selection was filtered out, jump to the first match.
+        if q and first_visible >= 0 and self._list.isRowHidden(self._topic_index):
+            self._updating_topic_list = True
+            try:
+                self._list.setCurrentRow(first_visible)
+            finally:
+                self._updating_topic_list = False
+            self._topic_index = first_visible
+            self._slide_index = 0
+            self._sync_slide()
 
     def _current_topic(self) -> _Topic:
         return self._topics[max(0, min(len(self._topics) - 1, self._topic_index))]

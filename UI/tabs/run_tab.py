@@ -26,7 +26,7 @@ from src.settings.art_style_presets import ART_STYLE_PRESETS
 from UI.widgets.character_tag_picker import CharacterTagPicker
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.widgets.tab_scaffold import make_tab_root
-from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.tab_sections import add_section_spacing, section_card, section_title, section_title_with_help
 from UI.help.tutorial_links import help_tooltip_rich
 
 
@@ -36,12 +36,14 @@ def attach_run_tab(win) -> None:
     root.setContentsMargins(0, 0, 0, 0)
     root.setSpacing(0)
 
+    _attach_getting_started_card(win, root)
+
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QScrollArea.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    inner_root, _, _, lay = make_tab_root(title="Run Aquaduct (one-shot)")
+    inner_root, _, _, lay = make_tab_root(title="Pipeline")
     scroll.setWidget(inner_root)
 
     out_card, out_lay = section_card()
@@ -123,11 +125,13 @@ def attach_run_tab(win) -> None:
     win.picture_format_run_combo.setCurrentIndex(0)
     win.picture_format_run_combo.setToolTip(
         help_tooltip_rich(
-            "Picture format (poster / newspaper / comic) for photo-mode runs; pair with the Picture tab for size and output type.",
+            "Picture format (poster / newspaper / comic) for photo-mode runs. This is the same setting as the "
+            "Picture tab - changing it here updates the Picture tab and vice versa.",
             "run",
             slide=2,
         )
     )
+    win.picture_format_run_combo.setAccessibleName("Picture format (mirrors Picture tab)")
     pic_row.addWidget(win.picture_format_run_combo, 1)
     pic_row.addStretch(1)
     out_lay.addLayout(pic_row)
@@ -321,7 +325,15 @@ def attach_run_tab(win) -> None:
 
     add_section_spacing(lay)
     sc_card, sc_lay = section_card()
-    sc_lay.addWidget(section_title("Script & content", emphasis=True))
+    sc_lay.addWidget(
+        section_title_with_help(
+            "Script & content",
+            "run",
+            slide=1,
+            emphasis=True,
+            on_open=getattr(win, "_open_help", None),
+        )
+    )
     mode_row = QHBoxLayout()
     mode_lbl = QLabel("Content source")
     mode_lbl.setStyleSheet("color: #B7B7C2;")
@@ -413,9 +425,9 @@ def attach_run_tab(win) -> None:
                 )
             else:
                 vf_hint.setText(
-                    "**Preset** uses the **source mode** below and your **Topics** tab to pick ideas - same flow as making a video, "
-                    "except this run creates still images or a layout instead of an MP4.\n\n"
-                    "Choose template, how many images, output type, and picture format on the **Picture** tab."
+                    "Preset uses the source mode below and your Topics tab to pick ideas - same flow as making a video, "
+                    "except this run creates still images or a layout instead of an MP4. "
+                    "Choose template, how many images, output type, and picture format on the Picture tab."
                 )
             return
         win.run_content_preset_radio.setText(_preset_mode_caption(vf))
@@ -458,10 +470,9 @@ def attach_run_tab(win) -> None:
     win.run_content_custom_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
     win.video_format_combo.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
     win._sync_run_content_hints = _sync_content_mode_ui
+    # Set the contextual, format-aware hint on first load (do not overwrite with a generic tip);
+    # fuller details live in the tooltip below.
     _sync_content_mode_ui()
-    # Keep this as a short, low-density hint; put details in the tooltip.
-    vf_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
-    vf_hint.setText("Tip: hover the Content source controls for details.")
     vf_hint.setToolTip(
         help_tooltip_rich(
             "Preset uses Topics for the selected format. Custom expands your notes into a brief, then writes the script (two passes). "
@@ -627,11 +638,178 @@ def attach_run_tab(win) -> None:
     row.addStretch(1)
     act_lay.addLayout(row)
 
+    from UI.widgets.tab_sections import status_glyph_label, status_glyph_set_text
+
+    win.run_readiness_badge = status_glyph_label("dot", "")
+    win.run_readiness_badge.setVisible(False)
+    win.run_readiness_badge.setToolTip(
+        help_tooltip_rich(
+            "Readiness reflects the same preflight checks used by Run, Preview, and Storyboard.",
+            "run",
+            slide=0,
+        )
+    )
+    act_lay.addWidget(win.run_readiness_badge)
+    _attach_run_readiness(win)
+
     root.addWidget(scroll, 1)
     add_section_spacing(root)
     root.addWidget(act_card, 0)
 
+    win._run_tab_widget = w
     win.tabs.addTab(w, "Pipeline")
+
+
+def _attach_run_readiness(win) -> None:
+    """Shared readiness badge so Run / Preview / Storyboard show one consistent prerequisite state."""
+    from UI.widgets.tab_sections import status_glyph_set_text
+
+    def _refresh() -> None:
+        badge = getattr(win, "run_readiness_badge", None)
+        if badge is None:
+            return
+        try:
+            from src.runtime.preflight import preflight_check
+
+            pf = preflight_check(settings=win.settings, strict=False)
+        except Exception:
+            badge.setVisible(False)
+            return
+        if pf.ok and not pf.warnings:
+            status_glyph_set_text(
+                badge,
+                "Ready - Run, Preview, and Storyboard are good to go.",
+                kind="check",
+                color_token="accent",
+            )
+            badge.setVisible(True)
+        elif pf.ok and pf.warnings:
+            status_glyph_set_text(
+                badge,
+                f"Ready with warnings: {pf.warnings[0]}",
+                kind="warning",
+                color_token="muted",
+            )
+            badge.setVisible(True)
+        else:
+            first = pf.errors[0] if pf.errors else "Some prerequisites are missing."
+            status_glyph_set_text(
+                badge,
+                f"Not ready: {first}",
+                kind="dot",
+                color_token="danger",
+            )
+            badge.setVisible(True)
+
+    win._refresh_run_readiness = _refresh
+    _refresh()
+
+
+def _attach_getting_started_card(win, root: QVBoxLayout) -> None:
+    """State-aware first-run checklist shown above the Pipeline form.
+
+    Auto-hides once the app is set up and the user has finished a run, or when dismissed.
+    """
+    from UI.theme import token
+
+    card = QWidget()
+    card.setObjectName("GettingStartedCard")
+    card.setStyleSheet(
+        "QWidget#GettingStartedCard { border: 1px solid %s; border-radius: 12px; "
+        "background-color: rgba(255,255,255,0.02); }" % token("accent", "#25F4EE")
+    )
+    lay = QVBoxLayout(card)
+    lay.setContentsMargins(14, 12, 14, 12)
+    lay.setSpacing(6)
+
+    head_row = QHBoxLayout()
+    head = QLabel("Getting started")
+    head.setStyleSheet(f"color: {token('text', '#FFFFFF')}; font-size: 14px; font-weight: 700;")
+    head_row.addWidget(head, 1)
+    dismiss = QPushButton("Dismiss")
+    dismiss.setProperty("buttonRole", "secondary")
+    dismiss.setMaximumHeight(26)
+    dismiss.setAccessibleName("Dismiss getting started checklist")
+    head_row.addWidget(dismiss, 0)
+    lay.addLayout(head_row)
+
+    from UI.widgets.tab_sections import status_glyph_label, status_glyph_set_text
+
+    win._gs_step_models = status_glyph_label("dot", "")
+    win._gs_step_topics = status_glyph_label("dot", "")
+    win._gs_step_run = status_glyph_label("dot", "")
+    for lb in (win._gs_step_models, win._gs_step_topics, win._gs_step_run):
+        lay.addWidget(lb)
+
+    root.addWidget(card)
+    win._gs_card = card
+
+    def _dismiss() -> None:
+        win._getting_started_dismissed = True
+        card.setVisible(False)
+        if hasattr(win, "_resize_to_current_tab"):
+            try:
+                win._resize_to_current_tab()
+            except Exception:
+                pass
+
+    dismiss.clicked.connect(_dismiss)
+
+    def _refresh() -> None:
+        if getattr(win, "_getting_started_dismissed", False):
+            card.setVisible(False)
+            return
+        ready = True
+        models_line = "1. Choose and download your models on the Model tab"
+        try:
+            from src.runtime.preflight import preflight_check
+
+            pf = preflight_check(settings=win.settings, strict=False)
+            ready = bool(pf.ok)
+            if ready:
+                models_line = "1. Models and FFmpeg look ready"
+            elif pf.errors:
+                models_line = f"1. Set up models: {pf.errors[0]}"
+        except Exception:
+            ready = False
+        status_glyph_set_text(
+            win._gs_step_models,
+            models_line,
+            kind="check" if ready else "dot",
+            color_token="accent" if ready else "muted",
+        )
+
+        has_topics = False
+        try:
+            key = win._topics_bucket_key() if hasattr(win, "_topics_bucket_key") else ""
+            has_topics = bool((win.settings.topic_tags_by_mode or {}).get(key))
+        except Exception:
+            has_topics = False
+        status_glyph_set_text(
+            win._gs_step_topics,
+            "2. Add a topic on the Topics tab or a character (optional)",
+            kind="check" if has_topics else "dot",
+            color_token="accent" if has_topics else "muted",
+        )
+        status_glyph_set_text(
+            win._gs_step_run,
+            "3. Press Run below to create your first video",
+            kind="dot",
+            color_token="muted",
+        )
+
+        finished = False
+        try:
+            from src.platform.upload_tasks import load_tasks
+
+            finished = len(load_tasks()) > 0
+        except Exception:
+            finished = False
+        # Hide once the user is clearly set up and has produced output.
+        card.setVisible(not (ready and finished))
+
+    win._refresh_getting_started = _refresh
+    _refresh()
 
 
 def refresh_run_tab_for_media_mode(win) -> None:

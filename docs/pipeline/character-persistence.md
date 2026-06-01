@@ -78,3 +78,7 @@ boolean setting.
 - `cast_to_ephemeral_character` aggregates voice directions for multi-character
   formats (cartoon/unhinged) and propagates the narrator instruction for single-host
   formats (news/explainer/creepypasta/health_advice).
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

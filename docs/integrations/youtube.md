@@ -32,3 +32,6 @@ Default upload visibility is configurable (**Private** / **Unlisted** / **Public
 
 - [TikTok upload](tiktok.md) — inbox workflow via TikTok Content Posting API.
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

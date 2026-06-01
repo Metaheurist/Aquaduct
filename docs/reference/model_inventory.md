@@ -107,3 +107,7 @@ One row per **provider + role + default model** from `default_models_for_provide
 
 - **OpenAI `video` role:** `default_models_for_provider` falls back to the provider’s full `model_slugs` tuple, so the Video row may list chat/image/TTS ids—use a real Pro text-to-video id from the provider’s docs, or choose **Kling / Magic Hour / Replicate** for motion.
 - **Regenerate:** `python scripts/gen_model_inventory_md.py` from the repo root.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

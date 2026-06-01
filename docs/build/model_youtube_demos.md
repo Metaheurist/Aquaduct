@@ -43,3 +43,7 @@ Third-party tutorials and demos for models exposed in **Settings → Models**. T
 
 - [Models + downloads](./models.md) — where files live and how downloads work  
 - [Hugging Face Hub](https://huggingface.co/) — model cards and community spaces for live demos (not YouTube)
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

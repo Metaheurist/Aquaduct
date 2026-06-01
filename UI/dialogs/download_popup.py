@@ -1,41 +1,29 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
+from PyQt6.QtWidgets import QLabel, QProgressBar
 
+from UI.dialogs.frameless_dialog import FramelessDialog
 from UI.help.tutorial_links import help_tooltip_rich
+from UI.theme import token
 from UI.widgets.title_bar_outline_button import styled_outline_button
 
 
-class DownloadPopup(QDialog):
-    """
-    Small borderless popup showing download progress.
-    """
+class DownloadPopup(FramelessDialog):
+    """Small borderless popup showing download progress (shared Aquaduct dialog chrome)."""
 
     cancel_requested = pyqtSignal()
     pause_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, title: str = "Downloading models") -> None:
-        super().__init__(parent)
-        self.setModal(True)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        super().__init__(parent, title=title)
         self.setFixedSize(720, 220)
-        self._drag_pos: QPoint | None = None
         # Track why we're closing. closeEvent treats an "X" click as cancel, but
         # a deliberate Pause button should NOT also emit cancel.
         self._closing_action: str | None = None  # None | "pause" | "cancel"
+        self.title = self._title_lbl
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 14, 14, 14)
-        lay.setSpacing(10)
-
-        top = QHBoxLayout()
-        self.title = QLabel(title)
-        self.title.setStyleSheet("font-size: 14px; font-weight: 800;")
-        top.addWidget(self.title, 1)
-
-        pause = styled_outline_button("⏸", "muted_icon", fixed=(44, 32))
+        pause = styled_outline_button("", "muted_icon", fixed=(44, 32), icon_kind="pause")
         pause.setToolTip(
             help_tooltip_rich(
                 "Pause the download queue (you can resume later from the Model tab).",
@@ -43,24 +31,22 @@ class DownloadPopup(QDialog):
                 slide=2,
             )
         )
+        pause.setAccessibleName("Pause download")
         pause.clicked.connect(self._request_pause)
-        top.addWidget(pause, 0, Qt.AlignmentFlag.AlignRight)
-
-        close = styled_outline_button("✕", "danger", fixed=(44, 32))
-        close.clicked.connect(self._request_cancel)
-        top.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
-        lay.addLayout(top)
+        self.insert_title_bar_widget_before_close(pause)
+        # The shared ✕ button rejects the dialog; route that through cancel via closeEvent.
+        self._frameless_close_button.setAccessibleName("Cancel download")
 
         self.status = QLabel("Starting…")
-        self.status.setStyleSheet("color: #B7B7C2;")
+        self.status.setStyleSheet(f"color: {token('muted', '#B7B7C2')};")
         self.status.setWordWrap(True)
-        lay.addWidget(self.status)
+        self.body_layout.addWidget(self.status)
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setValue(0)
         self.bar.setTextVisible(True)
-        lay.addWidget(self.bar)
+        self.body_layout.addWidget(self.bar)
 
     def _request_cancel(self) -> None:
         self._closing_action = "cancel"
@@ -81,73 +67,37 @@ class DownloadPopup(QDialog):
                 pass
         return super().closeEvent(event)
 
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-        else:
-            super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        if self._drag_pos is not None and (event.buttons() & Qt.MouseButton.LeftButton):
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = None
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-
-
-class ImportPopup(QDialog):
-    """Popup window showing the active import model and progress."""
+class ImportPopup(FramelessDialog):
+    """Popup window showing the active import model and progress (shared dialog chrome)."""
 
     cancel_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, title: str = "Importing models") -> None:
-        super().__init__(parent)
-        self.setModal(True)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        super().__init__(parent, title=title)
         self.setFixedSize(620, 220)
-        self._drag_pos: QPoint | None = None
         self._closing_action: str | None = None
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 14, 14, 14)
-        lay.setSpacing(10)
-
-        top = QHBoxLayout()
-        self.title = QLabel(title)
-        self.title.setStyleSheet("font-size: 14px; font-weight: 800;")
-        top.addWidget(self.title, 1)
-
-        close = styled_outline_button("✕", "danger", fixed=(44, 32))
-        close.clicked.connect(self._request_cancel)
-        top.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
-        lay.addLayout(top)
+        self.title = self._title_lbl
+        self._frameless_close_button.setAccessibleName("Cancel import")
 
         self.current_model = QLabel("Current model: -")
         self.current_model.setStyleSheet("font-size: 13px; font-weight: 700;")
-        lay.addWidget(self.current_model)
+        self.body_layout.addWidget(self.current_model)
 
         self.remaining = QLabel("Remaining: -")
-        self.remaining.setStyleSheet("color: #B7B7C2;")
-        lay.addWidget(self.remaining)
+        self.remaining.setStyleSheet(f"color: {token('muted', '#B7B7C2')};")
+        self.body_layout.addWidget(self.remaining)
 
         self.status = QLabel("Preparing import…")
-        self.status.setStyleSheet("color: #B7B7C2;")
+        self.status.setStyleSheet(f"color: {token('muted', '#B7B7C2')};")
         self.status.setWordWrap(True)
-        lay.addWidget(self.status)
+        self.body_layout.addWidget(self.status)
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setValue(0)
         self.bar.setTextVisible(True)
-        lay.addWidget(self.bar)
+        self.body_layout.addWidget(self.bar)
 
     def set_model_status(self, repo_id: str, index: int, total: int) -> None:
         self.current_model.setText(f"Importing {index} of {total}: {repo_id}")
@@ -171,25 +121,3 @@ class ImportPopup(QDialog):
             except Exception:
                 pass
         return super().closeEvent(event)
-
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        if self._drag_pos is not None and (event.buttons() & Qt.MouseButton.LeftButton):
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = None
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-

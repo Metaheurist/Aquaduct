@@ -55,7 +55,7 @@ After models are chosen, **local** runs apply **inference profiles** (resolution
 
 For multi-GPU routing at runtime (which CUDA device loads the LLM vs diffusion) and **My PC** / **Model** fit markers, see [Hardware + model fit](hardware.md) and [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py).
 
-**Script model and UI “brain” features** (🧠 expand, **Characters → Generate with LLM**) resolve the repo id from the **Script (LLM)** dropdown’s **current selection** first, then saved settings — so they load the same weights as the visible combo without requiring **Save** first (`resolve_llm_model_id` in [`UI/brain_expand.py`](../../UI/brain_expand.py)).
+**Script model and UI “brain” features** (sparkles field expand, **Characters → Generate with LLM**) resolve the repo id from the **Script (LLM)** dropdown’s **current selection** first, then saved settings (`resolve_llm_model_id` in [`UI/services/brain_expand.py`](../../UI/services/brain_expand.py)).
 
 Each option is labeled with a relative speed marker:
 - `fastest` / `faster` / `slow`
@@ -88,7 +88,7 @@ Notes:
 - Some video presets use **two** Hub repos (image + video). **Download all selected** queues **both** so both snapshots are present.
 
 ## Python packages (PyTorch, transformers, …)
-Hub downloads above are **model weights only**. The **Python** stack (PyTorch, `transformers`, etc.) is installed separately: **`python scripts/install_pytorch.py --with-rest`** or, from the app, **Model → Install dependencies** (same steps; see [Dependencies](../../DEPENDENCIES.md), [Desktop UI](../ui/ui.md)).
+Hub downloads above are **model weights only**. The **Python** stack (PyTorch, `transformers`, etc.) is installed separately: **`python scripts/install_pytorch.py --with-rest`**, or when **Run** detects missing packages, the **Install / Not now** prompt ([`UI/dialogs/install_deps_dialog.py`](../../UI/dialogs/install_deps_dialog.py)). See [Dependencies](../../DEPENDENCIES.md), [Desktop UI](../ui/ui.md).
 
 ## Portable downloaders (optional)
 
@@ -130,3 +130,6 @@ Helpers live in `src/models/model_manager.py` (`verify_project_model_integrity`,
 ## Integrity status in the UI (badges)
 After verification, per-repo outcomes are merged into `data/model_integrity_status.json` (see `src/models/model_integrity_cache.py`). The **Model** tab uses that file to label each dropdown row (script / image / video / voice), so you can see **Verified** vs **Missing** / **Corrupt** without re-running the full scan. Clear **Clear data** removes the cache file alongside other local state.
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

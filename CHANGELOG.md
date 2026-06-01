@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### UI modernization (desktop polish)
+
+- **SVG-only chrome**: status badges, disclosure chevrons, dialog close/pause, and LLM expand use vector icons ([`UI/widgets/toolbar_svg_icons.py`](UI/widgets/toolbar_svg_icons.py), [`status_glyph_label`](UI/widgets/tab_sections.py)) — no emoji/unicode glyphs in user-facing UI.
+- **Shared widgets**: [`FlowLayout`](UI/widgets/flow_layout.py), [`two_column_row`](UI/widgets/two_column.py), [`TopicChip`](UI/widgets/topic_chip.py), [`CharacterCard`](UI/widgets/character_card.py). Docs: [`docs/ui/shared-widgets.md`](docs/ui/shared-widgets.md).
+- **Topics tab**: capped chip flow + single selected-tag note editor (removed per-tag notes block).
+- **Characters tab**: avatar card grid with side-panel profile editor.
+- **Branding tab**: theme first; video/photo/watermark sections in containers toggled by Photo | Video mode (no orphan labels).
+- **Library tab**: finished media and `runs/` cards side-by-side.
+- **API tab**: shorter title/intro; env-override detail in tooltips.
+- **Model tab**: model files location always visible above the list; **Install dependencies** button removed (run-time install prompt instead).
+- **Pre-run install gate**: missing Python packages or CPU-only PyTorch on NVIDIA → concise **Install / Not now** dialog before Run ([`MainWindow._offer_runtime_install_for_preflight`](UI/main_window.py)).
+- **Bug fix**: Tasks tab `qicon_toolbar` shadowing import (UnboundLocalError on refresh button).
+- **Tests**: [`tests/ui/test_ui_modernization_widgets.py`](tests/ui/test_ui_modernization_widgets.py), [`test_ui_modernization_tabs.py`](tests/ui/test_ui_modernization_tabs.py), [`test_ui_preflight_install_prompt.py`](tests/ui/test_ui_preflight_install_prompt.py); Qt test conftest stubs heavy MainWindow startup.
+- **Docs**: [shared widgets](docs/ui/shared-widgets.md), updated Topics/Characters/Branding/UI guides; cross-links added across project markdown files.
+
 ### Refactors
 
 - **`src.content.brain`** is now a **split package** (`brain/package.py`, `prompts.py`, `runtime.py`, `api.py`; `__init__.py` merges exports). **`brain/_monolith.py`** removed; `from src.content.brain import …` paths unchanged.

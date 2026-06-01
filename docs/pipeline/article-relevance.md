@@ -72,3 +72,7 @@ runs:
       `RelevanceResult(excerpt, kept, total_chunks, cache_hit, used_llm)`.
 4. Subsequent script generation (Phase 3 validator + creepypasta /
    cartoon / news prompts) sees only the tightened excerpt.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

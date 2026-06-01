@@ -33,3 +33,7 @@ Copy the resulting **`models/`** directory to your main machine (e.g. into `.Aqu
 
 - Treat **`offsite/`** like a secret: anyone with those files can use your Hub token until you revoke it at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 - Do not zip/upload `offsite/` to public places.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

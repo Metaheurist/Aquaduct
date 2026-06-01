@@ -38,7 +38,7 @@ class GpuPolicyToggle(ThemedToggle):
             object_name_right="gpuSegSingle",
             default_index=0,
             min_button_width=88,
-            min_button_height=30,
+            min_button_height=32,
             font_size_px=12,
             button_padding_css="5px 10px",
             left_tooltip=help_tooltip_rich(

@@ -205,3 +205,7 @@ free GPU memory, install the optional package, or simply switch to
 - `tests/render/test_native_fps_encode.py`
 - `tests/render/test_audio_alignment_real_durations.py`
 - `tests/render/test_temporal_smooth.py`
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

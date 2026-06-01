@@ -71,4 +71,8 @@ Partial outputs for a dated folder under **`.Aquaduct_data`** (for example `runs
 - [Hardware + model fit](hardware.md) — `rate_model_fit_for_repo`  
 - [Brain](../pipeline/brain.md) — local LLM path  
 - [Quantization](quantization.md) — per-model quant modes, VRAM multipliers, fallbacks  
-- [Crash resilience](../pipeline/crash-resilience.md) — checkpoints / resume / heartbeat  
+- [Crash resilience](../pipeline/crash-resilience.md) — checkpoints / resume / heartbeat
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

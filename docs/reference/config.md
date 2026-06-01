@@ -219,3 +219,6 @@ Task queue for finished renders (Tasks tab) is stored in `data/upload_tasks.json
 ## Title-to-folder normalization
 `safe_title_to_dirname()` converts a video title to a Windows-safe directory name.
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

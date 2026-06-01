@@ -217,7 +217,7 @@ class InstallDepsDialog(FramelessDialog):
     def _on_pip_ack(self, snippet: str) -> None:
         self._pip_ack_received = True
         self._ack_timer.stop()
-        self._pip_ack_lbl.setText("✓ Pip confirmed - first output received. Download/install is active.")
+        self._pip_ack_lbl.setText("Pip confirmed - first output received. Download/install is active.")
         self._pip_ack_lbl.setStyleSheet("color: #5DFFB0; font-size: 12px; font-weight: 600;")
         sn = snippet.strip()
         self._pip_ack_lbl.setToolTip(
@@ -232,7 +232,7 @@ class InstallDepsDialog(FramelessDialog):
         if self._pip_ack_received:
             return
         self._pip_ack_lbl.setText(
-            "⚠ Still no new lines in the log after 2 minutes. That can be normal for huge wheels - "
+            "Still no new lines in the log after 2 minutes. That can be normal for huge wheels - "
             "if Task Manager still shows network or disk on aquaduct-pip-*.exe (or python.exe), pip is probably still downloading. "
             "Worry if both stay at 0 for a long time, or use Cancel and run pip in a terminal to see errors."
         )

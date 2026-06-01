@@ -76,4 +76,6 @@ CUDA allocator: at process start **`main`** sets **`PYTORCH_CUDA_ALLOC_CONF=expa
 - Stronger wording when configured model ids include **gated / frontier** repos.
 - Generic “slower downloads / rate limits” hint otherwise.
 
+---
 
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

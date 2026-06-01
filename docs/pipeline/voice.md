@@ -50,3 +50,6 @@ Written into the per-video folder:
 - `videos/<title>/assets/voice.wav`
 - `videos/<title>/assets/captions.json`
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

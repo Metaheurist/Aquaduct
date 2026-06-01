@@ -125,3 +125,7 @@ The legacy
 [`tests/render/test_pro_scene_prompts.py`](../../tests/render/test_pro_scene_prompts.py)
 was updated to assert *no* headline prefix appears in the news-format
 output (the Phase 4 contract).
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

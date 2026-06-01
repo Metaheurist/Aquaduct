@@ -28,7 +28,7 @@ def prompt_cuda_torch_mismatch_choice(parent, *, suggestion: str | None = None) 
         "<b>CPU-only PyTorch</b>. Local inference will not use CUDA until matching GPU wheels are installed.</p>"
         "<p style=\"margin-bottom:10px;\">Choose <b>Install CUDA PyTorch</b> to download here (large files; the next "
         "window shows live pip progress). <b>Restart Aquaduct</b> after a successful install so Python loads the new build.</p>"
-        "<p>You can also run the same step from the Model tab → <b>Install dependencies</b>.</p>"
+        "<p>You can install CUDA PyTorch when Aquaduct prompts you before a run.</p>"
     )
     body.setWordWrap(True)
     body.setTextFormat(Qt.TextFormat.RichText)
@@ -46,7 +46,7 @@ def prompt_cuda_torch_mismatch_choice(parent, *, suggestion: str | None = None) 
         )
         d.body_layout.addWidget(hint)
 
-    tip = QLabel("Same install as Model → Install dependencies → PyTorch step (CUDA index is chosen automatically).")
+    tip = QLabel("Install runs automatically when you start a pipeline and CUDA PyTorch is missing.")
     tip.setWordWrap(True)
     tip.setStyleSheet("color: #6A7080; font-size: 11px;")
     tip.setToolTip(

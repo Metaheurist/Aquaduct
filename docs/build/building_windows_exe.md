@@ -78,3 +78,7 @@ User data and settings typically live under the app’s working directory or pat
 - [API execution mode](../integrations/api_generation.md) — OpenAI / Replicate paths when `model_execution_mode` is **api**.
 - [Main / CLI](../pipeline/main.md) — headless vs UI launcher.
 - [Dependencies](../../DEPENDENCIES.md) — PyTorch install, test tiers.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

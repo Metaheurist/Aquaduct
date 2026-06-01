@@ -59,3 +59,7 @@ Aliases (see `debug_log.py`): `run→pipeline`, `llm→brain`, `hf→models`, `a
 1. Append to `DEBUG_CATEGORIES` and `MODULE_DEBUG_FLAGS` in [debug_log.py](debug_log.py).
 2. Add `debug/<category>/README.md`.
 3. Run tests / update category registry check if present.
+
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*

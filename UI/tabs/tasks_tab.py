@@ -9,12 +9,15 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from UI.help.tutorial_links import help_tooltip_rich
-from UI.theme import resolve_palette
+from UI.theme import resolve_palette, token
+from UI.widgets.tab_sections import empty_state_panel
 from UI.widgets.toolbar_svg_icons import qicon_toolbar
 
 
@@ -32,8 +35,24 @@ def attach_tasks_tab(win) -> None:
         "upload to TikTok / YouTube when enabled in the API tab (separate toggles)."
     )
     sub.setWordWrap(True)
-    sub.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    sub.setStyleSheet(f"color: {token('muted', '#8A96A3')}; font-size: 11px;")
     lay.addWidget(sub)
+
+    def _go_pipeline() -> None:
+        try:
+            win.tabs.setCurrentWidget(getattr(win, "_run_tab_widget", w))
+        except Exception:
+            pass
+
+    win.tasks_empty_state = empty_state_panel(
+        "No runs yet. Head to the Pipeline tab, pick a format, and press Run - "
+        "progress and finished videos will show up here.",
+        title="Nothing in the queue",
+        action_text="Go to Pipeline",
+        on_action=_go_pipeline,
+    )
+    win.tasks_empty_state.setVisible(False)
+    lay.addWidget(win.tasks_empty_state)
 
     _tpal = resolve_palette(getattr(win.settings, "branding", None))
     _t_accent = str(_tpal.get("accent", "#25F4EE"))
@@ -128,26 +147,32 @@ def attach_tasks_tab(win) -> None:
 
     win.tasks_open_btn = QPushButton("Open folder")
     win.tasks_open_btn.setObjectName("primary")
+    win.tasks_open_btn.setAccessibleName("Open output folder")
     win.tasks_open_btn.clicked.connect(win._tasks_open_folder)
     btn_row.addWidget(win.tasks_open_btn)
 
     win.tasks_play_btn = QPushButton("Play video")
+    win.tasks_play_btn.setAccessibleName("Play video")
     win.tasks_play_btn.clicked.connect(win._tasks_play_video)
     btn_row.addWidget(win.tasks_play_btn)
 
     win.tasks_copy_btn = QPushButton("Copy caption")
+    win.tasks_copy_btn.setAccessibleName("Copy caption")
     win.tasks_copy_btn.clicked.connect(win._tasks_copy_caption)
     btn_row.addWidget(win.tasks_copy_btn)
 
     win.tasks_posted_btn = QPushButton("Mark posted (manual)")
+    win.tasks_posted_btn.setAccessibleName("Mark posted manually")
     win.tasks_posted_btn.clicked.connect(win._tasks_mark_posted_manual)
     btn_row.addWidget(win.tasks_posted_btn)
 
     win.tasks_tiktok_btn = QPushButton("Upload to TikTok")
+    win.tasks_tiktok_btn.setAccessibleName("Upload to TikTok")
     win.tasks_tiktok_btn.clicked.connect(win._tasks_upload_tiktok)
     btn_row.addWidget(win.tasks_tiktok_btn)
 
     win.tasks_youtube_btn = QPushButton("Upload to YouTube")
+    win.tasks_youtube_btn.setAccessibleName("Upload to YouTube")
     win.tasks_youtube_btn.clicked.connect(win._tasks_upload_youtube)
     btn_row.addWidget(win.tasks_youtube_btn)
 
@@ -156,11 +181,56 @@ def attach_tasks_tab(win) -> None:
 
     win.tasks_remove_btn = QPushButton("Remove")
     win.tasks_remove_btn.setObjectName("danger")
+    win.tasks_remove_btn.setAccessibleName("Remove selected task")
     win.tasks_remove_btn.clicked.connect(win._tasks_remove_selected)
     btn_row.addWidget(win.tasks_remove_btn)
 
     btn_row.addStretch(1)
     lay.addWidget(actions_group)
+
+    # Activity log: a visible in-app sink for `_append_log` (previously file/stdout only).
+    log_toggle = QToolButton()
+    from PyQt6.QtCore import QSize
+
+    log_toggle.setIcon(qicon_toolbar("chevron_right", token("muted", "#9BA6B8"), 14))
+    log_toggle.setIconSize(QSize(14, 14))
+    log_toggle.setText("  Activity log")
+    log_toggle.setCheckable(True)
+    log_toggle.setChecked(False)
+    log_toggle.setAutoRaise(True)
+    log_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+    log_toggle.setStyleSheet(
+        f"QToolButton {{ color: {token('muted', '#9BA6B8')}; font-size: 12px; font-weight: 600; "
+        "border: none; padding: 2px 0; }"
+    )
+    log_toggle.setToolTip(
+        help_tooltip_rich(
+            "In-app log of warnings, queue messages, and pipeline notices. Also written to logs/ui.log.",
+            "tasks_library",
+            slide=0,
+        )
+    )
+    lay.addWidget(log_toggle)
+
+    win.log_box = QTextEdit()
+    win.log_box.setReadOnly(True)
+    win.log_box.setMaximumHeight(150)
+    win.log_box.setVisible(False)
+    win.log_box.setPlaceholderText("Activity from runs, downloads, and background tasks appears here.")
+    lay.addWidget(win.log_box)
+
+    def _toggle_log(checked: bool) -> None:
+        win.log_box.setVisible(checked)
+        kind = "chevron_down" if checked else "chevron_right"
+        log_toggle.setIcon(qicon_toolbar(kind, token("muted", "#9BA6B8"), 14))
+        log_toggle.setText("  Activity log")
+        if hasattr(win, "_resize_to_current_tab"):
+            try:
+                win._resize_to_current_tab()
+            except Exception:
+                pass
+
+    log_toggle.toggled.connect(_toggle_log)
 
     win._tasks_tab_widget = w
     win.tabs.addTab(w, "Tasks")

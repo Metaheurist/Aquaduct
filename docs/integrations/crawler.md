@@ -65,3 +65,6 @@ Pass `sanitize=False` to recover the legacy raw behavior (used by tests and
 by callers that want to feed the chunked LLM relevance pass added in
 Phase 10).
 
+---
+
+*Desktop UI (2026 polish): [docs/ui/ui.md](docs/ui/ui.md) · [shared widgets](docs/ui/shared-widgets.md)*
