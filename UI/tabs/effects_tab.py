@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QButtonGroup,
     QComboBox,
     QFormLayout,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -23,7 +20,20 @@ from src.render.ffmpeg_slideshow import XFADE_TRANSITIONS
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.tab_sections import section_title
 from UI.widgets.themed_switch import ThemedSwitch
+from UI.widgets.visual_primitives import PresetCard, PresetCardGrid
+
+_EFFECT_PRESET_ICONS: dict[str, str] = {
+    "effects_minimal": "minus",
+    "effects_balanced": "layers",
+    "effects_polished": "images",
+    "effects_dynamic": "unhinged",
+    "effects_cinematic": "landscape",
+    "effects_voice_first": "explainer",
+    "effects_music_forward": "layout",
+    "": "more",
+}
 
 
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:
@@ -63,9 +73,11 @@ def _label_for_xfade(name: str) -> str:
 
 def attach_effects_tab(win) -> None:
     content = QWidget()
+    content.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
     lay = QVBoxLayout(content)
-    lay.setSpacing(12)
+    lay.setSpacing(10)
     lay.setContentsMargins(14, 12, 14, 14)
+    lay.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     hdr_row = QWidget()
     hdr_lay = QHBoxLayout(hdr_row)
@@ -74,122 +86,62 @@ def attach_effects_tab(win) -> None:
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     attach_basic_advanced_header(win, "effects", title_row_parent_layout=hdr_lay, title_widget=header)
     lay.addWidget(hdr_row)
-    lay.addSpacing(2)
 
-    preset_header = QLabel("Effects template")
-    preset_header.setStyleSheet("font-size: 13px; font-weight: 600;")
-    lay.addWidget(preset_header)
+    lay.addWidget(section_title("Effects template", emphasis=True))
 
-    _TILE_QSS = """
-        QPushButton#effectsPresetTile {
-            background-color: #1A1A22;
-            border: 2px solid #2E2E38;
-            border-radius: 8px;
-            padding: 6px 8px;
-            min-height: 44px;
-            max-height: 64px;
-            text-align: left;
-            font-size: 10px;
-            color: #E8E8EE;
-        }
-        QPushButton#effectsPresetTile:hover {
-            border-color: #4A90D9;
-            background-color: #22222C;
-        }
-        QPushButton#effectsPresetTile:checked {
-            border-color: #25F4EE;
-            background-color: #252532;
-        }
-        QPushButton#effectsPresetTile:pressed {
-            background-color: #2A2A36;
-        }
-    """
-
-    tile_wrap = QWidget()
-    tile_grid = QGridLayout(tile_wrap)
-    tile_grid.setHorizontalSpacing(8)
-    tile_grid.setVerticalSpacing(8)
-    tile_grid.setContentsMargins(0, 0, 0, 0)
-
-    win._effects_preset_tile_group = QButtonGroup(win)
-    win._effects_preset_tile_group.setExclusive(True)
-    win._effects_preset_tile_buttons: dict[str, QPushButton] = {}
-
-    cols = 4
-    r, c = 0, 0
+    _preset_cards: list[PresetCard] = []
     for p in EFFECT_PRESETS:
-        btn = QPushButton()
-        btn.setObjectName("effectsPresetTile")
-        btn.setCheckable(True)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(_TILE_QSS)
-        btn.setText(f"{p.title}\n{p.subtitle}")
-        btn.setToolTip(help_tooltip_rich(f"{p.title}\n\n{p.description}", "video", slide=3))
-        btn.setProperty("preset_id", p.id)
-        btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
-        win._effects_preset_tile_group.addButton(btn)
-        win._effects_preset_tile_buttons[p.id] = btn
-        tile_grid.addWidget(btn, r, c)
-        c += 1
-        if c >= cols:
-            c = 0
-            r += 1
-
-    custom_tile = QPushButton()
-    custom_tile.setObjectName("effectsPresetTile")
-    custom_tile.setCheckable(True)
-    custom_tile.setCursor(Qt.CursorShape.PointingHandCursor)
-    custom_tile.setStyleSheet(_TILE_QSS)
-    custom_tile.setText("Custom\nManual settings")
-    custom_tile.setToolTip(
-        help_tooltip_rich(
-            "Keep your own mix. Pick a template first, then tweak fields below.",
-            "video",
-            slide=3,
+        _preset_cards.append(
+            PresetCard(
+                p.id,
+                p.title,
+                p.subtitle,
+                icon=_EFFECT_PRESET_ICONS.get(p.id, "layers"),
+                recommended=(p.id == "effects_balanced"),
+            )
         )
+    _preset_cards.append(PresetCard("", "Custom", "Manual settings", icon="more"))
+    win._effects_preset_grid = PresetCardGrid(_preset_cards, columns=4, default_id="effects_balanced")
+    win._effects_preset_grid.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     )
-    custom_tile.setProperty("preset_id", "")
-    custom_tile.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
-    win._effects_preset_tile_group.addButton(custom_tile)
-    win._effects_preset_custom_tile = custom_tile
-    tile_grid.addWidget(custom_tile, r, c)
-    for col in range(cols):
-        tile_grid.setColumnStretch(col, 1)
+    lay.addWidget(win._effects_preset_grid)
 
-    lay.addWidget(tile_wrap)
-
-    preset_hint = QLabel("Tap a card for a preset.")
-    preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    preset_hint = QLabel("Tap a card for a preset. Switch to Advanced to tweak individual fields.")
+    preset_hint.setWordWrap(True)
+    preset_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
     lay.addWidget(preset_hint)
 
     win._effects_advanced_host = QWidget()
-    adv_lay = QVBoxLayout(win._effects_advanced_host)
-    adv_lay.setContentsMargins(0, 0, 0, 0)
-    adv_lay.setSpacing(12)
-    lay.addWidget(win._effects_advanced_host)
+    win._effects_advanced_host.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    )
+    adv_outer = QVBoxLayout(win._effects_advanced_host)
+    adv_outer.setContentsMargins(0, 8, 0, 0)
+    adv_outer.setSpacing(10)
+    lay.addWidget(win._effects_advanced_host, 0)
 
-    sub = QLabel("Visual & motion")
-    sub.setStyleSheet("font-size: 13px; font-weight: 600; margin-top: 8px;")
-    adv_lay.addWidget(sub)
+    adv_outer.addWidget(section_title("Visual & motion", emphasis=True))
 
     hint = QLabel("Motion, transitions, and audio mix.")
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    adv_lay.addWidget(hint)
+    adv_outer.addWidget(hint)
 
     form_vis = QFormLayout()
-    form_vis.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form_vis.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
     form_vis.setVerticalSpacing(14)
     form_vis.setHorizontalSpacing(18)
     form_vis.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     win.quality_retries_spin = NoWheelSpinBox()
     win.quality_retries_spin.setRange(0, 5)
+    win.quality_retries_spin.setMaximumWidth(100)
     win.quality_retries_spin.setValue(int(getattr(win.settings.video, "quality_retries", 2)))
     form_vis.addRow("Bad frame retries", win.quality_retries_spin)
 
     win.enable_motion_chk = ThemedSwitch("Motion & transitions")
     win.enable_motion_chk.setChecked(bool(getattr(win.settings.video, "enable_motion", True)))
-    form_vis.addRow(win.enable_motion_chk)
+    form_vis.addRow("", win.enable_motion_chk)
 
     win.transition_combo = NoWheelComboBox()
     win.transition_combo.addItem("Off", "off")
@@ -221,23 +173,22 @@ def attach_effects_tab(win) -> None:
 
     win.seed_base_input = QLineEdit()
     win.seed_base_input.setPlaceholderText("Blank = auto (random per run)")
+    win.seed_base_input.setMaximumWidth(220)
     cur_seed = getattr(win.settings.video, "seed_base", None)
     win.seed_base_input.setText("" if cur_seed is None else str(cur_seed))
     form_vis.addRow("Image seed (optional)", win.seed_base_input)
 
-    adv_lay.addLayout(form_vis)
+    adv_outer.addLayout(form_vis)
 
     divider_audio = QFrame()
     divider_audio.setFrameShape(QFrame.Shape.HLine)
     divider_audio.setStyleSheet("color: #2A2A34; margin-top: 10px; margin-bottom: 6px;")
-    adv_lay.addWidget(divider_audio)
+    adv_outer.addWidget(divider_audio)
 
-    ah2 = QLabel("Audio mix")
-    ah2.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 4px;")
-    adv_lay.addWidget(ah2)
+    adv_outer.addWidget(section_title("Audio mix", emphasis=True))
 
     form_audio = QFormLayout()
-    form_audio.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form_audio.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
     form_audio.setVerticalSpacing(14)
     form_audio.setHorizontalSpacing(18)
     form_audio.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -255,15 +206,17 @@ def attach_effects_tab(win) -> None:
 
     win.music_ducking_chk = ThemedSwitch("Music ducking")
     win.music_ducking_chk.setChecked(bool(getattr(win.settings.video, "music_ducking", True)))
-    form_audio.addRow(win.music_ducking_chk)
+    form_audio.addRow("", win.music_ducking_chk)
 
     win.ducking_spin = NoWheelSpinBox()
     win.ducking_spin.setRange(0, 100)
+    win.ducking_spin.setMaximumWidth(100)
     win.ducking_spin.setValue(int(round(float(getattr(win.settings.video, "music_ducking_amount", 0.7)) * 100)))
     form_audio.addRow("Ducking intensity (%)", win.ducking_spin)
 
     win.music_fade_spin = NoWheelSpinBox()
     win.music_fade_spin.setRange(0, 6)
+    win.music_fade_spin.setMaximumWidth(100)
     win.music_fade_spin.setValue(int(round(float(getattr(win.settings.video, "music_fade_s", 1.2)))))
     form_audio.addRow("Music fade seconds", win.music_fade_spin)
 
@@ -277,7 +230,7 @@ def attach_effects_tab(win) -> None:
     _prep_combo(win.sfx_combo)
     form_audio.addRow("SFX layer", win.sfx_combo)
 
-    adv_lay.addLayout(form_audio)
+    adv_outer.addLayout(form_audio)
 
     def _sync_audio_controls() -> None:
         enabled = str(win.audio_polish_combo.currentData() or "basic") != "off"
@@ -288,7 +241,7 @@ def attach_effects_tab(win) -> None:
 
     tip = QLabel("Off transitions = no crossfade.")
     tip.setStyleSheet("color: #B7B7C2; margin-top: 8px; font-size: 11px;")
-    adv_lay.addWidget(tip)
+    adv_outer.addWidget(tip)
 
     register_advanced_sections(win, "effects", [win._effects_advanced_host])
 
@@ -331,11 +284,13 @@ def attach_effects_tab(win) -> None:
     def _mark_effects_custom() -> None:
         if getattr(win, "_applying_effects_template", False):
             return
-        if not hasattr(win, "_effects_preset_custom_tile"):
+        if not hasattr(win, "_effects_preset_grid"):
             return
         win._applying_effects_template = True
         try:
-            win._effects_preset_custom_tile.setChecked(True)
+            cix = win._effects_preset_grid.findData("")
+            if cix >= 0:
+                win._effects_preset_grid.setCurrentIndex(cix)
             win._effects_preset_id = ""
         finally:
             win._applying_effects_template = False
@@ -352,11 +307,10 @@ def attach_effects_tab(win) -> None:
     win.music_ducking_chk.stateChanged.connect(_on_music_ducking_changed)
     _sync_audio_controls()
 
-    def _on_effects_tile_clicked(btn: QPushButton) -> None:
+    def _on_effects_preset_changed(_index: int) -> None:
         if getattr(win, "_applying_effects_template", False):
             return
-        raw = btn.property("preset_id")
-        pid = "" if raw is None else str(raw)
+        pid = str(win._effects_preset_grid.currentData() or "")
         win._effects_preset_id = pid
         if pid:
             _apply_effects_preset(pid)
@@ -365,7 +319,7 @@ def attach_effects_tab(win) -> None:
     win._mark_effects_template_custom = _mark_effects_custom
     win._effects_preset_id = ""
 
-    win._effects_preset_tile_group.buttonClicked.connect(_on_effects_tile_clicked)
+    win._effects_preset_grid.currentIndexChanged.connect(_on_effects_preset_changed)
 
     win.quality_retries_spin.valueChanged.connect(lambda *_: _mark_effects_custom())
     win.enable_motion_chk.stateChanged.connect(lambda *_: _mark_effects_custom())
@@ -382,8 +336,8 @@ def attach_effects_tab(win) -> None:
     saved_fx = str(getattr(v, "effects_preset_id", "") or "").strip()
     win._applying_effects_template = True
     try:
-        if saved_fx and preset_by_id(saved_fx) and saved_fx in win._effects_preset_tile_buttons:
-            win._effects_preset_tile_buttons[saved_fx].setChecked(True)
+        if saved_fx and preset_by_id(saved_fx) and win._effects_preset_grid.findData(saved_fx) >= 0:
+            win._effects_preset_grid.setCurrentData(saved_fx)
             win._effects_preset_id = saved_fx
         else:
             inferred = find_best_preset_for_effects(
@@ -398,30 +352,35 @@ def attach_effects_tab(win) -> None:
                 music_fade_s=float(getattr(v, "music_fade_s", 1.2)),
                 sfx_mode=str(getattr(v, "sfx_mode", "off") or "off"),
             )
-            if inferred and inferred in win._effects_preset_tile_buttons:
-                win._effects_preset_tile_buttons[inferred].setChecked(True)
+            if inferred and win._effects_preset_grid.findData(inferred) >= 0:
+                win._effects_preset_grid.setCurrentData(inferred)
                 win._effects_preset_id = inferred
             else:
-                win._effects_preset_custom_tile.setChecked(True)
+                cix = win._effects_preset_grid.findData("")
+                if cix >= 0:
+                    win._effects_preset_grid.setCurrentIndex(cix)
                 win._effects_preset_id = ""
     finally:
         win._applying_effects_template = False
 
     hint_sz = lay.sizeHint()
-    content.setMinimumHeight(max(hint_sz.height(), 360))
-    content.setMinimumWidth(max(hint_sz.width(), 520))
+    content.setMinimumWidth(max(hint_sz.width(), 480))
 
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setMinimumHeight(480)
+    scroll.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
     scroll.setWidget(content)
+    win._effects_scroll = scroll
+    win._effects_content = content
 
     shell = QWidget()
+    shell.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
     shell_lay = QVBoxLayout(shell)
     shell_lay.setContentsMargins(0, 0, 0, 0)
     shell_lay.setSpacing(0)
-    shell_lay.addWidget(scroll)
+    shell_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+    shell_lay.addWidget(scroll, 0)
 
     win.tabs.addTab(shell, "Effects")

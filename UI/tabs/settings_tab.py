@@ -803,29 +803,17 @@ def attach_settings_tab(win) -> None:
         win.voice_quant_auto_chk, win.voice_quant_slider, win.voice_quant_value_lbl
     )
 
-    win._model_quant_advanced_host = QWidget()
-    quant_adv_lay = QVBoxLayout(win._model_quant_advanced_host)
-    quant_adv_lay.setContentsMargins(0, 0, 0, 0)
-    quant_adv_lay.setSpacing(8)
-    quant_adv_lay.addWidget(section_title("Quantization", emphasis=True))
-    for _qt, _qp in (
-        ("Script (LLM)", win.llm_quant_panel),
-        ("Image (diffusion)", win.img_quant_panel),
-        ("Video (motion)", win.vid_quant_panel),
-        ("Voice (TTS)", win.voice_quant_panel),
-    ):
-        ql = QLabel(_qt)
-        ql.setStyleSheet("color: #B7B7C2; font-size: 11px; font-weight: 600;")
-        quant_adv_lay.addWidget(ql)
-        quant_adv_lay.addWidget(_qp)
-    ll.addWidget(win._model_quant_advanced_host)
-    register_advanced_sections(win, "model", [win._model_advanced_host, win._model_quant_advanced_host])
-
-    from UI.widgets.visual_primitives import CoachStrip
-
-    win._model_coach = CoachStrip("Start with Auto-fit for this PC, then download models per role.")
-    _coach_at = ll.indexOf(win._settings_hf_banner) + 1
-    ll.insertWidget(max(1, _coach_at), win._model_coach)
+    register_advanced_sections(
+        win,
+        "model",
+        [
+            win._model_advanced_host,
+            win.llm_quant_panel,
+            win.img_quant_panel,
+            win.vid_quant_panel,
+            win.voice_quant_panel,
+        ],
+    )
 
     def _ensure_model_combo_valid_selection(combo: QComboBox) -> None:
         if _combo_repo_id_from_selection(combo):
@@ -1221,8 +1209,10 @@ def attach_settings_tab(win) -> None:
         dl_b: QLabel,
         vram_l: QLabel,
         fit_l: QLabel,
+        *,
+        quant_panel: QWidget | None = None,
     ) -> QFrame:
-        """Responsive role block: title/fit, full-width model, metadata (quant in Advanced)."""
+        """Responsive role block: title/fit, model picker, quant (Advanced), disk + VRAM."""
         card = QFrame()
         card.setObjectName("ModelRoleCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
@@ -1250,6 +1240,9 @@ def attach_settings_tab(win) -> None:
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         lay_card.addWidget(combo)
 
+        if quant_panel is not None:
+            lay_card.addWidget(quant_panel)
+
         meta_row = QHBoxLayout()
         meta_row.setContentsMargins(0, 0, 0, 0)
         meta_row.setSpacing(8)
@@ -1261,14 +1254,14 @@ def attach_settings_tab(win) -> None:
 
         return card
 
-    _model_rows: list[tuple[str, QComboBox, QLabel, QLabel, QLabel]] = [
-        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_vram_lbl, win.llm_fit),
-        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_vram_lbl, win.img_fit),
-        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_vram_lbl, win.vid_fit),
-        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_vram_lbl, win.voice_fit),
+    _model_rows: list[tuple[str, QComboBox, QLabel, QLabel, QLabel, QWidget]] = [
+        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_vram_lbl, win.llm_fit, win.llm_quant_panel),
+        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_vram_lbl, win.img_fit, win.img_quant_panel),
+        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_vram_lbl, win.vid_fit, win.vid_quant_panel),
+        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_vram_lbl, win.voice_fit, win.voice_quant_panel),
     ]
-    for _txt, combo, dl_b, vram_l, fit_l in _model_rows:
-        ll.addWidget(_model_role_card(_txt, combo, dl_b, vram_l, fit_l))
+    for _txt, combo, dl_b, vram_l, fit_l, quant_panel in _model_rows:
+        ll.addWidget(_model_role_card(_txt, combo, dl_b, vram_l, fit_l, quant_panel=quant_panel))
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")

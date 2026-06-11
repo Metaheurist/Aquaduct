@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, Qt, pyqtProperty
 from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPen
-from PyQt6.QtWidgets import QCheckBox, QStyle, QStyleOptionButton
+from PyQt6.QtWidgets import QCheckBox, QSizePolicy, QStyle, QStyleOptionButton
 
 from UI.theme import token
 
@@ -33,6 +33,7 @@ class ThemedSwitch(QCheckBox):
         self._knob_x = float(self._KNOB_MARGIN)
         self._anim: QPropertyAnimation | None = None
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.setStyleSheet(
             "QCheckBox { spacing: 8px; color: #E8E8EE; font-size: 13px; }"
             "QCheckBox::indicator { width: 0px; height: 0px; border: none; }"
