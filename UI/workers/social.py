@@ -7,7 +7,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.core.config import AppSettings
 
-from UI.workers.common import _reraise_system_interrupt
+from UI.workers.common import _reraise_system_interrupt, raise_if_interrupted
 
 
 class TikTokUploadWorker(QThread):
@@ -23,13 +23,17 @@ class TikTokUploadWorker(QThread):
 
     def run(self) -> None:
         from src.platform.tiktok_post import ensure_fresh_access_token, upload_local_video_to_inbox
-        from src.platform.upload_tasks import load_tasks, set_task_status
+        from src.platform.upload_tasks import load_tasks, set_task_status, task_ready_for_auto_upload
 
         try:
+            raise_if_interrupted(self)
             tasks = load_tasks()
             t = next((x for x in tasks if x.id == self.task_id), None)
             if not t:
                 self.failed.emit("Task not found")
+                return
+            if not task_ready_for_auto_upload(t):
+                self.failed.emit("Task must be approved before upload (use Approve on the Tasks tab).")
                 return
             if getattr(self.settings, "tiktok_publishing_mode", "inbox") != "inbox":
                 self.failed.emit("Direct publish is not implemented - use Inbox mode in the API tab (video.upload).")
@@ -70,7 +74,7 @@ class YouTubeUploadWorker(QThread):
         self.task_id = task_id
 
     def run(self) -> None:
-        from src.platform.upload_tasks import load_tasks, set_task_status, set_youtube_upload_result
+        from src.platform.upload_tasks import load_tasks, set_task_status, set_youtube_upload_result, task_ready_for_auto_upload
         from src.platform.youtube_upload import (
             build_shorts_title_description,
             ensure_youtube_access_token,
@@ -78,10 +82,14 @@ class YouTubeUploadWorker(QThread):
         )
 
         try:
+            raise_if_interrupted(self)
             tasks = load_tasks()
             t = next((x for x in tasks if x.id == self.task_id), None)
             if not t:
                 self.failed.emit("Task not found")
+                return
+            if not task_ready_for_auto_upload(t):
+                self.failed.emit("Task must be approved before upload (use Approve on the Tasks tab).")
                 return
             s = self.settings
             if not bool(getattr(s, "youtube_enabled", False)):

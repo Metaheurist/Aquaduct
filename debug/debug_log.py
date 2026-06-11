@@ -207,10 +207,11 @@ def pipeline_console(message: str, *, stage: str = "") -> None:
 
 def log_pipeline_exception(stage: str, exc: BaseException, *, extra: str = "") -> None:
     """
-    Print failure context and a full traceback to stderr (and a one-line head to ``debug.log``).
+    Print failure context and a full traceback to stderr (and mirror to ``debug.log``).
 
     Does **not** swallow the exception — call from an ``except`` before ``raise``.
     """
+    import io
     import traceback
 
     ts = datetime.now().isoformat(timespec="seconds")
@@ -225,7 +226,15 @@ def log_pipeline_exception(stage: str, exc: BaseException, *, extra: str = "") -
     try:
         from src.util.repo_logs import append_debug_log
 
-        append_debug_log(head)
+        buf = io.StringIO()
+        buf.write(head)
+        if extra:
+            buf.write(f"\n{ts} [Aquaduct][run] [{stage}] {extra}")
+        try:
+            traceback.print_exception(type(exc), exc, exc.__traceback__, file=buf)
+        except Exception:
+            traceback.print_exc(file=buf)
+        append_debug_log(buf.getvalue())
     except Exception:
         pass
 

@@ -80,6 +80,9 @@ def collect_settings_from_ui(win: Any) -> AppSettings:
             if hasattr(win, "caption_highlight_combo")
             else "strong",
             caption_max_words=int(win.caption_max_words_spin.value()) if hasattr(win, "caption_max_words_spin") else 8,
+            caption_vertical_anchor=str(win.caption_vertical_combo.currentData() or "bottom")
+            if hasattr(win, "caption_vertical_combo")
+            else str(getattr(win.settings.video, "caption_vertical_anchor", "bottom") or "bottom"),
             facts_card_enabled=bool(win.facts_card_chk.isChecked()) if hasattr(win, "facts_card_chk") else True,
             facts_card_position=str(win.facts_card_pos_combo.currentData() or "top_left")
             if hasattr(win, "facts_card_pos_combo")

@@ -300,6 +300,7 @@ def generate_script(
                 try_llm_4bit=try_llm_4bit,
                 llm_cuda_device_index=llm_cuda_device_index,
                 inference_settings=inference_settings,
+                relax_short_json_batch=True,
             )
             data = _extract_json(raw)
             pkg = _to_package(data, video_format=str(video_format or ""))
@@ -517,24 +518,24 @@ def generate_script(
                 hook=hook,
                 segments=[
                     ScriptSegment(
-                        narration=f"Alright — {story_title}. Here’s what you need to know first.",
-                        visual_prompt="bold news-style vertical graphic, dynamic typography, clean layout, 9:16",
+                        narration=f"Starting with {story_title}: the reporting points to a concrete development worth tracking today.",
+                        visual_prompt="medium shot news desk, host silhouette, clean vertical typography, 9:16",
                         on_screen_text="LEAD",
                     ),
                     ScriptSegment(
-                        narration="Here’s the core of what happened — the facts, plain and simple.",
-                        visual_prompt="split-panel infographic, icons, readable labels, vertical 9:16",
-                        on_screen_text="WHAT HAPPENED",
+                        narration="The timeline starts with what was announced, who confirmed it, and which details are still unverified.",
+                        visual_prompt="split-panel infographic, dated milestones, readable labels, vertical 9:16",
+                        on_screen_text="TIMELINE",
                     ),
                     ScriptSegment(
-                        narration="Who this hits hardest — and why people are reacting the way they are.",
+                        narration="Stakeholders range from everyday consumers to industry players; reactions split along predictable fault lines.",
                         visual_prompt="dynamic portraits silhouettes or crowd graphic, bold color, 9:16",
-                        on_screen_text="WHO CARES",
+                        on_screen_text="STAKES",
                     ),
                     ScriptSegment(
-                        narration="My read: watch what happens next — that’s the part that actually matters.",
+                        narration="If the next updates hold, the ripple effects could shift pricing, policy, or public sentiment within weeks.",
                         visual_prompt="timeline arrow, bold headline strip, vertical 9:16",
-                        on_screen_text="TAKEAWAY",
+                        on_screen_text="OUTLOOK",
                     ),
                 ],
                 cta=cta,

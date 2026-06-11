@@ -43,6 +43,18 @@ def append_debug_log(line: str) -> None:
             f.write(text + "\n")
 
 
+def append_crash_log(text: str) -> None:
+    """Append a block to ``logs/crash.log`` (uncaught exceptions / fatal Qt messages)."""
+    body = (text or "").rstrip()
+    if not body:
+        return
+    p = logs_dir() / "crash.log"
+    ts = datetime.now().isoformat(timespec="seconds")
+    with _lock:
+        with p.open("a", encoding="utf-8") as f:
+            f.write(f"\n--- {ts} ---\n{body}\n")
+
+
 def write_install_dependencies_log(content: str, *, prefix: str = "install-dependencies") -> Path:
     """Write a full session log for Model → Install dependencies; returns the file path."""
     logs_dir()

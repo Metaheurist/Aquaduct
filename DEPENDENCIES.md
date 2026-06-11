@@ -4,6 +4,7 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 
 ## Python
 - **Python**: 3.11+
+- **Project metadata**: [`pyproject.toml`](pyproject.toml) (name, version, pytest markers)
 - **Virtualenv**: recommended (`python -m venv .venv`)
 - **Windows shell**: after `cd` to the repo, you can dot-source [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1) (`. .\scripts\setup_terminal_env.ps1`) to activate `.venv` and set the working directory; optional **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** for gated Hugging Face models (or use **Settings → API** in the UI).
 
@@ -83,7 +84,7 @@ Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@py
 - **diffusers / safetensors**: SDXL Turbo image generation
 - **huggingface_hub**: “zero-touch” model download on first run; also used by the desktop **verify checksums** action (compare local `models/` snapshots to the Hub)
 - **hnswlib** (≥ 0.8.0): optional **approximate nearest neighbors** for title-bar **LLM chat** retrieval when the doc+tooltip corpus is large ([`src/content/llm_chat_rag.py`](src/content/llm_chat_rag.py)); if the package is missing or the corpus is below the threshold, cosine similarity stays full scan
-- **cryptography** (Fernet): encrypts title-loaded **LLM chat** transcript files on disk ([`src/util/llm_chat_transcript_store.py`](src/util/llm_chat_transcript_store.py)); bundled in [`requirements.txt`](requirements.txt) with the desktop UI stack
+- **cryptography** (Fernet): encrypts title-loaded **LLM chat** transcript files on disk ([`src/util/llm_chat_transcript_store.py`](src/util/llm_chat_transcript_store.py)) and **API/OAuth secrets** in `ui_settings.json` ([`src/settings/secrets_crypto.py`](src/settings/secrets_crypto.py)); bundled in [`requirements.txt`](requirements.txt) with the desktop UI stack
 
 ## Media
 - **moviepy**: video editing/assembly
@@ -94,6 +95,7 @@ Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@py
 
 ## Audio
 - **soundfile**: robust WAV writing/reading
+- **faster-whisper** (optional): tighter **word-level caption** alignment from rendered WAV ([`src/speech/voice.py`](src/speech/voice.py)); heuristic timing is used when not installed
 - **pyttsx3**: offline fallback TTS (Windows SAPI) when Kokoro is not available
 - **certifi** (via `requests`): HTTPS trust store for ElevenLabs and other HTTP clients; PyInstaller builds should bundle it (see `build/build.ps1`)
 

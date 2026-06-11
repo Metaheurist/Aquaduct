@@ -5,12 +5,12 @@ Run the suite from the repository root; `pytest` collects everything under this 
 | Subfolder | What lives here |
 |-----------|-----------------|
 | [`cli/`](cli/) | Headless CLI parser, config merge, `ui_settings` roundtrips |
-| [`ui/`](ui/) | PyQt6 / `pytest-qt` desktop UI (`@pytest.mark.qt` where applicable); F4 image playground ([`test_image_playground_dialog.py`](test_image_playground_dialog.py)); NSFW Run tab / session bypass ([`test_run_tab_nsfw_combo.py`](test_run_tab_nsfw_combo.py)); **UI modernization** widgets/tabs/preflight ([`test_ui_modernization_widgets.py`](test_ui_modernization_widgets.py), [`test_ui_modernization_tabs.py`](test_ui_modernization_tabs.py), [`test_ui_preflight_install_prompt.py`](test_ui_preflight_install_prompt.py)) |
+| [`ui/`](ui/) | PyQt6 / `pytest-qt` desktop UI (`@pytest.mark.qt` where applicable); F4 image playground ([`test_image_playground_dialog.py`](test_image_playground_dialog.py)); NSFW Run tab / session bypass ([`test_run_tab_nsfw_combo.py`](test_run_tab_nsfw_combo.py)); pipeline series queue ([`test_pipeline_series_queue.py`](ui/test_pipeline_series_queue.py)); **UI modernization** widgets/tabs/preflight ([`test_ui_modernization_widgets.py`](test_ui_modernization_widgets.py), [`test_ui_modernization_tabs.py`](test_ui_modernization_tabs.py), [`test_ui_preflight_install_prompt.py`](test_ui_preflight_install_prompt.py)) |
 | [`models/`](models/) | Local HF model manager, VRAM / CUDA policy, diffusion presets, `torch` dtypes, inference profiles |
 | [`platform/`](platform/) | Remote API clients (OpenAI-shaped, Kling, Replicate, ElevenLabs, …) |
-| [`runtime/`](runtime/) | `api_generation`, preflight, pipeline control, import smoke, run-queue contract; NSFW preflight + **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** ([`test_preflight_nsfw_uploads.py`](runtime/test_preflight_nsfw_uploads.py)) |
+| [`runtime/`](runtime/) | `api_generation`, preflight, pipeline control, import smoke, run-queue contract; NSFW preflight + **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** ([`test_preflight_nsfw_uploads.py`](runtime/test_preflight_nsfw_uploads.py)); resume/checkpoint ([`test_run_once_resume.py`](runtime/test_run_once_resume.py)); SSRF guard ([`test_ssrf_guard.py`](runtime/test_ssrf_guard.py)); series queue ([`test_series_queue.py`](runtime/test_series_queue.py)) |
 | [`content/`](content/) | Brain, story pipeline, characters, personalities, story context; LLM chat RAG (**`llm_chat_rag`**, **`llm_chat_system_prompt`**); pipeline generation / EOS routing (**`test_chat_generation`**); NSFW guardrails (**`test_nsfw_*`**, **`test_brain_api`**) |
-| [`render/`](render/) | Artist / clips / FFmpeg / pro-mode / video format helpers |
+| [`render/`](render/) | Artist / clips / FFmpeg / pro-mode / video format helpers; editor assembly ([`test_editor_assembly.py`](render/test_editor_assembly.py)) |
 | [`discover/`](discover/) | Topic discovery, Firecrawl / crawler, news-cache modes |
 | [`social/`](social/) | Upload tasks, TikTok/TikTok-style posting helpers |
 | [`core/`](core/) | App paths, media library FS |

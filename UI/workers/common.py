@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from PyQt6.QtCore import QThread
+
 from src.content.brain_api import (
     expand_custom_video_instructions_openai,
     generate_script_openai,
@@ -9,6 +11,18 @@ from src.content.brain import expand_custom_video_instructions, generate_script
 from src.core.config import AppSettings
 from src.runtime.model_backend import is_api_mode
 from src.runtime.oom_retry import is_oom_error
+from src.runtime.pipeline_control import PipelineCancelled, PipelineRunControl
+
+
+def raise_if_interrupted(
+    worker: QThread,
+    run_control: PipelineRunControl | None = None,
+) -> None:
+    """Honor ``requestInterruption()`` and cooperative pipeline cancel checkpoints."""
+    if worker.isInterruptionRequested():
+        raise PipelineCancelled()
+    if run_control is not None:
+        run_control.checkpoint()
 
 
 def _failure_text_with_cuda_hints(exc: BaseException, tb: str) -> str:

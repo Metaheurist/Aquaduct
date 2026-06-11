@@ -539,9 +539,6 @@ def _generate_with_loaded_causal_lm(
         ).to(model.device)
     prompt_len = int(inputs["input_ids"].shape[1])
 
-    if cuda_device_reported_by_torch():
-        torch.cuda.empty_cache()
-
     eos_ids = _eos_token_id_candidates(tokenizer)
     if not eos_ids:
         e = getattr(tokenizer, "eos_token_id", None)
@@ -576,8 +573,6 @@ def _generate_with_loaded_causal_lm(
 
         def _run_gen() -> None:
             with torch.inference_mode():
-                if cuda_device_reported_by_torch():
-                    torch.cuda.empty_cache()
                 model.generate(**generation_kwargs)
 
         th = Thread(target=_run_gen, daemon=True)
@@ -618,8 +613,6 @@ def _generate_with_loaded_causal_lm(
         if eos_ids:
             gen_fallback["eos_token_id"] = eos_ids[0] if len(eos_ids) == 1 else eos_ids
         with torch.inference_mode():
-            if cuda_device_reported_by_torch():
-                torch.cuda.empty_cache()
             out = model.generate(**gen_fallback)
         _emit_llm(on_llm_task, "llm_generate", 100, "Decoding…")
         if use_chat_template:

@@ -28,9 +28,9 @@ def test_parser_run_once() -> None:
 
 def test_parser_config_show() -> None:
     p = build_parser()
-    a = p.parse_args(["config", "show", "--no-secrets"])
+    a = p.parse_args(["config", "show", "--show-secrets"])
     assert a.config_cmd == "show"
-    assert a.no_secrets is True
+    assert a.show_secrets is True
 
 
 def test_merge_partial_video_format() -> None:

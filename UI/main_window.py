@@ -78,6 +78,7 @@ from src.content.crawler import clear_news_seen_cache_files
 from src.content.nsfw_guardrails import (
     AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS,
     dev_content_guardrails_disabled,
+    dev_guardrail_f12_bypass_enabled,
 )
 from src.content.topic_constraints import sanitize_topic_tag_notes, topic_notes_for
 from src.content.topics import normalize_video_format, video_format_writes_topic_research_pack
@@ -109,6 +110,7 @@ from UI.tabs import (
 )
 from UI.tabs.run_tab import refresh_run_tab_for_media_mode
 from UI.tabs.library_tab import refresh_library_tab_for_media_mode
+from UI.tabs.tasks_tab import refresh_tasks_tab_for_media_mode
 from UI.dialogs.download_popup import DownloadPopup, ImportPopup
 from UI.workers import (
     FFmpegEnsureWorker,
@@ -129,6 +131,22 @@ from UI.services.progress_tasks import format_status_line
 
 _TASKS_ACTIVE_JOB_TOKEN = "__active_job__"
 _TASKS_QUEUED_PIPELINE_TOKEN = "__queued_pipeline__"
+
+# Pipeline tab builds synchronously so the window can show quickly; the rest attach after first paint.
+_DEFERRED_TAB_ATTACHERS: tuple[tuple[str, Callable], ...] = (
+    ("topics", attach_topics_tab),
+    ("characters", attach_characters_tab),
+    ("settings", attach_settings_tab),
+    ("video", attach_video_tab),
+    ("picture", attach_picture_tab),
+    ("effects", attach_effects_tab),
+    ("captions", attach_captions_tab),
+    ("api", attach_api_tab),
+    ("branding", attach_branding_tab),
+    ("tasks", attach_tasks_tab),
+    ("library", attach_library_tab),
+    ("my_pc", attach_my_pc_tab),
+)
 
 
 class _ChatRagIndexWorker(QThread):
@@ -178,8 +196,8 @@ class MainWindow(QMainWindow):
         # Custom title bar (frameless window needs its own controls)
         self._root = QWidget()
         root_lay = QVBoxLayout(self._root)
-        root_lay.setContentsMargins(10, 10, 10, 10)
-        root_lay.setSpacing(8)
+        root_lay.setContentsMargins(14, 12, 14, 14)
+        root_lay.setSpacing(10)
 
         self._title_bar = QWidget()
         title_row = QHBoxLayout(self._title_bar)
@@ -355,62 +373,13 @@ class MainWindow(QMainWindow):
         #   Results:         Tasks, Library
         #   System:          My PC
         # Group adjacency improves discoverability; visibility per media mode is handled by tab text.
-        # Create
+        # Pipeline first (default tab) — remaining tabs attach after the window is shown.
         attach_run_tab(self)
-        attach_topics_tab(self)
-        attach_characters_tab(self)
-        # Style & Output
-        attach_settings_tab(self)
-        attach_video_tab(self)
-        attach_picture_tab(self)
-        attach_effects_tab(self)
-        attach_captions_tab(self)
-        attach_api_tab(self)
-        attach_branding_tab(self)
-        # Results
-        attach_tasks_tab(self)
-        attach_library_tab(self)
-        # System
-        attach_my_pc_tab(self)
+        self._deferred_tab_queue: list[tuple[str, Callable]] = list(_DEFERRED_TAB_ATTACHERS)
+        self._tabs_init_finished = False
 
-        self._sync_nsfw_upload_checkbox_state()
-
-        self._chat_docs_index = None
-        self._chat_docs_index_worker: QThread | None = None
-        self._start_chat_docs_index_build()
-
-        # Tasks tab builds before the API tab; upload buttons need API widgets + current keys for visibility.
-        try:
-            self._sync_tasks_upload_buttons()
-        except Exception:
-            pass
-
-        self._setup_generation_api_panel_hosting()
-        try:
-            self._apply_media_mode_ui()
-        except Exception:
-            pass
-        try:
-            self._wire_picture_format_sync()
-            self._apply_picture_settings_to_ui()
-            refresh_run_tab_for_media_mode(self)
-        except Exception:
-            pass
-
-        # Shrink/grow window to the active tab (QTabWidget otherwise sizes to the tallest page).
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        QTimer.singleShot(0, self._resize_to_current_tab)
-        QTimer.singleShot(0, self._tasks_refresh)
-        # Establish the saved-settings baseline once the UI is fully built (for dirty tracking).
-        QTimer.singleShot(0, self._mark_settings_clean)
-        # Prompt for HF token once the window is ready (if needed).
-        QTimer.singleShot(0, self._maybe_prompt_hf_token)
-        # After optional HF token modal (same startup tick), so the help window does not stack on it.
-        QTimer.singleShot(1800, self._maybe_show_first_run_tutorial)
-        QTimer.singleShot(0, self._update_hf_api_warnings)
-        if hasattr(self, "personality_combo"):
-            self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
-            self._update_personality_hint()
+        QTimer.singleShot(0, self._build_next_deferred_tab)
 
         self._internet_bridge = _InternetStatusBridge()
         self._internet_bridge.finished.connect(self._on_internet_status)
@@ -442,6 +411,7 @@ class MainWindow(QMainWindow):
         self._pipeline_control: PipelineRunControl | None = None
         # FIFO: each entry is a dict from _enqueue_pipeline_snapshot (run while another pipeline is active)
         self._pipeline_run_queue: list[dict] = []
+        self._restore_pipeline_queue()
         # True between scheduling FFmpeg-ready continuation and PipelineWorker.start() (worker.isRunning() still False).
         self._pipeline_launch_pending: bool = False
         self._last_preview_pkg = None
@@ -457,6 +427,56 @@ class MainWindow(QMainWindow):
         if app is not None:
             self._rich_help_tooltip_filter = RichHelpTooltipFilter(self._open_tutorial_topic, self)
             app.installEventFilter(self._rich_help_tooltip_filter)
+
+    def _build_next_deferred_tab(self) -> None:
+        """Attach one tab per event-loop tick so the main window can paint after Pipeline tab."""
+        if self._deferred_tab_queue:
+            _name, attach_fn = self._deferred_tab_queue.pop(0)
+            attach_fn(self)
+            QTimer.singleShot(0, self._build_next_deferred_tab)
+            return
+        if not self._tabs_init_finished:
+            self._finish_init_after_tabs()
+
+    def _finish_init_after_tabs(self) -> None:
+        """Post-tab wiring that depends on every tab widget existing."""
+        if self._tabs_init_finished:
+            return
+        self._tabs_init_finished = True
+
+        self._sync_nsfw_upload_checkbox_state()
+
+        self._chat_docs_index = None
+        self._chat_docs_index_worker: QThread | None = None
+        self._start_chat_docs_index_build()
+
+        try:
+            self._sync_tasks_upload_buttons()
+        except Exception:
+            pass
+
+        self._setup_generation_api_panel_hosting()
+        try:
+            self._apply_media_mode_ui()
+        except Exception:
+            pass
+        try:
+            self._wire_picture_format_sync()
+            self._apply_picture_settings_to_ui()
+            refresh_run_tab_for_media_mode(self)
+            refresh_tasks_tab_for_media_mode(self)
+        except Exception:
+            pass
+
+        QTimer.singleShot(0, self._resize_to_current_tab)
+        QTimer.singleShot(0, self._tasks_refresh)
+        QTimer.singleShot(0, self._mark_settings_clean)
+        QTimer.singleShot(0, self._maybe_prompt_hf_token)
+        QTimer.singleShot(1800, self._maybe_show_first_run_tutorial)
+        QTimer.singleShot(0, self._update_hf_api_warnings)
+        if hasattr(self, "personality_combo"):
+            self.personality_combo.currentIndexChanged.connect(self._update_personality_hint)
+            self._update_personality_hint()
 
     def _sync_title_bar_outline_colors(self) -> None:
         """Keep painted title-bar pill strokes/text in sync with the resolved theme palette."""
@@ -540,6 +560,12 @@ class MainWindow(QMainWindow):
 
     def _toggle_f12_session_guardrails(self) -> None:
         """Toggle session-only bypass for NSFW-related guardrails and NSFW-oriented Run defaults."""
+        if not dev_guardrail_f12_bypass_enabled():
+            self._append_log(
+                "F12: guardrail bypass disabled — set AQUADUCT_DEV_DISABLE_GUARDRAILS=1 before launch."
+            )
+            self._toast("F12 bypass disabled (dev env not set)", kind="warning", msec=4000)
+            return
         if dev_content_guardrails_disabled():
             os.environ.pop(AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS, None)
             self._append_log(
@@ -744,6 +770,7 @@ class MainWindow(QMainWindow):
             pass
         try:
             refresh_library_tab_for_media_mode(self)
+            refresh_tasks_tab_for_media_mode(self)
         except Exception:
             pass
 
@@ -1242,10 +1269,10 @@ class MainWindow(QMainWindow):
             # API page uses a scroll area; layout size hints can be too small before the panel lays out.
             page_h = max(page_h, 560)
         if tab_txt == "Library":
-            page_h = max(page_h, 540)
+            page_h = max(page_h, 640)
 
         # Layout margins (top+bottom) + small padding inside tab pane.
-        h = int(title_h + banner_h + tabbar_h + page_h + 10 + 10 + 48)
+        h = int(title_h + banner_h + tabbar_h + page_h + 14 + 14 + 52)
 
         # Clamp so it doesn't get too tiny or exceed the screen.
         min_h = 360
@@ -2274,6 +2301,40 @@ class MainWindow(QMainWindow):
         if f.is_file():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(f)))
 
+    def _library_resume_series_queue(self) -> None:
+        p = self._library_selected_video_path()
+        if p is None:
+            aquaduct_information(self, "Library", "Select a finished video from a series first.")
+            return
+        from src.runtime.series_queue import resume_series_queue
+        from src.series.store import SERIES_JSON_NAME, load_series_record
+
+        series_dir = p.resolve().parent
+        if not (series_dir / SERIES_JSON_NAME).is_file():
+            aquaduct_information(
+                self,
+                "Library",
+                "Selected project is not under a series folder (no series.json in parent).",
+            )
+            return
+        rec = load_series_record(series_dir)
+        slug = rec.slug if rec is not None else series_dir.name
+        q = getattr(self, "_pipeline_run_queue", None)
+        if not isinstance(q, list):
+            self._pipeline_run_queue = []
+            q = self._pipeline_run_queue
+        added = resume_series_queue(paths=get_paths(), slug=slug, queue=q)
+        if added <= 0:
+            aquaduct_information(
+                self,
+                "Library",
+                "Nothing to queue — series may be complete or episodes are already waiting in the Tasks queue.",
+            )
+            return
+        self._append_log(f"Queued {added} remaining episode(s) for series {slug!r}.")
+        self._tasks_refresh()
+        self._focus_tasks_tab()
+
     def _library_open_selected_run_dir(self) -> None:
         p = self._library_selected_run_path()
         if p is not None:
@@ -2878,22 +2939,22 @@ class MainWindow(QMainWindow):
                         self._refresh_settings_model_combos()
                 except Exception:
                     pass
-            popup.accept()
+            popup.close()
 
         def on_failed(err: str) -> None:
             dprint("ui", "download_worker failed", str(err)[:400])
             popup.status.setText("Download failed.")
             popup.bar.setValue(0)
-            popup.reject()
             self._append_log(err)
+            popup.close()
 
         self.download_worker.progress.connect(on_progress)
         self.download_worker.done.connect(on_done)
         self.download_worker.failed.connect(on_failed)
         self.download_worker.start()
 
-        popup.exec()
-        self._download_popup = None
+        popup.setWindowModality(Qt.WindowModality.NonModal)
+        popup.show()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         # Offer to save unsaved edits before quitting (settings live in widgets until Save/Run).
@@ -2966,9 +3027,7 @@ class MainWindow(QMainWindow):
             then()
             return True
         if self._ffmpeg_ensure_worker and self._ffmpeg_ensure_worker.isRunning():
-            self._append_log(
-                'FFmpeg is still downloading - wait for "FFmpeg is ready" in the log, then click Run again.'
-            )
+            self._append_log('FFmpeg is still downloading — the queued run will start when FFmpeg is ready.')
             self._toast("FFmpeg still downloading…", kind="info")
             return False
         self._append_log(
@@ -3074,6 +3133,38 @@ class MainWindow(QMainWindow):
             continue_on_failure=bool(ser.continue_on_failure),
         )
 
+    def _persist_pipeline_queue(self) -> None:
+        try:
+            from src.runtime.pipeline_queue_store import save_pipeline_queue
+
+            save_pipeline_queue(self._pipeline_run_queue)
+        except Exception:
+            pass
+
+    def _restore_pipeline_queue(self) -> None:
+        try:
+            from src.runtime.pipeline_queue_store import load_pipeline_queue
+
+            restored = load_pipeline_queue()
+            if restored:
+                self._pipeline_run_queue = restored
+                dprint("tasks", "restored pipeline queue", f"depth={len(restored)}")
+        except Exception:
+            pass
+
+    def _pipeline_queue_push(self, item: dict) -> None:
+        self._pipeline_run_queue.append(item)
+        self._persist_pipeline_queue()
+
+    def _pipeline_queue_pop(self) -> dict:
+        item = self._pipeline_run_queue.pop(0)
+        self._persist_pipeline_queue()
+        return item
+
+    def _pipeline_queue_clear(self) -> None:
+        self._pipeline_run_queue.clear()
+        self._persist_pipeline_queue()
+
     def _append_series_to_queue(self, qty: int) -> None:
         display = (self.settings.series.series_name or "").strip() or "Series"
         slug, _rec = find_or_create_series(
@@ -3083,7 +3174,7 @@ class MainWindow(QMainWindow):
             episode_total=qty,
         )
         for i in range(1, qty + 1):
-            self._pipeline_run_queue.append(
+            self._pipeline_queue_push(
                 {
                     "kind": "series_episode",
                     "series_slug": slug,
@@ -3212,7 +3303,7 @@ class MainWindow(QMainWindow):
                 pass
             return
 
-        item = self._pipeline_run_queue.pop(0)
+        item = self._pipeline_queue_pop()
         remaining = len(self._pipeline_run_queue)
         dprint(
             "tasks",
@@ -3355,7 +3446,7 @@ class MainWindow(QMainWindow):
                 self._append_series_to_queue(qty)
             else:
                 for _ in range(qty):
-                    self._pipeline_run_queue.append(
+                    self._pipeline_queue_push(
                         {"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1}
                     )
             n = len(self._pipeline_run_queue)
@@ -3387,7 +3478,7 @@ class MainWindow(QMainWindow):
                 self._append_series_to_queue(qty)
             else:
                 for _ in range(qty):
-                    self._pipeline_run_queue.append(
+                    self._pipeline_queue_push(
                         {"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1}
                     )
             n = len(self._pipeline_run_queue)
@@ -3448,7 +3539,7 @@ class MainWindow(QMainWindow):
                     ctx = self._build_series_context(slug=slug, episode_index=1, episode_total=qty, eff=eff)
                     if qty > 1:
                         for i in range(2, qty + 1):
-                            self._pipeline_run_queue.append(
+                            self._pipeline_queue_push(
                                 {
                                     "kind": "series_episode",
                                     "series_slug": slug,
@@ -3468,7 +3559,7 @@ class MainWindow(QMainWindow):
                 else:
                     if qty > 1:
                         for _ in range(qty - 1):
-                            self._pipeline_run_queue.append(
+                            self._pipeline_queue_push(
                                 {"kind": "pipeline", "settings": copy.deepcopy(self.settings), "qty": 1}
                             )
                         dprint(
@@ -3597,7 +3688,7 @@ class MainWindow(QMainWindow):
                         return
                 else:
                     return
-            self._pipeline_run_queue.append(
+            self._pipeline_queue_push(
                 {
                     "kind": "prebuilt",
                     "settings": copy.deepcopy(self.settings),
@@ -3624,7 +3715,7 @@ class MainWindow(QMainWindow):
                         return
                 else:
                     return
-            self._pipeline_run_queue.append(
+            self._pipeline_queue_push(
                 {
                     "kind": "prebuilt",
                     "settings": copy.deepcopy(self.settings),
@@ -3776,7 +3867,7 @@ class MainWindow(QMainWindow):
                         return
                 else:
                     return
-            self._pipeline_run_queue.append(
+            self._pipeline_queue_push(
                 {
                     "kind": "storyboard",
                     "settings": copy.deepcopy(self.settings),
@@ -3802,7 +3893,7 @@ class MainWindow(QMainWindow):
                         return
                 else:
                     return
-            self._pipeline_run_queue.append(
+            self._pipeline_queue_push(
                 {
                     "kind": "storyboard",
                     "settings": copy.deepcopy(self.settings),
@@ -3889,10 +3980,10 @@ class MainWindow(QMainWindow):
                 task = append_task_for_video_dir(p)
                 self._tasks_refresh()
                 if task:
-                    if bool(getattr(self.settings, "tiktok_auto_upload_after_render", False)):
-                        self._maybe_auto_tiktok_upload(task.id)
-                    if bool(getattr(self.settings, "youtube_auto_upload_after_render", False)):
-                        self._maybe_auto_youtube_upload(task.id)
+                    self._append_log(
+                        "Render queued on Tasks tab — approve it before TikTok/YouTube upload "
+                        "(auto-upload runs after Approve when enabled on the API tab)."
+                    )
         except Exception as e:
             dprint("tasks", "enqueue after run failed", str(e))
 
@@ -3900,6 +3991,12 @@ class MainWindow(QMainWindow):
         self._library_refresh()
 
     def _maybe_auto_tiktok_upload(self, task_id: str) -> None:
+        from src.platform.upload_tasks import load_tasks, task_ready_for_auto_upload
+
+        tasks = load_tasks()
+        t = next((x for x in tasks if x.id == task_id), None)
+        if t is None or not task_ready_for_auto_upload(t):
+            return
         s = self.settings
         if not bool(getattr(s, "tiktok_enabled", False)):
             return
@@ -3918,6 +4015,12 @@ class MainWindow(QMainWindow):
         self._start_tiktok_upload_worker(task_id)
 
     def _maybe_auto_youtube_upload(self, task_id: str) -> None:
+        from src.platform.upload_tasks import load_tasks, task_ready_for_auto_upload
+
+        tasks = load_tasks()
+        t = next((x for x in tasks if x.id == task_id), None)
+        if t is None or not task_ready_for_auto_upload(t):
+            return
         s = self.settings
         if not bool(getattr(s, "youtube_enabled", False)):
             return
@@ -4103,7 +4206,7 @@ class MainWindow(QMainWindow):
             if isinstance(q, dict) and str(q.get("kind") or "") == "series_episode"
         )
         if dropped:
-            self._pipeline_run_queue.clear()
+            self._pipeline_queue_clear()
             extra = f" (including {series_n} series episode(s))" if series_n else ""
             self._append_log(f"Pipeline cancelled - dropped {dropped} queued job(s){extra}.")
         else:
@@ -4373,6 +4476,24 @@ class MainWindow(QMainWindow):
 
         set_task_status(tid, "posted")
         self._tasks_refresh()
+
+    def _tasks_approve_selected(self) -> None:
+        tid = self._tasks_selected_id()
+        if not tid:
+            aquaduct_information(self, "Tasks", "Select a finished task row first.")
+            return
+        from src.platform.upload_tasks import approve_task
+
+        task = approve_task(tid)
+        if task is None:
+            aquaduct_information(self, "Tasks", "Task not found.")
+            return
+        self._tasks_refresh()
+        self._append_log(f"Approved for publishing: {task.title[:80]}")
+        if bool(getattr(self.settings, "tiktok_auto_upload_after_render", False)):
+            self._maybe_auto_tiktok_upload(tid)
+        if bool(getattr(self.settings, "youtube_auto_upload_after_render", False)):
+            self._maybe_auto_youtube_upload(tid)
 
     def _tasks_remove_selected(self) -> None:
         if not hasattr(self, "tasks_table"):
@@ -4703,6 +4824,7 @@ class MainWindow(QMainWindow):
         if sc is not None and not sc.continue_on_failure:
             dropped = drop_queued_series_items_for_slug(self._pipeline_run_queue, sc.series_slug)
             if dropped:
+                self._persist_pipeline_queue()
                 self._append_log(
                     f"Series aborted at episode {sc.episode_index}/{sc.episode_total} - "
                     f"dropped {dropped} remaining queued episode(s)."

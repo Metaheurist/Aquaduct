@@ -63,9 +63,11 @@ def _redact_settings_dict(d: dict[str, Any]) -> dict[str, Any]:
         "api_replicate_token",
         "firecrawl_api_key",
         "elevenlabs_api_key",
+        "tiktok_client_key",
         "tiktok_client_secret",
         "tiktok_access_token",
         "tiktok_refresh_token",
+        "youtube_client_id",
         "youtube_client_secret",
         "youtube_access_token",
         "youtube_refresh_token",
@@ -163,7 +165,7 @@ def cmd_preflight() -> int:
 def cmd_config_show(args: Any) -> int:
     app = load_settings()
     d = asdict(app)
-    if getattr(args, "no_secrets", False):
+    if not getattr(args, "show_secrets", False):
         d = _redact_settings_dict(d)
     if getattr(args, "pretty", False):
         print(json.dumps(d, indent=2, ensure_ascii=False))

@@ -37,6 +37,28 @@ REALESRGAN_X4_URL = (
 # Estimated headroom for Real-ESRGAN at 1080p-class frames (conservative).
 SPATIAL_VRAM_BUDGET_MB = 2500
 
+# Lazy RealESRGANer cache — reused across clips in one upscale job.
+_TORCH_UPSAMPLER_CACHE: dict[tuple[str, int], object] = {}
+
+
+def _spatial_marker_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".aq_spatial")
+
+
+def mark_spatial_upscaled(path: Path) -> None:
+    try:
+        _spatial_marker_path(path).write_text("1", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def is_spatial_upscaled(path: Path) -> bool:
+    return _spatial_marker_path(path).is_file()
+
+
+def release_torch_upsampler_cache() -> None:
+    _TORCH_UPSAMPLER_CACHE.clear()
+
 
 @dataclass(frozen=True)
 class SpatialUpscaleResult:
@@ -463,17 +485,21 @@ def _upscale_video_torch(
     tile = int(os.environ.get("AQUADUCT_REALESRGAN_TILE", "256") or "256")
     tile = max(64, min(1024, tile))
 
-    model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-    upsampler = RealESRGANer(
-        scale=4,
-        model_path=str(wpath),
-        model=model,
-        tile=tile,
-        tile_pad=10,
-        pre_pad=0,
-        half=True,
-        device=dev,
-    )
+    cache_key = (dev, tile)
+    upsampler = _TORCH_UPSAMPLER_CACHE.get(cache_key)
+    if upsampler is None:
+        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+        upsampler = RealESRGANer(
+            scale=4,
+            model_path=str(wpath),
+            model=model,
+            tile=tile,
+            tile_pad=10,
+            pre_pad=0,
+            half=True,
+            device=dev,
+        )
+        _TORCH_UPSAMPLER_CACHE[cache_key] = upsampler
 
     try:
         with tempfile.TemporaryDirectory(prefix="aq_sr_t_") as tmp:
@@ -794,6 +820,7 @@ def upscale_clip_file(
                     bak.unlink()
             except OSError:
                 pass
+            mark_spatial_upscaled(src)
             return SpatialUpscaleResult(output_path=src, mode_used="torch")
 
     if _upscale_video_ncnn(
@@ -827,6 +854,7 @@ def upscale_clip_file(
                 bak.unlink()
         except OSError:
             pass
+        mark_spatial_upscaled(src)
         return SpatialUpscaleResult(output_path=src, mode_used="ncnn")
 
     try:
@@ -892,6 +920,7 @@ def upscale_clips_inplace(
         results.append(
             SpatialUpscaleResult(output_path=Path(clip_paths[len(results)]), mode_used="off")
         )
+    release_torch_upsampler_cache()
     return results
 
 
@@ -907,6 +936,8 @@ def maybe_spatial_upscale_path(
     """Upscale *path* (video or image) when ``mode=auto`` and below export size; else return *path*."""
     path = Path(path)
     if mode.strip().lower() != "auto" or not path.is_file():
+        return path
+    if is_spatial_upscaled(path):
         return path
     suf = path.suffix.lower()
     free_vram_mb: int | None = None

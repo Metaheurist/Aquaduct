@@ -753,7 +753,7 @@ def _hf_token() -> str | bool | None:
     return None  # huggingface_hub falls back to cached login / env
 
 
-def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None) -> Path:
+def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None, token: str | bool | None = None) -> Path:
     """
     Downloads a model snapshot into a project-local folder (no HF cache required).
     Returns the local directory path under `models_dir/`.
@@ -767,7 +767,7 @@ def download_model_to_project(repo_id: str, *, models_dir: Path, tqdm_class=None
     local_dir.mkdir(parents=True, exist_ok=True)
     dprint("models", "snapshot_download", f"repo={repo_id!r}", f"dest={local_dir.name}")
 
-    token = _hf_token()
+    token = _hf_token() if token is None else token
     max_workers = int(os.environ.get("HF_SNAPSHOT_MAX_WORKERS", "8"))
     max_workers = max(1, min(32, max_workers))
 

@@ -124,8 +124,10 @@ def build_music_duck_cmd(
     fade = max(0.0, float(cfg.fade_s))
     duck = ""
     if cfg.ducking_enabled:
-        # ratio-ish behavior via sidechaincompress
-        duck = f",sidechaincompress=threshold=0.02:ratio=10:attack=20:release=250"
+        # Higher ducking_amount → stronger sidechain ratio (more music attenuation).
+        amt = max(0.0, min(1.0, float(cfg.ducking_amount)))
+        ratio = 2.0 + amt * 18.0
+        duck = f",sidechaincompress=threshold=0.02:ratio={ratio:.1f}:attack=20:release=250"
     music_vol = max(0.0, float(cfg.music_volume))
     af = (
         f"[1:a]volume={music_vol:.4f}{duck},"

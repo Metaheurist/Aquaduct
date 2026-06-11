@@ -58,10 +58,19 @@ def _tts_mp3(
     text: str,
     *,
     model_id: str = "eleven_multilingual_v2",
+    stability: float = 0.5,
+    similarity_boost: float = 0.75,
     timeout: float = 120.0,
 ) -> bytes:
     url = f"{BASE_URL}/text-to-speech/{voice_id}"
-    payload = {"text": text, "model_id": model_id}
+    payload = {
+        "text": text,
+        "model_id": model_id,
+        "voice_settings": {
+            "stability": max(0.0, min(1.0, float(stability))),
+            "similarity_boost": max(0.0, min(1.0, float(similarity_boost))),
+        },
+    }
     r = requests.post(
         url,
         json=payload,
@@ -113,12 +122,20 @@ def synthesize_to_wav(
     text: str,
     out_wav: Path,
     ffmpeg_bin: Path,
+    stability: float = 0.5,
+    similarity_boost: float = 0.75,
 ) -> bool:
     """
     Generate speech via ElevenLabs, convert to mono PCM WAV for the rest of the pipeline.
     """
     try:
-        mp3 = _tts_mp3(api_key.strip(), voice_id.strip(), text)
+        mp3 = _tts_mp3(
+            api_key.strip(),
+            voice_id.strip(),
+            text,
+            stability=stability,
+            similarity_boost=similarity_boost,
+        )
         return _mp3_bytes_to_wav(mp3, out_wav, ffmpeg_bin)
     except Exception:
         return False

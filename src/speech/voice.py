@@ -69,6 +69,71 @@ def _simple_word_timestamps(text: str, total_s: float) -> list[WordTimestamp]:
     return ts
 
 
+def _try_faster_whisper_word_timestamps(wav_path: Path, reference_text: str) -> list[WordTimestamp] | None:
+    """Word-level alignment via faster-whisper when installed; else ``None``."""
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return None
+    ref = (reference_text or "").strip()
+    if not ref:
+        return None
+    try:
+        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        segments, _info = model.transcribe(
+            str(wav_path),
+            word_timestamps=True,
+            language="en",
+            condition_on_previous_text=False,
+            vad_filter=False,
+        )
+        out: list[WordTimestamp] = []
+        for seg in segments:
+            for w in getattr(seg, "words", None) or []:
+                word = str(getattr(w, "word", "") or "").strip()
+                if not word:
+                    continue
+                try:
+                    start = float(getattr(w, "start", 0.0))
+                    end = float(getattr(w, "end", 0.0))
+                except (TypeError, ValueError):
+                    continue
+                if end > start:
+                    out.append(WordTimestamp(word=word, start=start, end=end))
+        if len(out) >= 3:
+            return out
+    except Exception:
+        return None
+    return None
+
+
+def align_captions_from_wav(
+    *,
+    wav_path: Path,
+    reference_text: str,
+    out_captions_json: Path,
+) -> list[WordTimestamp]:
+    """
+    Re-align ``out_captions_json`` to the final WAV duration.
+
+    Uses faster-whisper word timestamps when available; falls back to the
+    duration-weighted heuristic used during initial synthesis.
+    """
+    from debug import dprint
+
+    out_captions_json.parent.mkdir(parents=True, exist_ok=True)
+    dur_s = _duration_seconds(wav_path)
+    words = _try_faster_whisper_word_timestamps(wav_path, reference_text)
+    if not words:
+        words = _simple_word_timestamps(text=reference_text, total_s=dur_s)
+        dprint("voice", "align_captions_from_wav", "heuristic", f"words={len(words)}")
+    else:
+        dprint("voice", "align_captions_from_wav", "faster-whisper", f"words={len(words)}")
+    payload = [{"word": w.word, "start": w.start, "end": w.end} for w in words]
+    out_captions_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return words
+
+
 def list_pyttsx3_voices() -> list[tuple[str, str]]:
     """Return [(label, voice_id), ...] for installed system TTS voices (pyttsx3)."""
     try:
@@ -104,6 +169,8 @@ def _synthesize_tts_to_wav(
     voice_instruction: str | None = None,
     elevenlabs_voice_id: str | None = None,
     elevenlabs_api_key: str | None = None,
+    elevenlabs_stability: float = 0.5,
+    elevenlabs_similarity_boost: float = 0.75,
     ffmpeg_executable: Path | None = None,
     only_pyttsx3: bool = False,
     voice_quant_mode: str | None = None,
@@ -134,6 +201,8 @@ def _synthesize_tts_to_wav(
                         text=text,
                         out_wav=out_wav_path,
                         ffmpeg_bin=ffmpeg_executable,
+                        stability=elevenlabs_stability,
+                        similarity_boost=elevenlabs_similarity_boost,
                     )
                 except Exception:
                     el_ok = False
@@ -215,6 +284,8 @@ def synthesize(
     voice_instruction: str | None = None,
     elevenlabs_voice_id: str | None = None,
     elevenlabs_api_key: str | None = None,
+    elevenlabs_stability: float = 0.5,
+    elevenlabs_similarity_boost: float = 0.75,
     ffmpeg_executable: Path | None = None,
     voice_quant_mode: str | None = None,
     voice_cuda_device_index: int | None = None,
@@ -236,6 +307,8 @@ def synthesize(
         voice_instruction=voice_instruction,
         elevenlabs_voice_id=elevenlabs_voice_id,
         elevenlabs_api_key=elevenlabs_api_key,
+        elevenlabs_stability=elevenlabs_stability,
+        elevenlabs_similarity_boost=elevenlabs_similarity_boost,
         ffmpeg_executable=ffmpeg_executable,
         only_pyttsx3=False,
         voice_quant_mode=voice_quant_mode,

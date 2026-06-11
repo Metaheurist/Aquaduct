@@ -25,35 +25,50 @@ ART_STYLE_PRESETS: tuple[ArtStylePreset, ...] = (
     ArtStylePreset(
         id="balanced",
         label="Balanced cinematic",
-        prompt_affix="cohesive cinematic lighting, consistent color grade across shots, same film look",
+        prompt_affix=(
+            "cohesive cinematic lighting, consistent color grade across shots, same film look, "
+            "alternate wide establishing and medium interview shots, 35mm lens consistency"
+        ),
         negative_affix="inconsistent lighting, jarring color shift between frames",
         reference_strength=0.42,
     ),
     ArtStylePreset(
         id="neon_tech",
         label="Neon / tech",
-        prompt_affix="neon rim light, tech-noir palette, cyan and magenta accents, glossy surfaces, unified glow",
+        prompt_affix=(
+            "neon rim light, tech-noir palette, cyan and magenta accents, glossy surfaces, unified glow, "
+            "low-angle hero product shots, rim-lit close-ups"
+        ),
         negative_affix="muted earth tones, flat documentary lighting",
         reference_strength=0.4,
     ),
     ArtStylePreset(
         id="warm_broadcast",
         label="Warm broadcast",
-        prompt_affix="warm key light, soft broadcast look, gentle contrast, consistent skin and highlight roll-off",
+        prompt_affix=(
+            "warm key light, soft broadcast look, gentle contrast, consistent skin and highlight roll-off, "
+            "medium waist-up presenter framing, gentle push-in"
+        ),
         negative_affix="cold sterile grading, harsh clipped highlights",
         reference_strength=0.45,
     ),
     ArtStylePreset(
         id="clean_minimal",
         label="Clean minimal 3D",
-        prompt_affix="clean minimal 3D render, soft global illumination, matte materials, consistent white balance",
+        prompt_affix=(
+            "clean minimal 3D render, soft global illumination, matte materials, consistent white balance, "
+            "isometric or three-quarter product angles, soft top light"
+        ),
         negative_affix="noisy grain, painterly brush strokes, heavy film grain",
         reference_strength=0.38,
     ),
     ArtStylePreset(
         id="illustration",
         label="Stylized illustration",
-        prompt_affix="cohesive illustrated look, same line weight and shading model, unified palette",
+        prompt_affix=(
+            "cohesive illustrated look, same line weight and shading model, unified palette, "
+            "dynamic three-quarter character poses, varied panel depths"
+        ),
         negative_affix="photoreal skin pores, smartphone photo look",
         reference_strength=0.48,
     ),
@@ -62,7 +77,8 @@ ART_STYLE_PRESETS: tuple[ArtStylePreset, ...] = (
         label="Surreal meme / brainrot",
         prompt_affix=(
             "thick black outlines, flat garish colors, sticker and shitpost meme energy, "
-            "wrong perspective, absurd character mashups, crowded comic background, "
+            "flat TV-comedy staging with exaggerated close-up reaction faces alternating wide chaotic tableaux, "
+            "thick black outlines, absurd character mashups, crowded comic background, "
             "Italian brainrot chaotic Shorts look, cel-shaded, not photoreal, not sleek corporate sci-fi"
         ),
         negative_affix=(
@@ -74,7 +90,10 @@ ART_STYLE_PRESETS: tuple[ArtStylePreset, ...] = (
     ArtStylePreset(
         id="docu_real",
         label="Documentary real",
-        prompt_affix="documentary realism, natural light continuity, handheld but stable grade",
+        prompt_affix=(
+            "documentary realism, natural light continuity, handheld but stable grade, "
+            "handheld medium documentary framing, occasional telephoto compression"
+        ),
         negative_affix="CGI sheen, anime eyes, oversaturated fantasy palette",
         reference_strength=0.35,
     ),
@@ -83,7 +102,8 @@ ART_STYLE_PRESETS: tuple[ArtStylePreset, ...] = (
         label="Realism mode",
         prompt_affix=(
             "photorealistic detail, natural materials and skin texture, soft realistic key light, "
-            "accurate shadows, editorial still photography continuity, same color grade across shots"
+            "accurate shadows, editorial still photography continuity, same color grade across shots, "
+            "50mm eye-level portraits, shallow DOF close-ups for emotion beats"
         ),
         negative_affix=(
             "deformed anatomy, extra limbs, wax doll skin, heavy beauty filter, plastic CGI sheen, "

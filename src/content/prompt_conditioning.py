@@ -169,15 +169,52 @@ def camera_cues(
         }
     else:
         cues = {
-            "product_shot": ["close-up UI screenshot, crisp", "over-the-shoulder screen view", "angled UI panel, cinematic"],
-            "infographic": ["clean infographic panel", "minimal chart overlay", "numbers and icons layout"],
-            "broll": ["cinematic b-roll, shallow depth of field", "moody lighting, dynamic composition", "slow shutter feel, crisp"],
-            "timeline": ["timeline overlay, clear steps", "roadmap panel, icons", "before/after split layout"],
-            "portrait": ["portrait lighting, rim light", "studio portrait, cyberpunk", "close-up face, cinematic"],
-            "map": ["map overlay, subtle grid", "world map HUD", "location pins, neon"],
+            "product_shot": [
+                "detail insert of hands or object, shallow depth of field",
+                "over-the-shoulder interview framing",
+                "medium shot product on desk, neutral lighting",
+            ],
+            "infographic": [
+                "clean infographic panel, minimal readable labels",
+                "split layout with icons and short callouts",
+                "editorial chart graphic, soft broadcast look",
+            ],
+            "broll": [
+                "wide establishing location shot, steady framing",
+                "cinematic b-roll, shallow depth of field",
+                "gentle tracking past environment details",
+            ],
+            "timeline": [
+                "timeline overlay with dated milestones",
+                "roadmap panel with simple icons",
+                "before/after split layout, editorial style",
+            ],
+            "portrait": [
+                "medium waist-up presenter framing",
+                "studio portrait, soft key light",
+                "close-up face for emotional beat",
+            ],
+            "map": [
+                "map graphic with location pin, editorial style",
+                "regional overview map, muted palette",
+                "simple geography highlight, no neon HUD",
+            ],
         }
     arr = cues.get(scene_type, ["cinematic framing"])
     return arr[int(idx) % len(arr)]
+
+
+_SHOT_TYPE_PREFIX: dict[str, str] = {
+    "wide": "wide establishing shot",
+    "medium": "medium shot",
+    "close": "close-up shot",
+    "extreme_close": "extreme close-up",
+    "ots": "over-the-shoulder shot",
+    "pov": "POV subjective shot",
+    "dutch": "dutch angle tilted frame",
+    "low_angle": "low-angle hero shot",
+    "high_angle": "high-angle overview",
+}
 
 
 def condition_prompt(
@@ -187,6 +224,7 @@ def condition_prompt(
     idx: int,
     negatives: str | None = None,
     video_format: str | None = None,
+    shot_type: str | None = None,
 ) -> str:
     p = (prompt or "").strip()
     vf = (video_format or "").strip().lower()
@@ -209,6 +247,11 @@ def condition_prompt(
         else:
             # Neutral default — avoid forcing cyberpunk/UI when the script is news or unrelated topics.
             p = "single clear focal subject, readable silhouette, cinematic lighting, detailed, vertical 9:16 composition"
+
+    shot_key = (shot_type or "").strip().lower()
+    shot_prefix = _SHOT_TYPE_PREFIX.get(shot_key, "")
+    if shot_prefix and shot_prefix.lower() not in p.lower():
+        p = f"{shot_prefix}, {p}" if p else shot_prefix
 
     cue = camera_cues(scene_type, idx=idx, video_format=video_format)
     neg = (negatives or default_negative_prompt()).strip()

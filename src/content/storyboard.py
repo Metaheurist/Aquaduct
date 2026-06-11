@@ -13,7 +13,17 @@ from .prompt_conditioning import assign_scene_types, condition_prompt, default_n
 
 
 SceneRole = Literal["broll", "infographic", "product_shot", "portrait", "timeline", "map"]
-ShotType = Literal["wide", "medium", "close"]
+ShotType = Literal[
+    "wide",
+    "medium",
+    "close",
+    "extreme_close",
+    "ots",
+    "pov",
+    "dutch",
+    "low_angle",
+    "high_angle",
+]
 OverlayType = Literal["none", "headline", "keywords"]
 MotionType = Literal["still", "kenburns"]
 SceneStatus = Literal["pending", "approved", "regenerated"]
@@ -62,8 +72,28 @@ def _rotate_no_repeat(seq: list[SceneRole]) -> list[SceneRole]:
     return out
 
 
-def _shot_cycle(i: int) -> ShotType:
-    return ("wide", "medium", "close")[int(i) % 3]  # type: ignore[return-value]
+def _shot_cycle(i: int, video_format: str | None = None) -> ShotType:
+    vf = (video_format or "news").strip().lower()
+    if vf == "creepypasta":
+        seq: tuple[str, ...] = (
+            "wide",
+            "medium",
+            "close",
+            "dutch",
+            "pov",
+            "low_angle",
+            "extreme_close",
+            "high_angle",
+        )
+    elif vf in ("cartoon", "unhinged"):
+        seq = ("medium", "close", "wide", "low_angle", "dutch", "extreme_close", "pov")
+    elif vf == "health_advice":
+        seq = ("medium", "wide", "close", "ots", "medium", "wide", "close")
+    elif vf == "nsfw":
+        seq = ("medium", "wide", "close", "medium", "low_angle", "close")
+    else:
+        seq = ("wide", "medium", "close", "ots", "medium", "low_angle", "close")
+    return seq[int(i) % len(seq)]  # type: ignore[return-value]
 
 
 def _merge_narration_into_weak_prompt(narration: str, visual: str, *, min_words: int = 10) -> str:
@@ -87,6 +117,35 @@ def _overlay_for(scene_text: str, *, idx: int, overlay_budget: int) -> OverlayTy
     if any(ch.isdigit() for ch in t) and (idx % 2 == 0):
         return "keywords"
     return "headline" if (idx % 3 == 0) else "none"
+
+
+def storyboard_from_prebuilt(
+    prompts: list[str],
+    seeds: list[int],
+    *,
+    title: str = "Storyboard",
+    negative_prompt: str = "",
+    video_format: str | None = None,
+) -> Storyboard:
+    """Build a minimal storyboard from finalized prompts/seeds (skip LLM-derived scene assembly)."""
+    scenes: list[StoryboardScene] = []
+    for i, (prompt, seed) in enumerate(zip(prompts, seeds), start=1):
+        role = _guess_role(prompt)
+        scenes.append(
+            StoryboardScene(
+                idx=i,
+                prompt=str(prompt).strip(),
+                seed=int(seed),
+                negative_prompt=negative_prompt,
+                scene_role=role,
+                shot_type=_shot_cycle(i - 1, video_format),
+                overlay=_overlay_for(prompt, idx=i, overlay_budget=2),
+                motion="kenburns"
+                if _shot_cycle(i - 1, video_format) in ("wide", "medium", "low_angle", "high_angle", "ots")
+                else "still",
+            )
+        )
+    return Storyboard(title=title or "Storyboard", scenes=scenes)
 
 
 def build_storyboard(
@@ -144,6 +203,7 @@ def build_storyboard(
                 idx=i,
                 negatives=neg,
                 video_format=video_format,
+                shot_type=_shot_cycle(i, video_format),
             )
             for i, p in enumerate(prompts)
         ]
@@ -156,11 +216,11 @@ def build_storyboard(
     scenes: list[StoryboardScene] = []
     for i, s in enumerate(segs, start=1):
         seed = int(seed_base) + (i * 9973) if seed_base is not None else (abs(hash((pkg.title, i))) % 2_000_000_000)
-        shot = _shot_cycle(i - 1)
+        shot = _shot_cycle(i - 1, video_format)
         overlay = _overlay_for((s.on_screen_text or "") + " " + s.narration, idx=i - 1, overlay_budget=overlays_left)
         if overlay != "none":
             overlays_left -= 1
-        motion: MotionType = "kenburns" if shot in ("wide", "medium") else "still"
+        motion: MotionType = "kenburns" if shot in ("wide", "medium", "low_angle", "high_angle", "ots") else "still"
 
         neg_prompt = ""
         try:

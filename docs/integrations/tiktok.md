@@ -20,12 +20,12 @@ Aquaduct can send finished `final.mp4` files to your **TikTok creator inbox** so
 
 1. Enter **Client key** / **Client secret** in the **API** tab (optionally adjust redirect URI and port to match your TikTok app settings).
 2. Click **Save** (title bar) if you change fields, then **Connect TikTok account** and finish login in the browser.
-3. After a pipeline run, open the **Tasks** tab — new videos appear automatically. Use **Copy caption** for title/description/hashtags from `meta.json` / `hashtags.txt`, or **Upload to TikTok** to push the file to inbox.
-4. Optional: enable **Auto-start TikTok upload when a render finishes** to enqueue upload immediately after each successful render (still inbox-only in this version).
+3. After a pipeline run, open the **Tasks** tab — new videos appear automatically. Use **Copy caption** for title/description/hashtags from `meta.json` / `hashtags.txt`, or **Upload to TikTok** to push the file to inbox. **Approve** each render before auto-upload runs when the approve gate is enabled ([`src/platform/upload_tasks.py`](../../src/platform/upload_tasks.py)).
+4. Optional: enable **Auto-start TikTok upload when a render finishes** to enqueue upload immediately after each successful render (still inbox-only in this version). **Series** renders get captions prefixed with **`Ep N/T ·`** when `meta.json` includes series metadata ([`src/platform/tiktok_post.py`](../../src/platform/tiktok_post.py)).
 
 ## Security
 
-- Do not commit `ui_settings.json` (contains tokens).
+- Do not commit `ui_settings.json` (contains tokens; API keys are **Fernet-encrypted** on disk when [`secrets_crypto`](../../src/settings/secrets_crypto.py) is active — still treat the file and **`.ui_settings_fernet.key`** as sensitive).
 - Revoke access from TikTok’s app permissions page if you rotate credentials.
 
 ## See also

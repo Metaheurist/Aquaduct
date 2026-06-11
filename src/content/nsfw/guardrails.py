@@ -9,6 +9,9 @@ import re
 # denylist filtering, NSFW+auto-upload preflight errors, and Tasks upload blocks for explicit renders.
 AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS = "AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS"
 
+# Process gate: F12 session bypass is ignored unless this env is set at startup (dev builds only).
+AQUADUCT_DEV_DISABLE_GUARDRAILS = "AQUADUCT_DEV_DISABLE_GUARDRAILS"
+
 # Injected into script / character LLM prompts. Keep explicit and repeatable.
 NSFW_ADULTS_ONLY_GUARDRAILS = (
     "NON-NEGOTIABLE CONTENT RULES (18+ ONLY):\n"
@@ -32,6 +35,12 @@ NSFW_DENY_REGEXES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(snuff|necrophil)\w*"),
     re.compile(r"\bgang\s*bang\b"),
 )
+
+
+def dev_guardrail_f12_bypass_enabled() -> bool:
+    """True when the desktop F12 guardrail bypass is allowed for this process."""
+    v = str(os.environ.get(AQUADUCT_DEV_DISABLE_GUARDRAILS, "") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
 
 
 def dev_content_guardrails_disabled() -> bool:

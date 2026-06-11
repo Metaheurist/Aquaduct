@@ -575,6 +575,22 @@ def pick_one_item(items: Iterable[NewsItem]) -> NewsItem | None:
     return items[0]
 
 
+def pick_weighted_item(items: Iterable[NewsItem], *, temperature: float = 0.35) -> NewsItem | None:
+    """Weighted-random pick over top-ranked items (lower temperature = closer to best score)."""
+    import random
+
+    ranked = list(items)
+    if not ranked:
+        return None
+    if len(ranked) == 1:
+        return ranked[0]
+    temp = max(0.05, min(1.0, float(temperature)))
+    k = min(10, len(ranked))
+    pool = ranked[:k]
+    weights = [1.0 / ((i + 1) ** (1.0 / temp)) for i in range(len(pool))]
+    return random.choices(pool, weights=weights, k=1)[0]
+
+
 def _domain(url: str) -> str:
     try:
         return (urlparse(url).netloc or "").lower()
@@ -605,6 +621,10 @@ def fetch_article_text(
 
     url = (url or "").strip()
     if not url:
+        return ""
+    from src.util.ssrf_guard import is_safe_http_url
+
+    if not is_safe_http_url(url):
         return ""
     if firecrawl_enabled:
         try:

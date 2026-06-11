@@ -27,6 +27,16 @@ Related helpers: [`src/runtime/run_checkpoint.py`](../../src/runtime/run_checkpo
 
 Stages are granular enough to reuse **voice** / **cast** artifacts when checkpoints align; **`done`** clears resume targeting after a finished encode.
 
+**Nested series resume**: `find_latest_resumable_video_project` also scans **`videos/<series>/episode_*`** folders so a partially finished multi-episode series can surface in the startup resume dialog.
+
+## Run report and crash logs
+
+Each finished or failed run can write **`videos/<project>/assets/run_report.json`** with per-stage timings and outcome ([`src/runtime/run_report.py`](../../src/runtime/run_report.py)). Uncaught exceptions in the desktop app append full tracebacks to **`logs/crash.log`** via `sys.excepthook` ([`UI/app.py`](../../UI/app.py), [`debug/debug_log.py`](../../debug/debug_log.py)).
+
+## Persisted pipeline queue
+
+The Run tab queue is saved to **`.Aquaduct_data/pipeline_queue.json`** on change and restored on startup ([`src/runtime/pipeline_queue_store.py`](../../src/runtime/pipeline_queue_store.py)), so a crash mid-batch does not lose queued jobs.
+
 ## Long model loads — heartbeat and Resource graph footer
 
 Synchronous **`from_pretrained`** (transformers / diffusers) blocks the worker thread for a long time. A background heartbeat logs progress and exposes the **latest line** for the Resource usage dialog footer ([`src/runtime/load_heartbeat.py`](../../src/runtime/load_heartbeat.py), [`diffusion_load_watch`](../../src/runtime/load_heartbeat.py)).

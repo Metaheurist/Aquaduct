@@ -40,10 +40,17 @@ If Kokoro generation is unavailable, the MVP falls back to:
 - `pyttsx3` (Windows SAPI)
 
 ## ElevenLabs (optional cloud TTS)
-When enabled in **API** and the active **character** selects an ElevenLabs voice, narration can be synthesized via the ElevenLabs HTTP API (`requests`); audio is converted to WAV with FFmpeg for the rest of the pipeline. On API failure or missing key, the pipeline falls back to the selected local voice model (Kokoro or MOSS) and then `pyttsx3`. See [ElevenLabs setup](../integrations/elevenlabs.md) and [Characters](../ui/characters.md).
+When enabled in **API** and the active **character** selects an ElevenLabs voice, narration can be synthesized via the ElevenLabs HTTP API (`requests`); audio is converted to WAV with FFmpeg for the rest of the pipeline. Optional **`voice_settings`** (stability, similarity) are forwarded when set on the character. On API failure or missing key, the pipeline falls back to the selected local voice model (Kokoro or MOSS) and then `pyttsx3`. See [ElevenLabs setup](../integrations/elevenlabs.md) and [Characters](../ui/characters.md).
 
-## Caption timing (MVP)
-Word timestamps are estimated by distributing total audio duration across words with slight weighting by word length. This is fast and avoids ASR/forced-alignment.
+## Pronunciation lexicon
+
+[`src/speech/tts_text.py`](../../src/speech/tts_text.py) applies a small **pronunciation lexicon** (word → phonetic spelling) before synthesis so recurring names and jargon are read consistently across Kokoro, MOSS, and ElevenLabs paths.
+
+## Caption timing
+
+**Default**: word timestamps are estimated by distributing total audio duration across words with slight weighting by word length (fast, no extra deps).
+
+**Optional alignment**: when **`faster-whisper`** is installed, [`align_captions_from_wav`](../../src/speech/voice.py) can produce tighter word-level timing from the rendered WAV; on failure the heuristic path is used. **Video** settings include **`caption_vertical_anchor`** (safe-zone positioning) consumed by [`src/render/captions.py`](../../src/render/captions.py).
 
 ## Outputs
 Written into the per-video folder:

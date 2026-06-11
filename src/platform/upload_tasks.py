@@ -143,6 +143,25 @@ def set_task_status(task_id: str, status: UploadTaskStatus, upload_error: str = 
         return
 
 
+def approve_task(task_id: str) -> UploadTask | None:
+    """Mark a pending/failed task as approved for publishing."""
+    tasks = load_tasks()
+    for i, t in enumerate(tasks):
+        if t.id != task_id:
+            continue
+        if t.status in ("posted",):
+            return t
+        tasks[i] = replace(t, status="approved", upload_error="")
+        save_tasks(tasks)
+        return tasks[i]
+    return None
+
+
+def task_ready_for_auto_upload(task: UploadTask) -> bool:
+    """Auto-upload workers only run for explicitly approved tasks."""
+    return str(task.status) == "approved"
+
+
 def set_youtube_upload_result(task_id: str, *, video_id: str = "", error: str = "") -> None:
     tasks = load_tasks()
     for i, t in enumerate(tasks):

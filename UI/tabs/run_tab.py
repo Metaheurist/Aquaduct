@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -702,7 +702,7 @@ def _attach_run_readiness(win) -> None:
             badge.setVisible(True)
 
     win._refresh_run_readiness = _refresh
-    _refresh()
+    QTimer.singleShot(0, _refresh)
 
 
 def _attach_getting_started_card(win, root: QVBoxLayout) -> None:
@@ -809,7 +809,7 @@ def _attach_getting_started_card(win, root: QVBoxLayout) -> None:
         card.setVisible(not (ready and finished))
 
     win._refresh_getting_started = _refresh
-    _refresh()
+    QTimer.singleShot(0, _refresh)
 
 
 def refresh_run_tab_for_media_mode(win) -> None:

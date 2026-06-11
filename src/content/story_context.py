@@ -224,6 +224,10 @@ def _meme_supplement_searches(
 
 
 def _download_one_image(url: str, dest: Path) -> bool:
+    from src.util.ssrf_guard import is_safe_http_url
+
+    if not is_safe_http_url(url):
+        return False
     try:
         r = requests.get(
             url,

@@ -30,6 +30,7 @@ from UI.dialogs.auxiliary_progress_dialog import map_llm_on_task_to_overall
 from UI.workers.common import (
     _firecrawl_kwargs,
     _reraise_system_interrupt,
+    raise_if_interrupted,
 )
 from debug import dprint
 
@@ -46,6 +47,7 @@ class TopicDiscoverWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             dprint("topics", "TopicDiscoverWorker", f"limit={self.limit}", f"mode={self.topic_mode}")
             app = self.settings
             if str(self.topic_mode or "").strip().lower() == "nsfw":
@@ -107,6 +109,7 @@ class TextExpandWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             self.progress.emit(0, "Starting…")
             if self.app_settings is not None and is_api_mode(self.app_settings):
                 from src.content.brain_api import expand_custom_field_text_openai
@@ -181,6 +184,7 @@ class TopicGroundingNotesWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             self.progress.emit(0, "Starting…")
             if self.app_settings is not None and is_api_mode(self.app_settings):
                 from src.content.brain_api import generate_topic_tag_grounding_notes_openai
@@ -264,6 +268,7 @@ class CharacterGenerateWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             self.progress.emit(0, "Starting…")
             if self.app_settings is not None and is_api_mode(self.app_settings):
                 self.progress.emit(14, "API: generating character fields…")
@@ -335,6 +340,7 @@ class CharacterPortraitWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             self.progress.emit(0, "Starting portrait…")
             if not self.character_id:
                 self.failed.emit("No character selected.")

@@ -4,6 +4,67 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Deep-dive remediation & feature rollout (2026-06)
+
+Cross-cutting pass: performance, prompting, cinematography presets, UX, security, reliability, and publishing/series features. **767** headless tests pass (`pytest -m "not qt"`).
+
+#### Performance & pipeline
+- **Spatial upscale**: skip second editor pass when clips already upscaled (`.aq_spatial` marker); **RealESRGAN** model cache reused across clips in one job ([`src/render/spatial_upscale.py`](src/render/spatial_upscale.py)).
+- **Batch quality regen**: failed slideshow/keyframes regen in one diffusion load ([`_batch_quality_regen`](main.py)).
+- **`_run_topic_tags`**: computed once per `run_once` instead of 17 repeated calls.
+- **LLM hot path**: removed per-token `torch.cuda.empty_cache()` in [`src/content/brain/runtime.py`](src/content/brain/runtime.py).
+- **Factcheck**: [`rewrite_with_uncertainty`](src/content/factcheck.py) uses shared `_infer_text_with_optional_holder` + JSON extractor.
+- **Music ducking**: `music_ducking_amount` now drives FFmpeg `sidechaincompress` ratio ([`src/speech/audio_fx.py`](src/speech/audio_fx.py)).
+- **Storyboard**: [`storyboard_from_prebuilt`](src/content/storyboard.py) skips redundant `build_storyboard` when prompts/seeds are finalized.
+- **SFX pre-mix** on video-clips assembly path (shared `_premix_sfx_track` in [`main.py`](main.py)).
+
+#### Prompting & scene expansion
+- **Unified JSON contract**: raw JSON only (no fences), few-shot example, mandatory non-empty `visual_prompt`, segment count/word bands ([`src/content/brain/prompts.py`](src/content/brain/prompts.py)).
+- **Untrusted-data delimiters** for scraped/web digest blocks; OpenAI brief expansion matches 8-section local template ([`src/content/brain_api.py`](src/content/brain_api.py)).
+- **Refinement guards** + lower token caps ([`src/content/story_pipeline.py`](src/content/story_pipeline.py)); hardened [`expand_scenes_via_llm`](src/render/scene_prompts.py).
+- **Topic pick**: [`pick_weighted_item`](src/content/crawler.py) weighted-random over top-ranked headlines.
+- **Fallback news template** rewritten to avoid banned clichés ([`src/content/brain/api.py`](src/content/brain/api.py)).
+
+#### Cinematography & presets
+- Extended **shot taxonomy** (OTS, POV, dutch, low/high angle); `shot_type` wired into [`condition_prompt`](src/content/prompt_conditioning.py).
+- Neutral **news/default** camera cues (no cyberpunk/UI bias); per-format **motion cues** with explicit shot sizes ([`src/render/scene_prompts.py`](src/render/scene_prompts.py)).
+- **Art style presets** gain camera-grammar lines; meme/unhinged staging conflict resolved ([`src/settings/art_style_presets.py`](src/settings/art_style_presets.py)).
+
+#### UX
+- **Non-blocking model downloads** (modeless `DownloadPopup` instead of `exec()`).
+- **FFmpeg auto-run**: queued pipeline starts when first-time FFmpeg install completes.
+- **Library search** over title, folder, and `meta.json`; **Tasks** tab copy is photo-aware.
+- [`UI/controllers/`](UI/controllers/) scaffold for incremental `MainWindow` decomposition.
+
+#### Security
+- **Fernet encryption** for API/OAuth secrets in `ui_settings.json` ([`src/settings/secrets_crypto.py`](src/settings/secrets_crypto.py)); plaintext migrates on load.
+- **SSRF guard** on outbound URL fetchers ([`src/util/ssrf_guard.py`](src/util/ssrf_guard.py)).
+- **F12 guardrail bypass** requires `AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS=1` at process start.
+- **`config show`** redacts secrets by default; use `--show-secrets` to opt in ([`src/cli/main.py`](src/cli/main.py)).
+- Offsite bundle scripts no longer embed HF tokens ([`Model-Downloads/generate_offsite_bundle.py`](Model-Downloads/generate_offsite_bundle.py)).
+
+#### Reliability & observability
+- **`run_report.json`** with per-stage timings ([`src/runtime/run_report.py`](src/runtime/run_report.py)).
+- **Crash log** via `sys.excepthook` → `logs/crash.log` ([`UI/app.py`](UI/app.py)).
+- **Persisted pipeline queue** → `.Aquaduct_data/pipeline_queue.json` ([`src/runtime/pipeline_queue_store.py`](src/runtime/pipeline_queue_store.py)).
+- **Nested series resume** scan in [`find_latest_resumable_video_project`](src/runtime/run_checkpoint.py).
+- Worker **`isInterruptionRequested()`** checks ([`UI/workers/common.py`](UI/workers/common.py)).
+- **`settings_schema_version`** migration ([`src/settings/ui_settings.py`](src/settings/ui_settings.py)).
+- [`pyproject.toml`](pyproject.toml) with project metadata and pytest markers.
+
+#### Publishing, series & media
+- **Upload approve gate** before auto-upload ([`src/platform/upload_tasks.py`](src/platform/upload_tasks.py)); **Approve** on Tasks tab.
+- **Series-aware captions** (`Ep N/T · …`) in [`build_caption_package`](src/platform/tiktok_post.py).
+- **Auto-thumbnails** beside `final.mp4` ([`src/render/thumbnail.py`](src/render/thumbnail.py)).
+- **Resume series** from Library ([`src/runtime/series_queue.py`](src/runtime/series_queue.py)); **cast lock** across episodes ([`src/series/store.py`](src/series/store.py)).
+- **`scripts/prune_runs.py`** for `runs/` retention.
+- **Caption sync**: optional **faster-whisper** alignment with heuristic fallback ([`src/speech/voice.py`](src/speech/voice.py)); **`caption_vertical_anchor`** on Video settings.
+- **ElevenLabs `voice_settings`** (stability/similarity); **pronunciation lexicon** in [`src/speech/tts_text.py`](src/speech/tts_text.py).
+
+#### Tests
+- New: [`tests/runtime/test_run_once_resume.py`](tests/runtime/test_run_once_resume.py), [`test_ssrf_guard.py`](tests/runtime/test_ssrf_guard.py), [`test_series_queue.py`](tests/runtime/test_series_queue.py), [`test_secrets_crypto.py`](tests/settings/test_secrets_crypto.py), [`test_editor_assembly.py`](tests/render/test_editor_assembly.py).
+- Renamed: [`tests/ui/test_pipeline_series_queue.py`](tests/ui/test_pipeline_series_queue.py) (was `test_series_queue.py`).
+
 ### UI modernization (desktop polish)
 
 - **SVG-only chrome**: status badges, disclosure chevrons, dialog close/pause, and LLM expand use vector icons ([`UI/widgets/toolbar_svg_icons.py`](UI/widgets/toolbar_svg_icons.py), [`status_glyph_label`](UI/widgets/tab_sections.py)) — no emoji/unicode glyphs in user-facing UI.
@@ -41,7 +102,7 @@ All notable changes to this project will be documented in this file.
 ### NSFW video format (adults-only preset)
 
 - **Run tab**: **NSFW (adult, 18+ only)** `video_format`; warning when selected; greys out TikTok/YouTube **auto-upload** checkboxes session-only (unless **F12** session guardrail bypass is on).
-- **Session guardrail bypass**: title bar **F12** toggles process-only **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** — skips NSFW LLM guard blocks, topic/crawl denylist, NSFW+auto-upload preflight errors and safety-checker warning, Tasks upload blocks for explicit renders; selects NSFW + **Allow NSFW** and copies topic tags to all `topic_tags_by_mode` buckets. Documented in [docs/reference/config.md](docs/reference/config.md#session-guardrail-bypass) and [docs/ui/ui.md](docs/ui/ui.md).
+- **Session guardrail bypass**: title bar **F12** toggles process-only **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** when that env var is set at launch — skips NSFW LLM guard blocks, topic/crawl denylist, NSFW+auto-upload preflight errors and safety-checker warning, Tasks upload blocks for explicit renders; selects NSFW + **Allow NSFW** and copies topic tags to all `topic_tags_by_mode` buckets. Documented in [docs/reference/config.md](docs/reference/config.md#session-guardrail-bypass) and [docs/ui/ui.md](docs/ui/ui.md).
 - **Topics / crawler**: Firecrawl-first discover + denylist filtering ([`src/content/nsfw_guardrails.py`](src/content/nsfw_guardrails.py)); research pack under **`data/topic_research/nsfw/`**; topic line heuristics in [`src/content/topic_discovery.py`](src/content/topic_discovery.py).
 - **Brain**: [`_prompt_for_nsfw_items`](src/content/brain/prompts.py), custom-brief + expand paths, `enforce_arc` skip; multi-stage refinements in [`src/content/story_pipeline.py`](src/content/story_pipeline.py); character presets `nsfw_*` in [`src/content/character_presets.py`](src/content/character_presets.py); portrait / character generation prepend guardrails when format or preset is NSFW.
 - **Pipeline**: `main.py` forces `allow_nsfw` for NSFW runs; **`meta.json`** includes **`video_format`** for Tasks upload guards; scene prompts NSFW motion/style in [`src/render/scene_prompts.py`](src/render/scene_prompts.py).
@@ -74,7 +135,7 @@ All notable changes to this project will be documented in this file.
 - **Run tab**: **Video series (continuation)** includes **Episodes to generate** (1–50) inside the series group when multi-episode is enabled; the **Output → Videos to generate** row hides in that mode so episode count appears in one place. Toggling series mode copies the count between the two controls; saved **`episode_count`** restores into the batch spinner when series mode was on. **Video series (continuation)** queues **N** episodes as separate jobs; frozen snapshot in `videos/<slug>/series.json`; rolling recap in `series_bible.md`; output under `videos/<slug>/episode_NNN_<title>/`.
 - **Pipeline**: `SeriesContext` passed through `run_once` / `run_once_api`; lock-first source replay; deterministic per-episode `seed_base`; script prompts include recap + bible; optional **unlock style** merges live art/models/character from the UI between episodes.
 - **Failure / cancel**: optional **continue on failure**; otherwise remaining `series_episode` rows for the same slug are dropped; cancel log counts dropped series episodes.
-- **Library**: nested series folders are scanned for finished MP4s. Docs: [`docs/pipeline/series-mode.md`](docs/pipeline/series-mode.md). Tests: `tests/content/test_brain_series_blocks.py`, `tests/series/test_recap_and_layout.py`, `tests/ui/test_series_queue.py`, `tests/ui/test_series_failure_abort.py`.
+- **Library**: nested series folders are scanned for finished MP4s. Docs: [`docs/pipeline/series-mode.md`](docs/pipeline/series-mode.md). Tests: `tests/content/test_brain_series_blocks.py`, `tests/series/test_recap_and_layout.py`, `tests/ui/test_pipeline_series_queue.py`, `tests/ui/test_series_failure_abort.py`.
 
 ### Hugging Face — Mochi video id
 

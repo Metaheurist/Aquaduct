@@ -16,6 +16,9 @@ Run from the repo root (e.g. your Aquaduct clone or a USB drive copy):
 Override the models folder:
   python scripts/download_hf_models.py --out D:\\models
 
+Use the Model tab path from ui_settings.json (including external E:/...):
+  python scripts/download_hf_models.py --from-settings --missing-only --all
+
 Gated models (e.g. meta-llama/*) require a token with access approved on huggingface.co.
 
 Auth troubleshooting:
@@ -44,7 +47,7 @@ from scripts._common import ensure_repo_on_path, load_repo_dotenv
 ensure_repo_on_path(root=ROOT)
 load_repo_dotenv(root=ROOT)
 
-from src.models.model_manager import model_options
+from src.models.model_manager import download_model_to_project, model_has_local_snapshot, model_options
 
 # Paste your Hugging Face token here (e.g. hf_...). Leave empty to use --token or env instead.
 # Precedence: --token CLI > this variable > HF_TOKEN / HUGGINGFACEHUB_API_TOKEN env.
@@ -63,19 +66,33 @@ EXTRA_TRANSFER_REPOS = [
 
 def curated_repo_ids(*, full: bool) -> list[str]:
     opts = model_options()
+    ids: list[str] = []
+    for o in opts:
+        ids.append(o.repo_id)
+        pr = str(getattr(o, "pair_image_repo_id", "") or "").strip()
+        if pr:
+            ids.append(pr)
     if full:
-        ids = [o.repo_id for o in opts]
         ids.extend(EXTRA_TRANSFER_REPOS)
-        return list(dict.fromkeys(ids))
-    picked: list[str] = []
-    seen_kind: set[str] = set()
-    for kind in ("script", "image", "voice"):
-        for o in sorted(opts, key=lambda x: (x.kind, x.ui_sequence, x.order, x.repo_id)):
-            if o.kind == kind and kind not in seen_kind:
-                seen_kind.add(kind)
-                picked.append(o.repo_id)
-                break
-    return picked
+    return list(dict.fromkeys(ids))
+
+
+def resolve_models_dir(*, out: Path | None, from_settings: bool) -> Path:
+    if from_settings:
+        from src.core.models_dir import models_dir_for_app
+        from src.settings.ui_settings import load_settings
+
+        return models_dir_for_app(load_settings())
+    return (out or Path("models")).expanduser().resolve()
+
+
+def filter_missing_repo_ids(repos: list[str], *, models_dir: Path) -> list[str]:
+    missing: list[str] = []
+    for rid in repos:
+        if model_has_local_snapshot(rid, models_dir=models_dir):
+            continue
+        missing.append(rid)
+    return missing
 def _safe_repo_dirname(repo_id: str) -> str:
     s = repo_id.strip().replace("/", "__")
     s = re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
@@ -95,20 +112,10 @@ def _resolve_token(cli_token: str | None) -> str | None:
 
 
 def download_one(repo_id: str, *, out_root: Path, token: str | None, max_workers: int) -> Path:
-    from huggingface_hub import snapshot_download
-
-    out_root.mkdir(parents=True, exist_ok=True)
-    local_dir = out_root / _safe_repo_dirname(repo_id)
-    local_dir.mkdir(parents=True, exist_ok=True)
-
-    snapshot_download(
-        repo_id=repo_id,
-        local_dir=str(local_dir),
-        token=token,
-        max_workers=max_workers,
-        etag_timeout=float(os.environ.get("HF_ETAG_TIMEOUT", "30")),
-    )
-    return local_dir
+    if token:
+        os.environ["HF_TOKEN"] = token
+        os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
+    return download_model_to_project(repo_id, models_dir=out_root, token=token)
 
 
 def main() -> int:
@@ -118,8 +125,18 @@ def main() -> int:
     p.add_argument(
         "--out",
         type=Path,
-        default=Path("models"),
+        default=None,
         help="Models directory (default: ./models under the current working directory)",
+    )
+    p.add_argument(
+        "--from-settings",
+        action="store_true",
+        help="Use the Model tab storage path from ui_settings.json (default or external).",
+    )
+    p.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="Skip repos that already have a valid local snapshot under the models folder.",
     )
     p.add_argument(
         "--token",
@@ -150,10 +167,17 @@ def main() -> int:
     seen: set[str] = set()
     repos = [r for r in repos if not (r in seen or seen.add(r))]
 
-    out_root = args.out.expanduser().resolve()
+    out_root = resolve_models_dir(out=args.out, from_settings=bool(args.from_settings))
+    if args.missing_only:
+        before = len(repos)
+        repos = filter_missing_repo_ids(repos, models_dir=out_root)
+        print(f"Missing-only: {len(repos)} to fetch ({before - len(repos)} already on disk)")
     cwd = Path.cwd().resolve()
     print(f"Working directory: {cwd}")
     print(f"Models folder:      {out_root}")
+    if not repos:
+        print("Nothing to download — all requested models are already on disk.")
+        return 0
     print(f"Models to fetch: {len(repos)} ({'full curated' if args.all else 'minimal'})")
     print(f"HF token: {'set' if token else 'NOT SET — gated models will fail without token/access'}")
     print(

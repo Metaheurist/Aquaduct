@@ -43,3 +43,15 @@ def test_parse_repairs_invalid_backslash_apostrophe_in_strings():
     assert json.loads(repair_llm_json_text_escapes(raw))["notes"]["google"] == "Respect Google's brand guidelines."
     d = parse_first_json_dict_from_llm_text(raw)
     assert d == {"notes": {"google": "Respect Google's brand guidelines."}}
+
+
+def test_parse_skips_thinking_preamble():
+    raw = (
+        "<" + "think>planning beats</" + "think>"
+        '{"title": "T", "description": "D", "hashtags": ["#x"], '
+        '"hook": "h", "segments": [{"narration": "n", "visual_prompt": "v", "on_screen_text": null}], '
+        '"cta": "c"}'
+    )
+    d = parse_first_json_dict_from_llm_text(raw)
+    assert d is not None
+    assert d["title"] == "T"

@@ -57,6 +57,7 @@ from UI.workers.common import (
     _firecrawl_kwargs,
     _generate_script_unified,
     _reraise_system_interrupt,
+    raise_if_interrupted,
 )
 from debug import dprint
 
@@ -92,6 +93,7 @@ class PipelineWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self, self.run_control)
             dprint("workers", "PipelineWorker start", f"prebuilt={'yes' if self.prebuilt_pkg else 'no'}")
             with pipeline_notice_scope(lambda title, msg: self.pipeline_warning.emit(title, msg)):
                 out = pipeline_run_once(
@@ -144,9 +146,8 @@ class PreviewWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self, self.run_control)
             dprint("workers", "PreviewWorker start")
-            if self.run_control is not None:
-                self.run_control.checkpoint()
             paths = get_paths()
             models = get_models()
             app = self.settings
@@ -163,8 +164,7 @@ class PreviewWorker(QThread):
                 first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
                 sources = [{"title": first_line, "url": "", "source": "custom"}]
                 self.progress.emit("headlines", 100, -1, "Using custom instructions")
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 self.progress.emit("personality", 0, -1, "Selecting tone…")
                 picked = auto_pick_personality(
@@ -191,8 +191,7 @@ class PreviewWorker(QThread):
                     elif task == "llm_generate":
                         self.progress.emit("script_llm_gen", pct, pct, msg)
 
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 expanded = _expand_brief_unified(
                     app=app,
@@ -257,8 +256,7 @@ class PreviewWorker(QThread):
                 titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
                 self.progress.emit("headlines", 100, -1, f"Picked {len(sources)} headline(s)")
 
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 self.progress.emit("personality", 0, -1, "Selecting tone…")
                 picked = auto_pick_personality(
@@ -285,8 +283,7 @@ class PreviewWorker(QThread):
                     elif task == "llm_generate":
                         self.progress.emit("script_llm_gen", pct, pct, msg)
 
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 article_excerpt = ""
                 if bool(getattr(app.video, "fetch_article_text", True)) and item is not None:
@@ -355,9 +352,8 @@ class StoryboardWorker(QThread):
         try:
             from pathlib import Path
 
+            raise_if_interrupted(self, self.run_control)
             dprint("workers", "StoryboardWorker start")
-            if self.run_control is not None:
-                self.run_control.checkpoint()
             paths = get_paths()
             models = get_models()
             app = self.settings
@@ -378,8 +374,7 @@ class StoryboardWorker(QThread):
                 first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
                 sources = [{"title": first_line, "url": "", "source": "custom"}]
                 self.progress.emit("headlines", 100, -1, "Using custom instructions")
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 self.progress.emit("personality", 0, -1, "Selecting tone…")
                 picked = auto_pick_personality(
@@ -406,8 +401,7 @@ class StoryboardWorker(QThread):
                     elif task == "llm_generate":
                         self.progress.emit("script_llm_gen", pct, pct, msg)
 
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 script_digest = ""
                 script_ref_notes = ""
@@ -557,8 +551,7 @@ class StoryboardWorker(QThread):
                 titles = [it.get("title", "") for it in sources if isinstance(it, dict)]
                 self.progress.emit("headlines", 100, -1, f"Picked {len(sources)} headline(s)")
 
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 self.progress.emit("personality", 0, -1, "Selecting tone…")
                 picked = auto_pick_personality(
@@ -585,8 +578,7 @@ class StoryboardWorker(QThread):
                     elif task == "llm_generate":
                         self.progress.emit("script_llm_gen", pct, pct, msg)
 
-                if self.run_control is not None:
-                    self.run_control.checkpoint()
+                raise_if_interrupted(self, self.run_control)
 
                 article_excerpt = ""
                 if bool(getattr(app.video, "fetch_article_text", True)) and item is not None:
@@ -753,8 +745,7 @@ class StoryboardWorker(QThread):
             def _img_pct(pct: int, msg: str) -> None:
                 self.progress.emit("storyboard_images", pct, pct, msg)
 
-            if self.run_control is not None:
-                self.run_control.checkpoint()
+            raise_if_interrupted(self, self.run_control)
 
             self.progress.emit("storyboard_images", 0, -1, "Loading image model…" if not is_api_mode(app) else "API images…")
             _ref_kw: dict = {}
@@ -770,6 +761,7 @@ class StoryboardWorker(QThread):
             if is_api_mode(app):
                 scene_paths = []
                 for i, pr in enumerate(prompts):
+                    raise_if_interrupted(self, self.run_control)
                     _img_pct(int(100 * i / max(len(prompts), 1)), f"API still {i + 1}/{len(prompts)}…")
                     data = generate_still_png_bytes(settings=app, prompt=str(pr or ""))
                     pth = previews_dir / f"prev_{i + 1:02d}.png"

@@ -245,5 +245,23 @@ def build_caption_package(video_dir: Path) -> tuple[str, str]:
             tags = " ".join(ht.read_text(encoding="utf-8").split())[:2000]
         except Exception:
             pass
-    full = " ".join(x for x in (title, desc, tags) if x).strip()
+    series_prefix = ""
+    if meta.exists():
+        try:
+            m2 = json.loads(meta.read_text(encoding="utf-8"))
+            if isinstance(m2, dict):
+                ser = m2.get("series")
+                if isinstance(ser, dict):
+                    ep_i = ser.get("episode_index")
+                    ep_t = ser.get("episode_total")
+                    slug = str(ser.get("slug") or "").strip()
+                    parts: list[str] = []
+                    if ep_i and ep_t:
+                        parts.append(f"Ep {int(ep_i)}/{int(ep_t)}")
+                    if slug:
+                        parts.append(f"#{slug.replace(' ', '_')[:40]}")
+                    series_prefix = " · ".join(parts)
+        except Exception:
+            pass
+    full = " ".join(x for x in (series_prefix, title, desc, tags) if x).strip()
     return title, full[:2200]

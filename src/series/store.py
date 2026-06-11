@@ -84,6 +84,7 @@ class SeriesRecord:
     episodes: list[SeriesEpisodeEntry] = field(default_factory=list)
     locked_sources: list[dict[str, str]] | None = None
     locked_article_excerpt: str = ""
+    locked_cast: list[dict[str, str]] | None = None
     created_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -98,6 +99,7 @@ class SeriesRecord:
             "episodes": [e.to_dict() for e in self.episodes],
             "locked_sources": self.locked_sources,
             "locked_article_excerpt": self.locked_article_excerpt,
+            "locked_cast": self.locked_cast,
             "created_at": self.created_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
@@ -119,6 +121,10 @@ class SeriesRecord:
         locked_sources: list[dict[str, str]] | None = None
         if isinstance(ls, list):
             locked_sources = [x for x in ls if isinstance(x, dict)]
+        lc = data.get("locked_cast")
+        locked_cast: list[dict[str, str]] | None = None
+        if isinstance(lc, list):
+            locked_cast = [x for x in lc if isinstance(x, dict)]
         snap = data.get("settings_snapshot")
         if not isinstance(snap, dict):
             snap = {}
@@ -132,6 +138,7 @@ class SeriesRecord:
             episodes=episodes,
             locked_sources=locked_sources,
             locked_article_excerpt=str(data.get("locked_article_excerpt", "") or ""),
+            locked_cast=locked_cast,
             created_at=str(data.get("created_at", "") or ""),
         )
 
@@ -298,6 +305,22 @@ def persist_locked_sources(
     if article_excerpt.strip():
         record.locked_article_excerpt = article_excerpt.strip()[:8000]
     save_series_record(series_dir, record)
+
+
+def persist_locked_cast(
+    paths: Paths,
+    slug: str,
+    *,
+    cast: list[dict[str, str]] | None,
+) -> None:
+    """After episode 1 cast is known, store it on ``series.json`` for later episodes."""
+    series_dir = series_root_for(paths, slug)
+    record = load_series_record(series_dir)
+    if record is None:
+        return
+    if cast:
+        record.locked_cast = [dict(x) for x in cast if isinstance(x, dict)]
+        save_series_record(series_dir, record)
 
 
 def drop_queued_series_items_for_slug(queue: list[dict[str, Any]], slug: str) -> int:

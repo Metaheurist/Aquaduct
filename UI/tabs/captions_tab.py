@@ -42,6 +42,16 @@ def attach_captions_tab(win) -> None:
     win.caption_max_words_spin.setValue(int(getattr(win.settings.video, "caption_max_words", 8)))
     form.addRow("Max words on screen", win.caption_max_words_spin)
 
+    win.caption_vertical_combo = NoWheelComboBox()
+    win.caption_vertical_combo.addItem("Lower third (default)", "bottom")
+    win.caption_vertical_combo.addItem("Middle", "middle")
+    win.caption_vertical_combo.addItem("Upper", "top")
+    cv = str(getattr(win.settings.video, "caption_vertical_anchor", "bottom") or "bottom")
+    cvi = win.caption_vertical_combo.findData(cv)
+    if cvi >= 0:
+        win.caption_vertical_combo.setCurrentIndex(cvi)
+    form.addRow("Caption position", win.caption_vertical_combo)
+
     win.facts_card_chk = QCheckBox('Show a "Key facts" overlay when article text is available')
     win.facts_card_chk.setChecked(bool(getattr(win.settings.video, "facts_card_enabled", True)))
     form.addRow("", win.facts_card_chk)

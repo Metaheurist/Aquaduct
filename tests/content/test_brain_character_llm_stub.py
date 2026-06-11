@@ -18,8 +18,8 @@ def test_generate_character_from_preset_llm_parses_identity_tokens(monkeypatch):
         "visual_style": "minimal studio, soft key light",
         "negatives": "watermark",
         "use_default_voice": True,
-        "gender": "woman",
-        "ethnicity": "East Asian",
+        "gender": "female",
+        "ethnicity": "east asian",
         "age_range": "late 20s",
     }
 
@@ -30,8 +30,8 @@ def test_generate_character_from_preset_llm_parses_identity_tokens(monkeypatch):
 
     out = brain_api.generate_character_from_preset_llm(model_id="stub-model", preset=preset)
     assert out.name == "Riven Luxe"
-    assert out.gender == "woman"
-    assert out.ethnicity == "East Asian"
+    assert out.gender == "female"
+    assert out.ethnicity == "east asian"
     assert out.age_range == "late 20s"
 
 

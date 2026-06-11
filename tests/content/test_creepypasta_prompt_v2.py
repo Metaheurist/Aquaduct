@@ -62,7 +62,7 @@ def test_creepypasta_prompt_locks_first_person_campfire_voice() -> None:
 
 def test_creepypasta_prompt_strict_json_envelope() -> None:
     out = _build_prompt([])
-    assert "Output STRICT JSON" in out
+    assert "Output raw JSON" in out
     assert "narration" in out
     assert "visual_prompt" in out
 

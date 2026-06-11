@@ -61,14 +61,20 @@ def narration_word_count(pkg: VideoPackage) -> int:
     return len(pkg.narration_text().split())
 
 
+_REFINEMENT_PRESERVE_RULES = (
+    "Preserve: segment count, title, and hashtags unless fixing a clear error.\n"
+    "Never empty visual_prompt on any segment.\n"
+)
+
+
 def _common_json_rules() -> str:
     return (
-        "Respond with ONLY a single JSON object — no preamble, no trailing prose.\n"
+        "Respond with ONLY a single raw JSON object — no markdown fences, no preamble.\n"
         "Keys: title, description, hashtags, hook, segments, cta.\n"
         "segments must be an array of objects: {narration, visual_prompt, on_screen_text}.\n"
         "Rules: TTS reads hook, each narration, and cta — only speakable words there; "
         "put staging only in visual_prompt. title <= 80 chars. hashtags: 15-30 strings.\n"
-        "Avoid markdown except optional ```json fence.\n"
+        f"{_REFINEMENT_PRESERVE_RULES}"
     )
 
 
@@ -463,6 +469,7 @@ def _maybe_elaboration(
             on_llm_task=_emit,
             max_new_tokens=2048,
             inference_settings=app_settings,
+            relax_short_json_batch=True,
         )
         try:
             return video_package_from_llm_output(raw, video_format=vf)
@@ -476,6 +483,7 @@ def _maybe_elaboration(
                 on_llm_task=_emit,
                 max_new_tokens=2048,
                 inference_settings=app_settings,
+                relax_short_json_batch=True,
             )
             return video_package_from_llm_output(raw_fix, video_format=vf)
     except Exception as e:
@@ -558,8 +566,9 @@ def run_multistage_refinement(
                     model_id,
                     prompt,
                     on_llm_task=_emit,
-                    max_new_tokens=2048,
+                    max_new_tokens=1200,
                     inference_settings=app_settings,
+                    relax_short_json_batch=True,
                 )
                 try:
                     cur = video_package_from_llm_output(raw, video_format=video_format)
@@ -573,6 +582,7 @@ def run_multistage_refinement(
                         on_llm_task=_emit,
                         max_new_tokens=2048,
                         inference_settings=app_settings,
+                        relax_short_json_batch=True,
                     )
                     cur = video_package_from_llm_output(raw_fix, video_format=video_format)
             except (json.JSONDecodeError, ValueError) as e:
@@ -580,7 +590,8 @@ def run_multistage_refinement(
                 if not refinement_json_notice_sent:
                     emit_pipeline_notice(
                         "Script refinement",
-                        "A refinement stage did not return usable JSON (including repair); continuing with the previous draft.",
+                        f"Stage “{spec.label}” did not return usable JSON (including repair); "
+                        "continuing with the previous draft.",
                     )
                     refinement_json_notice_sent = True
             except Exception as e:

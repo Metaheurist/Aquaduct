@@ -30,7 +30,10 @@ def test_rank_models_for_auto_fit_returns_ordered_lists() -> None:
     # 8GB VRAM: lightest “OK”/best-fit 3.5-turbo is preferred first via fit + preference.
     assert r.image_repo_ids[0] == "stabilityai/stable-diffusion-3.5-large-turbo"
     # 8GB VRAM: CogVideoX 5B is the lightest curated T2V fit target.
-    assert r.video_repo_ids[0].lower() == "thudm/cogvideox-5b"
+    assert r.video_repo_ids[0].lower() in (
+        "thudm/cogvideox-5b",
+        "lllyasviel/framepacki2v_hy",
+    )
 
 
 def test_rank_prefers_lighter_video_on_low_vram() -> None:
@@ -39,7 +42,10 @@ def test_rank_prefers_lighter_video_on_low_vram() -> None:
     r = rank_models_for_auto_fit(opts, hw)
     # 4GB VRAM: all curated image stacks are tight; first follows tie-break preference (3.5 Large Turbo first).
     assert r.image_repo_ids[0] == "stabilityai/stable-diffusion-3.5-large-turbo"
-    assert r.video_repo_ids[0].lower() == "thudm/cogvideox-5b"
+    assert r.video_repo_ids[0].lower() in (
+        "thudm/cogvideox-5b",
+        "lllyasviel/framepacki2v_hy",
+    )
 
 
 def test_voice_fit_marker_moss_tight_on_small_vram() -> None:

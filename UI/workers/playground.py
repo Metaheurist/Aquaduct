@@ -14,7 +14,7 @@ from src.runtime.model_backend import is_api_mode
 from src.util.cuda_device_policy import resolve_diffusion_cuda_device_index
 from src.util.memory_budget import release_between_stages
 
-from UI.workers.common import _reraise_system_interrupt
+from UI.workers.common import _reraise_system_interrupt, raise_if_interrupted
 
 
 class ImagePlaygroundWorker(QThread):
@@ -46,6 +46,7 @@ class ImagePlaygroundWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             if not self.prompt:
                 self.failed.emit("Enter a prompt.")
                 return
@@ -136,6 +137,7 @@ class VideoPlaygroundWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             st = self.app_settings
             self.work_dir.mkdir(parents=True, exist_ok=True)
             vs = getattr(st, "video", None) if st is not None else None

@@ -74,7 +74,7 @@ QTabWidget::tab-bar {{
   /* Nudge tabs right so the first tab aligns with the pane below (avoids left overhang vs rounded content). */
   left: 10px;
 }}
-QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 8px; background: {panel}; }}
+QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 12px 16px 16px 16px; background: {panel}; }}
 QFrame#SettingsSectionCard {{
   background: {card};
   border: 1px solid {border};
@@ -88,9 +88,18 @@ QFrame#SettingsSectionCard QPlainTextEdit,
 QFrame#SettingsSectionCard QAbstractSpinBox {{
   background-color: rgba(255, 255, 255, 0.06);
 }}
-QTabBar::tab {{ background: {control_bg}; color: {muted}; padding: 10px 14px; margin: 6px 6px 0 0;
+QTabBar::tab {{ background: {control_bg}; color: {muted}; padding: 10px 16px; margin: 8px 8px 0 0;
                border-top-left-radius: 14px; border-top-right-radius: 14px; border: 1px solid {border}; }}
 QTabBar::tab:selected {{ color: {text}; border-bottom: 3px solid {accent}; }}
+QTableWidget {{
+  background: {control_bg}; border: 1px solid {border}; border-radius: 12px; color: {text};
+  gridline-color: {border}; selection-background-color: rgba(37, 244, 238, 0.18);
+}}
+QTableWidget::item {{ padding: 6px 10px; }}
+QHeaderView::section {{
+  background: {card}; color: {muted}; padding: 8px 10px; border: none;
+  border-bottom: 1px solid {border}; font-weight: 700; font-size: 12px;
+}}
 QLineEdit, QTextEdit, QPlainTextEdit, QListWidget {{
   background: {control_bg}; border: 1px solid {border}; border-radius: 12px; padding: 8px; color: {text};
   min-height: 30px;

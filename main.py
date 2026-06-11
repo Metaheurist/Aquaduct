@@ -49,6 +49,7 @@ from src.content.crawler import (
     get_scored_items,
     news_item_to_script_source,
     pick_one_item,
+    pick_weighted_item,
 )
 from src.content.factcheck import rewrite_with_uncertainty
 from src.content.personality_auto import AutoPickResult, auto_pick_personality
@@ -61,10 +62,11 @@ from src.content.story_context import build_script_context
 from src.content.story_pipeline import run_multistage_refinement
 from src.content.topic_research_assets import topic_research_digest_for_script
 from src.content.llm_session import dispose_llm_holder, new_llm_holder
-from src.content.storyboard import build_storyboard, render_preview_grid, write_manifest
+from src.content.storyboard import build_storyboard, render_preview_grid, storyboard_from_prebuilt, write_manifest
 from src.content.topics import effective_topic_tags, news_cache_mode_for_run, video_format_skips_seen_url_disk_cache
 from src.core.config import (
     AppSettings,
+    Paths,
     SCRIPT_HEADLINE_FETCH_LIMIT,
     VideoSettings,
     get_models,
@@ -95,11 +97,13 @@ from src.series.context import SeriesContext
 from src.series.store import (
     episode_subdir_name,
     load_series_record,
+    persist_locked_cast,
     persist_locked_sources,
     series_root_for,
 )
 from src.runtime.preflight import preflight_check
 from src.runtime import run_checkpoint as run_ckpt
+from src.runtime import run_report as run_rpt
 from src.models.inference_profiles import log_inference_profiles_for_run
 from src.util.cuda_capabilities import cuda_device_reported_by_torch
 from src.util.cuda_device_policy import (
@@ -128,6 +132,7 @@ from src.speech.elevenlabs_tts import (
 from src.speech.tts_text import merge_moss_character_and_run_personality, shape_tts_text
 from src.speech.tts_kokoro_moss import is_kokoro_repo, is_moss_vg_repo, is_pyttsx3_fallback_repo
 from src.speech.voice import (
+    align_captions_from_wav,
     synthesize,
     synthesize_unhinged_moss,
     synthesize_unhinged_rotating_kokoro,
@@ -147,46 +152,16 @@ _CLI_SUBCOMMANDS = frozenset({"run", "preflight", "config", "models", "tasks", "
 
 
 def _clear_after_oom() -> None:
-    """
-    Best-effort: clear VRAM between retries (diffusers/transformers load can fragment VRAM).
-    """
+    """Best-effort: clear VRAM between retries (diffusers/transformers load can fragment VRAM)."""
     try:
-        prepare_for_next_model()
-    except Exception:
-        pass
-    try:
-        import gc
+        from src.util.utils_vram import purge_process_memory_aggressive
 
-        gc.collect()
-        gc.collect()
+        purge_process_memory_aggressive()
     except Exception:
-        pass
-    try:
-        import torch
-
-        if cuda_device_reported_by_torch():
-            try:
-                torch.cuda.synchronize()
-            except Exception:
-                pass
-            try:
-                for di in range(int(torch.cuda.device_count())):
-                    try:
-                        with torch.cuda.device(di):
-                            torch.cuda.empty_cache()
-                    except Exception:
-                        pass
-            except Exception:
-                try:
-                    torch.cuda.empty_cache()
-                except Exception:
-                    pass
-            try:
-                torch.cuda.ipc_collect()
-            except Exception:
-                pass
-    except Exception:
-        pass
+        try:
+            prepare_for_next_model()
+        except Exception:
+            pass
 
 
 def _apply_hf_token_from_saved_settings(saved_settings: AppSettings | None) -> None:
@@ -257,6 +232,10 @@ def _pipeline_checkpoint(stage_id: str) -> None:
 def _run_stage(stage: str, detail: str = "") -> None:
     """Record and echo the current pipeline phase to stderr (always on)."""
     _PIPELINE_RUN_STAGE[0] = stage
+    try:
+        run_rpt.mark_stage(stage)
+    except Exception:
+        pass
     pipeline_console(detail if detail else stage, stage=stage)
 
 
@@ -314,6 +293,65 @@ def _write_video_folder(
             (video_dir / "preview.json").write_text(json.dumps(preview, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
+
+    try:
+        fin = video_dir / "final.mp4"
+        if fin.is_file():
+            from src.render.thumbnail import generate_thumbnail
+
+            generate_thumbnail(ffmpeg_dir=get_paths().ffmpeg_dir, video_mp4=fin)
+    except Exception:
+        pass
+
+
+def _premix_sfx_track(
+    *,
+    paths: Paths,
+    video_settings: VideoSettings,
+    assets_dir: Path,
+    mix_wav: Path,
+    clip_count: int,
+) -> Path:
+    """Mix subtle SFX bed into voice/music WAV (slideshow path parity)."""
+    if str(getattr(video_settings, "sfx_mode", "off") or "off") == "off":
+        return mix_wav
+    try:
+        import subprocess as _sub
+        from pathlib import Path as _Path
+
+        sfx_paths = ensure_builtin_sfx(assets_dir / "sfx")
+        dur_s = float(duration_seconds(mix_wav))
+        sfx_clip_count = max(3, min(24, int(clip_count)))
+        events = schedule_sfx_events(duration_s=dur_s, clip_count=sfx_clip_count, sfx_paths=sfx_paths)
+        sfx_track = assets_dir / "sfx_track.wav"
+        render_sfx_track(sr=44100, duration_s=dur_s, events=events, out_wav=sfx_track)
+        ffmpeg_bin = _Path(ensure_ffmpeg(paths.ffmpeg_dir))
+        out_final_wav = assets_dir / "final_audio.wav"
+        cmd = build_sfx_mix_cmd(ffmpeg=ffmpeg_bin, base_wav=mix_wav, sfx_wavs=[sfx_track], out_wav=out_final_wav)
+        _sub.run(cmd, check=True, capture_output=True, text=True)
+        return out_final_wav
+    except Exception:
+        return mix_wav
+
+
+def _finalize_series_cast_lock(
+    *,
+    paths: Paths,
+    series_context: SeriesContext | None,
+    video_dir: Path,
+) -> None:
+    if series_context is None or not series_context.is_first:
+        return
+    cast_path = video_dir / "assets" / "generated_cast.json"
+    if not cast_path.is_file():
+        return
+    try:
+        blob = json.loads(cast_path.read_text(encoding="utf-8"))
+        ch = blob.get("characters") if isinstance(blob, dict) else None
+        if isinstance(ch, list) and ch:
+            persist_locked_cast(paths, series_context.series_slug, cast=ch)
+    except Exception:
+        pass
 
 
 def _strip_negative_and_noise(prompt: str) -> str:
@@ -454,6 +492,76 @@ def _series_meta_for_video_folder(series_context: SeriesContext | None) -> dict 
     }
 
 
+def _batch_quality_regen(
+    *,
+    img_id: str,
+    prompts: list[str],
+    seeds: list[int],
+    out_paths: list[Path],
+    retries: int,
+    allow_nsfw: bool,
+    art_style_id: str,
+    cuda_idx: int | None,
+    inference_settings: AppSettings,
+    diffusion_ref_kw: dict,
+    clear_cb: Callable[[], None] | None = None,
+    retry_stage_cb: Callable | None = None,
+    gpus: list | None = None,
+    app: AppSettings | None = None,
+) -> tuple[AppSettings | None, int | None]:
+    """Score frames and batch-regen rejects in as few diffusion loads as possible."""
+    if retries <= 0 or not prompts:
+        return app, cuda_idx
+    pending = list(zip(prompts, seeds, out_paths))
+    for attempt in range(1, retries + 1):
+        bad: list[tuple[str, int, Path]] = []
+        for p, base_seed, out_path in pending:
+            try:
+                if not is_reject(score_frame(out_path)):
+                    continue
+            except Exception:
+                continue
+            bad.append((p, int(base_seed), out_path))
+        if not bad:
+            break
+        regen_prompts = [b[0] for b in bad]
+        regen_seeds = [b[1] + attempt for b in bad]
+        with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
+
+            def _run_batch(s: AppSettings, idx: int | None):
+                return generate_images(
+                    sdxl_turbo_model_id=img_id,
+                    prompts=regen_prompts,
+                    out_dir=Path(_td),
+                    max_images=len(regen_prompts),
+                    seeds=regen_seeds,
+                    allow_nsfw=allow_nsfw,
+                    art_style_preset_id=art_style_id,
+                    use_style_continuity=False,
+                    cuda_device_index=idx,
+                    inference_settings=s,
+                    **diffusion_ref_kw,
+                )
+
+            if retry_stage_cb is not None and app is not None and gpus is not None:
+                regen, app, cuda_idx = retry_stage_cb(
+                    stage_name="quality_regen",
+                    role="image",
+                    repo_id=str(img_id),
+                    settings=app,
+                    cuda_device_index=cuda_idx,
+                    gpus=gpus,
+                    clear_cb=clear_cb or (lambda: None),
+                    run_cb=_run_batch,
+                )
+            else:
+                regen = _run_batch(inference_settings, cuda_idx)
+            for gi, (_, _, out_path) in zip(regen, bad):
+                apply_regenerated_image([gi], out_path)
+        pending = bad
+    return app, cuda_idx
+
+
 def run_once(
     *,
     settings: AppSettings | None = None,
@@ -505,6 +613,14 @@ def run_once(
     except Exception:
         pass
     set_pipeline_models_dir(models_dir_for_app(app))
+    run_id = _now_run_id()
+    _outcome_ok = False
+    _outcome_err: BaseException | None = None
+    _outcome_path: Path | None = None
+    try:
+        run_rpt.begin_run(settings=app, run_id=run_id)
+    except Exception:
+        pass
     try:
         dprint(
             "pipeline",
@@ -561,6 +677,8 @@ def run_once(
             app = replace(app, video=replace(app.video, seed_base=_seed_mix))
             video_settings = app.video
 
+        _run_topic_tags = list(effective_topic_tags(app))
+
         items = None
         sources: list[dict[str, str]] = []
         preview_blob: dict | None = None
@@ -574,6 +692,7 @@ def run_once(
                 if not raw_inst:
                     dprint("pipeline", "custom mode but empty instructions — stopping")
                     _pipe_progress(on_progress, 8, -1, "No instructions (custom mode)")
+                    _outcome_ok = True
                     return None
                 first_line = raw_inst.splitlines()[0].strip()[:120] or "Custom video"
                 sources = [{"title": first_line, "url": "", "source": "custom"}]
@@ -607,7 +726,7 @@ def run_once(
                 else:
                     # Prefer scored + diversified selection (better signals, fewer duplicates).
                     fc = _firecrawl_kwargs(app)
-                    tags = effective_topic_tags(app)
+                    tags = _run_topic_tags
                     cm = news_cache_mode_for_run(app)
                     # Unhinged / creepypasta: do not read/write news_cache — fetch fresh each run.
                     if video_format_skips_seen_url_disk_cache(cm):
@@ -640,10 +759,14 @@ def run_once(
                             cache_mode=cm,
                             **fc,
                         )
-                    item = pick_one_item(items)
+                    if bool(getattr(video_settings, "high_quality_topic_selection", True)):
+                        item = pick_weighted_item(items)
+                    else:
+                        item = pick_one_item(items)
                     if not item:
                         dprint("crawler", "no item picked — stopping run_once")
                         _pipe_progress(on_progress, 8, -1, "No new headlines in cache")
+                        _outcome_ok = True
                         return None
                     dprint("crawler", f"picked {len(items)} candidate(s)", f"primary={getattr(item, 'title', '')[:90]!r}")
                     sources = [news_item_to_script_source(it) for it in items]
@@ -677,11 +800,14 @@ def run_once(
         else:
             _pipe_progress(on_progress, 14, -1, "Using approved script (skips news & LLM)")
     
-        run_id = _now_run_id()
         dprint("pipeline", f"run_id={run_id}")
         run_dir = paths.runs_dir / run_id
         run_assets = run_dir / "assets"
         run_assets.mkdir(parents=True, exist_ok=True)
+        try:
+            run_rpt.set_run_dir(run_dir)
+        except Exception:
+            pass
         if series_context is not None:
             try:
                 (run_assets / "series_context.json").write_text(
@@ -781,7 +907,7 @@ def run_once(
     
         # Cast: if user explicitly selected a character, use it. Otherwise generate an ephemeral narrator/cast per run.
         _vf_cast = str(getattr(app, "video_format", "news") or "news")
-        _tags_cast = list(effective_topic_tags(app))
+        _tags_cast = list(_run_topic_tags)
         _head_seed = ""
         if sources:
             _head_seed = str(sources[0].get("title") or "")
@@ -828,7 +954,7 @@ def run_once(
             if pkg is None:
                 raise RuntimeError("resume_partial_project_directory is set but pipeline_script_package.json could not be loaded.")
             llm_sess = None
-            _tags_resume = list(effective_topic_tags(app))
+            _tags_resume = list(_run_topic_tags)
             personality_pick = auto_pick_personality(
                 requested_id=getattr(app, "personality_id", "auto"),
                 llm_model_id=llm_id,
@@ -840,7 +966,7 @@ def run_once(
             dprint("pipeline", "resume checkpoint script", f"title={pkg.title[:100]!r}")
         elif prebuilt_pkg is None:
             llm_sess: dict | None = None if is_api_mode(app) else new_llm_holder()
-            tags = list(effective_topic_tags(app))
+            tags = list(_run_topic_tags)
             vf = str(getattr(app, "video_format", "news") or "news")
             try_llm_4bit = bool(getattr(app, "try_llm_4bit", True))
             _sc_prev = _series_script_excerpt_for_prompt(series_context)
@@ -998,7 +1124,7 @@ def run_once(
                 except Exception:
                     _cast_names = []
                 _topic_constraint = _topic_block(
-                    list(effective_topic_tags(app)),
+                    list(_run_topic_tags),
                     notes=getattr(app, "topic_tag_notes", None),
                     cast_names=_cast_names,
                 )
@@ -1176,7 +1302,7 @@ def run_once(
             pkg = prebuilt_pkg
             llm_sess = None
             dprint("pipeline", "using prebuilt script package", f"title={pkg.title[:100]!r}")
-            tags_voice = list(effective_topic_tags(app))
+            tags_voice = list(_run_topic_tags)
             personality_pick = auto_pick_personality(
                 requested_id=getattr(app, "personality_id", "auto"),
                 llm_model_id=llm_id,
@@ -1204,12 +1330,22 @@ def run_once(
             _ck_assets_cast = _ckpt_target_assets()
             _reuse_cast_fp = (_ck_assets_cast / "generated_cast.json") if _ck_assets_cast is not None else None
             _cast_loaded = False
+            if (
+                series_context is not None
+                and not series_context.is_first
+            ):
+                rec_cast = load_series_record(series_root_for(paths, series_context.series_slug))
+                if rec_cast is not None and rec_cast.locked_cast:
+                    cast = [dict(x) for x in rec_cast.locked_cast if isinstance(x, dict)]
+                    if cast:
+                        _cast_loaded = True
+                        _run_stage("cast_llm", "Reusing locked series cast from episode 1…")
             # Tests and API-style entrypoints often provide a prebuilt package/prompts; avoid loading the LLM
             # just to invent a cast. Fall back to the deterministic heuristic cast.
             if prebuilt_pkg is not None:
                 cast = fallback_cast_for_show(
                     video_format=vf_cast2,
-                    topic_tags=list(effective_topic_tags(app)),
+                    topic_tags=list(_run_topic_tags),
                     headline_seed=_head_seed,
                 )
                 _cast_loaded = True
@@ -1244,7 +1380,7 @@ def run_once(
                         video_format=vf_cast2,
                         storyline_title=str(pkg.title or ""),
                         storyline_text=storyline,
-                        topic_tags=list(effective_topic_tags(app)),
+                        topic_tags=list(_run_topic_tags),
                         on_llm_task=_cast_llm,
                         try_llm_4bit=bool(getattr(app, "try_llm_4bit", True)),
                         llm_cuda_device_index=_llm_cuda_idx,
@@ -1253,7 +1389,7 @@ def run_once(
                     )
                 except Exception:
                     cast = fallback_cast_for_show(
-                        video_format=vf_cast2, topic_tags=list(effective_topic_tags(app)), headline_seed=_head_seed
+                        video_format=vf_cast2, topic_tags=list(_run_topic_tags), headline_seed=_head_seed
                     )
 
             try:
@@ -1449,6 +1585,8 @@ def run_once(
                     save_settings(app)
             except Exception:
                 pass
+            _outcome_ok = True
+            _outcome_path = out_final_png
             return out_final_png
     
         # Voice
@@ -1458,6 +1596,7 @@ def run_once(
         vf_voice = str(getattr(app, "video_format", "news") or "news").strip().lower()
         narration = _scrub_spoken_text(pkg.narration_text(), video_format=vf_voice)
         pid_voice = effective_personality_id
+        _pron_lex = dict(getattr(app, "pronunciation_lexicon", {}) or {})
         py_tts_voice: str | None = None
         kokoro_sp: str | None = None
         el_vid: str | None = None
@@ -1499,10 +1638,10 @@ def run_once(
             if pkg.cta.strip():
                 parts.append(_scrub_spoken_text(pkg.cta.strip(), video_format=vf_voice))
             for raw in parts:
-                st = shape_tts_text(raw, personality_id=pid_voice)
+                st = shape_tts_text(raw, personality_id=pid_voice, pronunciation_lexicon=_pron_lex)
                 texts_uh.append(st if st else raw)
             if not texts_uh:
-                st_full = shape_tts_text(narration, personality_id=pid_voice)
+                st_full = shape_tts_text(narration, personality_id=pid_voice, pronunciation_lexicon=_pron_lex)
                 texts_uh = [st_full if st_full else narration]
 
         _voice_qm = str(getattr(app, "voice_quant_mode", "auto") or "auto")
@@ -1520,7 +1659,7 @@ def run_once(
             _run_stage("voice_tts", "Reusing cached voice.wav + captions.json from checkpoint")
         elif use_el:
             _run_stage("voice_tts", f"Synthesizing narration ({voice_id!r}); writing voice.wav + captions.json")
-            shaped_el = shape_tts_text(narration, personality_id=pid_voice)
+            shaped_el = shape_tts_text(narration, personality_id=pid_voice, pronunciation_lexicon=_pron_lex)
             if shaped_el:
                 try:
                     (assets_dir / "narration_shaped.txt").write_text(shaped_el, encoding="utf-8")
@@ -1537,6 +1676,8 @@ def run_once(
                 voice_instruction=voice_inst,
                 elevenlabs_voice_id=el_vid,
                 elevenlabs_api_key=el_key,
+                elevenlabs_stability=float(getattr(app, "elevenlabs_stability", 0.5) or 0.5),
+                elevenlabs_similarity_boost=float(getattr(app, "elevenlabs_similarity_boost", 0.75) or 0.75),
                 ffmpeg_executable=ffmpeg_exe,
                 voice_quant_mode=_voice_qm,
                 voice_cuda_device_index=_voice_cuda_idx,
@@ -1582,7 +1723,7 @@ def run_once(
                         )
                 else:
                     narr_local = narration
-                    shaped2 = shape_tts_text(narr_local, personality_id=pid_voice)
+                    shaped2 = shape_tts_text(narr_local, personality_id=pid_voice, pronunciation_lexicon=_pron_lex)
                     if shaped2:
                         try:
                             (assets_dir / "narration_shaped.txt").write_text(shaped2, encoding="utf-8")
@@ -1640,6 +1781,19 @@ def run_once(
         except Exception:
             final_voice_wav = voice_wav
             pipeline_console("Voice polish skipped (using raw voice.wav)", stage="audio_polish")
+
+        try:
+            cap_ref = narration
+            shaped_path = assets_dir / "narration_shaped.txt"
+            if shaped_path.is_file():
+                cap_ref = shaped_path.read_text(encoding="utf-8").strip() or cap_ref
+            align_captions_from_wav(
+                wav_path=final_voice_wav,
+                reference_text=cap_ref,
+                out_captions_json=captions_json,
+            )
+        except Exception:
+            pass
 
         release_between_stages("after_voice_polish_before_visuals", variant="cheap")
 
@@ -1915,6 +2069,14 @@ def run_once(
             except Exception:
                 mix_wav = final_voice_wav
 
+            mix_wav = _premix_sfx_track(
+                paths=paths,
+                video_settings=video_settings,
+                assets_dir=assets_dir,
+                mix_wav=mix_wav,
+                clip_count=len(clip_paths),
+            )
+
             _pipe_progress(on_progress, 91, -1, "Rendering Pro video & final MP4…")
             _run_stage(
                 "encode",
@@ -1932,7 +2094,7 @@ def run_once(
                 background_music=None,
                 branding=branding,
                 article_text=article_text,
-                topic_tags=list(effective_topic_tags(app)),
+                topic_tags=list(_run_topic_tags),
                 video_format=str(getattr(app, "video_format", "news") or "news"),
                 clip_durations=clip_durations,
                 cuda_device_index=_diffusion_cuda_idx,
@@ -1960,6 +2122,11 @@ def run_once(
                         llm_model_id=llm_id,
                         llm_cuda_device_index=_llm_cuda_idx,
                     )
+                    _finalize_series_cast_lock(
+                        paths=paths,
+                        series_context=series_context,
+                        video_dir=video_dir,
+                    )
                 except Exception:
                     pass
             try:
@@ -1967,6 +2134,8 @@ def run_once(
                     save_settings(app)
             except Exception:
                 pass
+            _outcome_ok = True
+            _outcome_path = out_final
             return out_final
     
         if video_settings.use_image_slideshow:
@@ -1998,25 +2167,19 @@ def run_once(
                         storyboard_seeds = storyboard_seeds + [
                             base_i + (i + 1) * 9973 for i in range(len(storyboard_prompts_head) - len(storyboard_seeds))
                         ]
-                    storyboard = build_storyboard(
-                        pkg,
-                        seed_base=getattr(video_settings, "seed_base", None),
-                        branding=getattr(app, "branding", None),
-                        max_scenes=len(storyboard_prompts_head),
-                        character=active_character,
-                        video_format=str(getattr(app, "video_format", "news") or "news"),
+                    storyboard_head = storyboard_from_prebuilt(
+                        storyboard_prompts_head,
+                        storyboard_seeds,
+                        title=str(getattr(pkg, "title", "") or "Storyboard"),
                     )
-                    try:
-                        for i in range(min(len(storyboard.scenes), len(storyboard_prompts_head))):
-                            sc = storyboard.scenes[i]
-                            storyboard.scenes[i] = type(sc)(  # type: ignore[misc]
-                                **{**sc.__dict__, "prompt": storyboard_prompts_head[i], "seed": int(storyboard_seeds[i])}
-                            )
-                    except Exception:
-                        pass
-                    ns = max(1, len(storyboard.scenes))
-                    storyboard_prompts = [storyboard.scenes[i % ns].prompt for i in range(n_pro)]
-                    storyboard_seeds = [int(storyboard.scenes[i % ns].seed) + (i // ns) * 7919 for i in range(n_pro)]
+                    ns = max(1, len(storyboard_head.scenes))
+                    storyboard_prompts = [storyboard_head.scenes[i % ns].prompt for i in range(n_pro)]
+                    storyboard_seeds = [int(storyboard_head.scenes[i % ns].seed) + (i // ns) * 7919 for i in range(n_pro)]
+                    storyboard = storyboard_from_prebuilt(
+                        storyboard_prompts,
+                        storyboard_seeds,
+                        title=str(getattr(pkg, "title", "") or "Storyboard"),
+                    )
                 else:
                     storyboard_prompts = prompts[: max(1, int(video_settings.images_per_video))]
                     storyboard_seeds = (seeds or [])[: len(storyboard_prompts)]
@@ -2026,22 +2189,11 @@ def run_once(
                         storyboard_seeds = storyboard_seeds + [
                             base_i + (i + 1) * 9973 for i in range(len(storyboard_prompts) - len(storyboard_seeds))
                         ]
-                    storyboard = build_storyboard(
-                        pkg,
-                        seed_base=getattr(video_settings, "seed_base", None),
-                        branding=getattr(app, "branding", None),
-                        max_scenes=len(storyboard_prompts),
-                        character=active_character,
-                        video_format=str(getattr(app, "video_format", "news") or "news"),
+                    storyboard = storyboard_from_prebuilt(
+                        storyboard_prompts,
+                        storyboard_seeds,
+                        title=str(getattr(pkg, "title", "") or "Storyboard"),
                     )
-                    try:
-                        for i in range(min(len(storyboard.scenes), len(storyboard_prompts))):
-                            sc = storyboard.scenes[i]
-                            storyboard.scenes[i] = type(sc)(  # type: ignore[misc]
-                                **{**sc.__dict__, "prompt": storyboard_prompts[i], "seed": int(storyboard_seeds[i])}
-                            )
-                    except Exception:
-                        pass
             else:
                 if _pro:
                     sb_cap = min(32, max(3, n_pro))
@@ -2266,31 +2418,18 @@ def run_once(
             # Quality reject/regenerate (best-effort; pro mode skips — too many frames).
             retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
             if retries > 0 and not _pro:
-                for si, (p, base_seed, out_path) in enumerate(zip(storyboard_prompts, storyboard_seeds, image_paths), start=1):
-                    attempt = 0
-                    while attempt < retries:
-                        try:
-                            q = score_frame(out_path)
-                            if not is_reject(q):
-                                break
-                        except Exception:
-                            break
-                        attempt += 1
-                        with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
-                            regen = generate_images(
-                                sdxl_turbo_model_id=img_id,
-                                prompts=[p],
-                                out_dir=Path(_td),
-                                max_images=1,
-                                seeds=[int(base_seed) + attempt],
-                                allow_nsfw=_allow_nsfw,
-                                art_style_preset_id=_art_style_id,
-                                use_style_continuity=False,
-                                cuda_device_index=_diffusion_cuda_idx,
-                                inference_settings=app,
-                            )
-                            if regen:
-                                apply_regenerated_image(regen, out_path)
+                _batch_quality_regen(
+                    img_id=img_id,
+                    prompts=storyboard_prompts,
+                    seeds=storyboard_seeds,
+                    out_paths=[Path(p) for p in image_paths],
+                    retries=retries,
+                    allow_nsfw=_allow_nsfw,
+                    art_style_id=_art_style_id,
+                    cuda_idx=_diffusion_cuda_idx,
+                    inference_settings=app,
+                    diffusion_ref_kw=_diffusion_ref_kw,
+                )
     
             # Update manifest with image paths
             try:
@@ -2322,27 +2461,27 @@ def run_once(
                     )
                     mixed = assets_dir / "audio_bed.wav"
                     mix_wav = mix_voice_and_music(ffmpeg_dir=paths.ffmpeg_dir, voice_wav=final_voice_wav, music_path=music, out_wav=mixed, cfg=mix_cfg)
-                if str(getattr(video_settings, "sfx_mode", "off") or "off") != "off":
-                    sfx_paths = ensure_builtin_sfx(assets_dir / "sfx")
-                    dur_s = float(duration_seconds(mix_wav))
-                    sfx_clip_count = (
-                        max(3, min(24, int(dur_s / max(1.0, float(video_settings.microclip_max_s)))))
-                        if _pro
-                        else len(image_paths)
-                    )
-                    events = schedule_sfx_events(duration_s=dur_s, clip_count=sfx_clip_count, sfx_paths=sfx_paths)
-                    sfx_track = assets_dir / "sfx_track.wav"
-                    render_sfx_track(sr=44100, duration_s=dur_s, events=events, out_wav=sfx_track)
-                    import subprocess as _sub
-                    from pathlib import Path as _Path
-    
-                    ffmpeg_bin = _Path(ensure_ffmpeg(paths.ffmpeg_dir))
-                    out_final_wav = assets_dir / "final_audio.wav"
-                    cmd = build_sfx_mix_cmd(ffmpeg=ffmpeg_bin, base_wav=mix_wav, sfx_wavs=[sfx_track], out_wav=out_final_wav)
-                    _sub.run(cmd, check=True, capture_output=True, text=True)
-                    mix_wav = out_final_wav
             except Exception:
                 mix_wav = final_voice_wav
+            sfx_clip_count = len(image_paths)
+            if _pro:
+                try:
+                    sfx_clip_count = max(
+                        3,
+                        min(
+                            24,
+                            int(duration_seconds(mix_wav) / max(1.0, float(video_settings.microclip_max_s))),
+                        ),
+                    )
+                except Exception:
+                    sfx_clip_count = 3
+            mix_wav = _premix_sfx_track(
+                paths=paths,
+                video_settings=video_settings,
+                assets_dir=assets_dir,
+                mix_wav=mix_wav,
+                clip_count=sfx_clip_count,
+            )
     
             _pipe_progress(
                 on_progress,
@@ -2365,7 +2504,7 @@ def run_once(
                     background_music=None,
                     branding=branding,
                     article_text=article_text,
-                    topic_tags=list(effective_topic_tags(app)),
+                    topic_tags=list(_run_topic_tags),
                     video_format=str(getattr(app, "video_format", "news") or "news"),
                     cuda_device_index=_diffusion_cuda_idx,
                 )
@@ -2381,7 +2520,7 @@ def run_once(
                     background_music=None,
                     branding=branding,
                     article_text=article_text,
-                    topic_tags=list(effective_topic_tags(app)),
+                    topic_tags=list(_run_topic_tags),
                     video_format=str(getattr(app, "video_format", "news") or "news"),
                     cuda_device_index=_diffusion_cuda_idx,
                 )
@@ -2438,44 +2577,22 @@ def run_once(
     
             retries = max(0, int(getattr(video_settings, "quality_retries", 2)))
             if retries > 0:
-                for si, (p, base_seed, out_path) in enumerate(zip(storyboard_prompts, storyboard_seeds, keyframes), start=1):
-                    attempt = 0
-                    while attempt < retries:
-                        try:
-                            q = score_frame(out_path)
-                            if not is_reject(q):
-                                break
-                        except Exception:
-                            break
-                        attempt += 1
-                        with tempfile.TemporaryDirectory(prefix="aquaduct_regen_") as _td:
-                            def _run_regen(s: AppSettings, idx: int | None):
-                                return generate_images(
-                                    sdxl_turbo_model_id=img_id,
-                                    prompts=[p],
-                                    out_dir=Path(_td),
-                                    max_images=1,
-                                    seeds=[int(base_seed) + attempt],
-                                    allow_nsfw=_allow_nsfw,
-                                    art_style_preset_id=_art_style_id,
-                                    use_style_continuity=False,
-                                    cuda_device_index=idx,
-                                    inference_settings=s,
-                                    **_diffusion_ref_kw,
-                                )
-
-                            regen, app, _diffusion_cuda_idx = retry_stage(
-                                stage_name="keyframe_regen",
-                                role="image",
-                                repo_id=str(img_id),
-                                settings=app,
-                                cuda_device_index=_diffusion_cuda_idx,
-                                gpus=gpus,
-                                clear_cb=_clear_after_oom,
-                                run_cb=_run_regen,
-                            )
-                            if regen:
-                                apply_regenerated_image(regen, out_path)
+                app, _diffusion_cuda_idx = _batch_quality_regen(
+                    img_id=img_id,
+                    prompts=storyboard_prompts,
+                    seeds=storyboard_seeds,
+                    out_paths=[Path(p) for p in keyframes],
+                    retries=retries,
+                    allow_nsfw=_allow_nsfw,
+                    art_style_id=_art_style_id,
+                    cuda_idx=_diffusion_cuda_idx,
+                    inference_settings=app,
+                    diffusion_ref_kw=_diffusion_ref_kw,
+                    clear_cb=_clear_after_oom,
+                    retry_stage_cb=retry_stage,
+                    gpus=gpus,
+                    app=app,
+                )
     
             # Update manifest with keyframe paths
             try:
@@ -2553,6 +2670,14 @@ def run_once(
                     mix_wav = mix_voice_and_music(ffmpeg_dir=paths.ffmpeg_dir, voice_wav=final_voice_wav, music_path=music, out_wav=mixed, cfg=mix_cfg)
             except Exception:
                 mix_wav = final_voice_wav
+
+            mix_wav = _premix_sfx_track(
+                paths=paths,
+                video_settings=video_settings,
+                assets_dir=assets_dir,
+                mix_wav=mix_wav,
+                clip_count=len(clip_paths),
+            )
     
             _pipe_progress(on_progress, 91, -1, "Rendering micro-scenes & final MP4…")
             _run_stage("encode", "Motion mode: assembling clips + captions → final.mp4")
@@ -2569,7 +2694,7 @@ def run_once(
                 background_music=None,
                 branding=branding,
                 article_text=article_text,
-                topic_tags=list(effective_topic_tags(app)),
+                topic_tags=list(_run_topic_tags),
                 video_format=str(getattr(app, "video_format", "news") or "news"),
                 cuda_device_index=_diffusion_cuda_idx,
             )
@@ -2608,6 +2733,11 @@ def run_once(
                 llm_model_id=llm_id,
                 llm_cuda_device_index=_llm_cuda_idx,
             )
+            _finalize_series_cast_lock(
+                paths=paths,
+                series_context=series_context,
+                video_dir=video_dir,
+            )
         except Exception:
             pass
         _pipe_progress(on_progress, 100, 100, "Done")
@@ -2624,8 +2754,11 @@ def run_once(
                 save_settings(app)
         except Exception:
             pass
+        _outcome_ok = True
+        _outcome_path = video_dir
         return video_dir
     except BaseException as e:
+        _outcome_err = e
         try:
             log_pipeline_exception(
                 _PIPELINE_RUN_STAGE[0],
@@ -2636,6 +2769,25 @@ def run_once(
             pass
         raise
     finally:
+        try:
+            if isinstance(_outcome_err, PipelineCancelled):
+                _status = "cancelled"
+            elif _outcome_err is not None:
+                _status = "failure"
+            elif _outcome_ok:
+                _status = "success" if _outcome_path is not None else "no_output"
+            else:
+                _status = "unknown"
+            run_rpt.write_report(
+                status=_status,
+                error=_outcome_err,
+                output_path=_outcome_path,
+                last_stage=_PIPELINE_RUN_STAGE[0],
+                fallback_runs_dir=paths.runs_dir,
+            )
+            run_rpt.reset()
+        except Exception:
+            pass
         clear_pipeline_models_dir()
 
 

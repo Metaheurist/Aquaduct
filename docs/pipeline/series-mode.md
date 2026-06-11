@@ -34,7 +34,15 @@ After a successful video export, `register_episode` stores metadata and appends 
 
 ## Library tab
 
-`scan_finished_videos` treats folders with `series.json` as series roots and lists each `episode_*` child that contains `final.mp4`, with titles like `Series: <name> · Ep N — <episode title>`.
+`scan_finished_videos` treats folders with `series.json` as series roots and lists each `episode_*` child that contains `final.mp4`, with titles like `Series: <name> · Ep N — <episode title>`. **Resume series** enqueues remaining episodes from the Library when a series folder has incomplete episodes ([`src/runtime/series_queue.py`](../../src/runtime/series_queue.py)).
+
+## Cast lock across episodes
+
+When **Lock art style, models & characters** is on, [`src/series/store.py`](../../src/series/store.py) can persist a **cast lock** so character ids and voice choices stay consistent across episodes in the frozen snapshot.
+
+## Retention
+
+[`scripts/prune_runs.py`](../../scripts/prune_runs.py) removes old **`runs/<id>/`** staging folders by age or count (CLI helper for disk hygiene).
 
 ## Cancel
 
@@ -46,7 +54,8 @@ Canceling the pipeline clears the whole queue (existing behavior). The log notes
 - `tests/series/test_recap_and_layout.py` — layout + library scan + fallback recap.
 - `tests/series/test_store.py`, `tests/series/test_rehydrate.py` — persistence and style merge.
 - `tests/ui/test_series_failure_abort.py` — queue pruning helper used on failure.
-- `tests/ui/test_series_queue.py` — Run queue behavior for series batches.
+- `tests/runtime/test_series_queue.py` — series queue helpers.
+- `tests/ui/test_pipeline_series_queue.py` — Run tab queue behavior for series batches.
 - `tests/settings/test_series_settings_roundtrip.py` — series fields round-trip in settings.
 
 ---

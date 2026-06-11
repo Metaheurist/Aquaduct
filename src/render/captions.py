@@ -113,6 +113,13 @@ def _resolve_palette_colors(branding: BrandingSettings | None) -> tuple[tuple[in
     return text_rgb, accent_rgb, stroke_rgb
 
 
+def caption_y0_for_anchor(h: int, anchor: str) -> int:
+    """Map ``caption_vertical_anchor`` to a top-Y pixel for the caption block."""
+    a = str(anchor or "bottom").strip().lower()
+    fractions = {"bottom": 0.64, "middle": 0.50, "top": 0.36}
+    return int(h * fractions.get(a, 0.64))
+
+
 def _pick_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     try:
         return ImageFont.truetype("arialbd.ttf", size)
@@ -171,7 +178,8 @@ def render_caption_overlay_rgba(
     subtle = intensity == "subtle"
     margin_x = int(w * 0.09)
     box_w = w - 2 * margin_x
-    y0 = int(h * 0.64)
+    anchor = str(getattr(settings, "caption_vertical_anchor", "bottom") or "bottom")
+    y0 = caption_y0_for_anchor(h, anchor)
 
     font_size = 56
     min_size = 22
