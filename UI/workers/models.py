@@ -16,7 +16,7 @@ from src.models.model_manager import (
 )
 from src.util.cpu_parallelism import disk_bound_verify_workers, io_bound_pool_workers
 
-from UI.workers.common import _fmt_bytes, _reraise_system_interrupt
+from UI.workers.common import _fmt_bytes, _reraise_system_interrupt, raise_if_interrupted
 from debug import dprint
 
 
@@ -35,6 +35,7 @@ class FFmpegEnsureWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             from src.render.utils_ffmpeg import ensure_ffmpeg, find_ffmpeg
 
             if find_ffmpeg(self.ffmpeg_dir):
@@ -90,6 +91,7 @@ class ModelDownloadWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             dprint("workers", "ModelDownloadWorker", f"repos={len(self.repo_ids)}", str(self.repo_ids[:5]))
             total_models = max(1, len(self.repo_ids))
 
@@ -111,7 +113,7 @@ class ModelDownloadWorker(QThread):
 
                 def refresh(self, *args, **kwargs):  # noqa: D401
                     try:
-                        if worker._stop_requested:
+                        if worker.isInterruptionRequested() or worker._stop_requested:
                             raise _CancelledDownload(worker._stop_reason)
 
                         def _human_bytes(x: float | int | None) -> str:
@@ -218,6 +220,7 @@ class ModelIntegrityVerifyWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             lines: list[str] = []
             hdr = "Model integrity check (Hugging Face Hub checksums)"
             if self.scope_label:
@@ -307,6 +310,7 @@ class ModelSizePingWorker(QThread):
 
     def run(self) -> None:
         try:
+            raise_if_interrupted(self)
             merged: dict[str, int] = {}
             try:
                 merged = load_hf_size_cache(self.cache_path)

@@ -1,8 +1,9 @@
 """
 Write a standalone offsite bundle under Model-Downloads/offsite/.
 
-Reads HF_TOKEN / HUGGINGFACEHUB_API_TOKEN from the environment (optional: repo-root .env)
-and embeds it into a generated script so another PC can download without Aquaduct installed.
+The generated downloader reads HF_TOKEN / HUGGINGFACEHUB_API_TOKEN from the
+environment at runtime (optional: repo-root .env on the target machine).
+Tokens are never embedded into generated scripts.
 
 Run from repo root:
   python Model-Downloads/generate_offsite_bundle.py
@@ -61,8 +62,7 @@ def _safe_repo_dirname(repo_id: str) -> str:
     return (s[:120] or "model")
 
 
-def _render_standalone(*, repo_ids: list[str], token: str) -> str:
-    token_literal = json.dumps(token)
+def _render_standalone(*, repo_ids: list[str]) -> str:
     repos_literal = json.dumps(repo_ids, indent=4)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return f'''#!/usr/bin/env python3
@@ -71,7 +71,9 @@ def _render_standalone(*, repo_ids: list[str], token: str) -> str:
 Aquaduct curated model snapshots — standalone downloader (generated).
 
 Generated: {ts}
-Do not commit this file if it contains a live token.
+
+Set HF_TOKEN or HUGGINGFACEHUB_API_TOKEN in the environment before running
+(or place a .env file next to this script). Tokens are never stored in this file.
 
 Copies layout: ./models/<safe_repo_dir>/  (same as Aquaduct download_model_to_project).
 """
@@ -82,10 +84,25 @@ import re
 import sys
 from pathlib import Path
 
-# Embedded token (revoke at https://huggingface.co/settings/tokens if this file leaks)
-HF_TOKEN = {token_literal}
-
 REPO_IDS = {repos_literal}
+
+
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parent / ".env")
+    except Exception:
+        pass
+
+
+def _hf_token_from_env() -> str:
+    _load_dotenv()
+    for key in ("HF_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+        t = (os.environ.get(key) or "").strip()
+        if t:
+            return t
+    return ""
 
 
 def _safe_repo_dirname(repo_id: str) -> str:
@@ -99,9 +116,13 @@ def main() -> int:
     models_dir = root / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    tok = (HF_TOKEN or "").strip()
+    tok = _hf_token_from_env()
     if not tok:
-        print("HF_TOKEN in this script is empty. Regenerate with generate_offsite_bundle.py while your env has HF_TOKEN set.", file=sys.stderr)
+        print(
+            "Set HF_TOKEN or HUGGINGFACEHUB_API_TOKEN in the environment "
+            "(or add a .env file beside this script).",
+            file=sys.stderr,
+        )
         return 2
 
     os.environ.setdefault("HF_TOKEN", tok)
@@ -155,16 +176,6 @@ if __name__ == "__main__":
 
 
 def main() -> int:
-    token = _hf_token_from_env()
-    if not token:
-        print(
-            "No HF_TOKEN or HUGGINGFACEHUB_API_TOKEN in the environment (or .env).\n"
-            "Set one, then re-run:\n"
-            "  python Model-Downloads/generate_offsite_bundle.py",
-            file=sys.stderr,
-        )
-        return 2
-
     repo_ids = _curated_repo_ids()
     if not repo_ids:
         print("No curated repo ids (model_options() empty?).", file=sys.stderr)
@@ -174,17 +185,21 @@ def main() -> int:
     script_path = OUT_DIR / "download_all_models.py"
     req_path = OUT_DIR / "requirements-offsite.txt"
 
-    body = _render_standalone(repo_ids=repo_ids, token=token)
+    body = _render_standalone(repo_ids=repo_ids)
     script_path.write_text(body, encoding="utf-8")
     req_path.write_text(
-        "huggingface_hub>=0.20.0\ntqdm>=4.60.0\n",
+        "huggingface_hub>=0.20.0\ntqdm>=4.60.0\npython-dotenv>=1.0.0\n",
         encoding="utf-8",
     )
 
+    token_present = bool(_hf_token_from_env())
     print(f"Wrote: {script_path}")
     print(f"Wrote: {req_path}")
     print(f"Repositories: {len(repo_ids)}")
-    print(f"Token embedded: length {len(token)} (do not commit {OUT_DIR})")
+    if token_present:
+        print("HF token detected in current environment (not written into the bundle).")
+    else:
+        print("No HF token in current environment — set one on the target machine before downloading.")
     return 0
 
 

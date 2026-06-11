@@ -79,52 +79,52 @@ def _genre_motion_cues(video_format: str) -> tuple[str, ...]:
     vf = (video_format or "news").strip().lower()
     if vf in ("cartoon", "unhinged"):
         return (
-            "push-in, whip pan",
-            "snap zoom, squash-stretch",
-            "handheld wobble",
-            "dolly blur",
-            "lunge to camera",
-            "spin smear",
-            "tilt up reveal",
-            "match-cut on action",
+            "close-up: snap zoom with squash-stretch",
+            "wide: whip pan across chaotic tableau",
+            "low-angle: lunge to camera",
+            "medium: handheld wobble on reaction",
+            "dutch: tilted panic beat",
+            "POV: chase through corridor",
+            "extreme close-up: spin smear on eyes",
+            "wide: tilt up reveal",
         )
     if vf == "creepypasta":
         return (
-            "slow dolly into darkness",
-            "static long lens hold",
-            "creeping pan",
-            "rack focus through fog",
-            "low angle, lamp flicker",
-            "match-cut on silhouette",
-            "subjective handheld step",
-            "slow tilt up to ceiling",
+            "wide: slow dolly into darkness",
+            "medium: static long lens hold",
+            "close-up: rack focus through fog",
+            "dutch: hallway tilt with lamp flicker",
+            "POV: subjective handheld step forward",
+            "high-angle: CCTV-style static hold",
+            "tracking: follow behind subject",
+            "extreme close-up: eye reflection in mirror",
         )
     if vf == "health_advice":
         return (
-            "calm push-in",
-            "soft parallax drift",
-            "static medium shot",
-            "rack focus to diagram",
-            "gentle pull-back",
+            "medium: calm push-in on clinician",
+            "wide: clinic establishing shot",
+            "over-shoulder: clinician with diagram",
+            "close-up: rack focus to chart icon",
+            "medium: snap zoom to myth-bust stat",
+            "wide: gentle pull-back from desk",
         )
     if vf == "nsfw":
         return (
-            "slow intimate push-in",
-            "soft lens flare drift",
-            "gentle handheld orbit",
-            "static medium portrait hold",
-            "subtle rack focus to silhouette",
-            "slow parallax over fabric texture",
-            "low-key dolly across set",
-            "breathing room pull-back",
+            "wide: silhouette two-shot",
+            "medium: slow intimate push-in",
+            "close-up: subtle rack focus to silhouette",
+            "medium: gentle handheld orbit",
+            "low-angle: soft lens flare drift",
+            "wide: breathing room pull-back",
         )
     return (
-        "slow push-in",
-        "parallax drift",
-        "gentle pan",
-        "rack focus",
-        "static establish",
-        "subtle handheld",
+        "wide: slow establishing push-in",
+        "medium: parallax drift past subject",
+        "close-up: rack focus on detail",
+        "over-shoulder: interview framing",
+        "wide: tracking shot past location",
+        "medium: subtle handheld stability",
+        "wide: crane down reveal",
     )
 
 
@@ -380,21 +380,30 @@ def expand_scenes_via_llm(
         "Rules:\n"
         f"- Each prompt under {SCENE_WORD_CAP} words.\n"
         "- Vertical 9:16 framing.\n"
+        "- Each line MUST start with a camera verb (push-in, wide shot, close-up, tracking, etc.).\n"
         "- No NEGATIVE: blocks. No JSON, no bullets, no numbering.\n"
         "- One prompt per line.\n"
         "- Do not include the article headline.\n"
         "- Use the cast names where appropriate so visual continuity is preserved.\n"
+        "Bad (duplicate): 'Wide shot of city skyline at dusk'\n"
+        "Good (bridge): 'Tracking shot past storefront signs as crowd gathers, 9:16'\n"
     )
     try:
         raw = invoke_llm(user_prompt) or ""
     except Exception:
         return specs
 
+    seed_starts = {(" ".join(s.prompt.split()[:4])).lower() for s in specs if s.prompt}
+
+    def _dup_start(text: str) -> bool:
+        key = (" ".join(text.split()[:4])).lower()
+        return key in seed_starts
+
     extras: list[SceneSpec] = []
     for i, line in enumerate(raw.splitlines()):
         text = strip_noise(line)
         text = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", text)
-        if not text:
+        if not text or _dup_start(text):
             continue
         cue = cues[(len(specs) + i) % len(cues)]
         prompt = cap_words(f"{text}, {cue}", n_words=SCENE_WORD_CAP)

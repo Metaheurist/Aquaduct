@@ -130,13 +130,21 @@ def _preflight_spatial_upscale_warnings(settings: AppSettings) -> list[str]:
     return out
 
 
+_IMPORT_PROBE_CACHE: dict[tuple[str, ...], tuple[str, ...]] = {}
+
+
 def _check_imports(mods: Iterable[str]) -> list[str]:
+    key = tuple(sorted({str(m) for m in mods}))
+    cached = _IMPORT_PROBE_CACHE.get(key)
+    if cached is not None:
+        return list(cached)
     missing: list[str] = []
     for m in mods:
         try:
             __import__(m)
         except Exception:
             missing.append(m)
+    _IMPORT_PROBE_CACHE[key] = tuple(missing)
     return missing
 
 

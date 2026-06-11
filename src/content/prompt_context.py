@@ -233,7 +233,7 @@ class StyleContext:
         if self.video_format == "creepypasta":
             bits.append("dim moody atmospheric lighting")
         elif self.video_format == "cartoon":
-            bits.append("bold linework, dynamic camera")
+            bits.append("bold linework, medium push-in with whip-pan energy")
         elif self.video_format == "unhinged":
             bits.append("exaggerated character expressions, chaotic energy")
         return ", ".join(b for b in bits if b)

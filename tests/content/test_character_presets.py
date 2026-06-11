@@ -40,16 +40,16 @@ def test_coerce_generated_character_fields():
             "visual_style": "Neon",
             "negatives": "blur",
             "use_default_voice": False,
-            "gender": "non-binary host",
-            "ethnicity": "Latine",
+            "gender": "non-binary",
+            "ethnicity": "latino",
             "age_range": "30s",
         }
     )
     assert g is not None
     assert g.name == "Pat"
     assert g.use_default_voice is False
-    assert g.gender == "non-binary host"
-    assert g.ethnicity == "Latine"
+    assert g.gender == "non-binary"
+    assert g.ethnicity == "latino"
     assert g.age_range == "30s"
 
 

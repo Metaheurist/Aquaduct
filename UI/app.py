@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import traceback
 from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
@@ -42,6 +43,47 @@ def _splash_enabled() -> bool:
     return os.environ.get("AQUADUCT_NO_SPLASH", "").strip().lower() not in ("1", "true", "yes")
 
 
+def _install_crash_logging() -> None:
+    """Log uncaught exceptions and optional Qt fatal messages to ``logs/crash.log``."""
+    if getattr(_install_crash_logging, "_installed", False):
+        return
+    _install_crash_logging._installed = True  # type: ignore[attr-defined]
+
+    def _excepthook(exc_type, exc_value, exc_tb) -> None:
+        try:
+            from src.util.repo_logs import append_crash_log
+
+            block = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+            append_crash_log(f"uncaught exception:\n{block}")
+        except Exception:
+            pass
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
+
+    if os.environ.get("AQUADUCT_QT_MESSAGE_HANDLER", "").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
+
+            def _qt_handler(mode, context, message) -> None:  # noqa: ANN001
+                try:
+                    from src.util.repo_logs import append_crash_log
+
+                    loc = ""
+                    try:
+                        loc = f"{context.file}:{context.line} "
+                    except Exception:
+                        pass
+                    label = getattr(mode, "name", str(mode))
+                    append_crash_log(f"Qt [{label}] {loc}{message}")
+                except Exception:
+                    pass
+
+            qInstallMessageHandler(_qt_handler)
+        except Exception:
+            pass
+
+
 def main() -> None:
     try:
         from src.util.cpu_parallelism import configure_cpu_parallelism
@@ -51,14 +93,15 @@ def main() -> None:
         pass
     _strip_debug_cli_args()
     _ensure_project_root_on_path()
+    _install_crash_logging()
     single_instance_guard()
     # Load HF_TOKEN (and other env vars) from repo `.env` for authenticated downloads.
     try:
         from dotenv import load_dotenv
 
         _repo_root = Path(__file__).resolve().parent.parent
-        load_dotenv(_repo_root / ".env")
-        load_dotenv()
+        load_dotenv(_repo_root / ".env", override=True)
+        load_dotenv(override=True)
     except Exception:
         pass
     app = QApplication(sys.argv)

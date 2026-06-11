@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from collections.abc import MutableMapping
 from typing import Any
 
-from .brain import VideoPackage, ScriptSegment, _extract_json, load_causal_lm_from_pretrained
+from .brain import VideoPackage, ScriptSegment
+from .brain.runtime import _infer_text_with_optional_holder
 from src.core.config import AppSettings
-from src.core.models_dir import get_models_dir
-from src.models.model_manager import resolve_pretrained_load_path
+from src.util.llm_json_extract import parse_first_json_dict_from_llm_text
 
 
 @dataclass(frozen=True)
@@ -108,97 +108,49 @@ def rewrite_with_uncertainty(
     if not need:
         return pkg
 
-    # Try local LLM rewrite. Keep it strict JSON.
-    model = None
-    tokenizer = None
-    reused_from_holder = False
+    # Try local LLM rewrite via shared inference path. Keep it strict JSON.
     try:
-        import torch
-
-        from src.models.hf_transformers_imports import causal_lm_stack
-
-        _, AutoTokenizer, _ = causal_lm_stack()
-
-        mid = str(model_id or "").strip()
-        if (
-            llm_holder is not None
-            and llm_holder.get("model") is not None
-            and str(llm_holder.get("hub_model_id") or "").strip() == mid
-        ):
-            reused_from_holder = True
-            model = llm_holder["model"]
-            tokenizer = llm_holder["tokenizer"]
-        else:
-            load_path = resolve_pretrained_load_path(model_id, models_dir=get_models_dir())
-            tokenizer = AutoTokenizer.from_pretrained(load_path, use_fast=True, trust_remote_code=True)
-            model = load_causal_lm_from_pretrained(
-                load_path,
-                try_4bit=bool(try_llm_4bit),
-                on_status=None,
-                quant_mode=quant_mode,
-                cuda_device_index=llm_cuda_device_index,
-                inference_settings=inference_settings,
-                hub_model_id=model_id,
-            )
-
         src_line = json.dumps(sources[:3], ensure_ascii=False)
         article_snip = (article_text or "")[:2400]
         payload = json.dumps(_to_payload(pkg), ensure_ascii=False)
         prompt = (
             "You are a careful editor. Rewrite the following short-form video script JSON to be fact-safe.\n"
             "Rules:\n"
-            "- Keep the SAME structure and keys.\n"
+            "- Keep the SAME structure and keys; preserve segment count.\n"
             "- Keep it punchy but avoid absolutes and unsupported numbers.\n"
-            "- If numbers/claims are not clearly supported by the provided article text, add attribution (\"according to\") or soften (\"reportedly\", \"early reports\").\n"
+            "- If numbers/claims are not clearly supported by the provided article text, add attribution "
+            '("according to") or soften ("reportedly", "early reports").\n'
             "- Do not invent new facts.\n"
-            "- Output STRICT JSON only.\n\n"
+            "- Output raw JSON only — no markdown fences.\n\n"
             f"SOURCES: {src_line}\n\n"
             f"ARTICLE_TEXT (snippet): {article_snip}\n\n"
             f"INPUT_JSON: {payload}\n"
         )
-
-        full = f"### Instruction:\n{prompt}\n\n### Response:\n"
-        inputs = tokenizer(full, return_tensors="pt").to(model.device)
-        with torch.inference_mode():
-            out = model.generate(
-                **inputs,
-                max_new_tokens=750,
-                do_sample=True,
-                temperature=0.5,
-                top_p=0.9,
-                repetition_penalty=1.06,
-                eos_token_id=tokenizer.eos_token_id,
-            )
-        text = tokenizer.decode(out[0], skip_special_tokens=True)
-        if "### Response:" in text:
-            text = text.split("### Response:", 1)[1].strip()
-        data = _extract_json(text)
-        # Build new package with safe rewrite; keep original hashtags if rewrite dropped them.
-        out_pkg = _from_payload(data)
-        if not out_pkg.hashtags:
-            out_pkg = VideoPackage(
-                title=out_pkg.title,
-                description=out_pkg.description,
-                hashtags=list(pkg.hashtags),
-                hook=out_pkg.hook,
-                segments=out_pkg.segments,
-                cta=out_pkg.cta,
-            )
-        return out_pkg
+        text = _infer_text_with_optional_holder(
+            model_id,
+            prompt,
+            llm_holder=llm_holder,
+            max_new_tokens=750,
+            try_llm_4bit=bool(try_llm_4bit),
+            llm_cuda_device_index=llm_cuda_device_index,
+            inference_settings=inference_settings,
+            quant_mode=quant_mode,
+        )
+        data = parse_first_json_dict_from_llm_text(text or "")
+        if data:
+            out_pkg = _from_payload(data)
+            if not out_pkg.hashtags:
+                out_pkg = VideoPackage(
+                    title=out_pkg.title,
+                    description=out_pkg.description,
+                    hashtags=list(pkg.hashtags),
+                    hook=out_pkg.hook,
+                    segments=out_pkg.segments,
+                    cta=out_pkg.cta,
+                )
+            return out_pkg
     except Exception:
         pass
-    finally:
-        if not reused_from_holder:
-            try:
-                if model is not None:
-                    del model
-                if tokenizer is not None:
-                    del tokenizer
-                from src.util.utils_vram import cleanup_vram
-
-                cleanup_vram()
-            except Exception:
-                pass
 
     # Deterministic fallback: soften absolutes + add attribution stub if thin.
     def soften(s: str) -> str:

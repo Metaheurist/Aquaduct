@@ -9,6 +9,8 @@ from typing import Any
 
 from src.core.app_dirs import application_data_dir, mark_path_hidden
 from src.render.ffmpeg_slideshow import sanitize_xfade_transition
+SETTINGS_SCHEMA_VERSION = 1
+
 from src.core.config import (
     MAX_CUSTOM_VIDEO_INSTRUCTIONS,
     ApiModelRuntimeSettings,
@@ -194,12 +196,37 @@ def _parse_llm_chat_geometry(raw: Any) -> LLMChatGeometry:
     return LLMChatGeometry(width=w, height=h, x=x, y=y)
 
 
+def migrate_settings_dict(data: Any) -> dict[str, Any]:
+    """In-place migrations for ``ui_settings.json`` payloads missing ``settings_schema_version``."""
+    if not isinstance(data, dict):
+        return {}
+    out = dict(data)
+    version = int(out.get("settings_schema_version", 0) or 0)
+    if version < 1:
+        legacy_tags = _sanitize_tags(out.get("topic_tags", []))
+        topic_map = _sanitize_topic_tags_map(out.get("topic_tags_by_mode"))
+        if legacy_tags and not (topic_map.get("news") or []):
+            topic_map = {**topic_map, "news": legacy_tags}
+            out["topic_tags_by_mode"] = topic_map
+        out.pop("topic_tags", None)
+        if out.get("script_quant_mode") is None and "try_llm_4bit" in out:
+            out["script_quant_mode"] = "nf4_4bit" if bool(out.get("try_llm_4bit", True)) else "fp16"
+        out["settings_schema_version"] = SETTINGS_SCHEMA_VERSION
+    return out
+
+
 def load_settings() -> AppSettings:
     p = settings_path()
     if not p.exists():
         return AppSettings()
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            from src.settings.secrets_crypto import decrypt_settings_dict
+
+            data = decrypt_settings_dict(raw, data_dir=p.parent)
+        else:
+            data = raw
     except Exception as e:
         try:
             from debug import dprint
@@ -209,6 +236,7 @@ def load_settings() -> AppSettings:
             pass
         return AppSettings()
 
+    data = migrate_settings_dict(data)
     return app_settings_from_dict(data)
 
 
@@ -271,6 +299,9 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         if str(video_raw.get("caption_highlight_intensity", "strong")) in ("subtle", "strong")
         else "strong",
         caption_max_words=int(video_raw.get("caption_max_words", 8)),
+        caption_vertical_anchor=str(video_raw.get("caption_vertical_anchor", "bottom"))
+        if str(video_raw.get("caption_vertical_anchor", "bottom")) in ("bottom", "middle", "top")
+        else "bottom",
         facts_card_enabled=bool(video_raw.get("facts_card_enabled", True)),
         facts_card_position=str(video_raw.get("facts_card_position", "top_left"))
         if str(video_raw.get("facts_card_position", "top_left")) in ("top_left", "top_right")
@@ -412,6 +443,17 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         firecrawl_api_key=str(data.get("firecrawl_api_key", "")) if isinstance(data, dict) else "",
         elevenlabs_enabled=bool(data.get("elevenlabs_enabled", False)) if isinstance(data, dict) else False,
         elevenlabs_api_key=str(data.get("elevenlabs_api_key", "")) if isinstance(data, dict) else "",
+        elevenlabs_stability=float(data.get("elevenlabs_stability", 0.5)) if isinstance(data, dict) else 0.5,
+        elevenlabs_similarity_boost=float(data.get("elevenlabs_similarity_boost", 0.75))
+        if isinstance(data, dict)
+        else 0.75,
+        pronunciation_lexicon={
+            str(k): str(v)
+            for k, v in (data.get("pronunciation_lexicon") or {}).items()
+            if isinstance(data, dict) and isinstance(k, str) and str(k).strip()
+        }
+        if isinstance(data, dict) and isinstance(data.get("pronunciation_lexicon"), dict)
+        else {},
         personality_id=str(data.get("personality_id", "auto")) if isinstance(data, dict) else "auto",
         art_style_preset_id=str(data.get("art_style_preset_id", "balanced") or "balanced")
         if isinstance(data, dict)
@@ -513,6 +555,10 @@ def save_settings(settings: AppSettings) -> bool:
         "_force_cpu_diffusion",
     ):
         d.pop(k, None)
+    from src.settings.secrets_crypto import encrypt_settings_dict
+
+    d = encrypt_settings_dict(d, data_dir=p.parent)
+    d["settings_schema_version"] = SETTINGS_SCHEMA_VERSION
     payload = json.dumps(d, indent=2, ensure_ascii=False)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)

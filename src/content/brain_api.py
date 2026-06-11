@@ -122,15 +122,34 @@ def expand_custom_video_instructions_openai(
         on_llm_task("llm_generate", 5, "Expanding brief (OpenAI)…")
     client = build_openai_client_from_settings(settings)
     p = get_personality_by_id(personality_id)
+    vf_key = (video_format or "news").strip().lower()
     user = (
         f"Video format: {video_format}\n"
-        f"Tone: {p.label}\n\n"
-        "Expand and tighten this creator brief into a richer creative brief (plain text, no JSON):\n\n"
-        f"{raw_instructions.strip()[:8000]}"
+        f"Tone: {p.label}: {p.description}\n"
+        "Style rules:\n"
+        + "\n".join(f"- {r}" for r in p.style_rules)
+        + "\n\nExpand the user's rough notes into a structured creative brief. "
+        "Do NOT output JSON. Use clear plain text with labeled sections.\n\n"
+        f"User's raw notes:\n{raw_instructions.strip()[:8000]}\n\n"
+        "Output sections (use headings):\n"
+        "1) Working title (one line)\n"
+        "2) Host/cast persona (name + voice)\n"
+        "3) Core hook (spoken opener)\n"
+        "4) Beat-by-beat outline (10–16 beats for ~75–95 seconds) — spoken lines only per beat\n"
+        "5) Visual motifs per beat (staging/camera — not spoken)\n"
+        "6) Short on-screen text keywords per beat\n"
+        "7) Hashtag theme words (no # prefixes)\n"
+        "8) CTA idea (in-character)\n"
+        + (
+            "Fiction/safety notes for creepypasta or adults-only formats as applicable.\n"
+            if vf_key in ("creepypasta", "nsfw")
+            else ""
+        )
+        + "Keep it tight and actionable.\n"
     )
     out = client.chat_completion_text(
         model=_llm_model(settings),
-        system="You help short-form video creators. Output improved plain-text instructions only.",
+        system="You are a creative director for short-form vertical video (9:16). Output improved plain-text brief only.",
         user=user,
         json_mode=False,
     )

@@ -56,8 +56,8 @@ from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.theme import resolve_palette, token
-from UI.widgets.flow_layout import FlowLayout
 from UI.widgets.character_card import CharacterCard
+from UI.widgets.tab_layout import TAB_PAGE_MARGINS, TAB_PAGE_SPACING
 from UI.widgets.two_column import two_column_row
 from UI.widgets.toolbar_svg_icons import qicon_toolbar
 from UI.workers import CharacterGenerateWorker, CharacterPortraitWorker
@@ -168,8 +168,8 @@ def _fill_el_voice_combo(combo: QComboBox, current_voice_id: str, voices: list[t
 def attach_characters_tab(win) -> None:
     w = QWidget()
     lay = QVBoxLayout(w)
-    lay.setContentsMargins(6, 4, 6, 4)
-    lay.setSpacing(2)
+    lay.setContentsMargins(*TAB_PAGE_MARGINS)
+    lay.setSpacing(TAB_PAGE_SPACING)
 
     left_panel = QWidget()
     left_lay = QVBoxLayout(left_panel)
@@ -235,13 +235,15 @@ def attach_characters_tab(win) -> None:
 
     cards_scroll = QScrollArea()
     cards_scroll.setWidgetResizable(True)
-    cards_scroll.setMinimumHeight(180)
-    cards_scroll.setMaximumHeight(320)
+    cards_scroll.setMinimumHeight(220)
     cards_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    cards_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     win.characters_cards_inner = QWidget()
-    win.characters_cards_layout = FlowLayout(win.characters_cards_inner, margin=4, h_spacing=10, v_spacing=10)
+    win.characters_cards_layout = QVBoxLayout(win.characters_cards_inner)
+    win.characters_cards_layout.setContentsMargins(0, 0, 0, 0)
+    win.characters_cards_layout.setSpacing(8)
     cards_scroll.setWidget(win.characters_cards_inner)
-    list_lay.addWidget(cards_scroll)
+    list_lay.addWidget(cards_scroll, 1)
 
     win.characters_empty_hint = QLabel(
         "No characters yet. Use the + button or \u201cGenerate with LLM\u201d to add your first profile."
@@ -278,7 +280,7 @@ def attach_characters_tab(win) -> None:
     btn_row.addWidget(win.characters_del_btn)
     btn_row.addStretch(1)
     list_lay.addLayout(btn_row)
-    left_lay.addWidget(list_card)
+    left_lay.addWidget(list_card, 1)
 
     right_scroll = QScrollArea()
     right_scroll.setWidgetResizable(True)
@@ -481,13 +483,13 @@ def attach_characters_tab(win) -> None:
     right_lay.addWidget(edit_card)
     right_scroll.setWidget(right_inner)
 
-    split = two_column_row(left_panel, right_scroll, ratio=(2, 3))
+    split = two_column_row(left_panel, right_scroll, ratio=(2, 3), spacing=16)
     lay.addWidget(split, 1)
 
     foot = QWidget()
     foot_lay = QHBoxLayout(foot)
-    foot_lay.setContentsMargins(0, 4, 0, 8)
-    foot_lay.setSpacing(6)
+    foot_lay.setContentsMargins(0, 6, 0, 0)
+    foot_lay.setSpacing(10)
     win.characters_save_btn = QPushButton("Save character")
     win.characters_save_btn.setObjectName("primary")
     win.characters_save_btn.setMinimumHeight(34)
@@ -585,6 +587,7 @@ def attach_characters_tab(win) -> None:
             card.selected.connect(lambda cid=c.id: _select_character_id(cid))
             lay_cards.addWidget(card)
             win._character_card_widgets[c.id] = card
+        lay_cards.addStretch(1)
         if hasattr(win, "characters_empty_hint"):
             win.characters_empty_hint.setVisible(not all_chars)
         if select_id:
@@ -996,7 +999,7 @@ def attach_characters_tab(win) -> None:
     win.character_portrait_generate_btn.clicked.connect(_on_generate_portrait)
     win.character_portrait_preview.portraitClicked.connect(_open_portrait_preview)
 
-    _fill_voice_combo(win.character_voice_combo, "")
+    QTimer.singleShot(0, lambda: _fill_voice_combo(win.character_voice_combo, ""))
     _update_el_visibility()
     win._characters_refresh_elevenlabs = _update_el_visibility  # main_window calls when switching to Characters tab
 

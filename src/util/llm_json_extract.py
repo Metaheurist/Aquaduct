@@ -50,9 +50,22 @@ def slice_first_balanced_json_object(text: str) -> str | None:
     return None
 
 
+def strip_llm_reasoning_preamble(text: str) -> str:
+    """Remove common reasoning / thinking wrappers before JSON extraction."""
+    raw = (text or "").strip()
+    if not raw:
+        return raw
+    for open_tag, close_tag in (
+        ("<" + "think>", "</" + "think>"),
+        ("<" + "redacted_reasoning>", "</" + "redacted_reasoning>"),
+    ):
+        raw = re.sub(re.escape(open_tag) + r"[\s\S]*?" + re.escape(close_tag), "", raw, count=1, flags=re.IGNORECASE).strip()
+    return raw
+
+
 def parse_first_json_dict_from_llm_text(text: str) -> dict[str, Any] | None:
     """Return the first JSON object in *text*, or ``None`` if none can be parsed as a dict."""
-    raw = (text or "").strip()
+    raw = strip_llm_reasoning_preamble(text)
     if not raw:
         return None
 

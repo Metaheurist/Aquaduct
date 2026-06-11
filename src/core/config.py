@@ -197,6 +197,8 @@ class VideoSettings:
     captions_enabled: bool = True
     caption_highlight_intensity: Literal["subtle", "strong"] = "strong"
     caption_max_words: int = 8
+    #: Vertical placement of the caption block (fraction of frame height in ``captions.py``).
+    caption_vertical_anchor: Literal["bottom", "middle", "top"] = "bottom"
     facts_card_enabled: bool = True
     facts_card_position: Literal["top_left", "top_right"] = "top_left"
     facts_card_duration: Literal["short", "long"] = "short"
@@ -354,6 +356,10 @@ class AppSettings:
     firecrawl_api_key: str = ""
     elevenlabs_enabled: bool = False
     elevenlabs_api_key: str = ""  # optional cloud TTS; see docs/integrations/elevenlabs.md
+    elevenlabs_stability: float = 0.5
+    elevenlabs_similarity_boost: float = 0.75
+    #: Word/phrase → spoken form replacements applied before TTS (see ``shape_tts_text``).
+    pronunciation_lexicon: dict[str, str] = field(default_factory=dict)
     personality_id: str = "auto"
     active_character_id: str = ""  # empty = no character; see data/characters.json (lead = first of active_character_ids when set)
     #: Ordered Run-tab character tags (first = lead: voice + portrait reference). Persisted in ui_settings when non-empty.

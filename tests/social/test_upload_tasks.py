@@ -38,3 +38,20 @@ def test_load_save_roundtrip(tmp_path, monkeypatch):
     t2 = ut_mod.load_tasks()
     assert len(t2) == 1
     assert t2[0].status == "pending"
+
+
+def test_approve_task_sets_status(tmp_path, monkeypatch):
+    from src.platform import upload_tasks as ut_mod
+
+    monkeypatch.setattr(ut_mod, "upload_tasks_path", lambda: tmp_path / "upload_tasks.json")
+
+    d = tmp_path / "v"
+    d.mkdir(parents=True)
+    (d / "final.mp4").write_bytes(b"x")
+    t = ut_mod.append_task_for_video_dir(d)
+    assert t is not None
+    assert t.status == "pending"
+    approved = ut_mod.approve_task(t.id)
+    assert approved is not None
+    assert approved.status == "approved"
+    assert ut_mod.task_ready_for_auto_upload(approved)

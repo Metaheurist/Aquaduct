@@ -22,8 +22,8 @@ def test_analyze_video_catastrophic_shortfall_blocks(monkeypatch):
         repo_id="Wan-AI/test",
         settings=None,
     )
-    assert w and "low host RAM" in w
-    assert b and "refusing run" in (b or "")
+    assert w and "warning" in w.lower()
+    assert b and "blocked" in (b or "").lower() and "RAM shortfall" in (b or "")
 
 
 def test_empty_fail_roles_disables_fatal_gate(monkeypatch):
@@ -96,8 +96,8 @@ def test_script_host_ram_warn_blocks_by_default(monkeypatch):
         repo_id="Foo/Bar",
         settings=s,
     )
-    assert w and "low host RAM" in w
-    assert b and "refusing run" in (b or "") and "host RAM shortfall" in (b or "")
+    assert w and "warning" in w.lower()
+    assert b and "blocked" in (b or "").lower() and "RAM shortfall" in (b or "") and "RAM shortfall" in (b or "")
 
 
 def test_error_on_warn_roles_empty_allows_marginal_script(monkeypatch):

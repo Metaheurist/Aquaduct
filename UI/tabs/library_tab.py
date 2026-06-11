@@ -4,12 +4,11 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStyle,
     QTableWidget,
@@ -20,7 +19,7 @@ from PyQt6.QtWidgets import (
 
 from UI.services.library_fs import format_byte_size, scan_finished_pictures, scan_finished_videos, scan_run_workspaces
 from UI.widgets.tab_scaffold import make_tab_root
-from UI.widgets.tab_sections import add_section_spacing, empty_state_panel, section_card, section_title
+from UI.widgets.tab_sections import empty_state_panel, section_card, section_title
 from UI.widgets.two_column import two_column_row
 from UI.help.tutorial_links import help_tooltip_rich
 
@@ -31,20 +30,15 @@ def attach_library_tab(win) -> None:
     outer.setContentsMargins(0, 0, 0, 0)
     outer.setSpacing(0)
 
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
     sub = QLabel()
     sub.setWordWrap(True)
-    sub.setStyleSheet("color: #8A96A3; font-size: 11px; margin-bottom: 8px;")
+    sub.setStyleSheet("color: #8A96A3; font-size: 12px; margin: 0; padding: 0 0 6px 0;")
     win._library_intro_label = sub
 
     tool_strip = QWidget()
     tool_row = QHBoxLayout(tool_strip)
-    tool_row.setContentsMargins(0, 0, 0, 0)
-    tool_row.setSpacing(8)
+    tool_row.setContentsMargins(0, 0, 0, 4)
+    tool_row.setSpacing(10)
 
     _sty = w.style()
     win.library_refresh_btn = QPushButton()
@@ -76,17 +70,24 @@ def attach_library_tab(win) -> None:
     win.library_open_runs_root_btn.clicked.connect(win._library_open_runs_root)
     tool_row.addWidget(win.library_open_runs_root_btn)
 
+    win.library_search_edit = QLineEdit()
+    win.library_search_edit.setPlaceholderText("Search title, folder, hashtags…")
+    win.library_search_edit.setClearButtonEnabled(True)
+    win.library_search_edit.setMaximumWidth(280)
+    win.library_search_edit.textChanged.connect(lambda _t: win._library_fill_tables())
+    tool_row.addWidget(win.library_search_edit)
+
     tool_row.addStretch(1)
 
     inner_root, _, _, lay = make_tab_root(
         title="Library",
         before_card=(sub, tool_strip),
+        body_card=False,
+        fill_vertical=True,
     )
-    lay.setSpacing(10)
-
-    add_section_spacing(lay, px=10)
 
     media_card, media_lay = section_card()
+    media_card.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
     win._library_media_card = media_card
     win._library_media_title = section_title("videos/ - projects with final.mp4", emphasis=True)
     media_lay.addWidget(win._library_media_title)
@@ -100,14 +101,14 @@ def attach_library_tab(win) -> None:
     win.library_videos_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     win.library_videos_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
     win.library_videos_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-    win.library_videos_table.setMinimumHeight(120)
-    win.library_videos_table.setMaximumHeight(280)
+    win.library_videos_table.setMinimumHeight(140)
     win.library_videos_table.setSizePolicy(
-        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     )
-    win.library_videos_table.verticalHeader().setDefaultSectionSize(22)
+    win.library_videos_table.verticalHeader().setVisible(False)
+    win.library_videos_table.verticalHeader().setDefaultSectionSize(26)
     win.library_videos_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_video_dir())
-    media_lay.addWidget(win.library_videos_table)
+    media_lay.addWidget(win.library_videos_table, 1)
 
     win.library_media_empty = empty_state_panel(
         "Finished renders show up here. Run a job from the Pipeline tab, then press Refresh.",
@@ -117,9 +118,11 @@ def attach_library_tab(win) -> None:
     media_lay.addWidget(win.library_media_empty)
 
     vbtn = QHBoxLayout()
-    vbtn.setSpacing(8)
+    vbtn.setContentsMargins(0, 8, 0, 0)
+    vbtn.setSpacing(10)
     win.library_video_open_btn = QPushButton("Open folder")
     win.library_video_open_btn.setObjectName("primary")
+    win.library_video_open_btn.setMinimumWidth(120)
     win.library_video_open_btn.setToolTip(
         help_tooltip_rich("Open the selected video or picture project folder.", "tasks_library", slide=1)
     )
@@ -140,12 +143,22 @@ def attach_library_tab(win) -> None:
     win.library_video_play_btn.clicked.connect(win._library_play_selected_video)
     vbtn.addWidget(win.library_video_play_btn)
 
+    win.library_resume_series_btn = QPushButton("Resume series")
+    win.library_resume_series_btn.setToolTip(
+        help_tooltip_rich(
+            "Queue remaining episodes for a series folder (uses series.json next episode index).",
+            "tasks_library",
+            slide=1,
+        )
+    )
+    win.library_resume_series_btn.clicked.connect(win._library_resume_series_queue)
+    vbtn.addWidget(win.library_resume_series_btn)
+
     vbtn.addStretch(1)
     media_lay.addLayout(vbtn)
 
-    add_section_spacing(lay, px=10)
-
     runs_card, runs_lay = section_card()
+    runs_card.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
     runs_lay.addWidget(section_title("runs/ - intermediate workspaces", emphasis=True))
 
     win.library_runs_table = QTableWidget(0, 3)
@@ -156,19 +169,21 @@ def attach_library_tab(win) -> None:
     win.library_runs_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     win.library_runs_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
     win.library_runs_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-    win.library_runs_table.setMinimumHeight(100)
-    win.library_runs_table.setMaximumHeight(280)
+    win.library_runs_table.setMinimumHeight(140)
     win.library_runs_table.setSizePolicy(
-        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     )
-    win.library_runs_table.verticalHeader().setDefaultSectionSize(22)
+    win.library_runs_table.verticalHeader().setVisible(False)
+    win.library_runs_table.verticalHeader().setDefaultSectionSize(26)
     win.library_runs_table.cellDoubleClicked.connect(lambda _r, _c: win._library_open_selected_run_dir())
-    runs_lay.addWidget(win.library_runs_table)
+    runs_lay.addWidget(win.library_runs_table, 1)
 
     rbtn = QHBoxLayout()
-    rbtn.setSpacing(8)
+    rbtn.setContentsMargins(0, 8, 0, 0)
+    rbtn.setSpacing(10)
     win.library_run_open_btn = QPushButton("Open run folder")
     win.library_run_open_btn.setObjectName("primary")
+    win.library_run_open_btn.setMinimumWidth(120)
     win.library_run_open_btn.clicked.connect(win._library_open_selected_run_dir)
     rbtn.addWidget(win.library_run_open_btn)
 
@@ -182,10 +197,10 @@ def attach_library_tab(win) -> None:
     rbtn.addStretch(1)
     runs_lay.addLayout(rbtn)
 
-    lay.addWidget(two_column_row(media_card, runs_card, spacing=12))
+    lay.addWidget(two_column_row(media_card, runs_card, spacing=16), 1)
 
-    scroll.setWidget(inner_root)
-    outer.addWidget(scroll, 1)
+    inner_root.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+    outer.addWidget(inner_root, 1)
 
     win._library_tab_widget = w
     win.tabs.addTab(w, "Library")
@@ -201,6 +216,29 @@ def attach_library_tab(win) -> None:
         media_root = win.paths.pictures_dir if mm == "photo" else win.paths.videos_dir
         win.library_videos_table.setRowCount(0)
         rows = scan_finished_pictures(media_root) if mm == "photo" else scan_finished_videos(media_root)
+        q = ""
+        if hasattr(win, "library_search_edit"):
+            q = str(win.library_search_edit.text() or "").strip().lower()
+        if q:
+
+            def _blob(vp) -> str:
+                try:
+                    import json
+
+                    mp = vp.path / "meta.json"
+                    if mp.is_file():
+                        d = json.loads(mp.read_text(encoding="utf-8"))
+                        tags = " ".join(str(x) for x in (d.get("hashtags") or []) if x)
+                        return f"{d.get('title','')} {d.get('description','')} {tags}".lower()
+                except Exception:
+                    pass
+                return ""
+
+            rows = [
+                v
+                for v in rows
+                if q in v.title.lower() or q in v.folder_name.lower() or q in _blob(v)
+            ]
         for v in rows:
             r = win.library_videos_table.rowCount()
             win.library_videos_table.insertRow(r)

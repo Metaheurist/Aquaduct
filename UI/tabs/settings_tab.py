@@ -1407,7 +1407,7 @@ def attach_settings_tab(win) -> None:
     win.auto_fit_models_btn.clicked.connect(_auto_fit_models)
     win._auto_fit_models = _auto_fit_models
 
-    _update_fit_badges()
+    QTimer.singleShot(0, _update_fit_badges)
     _sync_local_model_combo_tooltip(win.llm_combo)
     _sync_local_model_combo_tooltip(win.img_combo)
     _sync_local_model_combo_tooltip(win.vid_combo)

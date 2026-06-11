@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.theme import token
+from UI.widgets.tab_layout import SECTION_CARD_MARGINS, SECTION_CARD_SPACING
 
 StatusGlyphKind = str  # "check" | "cross" | "dot" | "half" | "warning" | "info"
 
@@ -30,10 +31,10 @@ _STATUS_COLOR: dict[str, str] = {
 }
 
 # Gap between major blocks (below previous section’s last row).
-SECTION_SPACING_PX = 18
+SECTION_SPACING_PX = 14
 
 
-def section_card(*, margins: int = 12, spacing: int = 10) -> tuple[QFrame, QVBoxLayout]:
+def section_card(*, margins: int = SECTION_CARD_MARGINS, spacing: int = SECTION_CARD_SPACING) -> tuple[QFrame, QVBoxLayout]:
     """
     Rounded container (``QFrame#SettingsSectionCard``) for a logical block inside a tab.
     Styled in ``UI/theme.py`` using the ``card`` palette token so it sits above the tab pane.

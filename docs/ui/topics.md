@@ -18,7 +18,7 @@ The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format**
 
 ## Discover
 
-- **News / Explainer**: headline-style suggestions.
+- **News / Explainer**: headline-style suggestions. At pipeline time, headline pick among top-ranked items uses **weighted random** selection ([`pick_weighted_item`](../../src/content/crawler.py)) so runs vary without ignoring relevance.
 - **Cartoon, Unhinged, Creepypasta, Health advice, NSFW**: Firecrawl web seeds (requires API tab key). Research packs under `data/topic_research/<mode>/` when enabled. For **NSFW**, Discover applies denylist filtering on suggested lines unless a **session guardrail bypass** is active ([Desktop UI](ui.md), [Config](../reference/config.md#session-guardrail-bypass)).
 
 See [Desktop UI overview](ui.md) and [Crawler](../integrations/crawler.md).

@@ -32,10 +32,10 @@ Prints the absolute path to `ui_settings.json`.
 
 ### `config show`
 
-Dumps effective settings as one JSON object (stdout). Options:
+Dumps effective settings as one JSON object (stdout). **Secrets are redacted by default** (tokens, API keys, OAuth client secrets). Options:
 
 - `--pretty` — indented JSON.
-- `--no-secrets` — redacts tokens and API keys (safe for logs).
+- `--show-secrets` — include plaintext secrets (use only in trusted environments).
 
 ### `config validate`
 

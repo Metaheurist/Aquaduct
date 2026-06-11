@@ -26,6 +26,18 @@ Replace `NAME` with `main`, `src.runtime.pipeline_api`, or `UI.app`.
 2. **UI cold start** — `UI.main_window` plus **all tabs** loaded at import time accounts for a large share of desktop startup before the event loop runs. Tab code pulls crawler/workers and transitively `main` / editor again.
 3. **`run_once_api`** — Not separately profiled here; it lives in `src.runtime.pipeline_api` and reuses the same render/brain stack as local runs. First call cost is dominated by **network I/O** and any **lazy** local imports (e.g. torch) on first model touch, not by the `run_once_api` function wrapper itself.
 
+## Spatial upscale (editor path)
+
+When **`spatial_upscale_mode`** is **`auto`**, clips upscaled in the editor are tagged with a **`.aq_spatial`** sidecar so a second pass in the same job is skipped ([`is_spatial_upscaled`](../../src/render/spatial_upscale.py)). Within one run, the **RealESRGAN** PyTorch upsampler is **cached** across clips and released after `upscale_clips_inplace` completes.
+
+## Batch quality regen
+
+Failed slideshow/keyframes quality passes are retried in a **single** diffusion load via **`_batch_quality_regen`** in [`main.py`](../../main.py), avoiding repeated model materialization.
+
+## Topic tags (run_once)
+
+**`_run_topic_tags`** is computed **once** per `run_once` and reused for crawl/discover branches instead of recomputing on every stage.
+
 ## “Won’t fix” in the short term
 
 - **First torch / diffusers / transformers load** — Large GPU RAM and seconds of startup when a local model is first materialized; normal for HF stacks.

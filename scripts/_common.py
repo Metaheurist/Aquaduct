@@ -25,7 +25,7 @@ def load_repo_dotenv(*, root: Path | None = None) -> None:
     try:
         from dotenv import load_dotenv
 
-        load_dotenv(r / ".env")
+        load_dotenv(r / ".env", override=True)
     except Exception:
         pass
 

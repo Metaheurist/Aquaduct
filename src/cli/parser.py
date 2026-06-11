@@ -52,9 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     show = cfg_sub.add_parser("show", help="Print settings as JSON.")
     show.add_argument("--pretty", action="store_true", help="Indented output.")
     show.add_argument(
-        "--no-secrets",
+        "--show-secrets",
         action="store_true",
-        help="Redact tokens and API keys (for logs).",
+        help="Include tokens and API keys (default output redacts secrets).",
     )
     cfg_sub.add_parser("path", help="Print absolute path to ui_settings.json.")
     val = cfg_sub.add_parser("validate", help="Load settings; optional preflight.")

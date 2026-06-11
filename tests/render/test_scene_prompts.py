@@ -126,7 +126,7 @@ def test_genre_motion_cues_are_format_specific() -> None:
     news = sp._genre_motion_cues("news")
     assert any("fog" in c or "darkness" in c for c in cre)
     assert any("squash" in c or "whip" in c for c in cart)
-    assert "slow push-in" in news
+    assert any("push-in" in c or "establishing" in c for c in news)
 
 
 def test_genre_style_tail_includes_910_for_all_known_formats() -> None:

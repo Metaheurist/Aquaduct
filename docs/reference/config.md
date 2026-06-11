@@ -151,7 +151,8 @@ Defaults are **`auto`**, which resolves to the highest-quality mode that fits th
 - bitrate preset (low/med/high)
 - export micro-scenes toggle (`export_microclips` in settings — key name unchanged)
 - **`platform_preset_id`**: last selected **platform template** id from the Video tab tiles (empty string = **Custom**). See [`src/settings/video_platform_presets.py`](../../src/settings/video_platform_presets.py).
-- **`spatial_upscale_mode`**: **`off`** (default) or **`auto`** — optional Real-ESRGAN-class **spatial** upsampling toward the export width×height before caption compositing ([`spatial_upscale.py`](../../src/render/spatial_upscale.py)). **`auto`** tries PyTorch on CUDA when **`basicsr`**, **`realesrgan`**, and **`opencv`** are installed, then the **`realesrgan-ncnn-vulkan`** binary; otherwise the editor keeps Lanczos resize. Ignored in **API** mode. Optional pip set: [`requirements-optional-upscale.txt`](../../requirements-optional-upscale.txt).
+- **`spatial_upscale_mode`**: **`off`** (default) or **`auto`** — optional Real-ESRGAN-class **spatial** upsampling toward the export width×height before caption compositing ([`spatial_upscale.py`](../../src/render/spatial_upscale.py)). **`auto`** tries PyTorch on CUDA when **`basicsr`**, **`realesrgan`**, and **`opencv`** are installed, then the **`realesrgan-ncnn-vulkan`** binary; otherwise the editor keeps Lanczos resize. Clips already upscaled in-editor carry a **`.aq_spatial`** marker so a second pass in the same job is skipped. Ignored in **API** mode. Optional pip set: [`requirements-optional-upscale.txt`](../../requirements-optional-upscale.txt).
+- **`caption_vertical_anchor`**: **`bottom`** (default), **`middle`**, or **`top`** — safe-zone vertical placement for burned-in captions ([`src/render/captions.py`](../../src/render/captions.py)); set on the **Captions** tab / Video settings.
 
 ### Spatial upscale environment (optional)
 
@@ -173,7 +174,15 @@ Process-only guardrail bypass for **NSFW-related** checks (see [`nsfw_guardrails
 
 | Variable | Meaning |
 |----------|---------|
-| **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** | When **`1`** / **`true`** / **`yes`** / **`on`**, skips NSFW **LLM guardrail** injection, **topic/crawl denylist** filtering, **preflight** errors for NSFW plus TikTok/YouTube **auto-upload**, the NSFW **safety-checker** preflight **warning**, and **Tasks** manual-upload blocks for renders tagged NSFW in **`meta.json`**. The desktop app sets or clears this for the **current process** when **F12** is pressed ([Desktop UI](../ui/ui.md)). |
+| **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** | When **`1`** / **`true`** / **`yes`** / **`on`** at **process start**, skips NSFW **LLM guardrail** injection, **topic/crawl denylist** filtering, **preflight** errors for NSFW plus TikTok/YouTube **auto-upload**, the NSFW **safety-checker** preflight **warning**, and **Tasks** manual-upload blocks for renders tagged NSFW in **`meta.json`**. The desktop app **F12** shortcut only toggles bypass **when this env var is already set** at launch (developer / trusted-machine use). Without the env var, **F12** has no effect ([Desktop UI](../ui/ui.md)). |
+
+## Encrypted secrets (`ui_settings.json`)
+
+API keys, OAuth client secrets, and similar fields in **`ui_settings.json`** are stored as **Fernet-encrypted** blobs when [`src/settings/secrets_crypto.py`](../../src/settings/secrets_crypto.py) is available. A per-user key file lives under **`.Aquaduct_data/.ui_settings_fernet.key`**. Plaintext values from older installs are **migrated on load**. **`config show`** redacts secrets by default; pass **`--show-secrets`** to print plaintext ([CLI](cli.md#config-show)).
+
+## Settings schema version
+
+`settings_schema_version` in **`ui_settings.json`** tracks migrations applied by [`src/settings/ui_settings.py`](../../src/settings/ui_settings.py). Bump when adding breaking key renames or default changes so upgrades merge safely.
 
 ## App settings (UI + pipeline)
 `AppSettings` includes:

@@ -1,0 +1,14 @@
+[project]
+name = "aquaduct"
+version = "0.2.0"
+description = "Local AI faceless short-form video generator"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "qt: PyQt6 UI tests (require display or pytest-qt)",
+    "slow: long-running integration tests",
+    "cuda_gpu: optional real-GPU smoke tests",
+]

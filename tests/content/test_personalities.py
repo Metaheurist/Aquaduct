@@ -20,7 +20,12 @@ def test_get_personality_by_id_fallback():
     assert p.id in {pp.id for pp in get_personality_presets()}
 
 
-def test_shape_tts_text_chunks_long_sentences():
+def test_shape_tts_text_applies_pronunciation_lexicon():
+    text = "Visit GitHub today."
+    shaped = shape_tts_text(text, pronunciation_lexicon={"GitHub": "git hub"})
+    assert "git hub" in shaped.lower()
+
+
     text = "This is a very long sentence that should be split into smaller chunks so the TTS pacing sounds better and more natural."
     shaped = shape_tts_text(text, personality_id="urgent")
     assert shaped

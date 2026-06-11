@@ -143,33 +143,68 @@ def copy_script_package_between_assets(staging_assets: Path, project_assets: Pat
         pass
 
 
+def _resumable_candidate_mtime(project_dir: Path, settings: Any) -> float | None:
+    """Return assets mtime when ``project_dir`` is a partial, resumable run; else ``None``."""
+    try:
+        if (project_dir / "final.mp4").is_file():
+            return None
+        assets = project_dir / "assets"
+        if not assets.is_dir():
+            return None
+        ck = load_checkpoint(assets, settings)
+        if not ck:
+            return None
+        stg = stages_done(assets, settings)
+        if not stg or "done" in stg:
+            return None
+        if ("script_pkg" in stg or "script_llm" in stg) and not script_package_path(assets).is_file():
+            return None
+        return float(assets.stat().st_mtime)
+    except Exception:
+        return None
+
+
+def _iter_video_project_dirs(root: Path) -> list[Path]:
+    """
+    Flat video folders under ``videos/`` plus nested series episodes ``videos/*/episode_*/``.
+    """
+    if not root.is_dir():
+        return []
+    out: list[Path] = []
+    for child in root.iterdir():
+        if not child.is_dir():
+            continue
+        name = child.name.lower()
+        if name.startswith("episode_"):
+            out.append(child)
+            continue
+        # Series root: scan episode_* subfolders (newest episodes first within each series).
+        episodes = sorted(
+            (ep for ep in child.iterdir() if ep.is_dir() and ep.name.lower().startswith("episode_")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if episodes:
+            out.extend(episodes)
+        else:
+            out.append(child)
+    return out
+
+
 def find_latest_resumable_video_project(root: Path, settings: Any, *, limit_scan: int = 200) -> Path | None:
     """
-    Newest subdirectory under ``videos/`` that has a matching checkpoint without a terminal ``done`` stage
-    and (when script milestones exist) ``pipeline_script_package.json``.
+    Newest subdirectory under ``videos/`` (including ``videos/<series>/episode_*/``) that has a
+    matching checkpoint without a terminal ``done`` stage and (when script milestones exist)
+    ``pipeline_script_package.json``.
     """
     if not root.is_dir():
         return None
-    subs = sorted((p for p in root.iterdir() if p.is_dir()), key=lambda x: x.stat().st_mtime, reverse=True)
+    candidates = sorted(_iter_video_project_dirs(root), key=lambda x: x.stat().st_mtime, reverse=True)
     best: tuple[float, Path] | None = None
-    for child in subs[:limit_scan]:
-        try:
-            if (child / "final.mp4").is_file():
-                continue
-            assets = child / "assets"
-            if not assets.is_dir():
-                continue
-            ck = load_checkpoint(assets, settings)
-            if not ck:
-                continue
-            stg = stages_done(assets, settings)
-            if not stg or "done" in stg:
-                continue
-            if ("script_pkg" in stg or "script_llm" in stg) and not script_package_path(assets).is_file():
-                continue
-            mtime = float(assets.stat().st_mtime)
-            if best is None or mtime > best[0]:
-                best = (mtime, child)
-        except Exception:
+    for child in candidates[:limit_scan]:
+        mtime = _resumable_candidate_mtime(child, settings)
+        if mtime is None:
             continue
+        if best is None or mtime > best[0]:
+            best = (mtime, child)
     return None if best is None else best[1]

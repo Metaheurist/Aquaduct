@@ -26,7 +26,8 @@ def attach_tasks_tab(win) -> None:
     lay = QVBoxLayout(w)
     lay.setSpacing(10)
 
-    header = QLabel("Tasks (finished videos)")
+    win._tasks_header_label = QLabel("Tasks (finished videos)")
+    header = win._tasks_header_label
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
     lay.addWidget(header)
 
@@ -161,6 +162,20 @@ def attach_tasks_tab(win) -> None:
     win.tasks_copy_btn.clicked.connect(win._tasks_copy_caption)
     btn_row.addWidget(win.tasks_copy_btn)
 
+    win.tasks_approve_btn = QPushButton("Approve")
+    win.tasks_approve_btn.setObjectName("primary")
+    win.tasks_approve_btn.setAccessibleName("Approve task for publishing")
+    win.tasks_approve_btn.setToolTip(
+        help_tooltip_rich(
+            "Mark the selected finished render as approved. Required before TikTok/YouTube upload "
+            "(including auto-upload when enabled on the API tab).",
+            "tasks_library",
+            slide=0,
+        )
+    )
+    win.tasks_approve_btn.clicked.connect(win._tasks_approve_selected)
+    btn_row.addWidget(win.tasks_approve_btn)
+
     win.tasks_posted_btn = QPushButton("Mark posted (manual)")
     win.tasks_posted_btn.setAccessibleName("Mark posted manually")
     win.tasks_posted_btn.clicked.connect(win._tasks_mark_posted_manual)
@@ -234,3 +249,13 @@ def attach_tasks_tab(win) -> None:
 
     win._tasks_tab_widget = w
     win.tabs.addTab(w, "Tasks")
+
+
+def refresh_tasks_tab_for_media_mode(win) -> None:
+    """Align Tasks tab copy with Photo vs Video mode."""
+    mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
+    is_photo = mm == "photo"
+    if hasattr(win, "_tasks_header_label"):
+        win._tasks_header_label.setText(
+            "Tasks (finished pictures)" if is_photo else "Tasks (in-progress & uploads)"
+        )

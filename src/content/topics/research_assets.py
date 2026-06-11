@@ -27,8 +27,10 @@ def _url_fingerprint(url: str) -> str:
 
 def try_fetch_og_image_url(page_url: str, *, timeout_s: float = _OG_TIMEOUT_S) -> str | None:
     """Lightweight HTML fetch to read og:image / twitter:image (no Firecrawl scrape)."""
+    from src.util.ssrf_guard import is_safe_http_url
+
     u = (page_url or "").strip()
-    if not u.startswith("http"):
+    if not is_safe_http_url(u):
         return None
     try:
         r = requests.get(
@@ -68,6 +70,10 @@ def _guess_ext_from_content_type(ct: str | None) -> str:
 
 
 def _download_image(image_url: str, dest: Path, *, timeout_s: float = _DL_TIMEOUT_S) -> Path | None:
+    from src.util.ssrf_guard import is_safe_http_url
+
+    if not is_safe_http_url(image_url):
+        return None
     try:
         r = requests.get(
             image_url,

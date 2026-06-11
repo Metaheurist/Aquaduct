@@ -27,14 +27,30 @@ def _sentences(text: str) -> list[str]:
     return out
 
 
-def shape_tts_text(text: str, *, personality_id: str = "neutral") -> str:
+def shape_tts_text(
+    text: str,
+    *,
+    personality_id: str = "neutral",
+    pronunciation_lexicon: dict[str, str] | None = None,
+) -> str:
     """
     Deterministic text shaping for nicer offline TTS:
+    - pronunciation lexicon replacements (longest match first)
     - sentence chunking
     - punctuation tuning for pauses/emphasis
     - personality-specific pacing (urgent: shorter chunks)
     """
-    sents = _sentences(text)
+    t = str(text or "").strip()
+    if pronunciation_lexicon:
+        for src, dst in sorted(pronunciation_lexicon.items(), key=lambda kv: len(kv[0]), reverse=True):
+            s = str(src or "").strip()
+            if not s:
+                continue
+            try:
+                t = re.sub(re.escape(s), str(dst or ""), t, flags=re.IGNORECASE)
+            except re.error:
+                continue
+    sents = _sentences(t)
     if not sents:
         return ""
 

@@ -26,7 +26,9 @@ def test_save_roundtrip_api_models(tmp_path, monkeypatch):
     assert save_settings(s) is True
     raw = json.loads(p.read_text(encoding="utf-8"))
     assert raw.get("model_execution_mode") == "api"
-    assert raw.get("api_openai_key") == "sk-test"
+    stored_key = raw.get("api_openai_key")
+    assert stored_key != "sk-test"
+    assert str(stored_key).startswith("enc:")
     am = raw.get("api_models")
     assert isinstance(am, dict)
     assert am["llm"]["provider"] == "openai"
