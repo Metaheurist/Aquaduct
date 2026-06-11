@@ -23,6 +23,7 @@ from src.settings.api_model_catalog import (
 )
 from UI.help.tutorial_links import help_tooltip_rich, help_tooltip_rich_unless_already
 from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.visual_primitives import PresetCard, PresetCardGrid
 
 
 def _set_combo_data(combo: QComboBox, items: list[tuple[str, str]]) -> None:
@@ -132,6 +133,41 @@ def build_generation_api_panel(win) -> QWidget:
     root.setMinimumWidth(420)
     outer = QVBoxLayout(root)
 
+    _CLOUD_STACKS: dict[str, dict[str, str]] = {
+        "gemini_free": {
+            "llm": "google_ai_studio",
+            "image": "siliconflow",
+            "video": "magic_hour",
+            "voice": "inworld",
+        },
+        "openai": {
+            "llm": "openai",
+            "image": "openai",
+            "video": "replicate",
+            "voice": "openai",
+        },
+        "replicate": {
+            "llm": "groq",
+            "image": "replicate",
+            "video": "replicate",
+            "voice": "elevenlabs",
+        },
+        "budget": {
+            "llm": "groq",
+            "image": "siliconflow",
+            "video": "magic_hour",
+            "voice": "inworld",
+        },
+    }
+    _cloud_cards = [
+        PresetCard("gemini_free", "Gemini free", "Script + Flux + video", icon="cloud", recommended=True),
+        PresetCard("openai", "OpenAI", "GPT + DALL·E + Replicate", icon="cpu"),
+        PresetCard("replicate", "Replicate", "Groq + Flux + EL voice", icon="layers"),
+        PresetCard("budget", "Budget", "Groq + SiliconFlow", icon="wallet"),
+    ]
+    win._api_cloud_presets = PresetCardGrid(_cloud_cards, columns=2, default_id="gemini_free")
+    outer.addWidget(win._api_cloud_presets)
+
     keys_row = QFormLayout()
     win.api_gen_openai_key = QLineEdit()
     win.api_gen_openai_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -208,6 +244,39 @@ def build_generation_api_panel(win) -> QWidget:
     win.api_gen_image_provider, win.api_gen_image_model, _, _, _ = _role_block("Image API (stills)", "image")
     win.api_gen_video_provider, win.api_gen_video_model, _, _, _ = _role_block("Video API (Pro / Replicate)", "video")
     win.api_gen_voice_provider, win.api_gen_voice_model, _, _, win.api_gen_voice_id = _role_block("Voice API", "voice")
+
+    _role_provider_combos = {
+        "llm": win.api_gen_llm_provider,
+        "image": win.api_gen_image_provider,
+        "video": win.api_gen_video_provider,
+        "voice": win.api_gen_voice_provider,
+    }
+    _role_model_combos = {
+        "llm": win.api_gen_llm_model,
+        "image": win.api_gen_image_model,
+        "video": win.api_gen_video_model,
+        "voice": win.api_gen_voice_model,
+    }
+
+    def _apply_cloud_stack(stack_id: str) -> None:
+        mapping = _CLOUD_STACKS.get(str(stack_id or "gemini_free"))
+        if not mapping:
+            return
+        for role, pid in mapping.items():
+            prov = _role_provider_combos.get(role)
+            mod = _role_model_combos.get(role)
+            if prov is None or mod is None:
+                continue
+            ix = prov.findData(pid)
+            if ix >= 0:
+                prov.setCurrentIndex(ix)
+            models = default_models_for_provider(pid, role)  # type: ignore[arg-type]
+            if models:
+                _refill_model_combo(mod, role=role, provider=pid, saved_model=models[0])
+
+    win._api_cloud_presets.currentIndexChanged.connect(
+        lambda _i: _apply_cloud_stack(str(win._api_cloud_presets.currentData() or "gemini_free"))
+    )
 
     hint = QLabel("Tip: you can set API keys as environment variables instead-hover for a list.")
     hint.setWordWrap(True)

@@ -6,7 +6,6 @@ from dataclasses import replace
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -49,11 +48,14 @@ from src.content.topics import normalize_video_format
 from src.speech.elevenlabs_tts import effective_elevenlabs_api_key, elevenlabs_available_for_app
 from src.settings.ui_settings import save_settings
 from src.speech.voice import list_pyttsx3_voices as list_sys_voices
+from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
+from UI.widgets.themed_switch import ThemedSwitch
 from UI.services.brain_expand import image_model_id_from_ui, resolve_llm_model_id
 from UI.dialogs.frameless_dialog import FramelessDialog, aquaduct_question, aquaduct_warning
 from UI.dialogs.auxiliary_progress_dialog import AuxiliaryProgressDialog, schedule_auxiliary_job_memory_purge
 from UI.widgets.no_wheel_controls import NoWheelComboBox
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.visual_primitives import StepCard
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.theme import resolve_palette, token
 from UI.widgets.character_card import CharacterCard
@@ -177,12 +179,18 @@ def attach_characters_tab(win) -> None:
     left_lay.setSpacing(3)
 
     list_card, list_lay = section_card(margins=10, spacing=8)
-    list_lay.addWidget(section_title("Characters", emphasis=True))
+    hdr_row = QWidget()
+    hdr_lay = QHBoxLayout(hdr_row)
+    hdr_lay.setContentsMargins(0, 0, 0, 0)
+    char_hdr = section_title("Characters", emphasis=True)
+    attach_basic_advanced_header(win, "characters", title_row_parent_layout=hdr_lay, title_widget=char_hdr)
+    list_lay.addWidget(hdr_row)
 
-    hint = QLabel("Host identity and visuals - assign on the Pipeline tab.")
-    hint.setWordWrap(True)
+    hero = StepCard(1, "Create a host", subtitle="Lead voice + portrait — assign on Pipeline")
+    hint = QLabel("Tap + or Generate with LLM to add your first character.")
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    list_lay.addWidget(hint)
+    hero.addWidget(hint)
+    list_lay.addWidget(hero)
 
     gen_row = QHBoxLayout()
     gen_row.setSpacing(6)
@@ -392,7 +400,7 @@ def attach_characters_tab(win) -> None:
     win.character_negatives_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
     edit_lay.addWidget(win.character_negatives_edit)
 
-    win.character_default_voice_chk = QCheckBox("Use project default voice (Settings → Voice model)")
+    win.character_default_voice_chk = ThemedSwitch("Use project default voice (Settings → Voice model)")
     win.character_default_voice_chk.setChecked(True)
     win.character_default_voice_chk.setStyleSheet("font-size: 11px; font-weight: 600;")
     edit_lay.addWidget(win.character_default_voice_chk)
@@ -482,6 +490,8 @@ def attach_characters_tab(win) -> None:
 
     right_lay.addWidget(edit_card)
     right_scroll.setWidget(right_inner)
+
+    register_advanced_sections(win, "characters", [right_scroll])
 
     split = two_column_row(left_panel, right_scroll, ratio=(2, 3), spacing=16)
     lay.addWidget(split, 1)

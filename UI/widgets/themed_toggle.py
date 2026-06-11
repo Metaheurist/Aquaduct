@@ -11,10 +11,12 @@ from UI.theme import token
 
 
 def _rgba(hex_color: str, alpha: float) -> str:
+    """Qt stylesheets require rgba alpha as 0–255, not 0.0–1.0."""
     c = QColor(hex_color)
     if not c.isValid():
         c = QColor("#25F4EE")
-    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha})"
+    a = max(0, min(255, int(round(float(alpha) * 255))))
+    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {a})"
 
 
 class ThemedToggle(QWidget):
@@ -108,10 +110,11 @@ class ThemedToggle(QWidget):
         shell_lay.addWidget(self._right_btn, 1)
         root.addWidget(self._shell)
 
+        shell_border = _rgba(token("border", "#2E2E38"), 0.45)
         self._shell.setStyleSheet(
             f"QFrame#{object_name_shell} {{"
             f"  background-color: {token('control_bg', '#121218')};"
-            f"  border: 1px solid {token('border', '#2E2E38')};"
+            f"  border: 1px solid {shell_border};"
             "  border-radius: 12px;"
             "}"
         )
@@ -127,16 +130,15 @@ class ThemedToggle(QWidget):
 
     def _restyle_segments(self) -> None:
         accent_hex = token("accent", "#25F4EE")
-        accent = _rgba(accent_hex, 0.22)
-        accent_border = _rgba(accent_hex, 0.55)
+        accent = _rgba(accent_hex, 0.30)
         self._left_btn.setStyleSheet(
-            self._segment_qss(left=True, checked=self._left_btn.isChecked(), accent=accent, accent_border=accent_border)
+            self._segment_qss(left=True, checked=self._left_btn.isChecked(), accent=accent)
         )
         self._right_btn.setStyleSheet(
-            self._segment_qss(left=False, checked=self._right_btn.isChecked(), accent=accent, accent_border=accent_border)
+            self._segment_qss(left=False, checked=self._right_btn.isChecked(), accent=accent)
         )
 
-    def _segment_qss(self, *, left: bool, checked: bool, accent: str, accent_border: str) -> str:
+    def _segment_qss(self, *, left: bool, checked: bool, accent: str) -> str:
         fs = self._font_px
         pad = self._pad
         if left:
@@ -151,7 +153,7 @@ class ThemedToggle(QWidget):
                 + "  color: #FFFFFF;"
                 + "  font-weight: 700;"
                 + f"  font-size: {fs}px;"
-                + f"  border: 1px solid {accent_border};"
+                + "  border: none;"
                 + f"  padding: {pad};"
                 + "}"
             )
@@ -162,10 +164,10 @@ class ThemedToggle(QWidget):
             + "  color: #8A8A96;"
             + "  font-weight: 600;"
             + f"  font-size: {fs}px;"
-            + "  border: 1px solid transparent;"
+            + "  border: none;"
             + f"  padding: {pad};"
             + "}"
-            + "QToolButton:hover { color: #E6E6F0; background-color: rgba(255,255,255,0.05); }"
+            + "QToolButton:hover { color: #E6E6F0; background-color: rgba(255,255,255,13); }"
         )
 
     def currentIndex(self) -> int:

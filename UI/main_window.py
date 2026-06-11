@@ -661,19 +661,21 @@ class MainWindow(QMainWindow):
             return
 
         def _to_run() -> None:
+            pf = str(self.picture_format_combo.currentData() or "poster")
             self.picture_format_run_combo.blockSignals(True)
             try:
-                ix = int(self.picture_format_combo.currentIndex())
-                if 0 <= ix < self.picture_format_run_combo.count():
+                ix = self.picture_format_run_combo.findData(pf)
+                if ix >= 0:
                     self.picture_format_run_combo.setCurrentIndex(ix)
             finally:
                 self.picture_format_run_combo.blockSignals(False)
 
         def _to_pic() -> None:
+            pf = str(self.picture_format_run_combo.currentData() or "poster")
             self.picture_format_combo.blockSignals(True)
             try:
-                ix = int(self.picture_format_run_combo.currentIndex())
-                if 0 <= ix < self.picture_format_combo.count():
+                ix = self.picture_format_combo.findData(pf)
+                if ix >= 0:
                     self.picture_format_combo.setCurrentIndex(ix)
             finally:
                 self.picture_format_combo.blockSignals(False)
@@ -742,7 +744,9 @@ class MainWindow(QMainWindow):
 
         # Run tab: picture format row only in photo mode; headline/topic mode always visible.
         try:
-            if hasattr(self, "_picture_format_label"):
+            if hasattr(self, "_picture_format_step"):
+                self._picture_format_step.setVisible(is_photo)
+            elif hasattr(self, "_picture_format_label"):
                 self._picture_format_label.setVisible(is_photo)
             if hasattr(self, "picture_format_run_combo"):
                 self.picture_format_run_combo.setVisible(is_photo)

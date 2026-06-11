@@ -97,11 +97,10 @@ def test_library_tab_side_by_side_cards(qapplication, patch_paths, write_ui_sett
     win.tabs = QTabWidget()
     win.settings = AppSettings()
     attach_library_tab(win)
-    media = win._library_media_card
-    parent = media.parentWidget()
-    assert parent is not None
-    assert parent.layout() is not None
-    assert parent.layout().count() == 2
+    split = win._library_split_host
+    assert split is not None
+    assert split.layout() is not None
+    assert split.layout().count() == 2
 
 
 @pytest.mark.qt

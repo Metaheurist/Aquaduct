@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -55,7 +54,9 @@ from UI.dialogs.frameless_dialog import aquaduct_information
 from UI.widgets.model_execution_toggle import ModelExecutionModeToggle
 from UI.widgets.models_storage_toggle import ModelsStorageModeToggle
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSlider, QuantAccentSlider
+from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
 from UI.widgets.tab_scaffold import make_tab_root
+from UI.widgets.themed_switch import ThemedSwitch
 from UI.widgets.tab_sections import add_section_spacing, section_title
 from UI.help.tutorial_links import help_tooltip_rich, help_tooltip_rich_unless_already
 from UI.workers import ModelSizePingWorker
@@ -220,7 +221,14 @@ def attach_settings_tab(win) -> None:
     ll.setSpacing(8)
     win._local_model_shell = inner_root
 
-    ll.addWidget(section_title("Models (select + download)", emphasis=True))
+    hdr_row = QWidget()
+    hdr_lay = QHBoxLayout(hdr_row)
+    hdr_lay.setContentsMargins(0, 0, 0, 0)
+    model_hdr = QLabel("Model")
+    model_hdr.setStyleSheet("font-size: 16px; font-weight: 700;")
+    attach_basic_advanced_header(win, "model", title_row_parent_layout=hdr_lay, title_widget=model_hdr)
+    ll.addWidget(hdr_row)
+    ll.addWidget(section_title("Download & select", emphasis=True))
 
     win._settings_hf_banner = QLabel(
         "Hugging Face token use is off: remote size checks and gated model downloads may fail or be rate-limited. "
@@ -235,15 +243,20 @@ def attach_settings_tab(win) -> None:
     win._settings_hf_banner.setVisible(not hf_on)
     ll.addWidget(win._settings_hf_banner)
 
-    add_section_spacing(ll)
+    win._model_advanced_host = QWidget()
+    model_adv = QVBoxLayout(win._model_advanced_host)
+    model_adv.setContentsMargins(0, 0, 0, 0)
+    ll.addWidget(win._model_advanced_host)
+
+    add_section_spacing(model_adv)
     _msm = str(getattr(win.settings, "models_storage_mode", "default") or "default").strip().lower()
-    ll.addWidget(section_title("Model files location", emphasis=True))
+    model_adv.addWidget(section_title("Model files location", emphasis=True))
     storage_title = QHBoxLayout()
     storage_title.addStretch(1)
     win.models_storage_mode_combo = ModelsStorageModeToggle()
     win.models_storage_mode_combo.setCurrentIndex(1 if _msm == "external" else 0)
     storage_title.addWidget(win.models_storage_mode_combo)
-    ll.addLayout(storage_title)
+    model_adv.addLayout(storage_title)
 
     win.models_external_path_edit = QLineEdit()
     win.models_external_path_edit.setPlaceholderText("Absolute path to folder for Hugging Face model snapshots…")
@@ -275,7 +288,7 @@ def attach_settings_tab(win) -> None:
     ext_row.addWidget(win.models_external_browse_btn, 0)
     ext_row.addWidget(win.models_external_apply_btn, 0)
     ext_row.addWidget(win.models_external_detect_btn, 0)
-    ll.addLayout(ext_row)
+    model_adv.addLayout(ext_row)
 
     win.models_storage_mode_combo.setToolTip(
         _models_help_tip(
@@ -284,12 +297,9 @@ def attach_settings_tab(win) -> None:
             slide=3,
         )
     )
-    storage_hint = QLabel(
-        "Default .Aquaduct_data/models, or External with a path and Apply. Hover the storage toggle for details."
-    )
-    storage_hint.setWordWrap(True)
+    storage_hint = QLabel("Default folder or External path.")
     storage_hint.setStyleSheet("color:#8A8A96;font-size:11px;padding:0 0 4px 0;")
-    ll.addWidget(storage_hint)
+    model_adv.addWidget(storage_hint)
 
     def _apply_models_storage_ui() -> None:
         ext = str(win.models_storage_mode_combo.currentData() or "default") == "external"
@@ -340,23 +350,17 @@ def attach_settings_tab(win) -> None:
     win.models_storage_mode_combo.currentIndexChanged.connect(_on_models_storage_mode_changed)
     _apply_models_storage_ui()
 
-    add_section_spacing(ll)
+    add_section_spacing(model_adv)
 
-    win._hub_status_lbl = QLabel("Checking Hugging Face for each model (sizes + availability)…")
+    win._hub_status_lbl = QLabel("Checking Hugging Face…")
     win._hub_status_lbl.setStyleSheet("color:#9BB0C4;font-size:12px;padding:0 0 8px 0;")
-    win._hub_status_lbl.setWordWrap(True)
-    ll.addWidget(win._hub_status_lbl)
+    model_adv.addWidget(win._hub_status_lbl)
 
-    win._model_fit_policy_hint = QLabel(
-        "Green/amber fit badges use VRAM from My PC (Auto picks a card vs pinning one GPU)."
-    )
-    win._model_fit_policy_hint.setWordWrap(True)
+    win._model_fit_policy_hint = QLabel("Fit badges use My PC VRAM.")
     win._model_fit_policy_hint.setStyleSheet("color:#7A8A9A;font-size:12px;padding:0 0 8px 0;")
-    ll.addWidget(win._model_fit_policy_hint)
+    model_adv.addWidget(win._model_fit_policy_hint)
 
-    win.auto_quant_downgrade_on_failure_chk = QCheckBox(
-        "If a local run fails, try one step lower quality and retry (auto-save)"
-    )
+    win.auto_quant_downgrade_on_failure_chk = ThemedSwitch("Auto lower quality on fail")
     win.auto_quant_downgrade_on_failure_chk.setChecked(
         bool(getattr(win.settings, "auto_quant_downgrade_on_failure", False))
     )
@@ -372,8 +376,7 @@ def attach_settings_tab(win) -> None:
             slide=0,
         )
     )
-    ll.addWidget(win.auto_quant_downgrade_on_failure_chk)
-
+    model_adv.addWidget(win.auto_quant_downgrade_on_failure_chk)
     win._model_opts = model_options()
     win._model_opt_by_repo = {o.repo_id: o for o in win._model_opts}
     win._hw_info = get_hardware_info()
@@ -388,10 +391,10 @@ def attach_settings_tab(win) -> None:
 
     win._quant_manual_modes: dict[str, tuple[str, ...]] = {}
 
-    win.llm_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
-    win.img_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
-    win.vid_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
-    win.voice_quant_auto_chk = QCheckBox("Automatic (fit this GPU)")
+    win.llm_quant_auto_chk = ThemedSwitch("Auto quant")
+    win.img_quant_auto_chk = ThemedSwitch("Auto quant")
+    win.vid_quant_auto_chk = ThemedSwitch("Auto quant")
+    win.voice_quant_auto_chk = ThemedSwitch("Auto quant")
 
     win.llm_quant_slider = QuantAccentSlider(Qt.Orientation.Horizontal)
     win.img_quant_slider = QuantAccentSlider(Qt.Orientation.Horizontal)
@@ -675,7 +678,7 @@ def attach_settings_tab(win) -> None:
         rkey: str,
         fill_role: str,
         repo: str,
-        auto_chk: QCheckBox,
+        auto_chk: ThemedSwitch,
         slider: NoWheelSlider,
         value_lbl: QLabel,
     ) -> None:
@@ -697,7 +700,7 @@ def attach_settings_tab(win) -> None:
         raw_tip = (opt.tooltip if opt else "") or ""
         value_lbl.setToolTip(_models_help_tip(raw_tip, slide=0) if raw_tip.strip() else _models_help_tip("", slide=0))
 
-    def _current_effective_quant_mode(rkey: str, auto_chk: QCheckBox, slider: NoWheelSlider) -> str:
+    def _current_effective_quant_mode(rkey: str, auto_chk: ThemedSwitch, slider: NoWheelSlider) -> str:
         modes = getattr(win, "_quant_manual_modes", {}).get(rkey) or ()
         if auto_chk.isChecked() or not modes:
             return "auto"
@@ -705,7 +708,7 @@ def attach_settings_tab(win) -> None:
         return str(modes[i])
 
     def _sync_quant_slider_range(
-        auto_chk: QCheckBox,
+        auto_chk: ThemedSwitch,
         slider: NoWheelSlider,
         value_lbl: QLabel,
         rkey: str,
@@ -746,7 +749,7 @@ def attach_settings_tab(win) -> None:
         rkey: str,
         fill_role: str,
         repo: str,
-        auto_chk: QCheckBox,
+        auto_chk: ThemedSwitch,
         slider: NoWheelSlider,
         value_lbl: QLabel,
         want: str,
@@ -779,7 +782,7 @@ def attach_settings_tab(win) -> None:
             slider.blockSignals(False)
         _refresh_quant_value_lbl(rkey, fill_role, repo, auto_chk, slider, value_lbl)
 
-    def _quant_controls_panel(auto_chk: QCheckBox, slider: NoWheelSlider, value_lbl: QLabel) -> QWidget:
+    def _quant_controls_panel(auto_chk: ThemedSwitch, slider: NoWheelSlider, value_lbl: QLabel) -> QWidget:
         panel = QWidget()
         v = QVBoxLayout(panel)
         v.setContentsMargins(0, 0, 0, 0)
@@ -799,6 +802,30 @@ def attach_settings_tab(win) -> None:
     win.voice_quant_panel = _quant_controls_panel(
         win.voice_quant_auto_chk, win.voice_quant_slider, win.voice_quant_value_lbl
     )
+
+    win._model_quant_advanced_host = QWidget()
+    quant_adv_lay = QVBoxLayout(win._model_quant_advanced_host)
+    quant_adv_lay.setContentsMargins(0, 0, 0, 0)
+    quant_adv_lay.setSpacing(8)
+    quant_adv_lay.addWidget(section_title("Quantization", emphasis=True))
+    for _qt, _qp in (
+        ("Script (LLM)", win.llm_quant_panel),
+        ("Image (diffusion)", win.img_quant_panel),
+        ("Video (motion)", win.vid_quant_panel),
+        ("Voice (TTS)", win.voice_quant_panel),
+    ):
+        ql = QLabel(_qt)
+        ql.setStyleSheet("color: #B7B7C2; font-size: 11px; font-weight: 600;")
+        quant_adv_lay.addWidget(ql)
+        quant_adv_lay.addWidget(_qp)
+    ll.addWidget(win._model_quant_advanced_host)
+    register_advanced_sections(win, "model", [win._model_advanced_host, win._model_quant_advanced_host])
+
+    from UI.widgets.visual_primitives import CoachStrip
+
+    win._model_coach = CoachStrip("Start with Auto-fit for this PC, then download models per role.")
+    _coach_at = ll.indexOf(win._settings_hf_banner) + 1
+    ll.insertWidget(max(1, _coach_at), win._model_coach)
 
     def _ensure_model_combo_valid_selection(combo: QComboBox) -> None:
         if _combo_repo_id_from_selection(combo):
@@ -990,7 +1017,7 @@ def attach_settings_tab(win) -> None:
             _last_mrepo = {"script": None, "image": None, "video": None, "voice": None}
 
         def _refill_and_restore_quant(
-            auto_chk: QCheckBox,
+            auto_chk: ThemedSwitch,
             slider: NoWheelSlider,
             value_lbl: QLabel,
             *,
@@ -1192,11 +1219,10 @@ def attach_settings_tab(win) -> None:
         title: str,
         combo: QComboBox,
         dl_b: QLabel,
-        quant_panel: QWidget,
         vram_l: QLabel,
         fit_l: QLabel,
     ) -> QFrame:
-        """Responsive role block: title/fit, full-width model, metadata, quantization (auto + slider)."""
+        """Responsive role block: title/fit, full-width model, metadata (quant in Advanced)."""
         card = QFrame()
         card.setObjectName("ModelRoleCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
@@ -1233,18 +1259,16 @@ def attach_settings_tab(win) -> None:
         meta_row.addWidget(vram_l, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         lay_card.addLayout(meta_row)
 
-        quant_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        lay_card.addWidget(quant_panel)
         return card
 
-    _model_rows: list[tuple[str, QComboBox, QLabel, QWidget, QLabel, QLabel]] = [
-        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_quant_panel, win.llm_vram_lbl, win.llm_fit),
-        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_quant_panel, win.img_vram_lbl, win.img_fit),
-        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_quant_panel, win.vid_vram_lbl, win.vid_fit),
-        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_quant_panel, win.voice_vram_lbl, win.voice_fit),
+    _model_rows: list[tuple[str, QComboBox, QLabel, QLabel, QLabel]] = [
+        ("Script model (LLM)", win.llm_combo, win.llm_dl_badge, win.llm_vram_lbl, win.llm_fit),
+        ("Image model (diffusion stills)", win.img_combo, win.img_dl_badge, win.img_vram_lbl, win.img_fit),
+        ("Video model (motion / Pro / scenes)", win.vid_combo, win.vid_dl_badge, win.vid_vram_lbl, win.vid_fit),
+        ("Voice model (TTS)", win.voice_combo, win.voice_dl_badge, win.voice_vram_lbl, win.voice_fit),
     ]
-    for _txt, combo, dl_b, quant_panel, vram_l, fit_l in _model_rows:
-        ll.addWidget(_model_role_card(_txt, combo, dl_b, quant_panel, vram_l, fit_l))
+    for _txt, combo, dl_b, vram_l, fit_l in _model_rows:
+        ll.addWidget(_model_role_card(_txt, combo, dl_b, vram_l, fit_l))
 
     auto_fit_row = QHBoxLayout()
     win.auto_fit_models_btn = QPushButton("Auto-fit for this PC")

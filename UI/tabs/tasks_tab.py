@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -17,27 +17,39 @@ from PyQt6.QtWidgets import (
 
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.theme import resolve_palette, token
+from UI.widgets.basic_advanced import register_advanced_sections
+from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import empty_state_panel
 from UI.widgets.toolbar_svg_icons import qicon_toolbar
 
 
 def attach_tasks_tab(win) -> None:
     w = QWidget()
-    lay = QVBoxLayout(w)
-    lay.setSpacing(10)
+    root = QVBoxLayout(w)
+    root.setContentsMargins(0, 0, 0, 0)
 
-    win._tasks_header_label = QLabel("Tasks (finished videos)")
-    header = win._tasks_header_label
-    header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
-
-    sub = QLabel(
-        "In-progress renders appear at the top while running; each finished run adds a row. Open or copy captions, or "
-        "upload to TikTok / YouTube when enabled in the API tab (separate toggles)."
+    inner_root, _, _, lay = make_tab_root(
+        title="Tasks",
+        intro_text="Finished runs and live progress.",
+        tab_id="tasks",
+        win=win,
+        basic_advanced=True,
+        body_card=False,
+        fill_vertical=True,
     )
-    sub.setWordWrap(True)
-    sub.setStyleSheet(f"color: {token('muted', '#8A96A3')}; font-size: 11px;")
-    lay.addWidget(sub)
+    root.addWidget(inner_root, 1)
+
+    win._tasks_header_label = QLabel("Tasks (in-progress & uploads)")
+    win._tasks_header_label.setStyleSheet("color: #8A96A3; font-size: 11px;")
+    lay.addWidget(win._tasks_header_label)
+
+    win._tasks_advanced_intro = QLabel(
+        "Upload to TikTok / YouTube when enabled in the API tab (separate toggles). "
+        "Approve before auto-upload."
+    )
+    win._tasks_advanced_intro.setWordWrap(True)
+    win._tasks_advanced_intro.setStyleSheet(f"color: {token('muted', '#8A96A3')}; font-size: 11px;")
+    lay.addWidget(win._tasks_advanced_intro)
 
     def _go_pipeline() -> None:
         try:
@@ -86,7 +98,6 @@ def attach_tasks_tab(win) -> None:
     row.addWidget(win.tasks_refresh_btn)
 
     win.tasks_pause_btn = QPushButton()
-    # Pause vs play SVG: _sync_tasks_pause_button_appearance (main window).
     win.tasks_pause_btn.setToolTip(
         help_tooltip_rich(
             "Pause between pipeline steps (not mid–GPU operation). Click again to resume.",
@@ -157,10 +168,15 @@ def attach_tasks_tab(win) -> None:
     win.tasks_play_btn.clicked.connect(win._tasks_play_video)
     btn_row.addWidget(win.tasks_play_btn)
 
+    win._tasks_advanced_actions = QWidget()
+    adv_act = QHBoxLayout(win._tasks_advanced_actions)
+    adv_act.setContentsMargins(0, 0, 0, 0)
+    adv_act.setSpacing(8)
+
     win.tasks_copy_btn = QPushButton("Copy caption")
     win.tasks_copy_btn.setAccessibleName("Copy caption")
     win.tasks_copy_btn.clicked.connect(win._tasks_copy_caption)
-    btn_row.addWidget(win.tasks_copy_btn)
+    adv_act.addWidget(win.tasks_copy_btn)
 
     win.tasks_approve_btn = QPushButton("Approve")
     win.tasks_approve_btn.setObjectName("primary")
@@ -174,22 +190,22 @@ def attach_tasks_tab(win) -> None:
         )
     )
     win.tasks_approve_btn.clicked.connect(win._tasks_approve_selected)
-    btn_row.addWidget(win.tasks_approve_btn)
+    adv_act.addWidget(win.tasks_approve_btn)
 
     win.tasks_posted_btn = QPushButton("Mark posted (manual)")
     win.tasks_posted_btn.setAccessibleName("Mark posted manually")
     win.tasks_posted_btn.clicked.connect(win._tasks_mark_posted_manual)
-    btn_row.addWidget(win.tasks_posted_btn)
+    adv_act.addWidget(win.tasks_posted_btn)
 
     win.tasks_tiktok_btn = QPushButton("Upload to TikTok")
     win.tasks_tiktok_btn.setAccessibleName("Upload to TikTok")
     win.tasks_tiktok_btn.clicked.connect(win._tasks_upload_tiktok)
-    btn_row.addWidget(win.tasks_tiktok_btn)
+    adv_act.addWidget(win.tasks_tiktok_btn)
 
     win.tasks_youtube_btn = QPushButton("Upload to YouTube")
     win.tasks_youtube_btn.setAccessibleName("Upload to YouTube")
     win.tasks_youtube_btn.clicked.connect(win._tasks_upload_youtube)
-    btn_row.addWidget(win.tasks_youtube_btn)
+    adv_act.addWidget(win.tasks_youtube_btn)
 
     if hasattr(win, "_sync_tasks_upload_buttons"):
         win._sync_tasks_upload_buttons()
@@ -198,15 +214,17 @@ def attach_tasks_tab(win) -> None:
     win.tasks_remove_btn.setObjectName("danger")
     win.tasks_remove_btn.setAccessibleName("Remove selected task")
     win.tasks_remove_btn.clicked.connect(win._tasks_remove_selected)
-    btn_row.addWidget(win.tasks_remove_btn)
+    adv_act.addWidget(win.tasks_remove_btn)
 
+    adv_act.addStretch(1)
+    btn_row.addWidget(win._tasks_advanced_actions, 1)
     btn_row.addStretch(1)
     lay.addWidget(actions_group)
 
-    # Activity log: a visible in-app sink for `_append_log` (previously file/stdout only).
+    win._tasks_log_host = QWidget()
+    log_host_lay = QVBoxLayout(win._tasks_log_host)
+    log_host_lay.setContentsMargins(0, 0, 0, 0)
     log_toggle = QToolButton()
-    from PyQt6.QtCore import QSize
-
     log_toggle.setIcon(qicon_toolbar("chevron_right", token("muted", "#9BA6B8"), 14))
     log_toggle.setIconSize(QSize(14, 14))
     log_toggle.setText("  Activity log")
@@ -225,14 +243,14 @@ def attach_tasks_tab(win) -> None:
             slide=0,
         )
     )
-    lay.addWidget(log_toggle)
+    log_host_lay.addWidget(log_toggle)
 
     win.log_box = QTextEdit()
     win.log_box.setReadOnly(True)
     win.log_box.setMaximumHeight(150)
     win.log_box.setVisible(False)
     win.log_box.setPlaceholderText("Activity from runs, downloads, and background tasks appears here.")
-    lay.addWidget(win.log_box)
+    log_host_lay.addWidget(win.log_box)
 
     def _toggle_log(checked: bool) -> None:
         win.log_box.setVisible(checked)
@@ -246,6 +264,13 @@ def attach_tasks_tab(win) -> None:
                 pass
 
     log_toggle.toggled.connect(_toggle_log)
+    lay.addWidget(win._tasks_log_host)
+
+    register_advanced_sections(
+        win,
+        "tasks",
+        [win._tasks_advanced_intro, win._tasks_advanced_actions, win._tasks_log_host],
+    )
 
     win._tasks_tab_widget = w
     win.tabs.addTab(w, "Tasks")
@@ -257,5 +282,5 @@ def refresh_tasks_tab_for_media_mode(win) -> None:
     is_photo = mm == "photo"
     if hasattr(win, "_tasks_header_label"):
         win._tasks_header_label.setText(
-            "Tasks (finished pictures)" if is_photo else "Tasks (in-progress & uploads)"
+            "Finished pictures and queue status" if is_photo else "In-progress renders and upload status"
         )

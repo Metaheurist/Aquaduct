@@ -4,7 +4,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -23,8 +22,26 @@ from PyQt6.QtWidgets import (
 from src.core.config import BrandingSettings
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.themed_switch import ThemedSwitch
+from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
 from UI.widgets.tab_sections import section_title
+from UI.widgets.visual_primitives import SwatchGrid, SwatchOption
 from UI.theme import PRESET_PALETTES, build_qss, resolve_palette, set_active_palette
+
+_PALETTE_SWATCH_LABELS: dict[str, str] = {
+    "default": "Default",
+    "ocean": "Ocean",
+    "sunset": "Sunset",
+    "mono": "Monochrome",
+    "amber": "Amber",
+    "dracula": "Dracula",
+    "ember": "Ember",
+    "forest": "Forest",
+    "lavender": "Lavender",
+    "nord": "Nord",
+    "rose": "Rose",
+    "slate": "Slate",
+}
 from UI.widgets.title_bar_outline_button import refresh_open_main_window_title_chrome
 
 
@@ -56,34 +73,26 @@ def attach_branding_tab(win) -> None:
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QScrollArea.Shape.NoFrame)
     # Keep the page compact; user can scroll for the rest.
-    scroll.setMinimumHeight(520)
-    scroll.setMaximumHeight(700)
+    scroll.setMinimumHeight(0)
 
     content = QWidget()
     scroll.setWidget(content)
     content_lay = QVBoxLayout(content)
     content_lay.setContentsMargins(0, 0, 0, 0)
 
+    hdr_row = QWidget()
+    hdr_lay = QHBoxLayout(hdr_row)
+    hdr_lay.setContentsMargins(0, 0, 0, 0)
     header = QLabel("Branding")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    content_lay.addWidget(header)
-
-    sub = QLabel("Optional theme, output styling, and logo watermark. Turn on only what you need.")
-    sub.setStyleSheet("color: #B7B7C2;")
-    sub.setToolTip(
-        help_tooltip_rich(
-            "Theme overrides, video/photo styling, and watermark are all optional.",
-            "branding",
-            slide=0,
-        )
-    )
-    content_lay.addWidget(sub)
+    attach_basic_advanced_header(win, "branding", title_row_parent_layout=hdr_lay, title_widget=header)
+    content_lay.addWidget(hdr_row)
 
     form = QFormLayout()
     form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
     # ---- Theme section ----
-    win.brand_theme_enable = QCheckBox("Enable theme overrides")
+    win.brand_theme_enable = ThemedSwitch("Theme overrides")
     win.brand_theme_enable.setChecked(bool(getattr(win.settings, "branding", BrandingSettings()).theme_enabled))
     form.addRow("", win.brand_theme_enable)
 
@@ -109,11 +118,47 @@ def attach_branding_tab(win) -> None:
     cur_pid = str(getattr(getattr(win.settings, "branding", BrandingSettings()), "palette_id", "default") or "default").lower()
     idx = win.brand_palette_combo.findData(cur_pid)
     win.brand_palette_combo.setCurrentIndex(idx if idx >= 0 else 0)
-    form.addRow("Palette", win.brand_palette_combo)
+
+    _swatch_opts: list[SwatchOption] = []
+    for _label, pid in palette_items:
+        if pid == "custom":
+            continue
+        preset = PRESET_PALETTES.get(pid, PRESET_PALETTES["default"])
+        accent = str(preset.get("accent", "#25F4EE"))
+        short = _PALETTE_SWATCH_LABELS.get(pid, _label.split("(")[0].strip())
+        _swatch_opts.append(SwatchOption(pid, short, accent))
+    win._brand_swatch_grid = SwatchGrid(
+        _swatch_opts,
+        columns=3,
+        default_id=cur_pid if cur_pid != "custom" else "default",
+    )
+    content_lay.addWidget(section_title("Theme", emphasis=True))
+    content_lay.addLayout(form)
+    content_lay.addWidget(win._brand_swatch_grid)
+
+    def _sync_palette_from_swatch() -> None:
+        pid = str(win._brand_swatch_grid.currentData() or "default")
+        ix = win.brand_palette_combo.findData(pid)
+        if ix >= 0:
+            win.brand_palette_combo.setCurrentIndex(ix)
+
+    def _sync_swatch_from_combo() -> None:
+        pid = str(win.brand_palette_combo.currentData() or "default")
+        if pid != "custom":
+            win._brand_swatch_grid.setCurrentData(pid)
+
+    win._brand_swatch_grid.currentIndexChanged.connect(lambda _i: _sync_palette_from_swatch())
+    win.brand_palette_combo.currentIndexChanged.connect(lambda _i: _sync_swatch_from_combo())
+
+    win._branding_advanced_host = QWidget()
+    adv_lay = QVBoxLayout(win._branding_advanced_host)
+    adv_lay.setContentsMargins(0, 0, 0, 0)
+    color_form = QFormLayout()
+    color_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
     def _make_color_row(label: str, *, enabled: bool, value: str, default_hex: str):
         row = QHBoxLayout()
-        chk = QCheckBox(label)
+        chk = ThemedSwitch(label)
         chk.setChecked(bool(enabled))
         edit = QLineEdit()
         edit.setPlaceholderText(default_hex)
@@ -161,7 +206,7 @@ def attach_branding_tab(win) -> None:
         value=str(getattr(b, "bg_hex", defaults["bg"])),
         default_hex=defaults["bg"],
     )
-    form.addRow("Theme color", bg_row)
+    color_form.addRow("Theme color", bg_row)
 
     win.brand_panel_chk, win.brand_panel_hex, win.brand_panel_pick, win.brand_panel_chip, panel_row = _make_color_row(
         "Panel",
@@ -169,7 +214,7 @@ def attach_branding_tab(win) -> None:
         value=str(getattr(b, "panel_hex", defaults["panel"])),
         default_hex=defaults["panel"],
     )
-    form.addRow("", panel_row)
+    color_form.addRow("", panel_row)
 
     win.brand_text_chk, win.brand_text_hex, win.brand_text_pick, win.brand_text_chip, text_row = _make_color_row(
         "Text",
@@ -177,7 +222,7 @@ def attach_branding_tab(win) -> None:
         value=str(getattr(b, "text_hex", defaults["text"])),
         default_hex=defaults["text"],
     )
-    form.addRow("", text_row)
+    color_form.addRow("", text_row)
 
     win.brand_muted_chk, win.brand_muted_hex, win.brand_muted_pick, win.brand_muted_chip, muted_row = _make_color_row(
         "Muted text",
@@ -185,7 +230,7 @@ def attach_branding_tab(win) -> None:
         value=str(getattr(b, "muted_hex", defaults["muted"])),
         default_hex=defaults["muted"],
     )
-    form.addRow("", muted_row)
+    color_form.addRow("", muted_row)
 
     win.brand_accent_chk, win.brand_accent_hex, win.brand_accent_pick, win.brand_accent_chip, accent_row = _make_color_row(
         "Accent",
@@ -193,7 +238,7 @@ def attach_branding_tab(win) -> None:
         value=str(getattr(b, "accent_hex", defaults["accent"])),
         default_hex=defaults["accent"],
     )
-    form.addRow("", accent_row)
+    color_form.addRow("", accent_row)
 
     win.brand_danger_chk, win.brand_danger_hex, win.brand_danger_pick, win.brand_danger_chip, danger_row = _make_color_row(
         "Danger",
@@ -201,10 +246,9 @@ def attach_branding_tab(win) -> None:
         value=str(getattr(b, "danger_hex", defaults["danger"])),
         default_hex=defaults["danger"],
     )
-    form.addRow("", danger_row)
-
-    content_lay.addWidget(section_title("Theme", emphasis=True))
-    content_lay.addLayout(form)
+    color_form.addRow("", danger_row)
+    adv_lay.addLayout(color_form)
+    content_lay.addWidget(win._branding_advanced_host)
 
     def _apply_preset_to_color_rows(palette_id: str, *, skip_checked_rows: bool = False) -> None:
         """Fill theme hex fields + chips from PRESET_PALETTES when a named preset is chosen."""
@@ -231,7 +275,7 @@ def attach_branding_tab(win) -> None:
     # ---- Watermark section ----
     divider = QLabel(" ")
     divider.setFixedHeight(8)
-    content_lay.addWidget(divider)
+    adv_lay.addWidget(divider)
 
     # ---- Video style section (palette affects prompts + captions) ----
     win.brand_video_style_section = QWidget()
@@ -242,7 +286,7 @@ def attach_branding_tab(win) -> None:
     win.brand_video_style_section_header = vs_header
     vs_section_lay.addWidget(vs_header)
 
-    win.brand_video_style_enable = QCheckBox("Apply branding to generated video style")
+    win.brand_video_style_enable = ThemedSwitch("Video style")
     win.brand_video_style_enable.setChecked(bool(getattr(b, "video_style_enabled", False)))
     vs_section_lay.addWidget(win.brand_video_style_enable)
 
@@ -259,7 +303,7 @@ def attach_branding_tab(win) -> None:
     vs_row.addWidget(win.brand_video_style_strength)
     vs_row.addStretch(1)
     vs_section_lay.addLayout(vs_row)
-    content_lay.addWidget(win.brand_video_style_section)
+    adv_lay.addWidget(win.brand_video_style_section)
 
     # ---- Photo style section (layouts) ----
     win.brand_photo_section = QWidget()
@@ -270,12 +314,12 @@ def attach_branding_tab(win) -> None:
     win.brand_photo_section_header = photo_header
     photo_section_lay.addWidget(photo_header)
 
-    win.brand_photo_style_enable = QCheckBox("Apply branding to photo layouts (poster, newspaper, comic)")
+    win.brand_photo_style_enable = ThemedSwitch("Photo layouts")
     win.brand_photo_style_enable.setChecked(bool(getattr(b, "photo_style_enabled", False)))
     photo_section_lay.addWidget(win.brand_photo_style_enable)
 
     pf_row = QHBoxLayout()
-    win.brand_photo_frame_enable = QCheckBox("Add frame border")
+    win.brand_photo_frame_enable = ThemedSwitch("Frame border")
     win.brand_photo_frame_enable.setChecked(bool(getattr(b, "photo_frame_enabled", False)))
     pf_row.addWidget(win.brand_photo_frame_enable)
     pf_row.addStretch(1)
@@ -292,7 +336,7 @@ def attach_branding_tab(win) -> None:
     win.brand_photo_paper_hex.setText(str(getattr(b, "photo_paper_hex", "#F2F0E9") or "#F2F0E9"))
     pf_form.addRow("Paper tint", win.brand_photo_paper_hex)
     photo_section_lay.addLayout(pf_form)
-    content_lay.addWidget(win.brand_photo_section)
+    adv_lay.addWidget(win.brand_photo_section)
 
     win.brand_watermark_section = QWidget()
     wm_section_lay = QVBoxLayout(win.brand_watermark_section)
@@ -302,7 +346,7 @@ def attach_branding_tab(win) -> None:
     win.brand_watermark_section_header = wmark_header
     wm_section_lay.addWidget(wmark_header)
 
-    win.brand_watermark_enable = QCheckBox("Watermark generated videos with a logo")
+    win.brand_watermark_enable = ThemedSwitch("Logo watermark")
     win.brand_watermark_enable.setChecked(bool(getattr(b, "watermark_enabled", False)))
     wm_section_lay.addWidget(win.brand_watermark_enable)
 
@@ -359,7 +403,13 @@ def attach_branding_tab(win) -> None:
     )
     wm_form.addRow("Size", win.brand_watermark_scale)
     wm_section_lay.addLayout(wm_form)
-    content_lay.addWidget(win.brand_watermark_section)
+    adv_lay.addWidget(win.brand_watermark_section)
+    win._branding_palette_combo_advanced = QWidget()
+    _pal_adv = QFormLayout(win._branding_palette_combo_advanced)
+    win.brand_palette_combo.setVisible(True)
+    _pal_adv.addRow("Palette (all presets)", win.brand_palette_combo)
+    content_lay.addWidget(win._branding_palette_combo_advanced)
+    register_advanced_sections(win, "branding", [win._branding_advanced_host, win._branding_palette_combo_advanced])
 
     content_lay.addStretch(1)
 

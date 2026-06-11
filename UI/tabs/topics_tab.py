@@ -3,7 +3,6 @@ from __future__ import annotations
 from UI.dialogs.frameless_dialog import FramelessDialog
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -20,8 +19,12 @@ from PyQt6.QtWidgets import (
 from src.content.topics import discover_uses_headline_sources, normalize_video_format
 from src.core.config import VIDEO_FORMATS
 from UI.widgets.no_wheel_controls import NoWheelComboBox
+from UI.widgets.basic_advanced import register_advanced_sections
 from UI.widgets.tab_scaffold import make_tab_root
+from UI.widgets.themed_switch import ThemedSwitch
+from UI.widgets.option_tiles import OptionTiles, TileOption
 from UI.widgets.tab_sections import section_card, section_title
+from UI.widgets.visual_primitives import PromptChips
 from UI.help.tutorial_links import help_tooltip_rich
 
 
@@ -110,9 +113,9 @@ def _pick_topics_dialog(
     inner_lay = QVBoxLayout(inner)
     inner_lay.setSpacing(6)
 
-    checks: list[QCheckBox] = []
+    checks: list[ThemedSwitch] = []
     for t in topics:
-        cb = QCheckBox(t)
+        cb = ThemedSwitch(t)
         cb.setChecked(True)
         checks.append(cb)
         inner_lay.addWidget(cb)
@@ -230,17 +233,28 @@ def attach_topics_tab(win) -> None:
 
     inner_root, _, _, lay = make_tab_root(
         title="Topics",
-        intro_text="Per-mode tag lists - same modes as Run. Details: hover Help or the mode control.",
+        intro_text="Tag lists per video format.",
+        tab_id="topics",
+        win=win,
+        basic_advanced=True,
     )
     root_lay.addWidget(inner_root, 1)
 
     tags_card, tags_lay = section_card()
     tags_lay.addWidget(section_title("Tags for selected mode", emphasis=True))
 
-    mode_row = QHBoxLayout()
-    mode_lbl = QLabel("Edit tags for")
-    mode_lbl.setStyleSheet("color: #B7B7C2;")
-    mode_row.addWidget(mode_lbl)
+    _mode_tiles = [
+        TileOption("News", "news", icon="news", subtitle="Headlines"),
+        TileOption("Cartoon", "cartoon", icon="cartoon", subtitle="Creative"),
+        TileOption("Explainer", "explainer", icon="explainer", subtitle="How-to"),
+        TileOption("Unhinged", "unhinged", icon="unhinged", subtitle="Satire"),
+        TileOption("Horror", "creepypasta", icon="horror", subtitle="Fiction"),
+        TileOption("Health", "health_advice", icon="health", subtitle="Wellness"),
+        TileOption("NSFW", "nsfw", icon="nsfw", subtitle="18+"),
+    ]
+    win._topics_format_tiles = OptionTiles(_mode_tiles, columns=4, default_index=0)
+    tags_lay.addWidget(win._topics_format_tiles)
+
     win.topics_mode_combo = NoWheelComboBox()
     win.topics_mode_combo.addItem("News", "news")
     win.topics_mode_combo.addItem("Cartoon", "cartoon")
@@ -251,6 +265,7 @@ def attach_topics_tab(win) -> None:
 
     # NSFW bucket: always present; enabled only when project video_format is nsfw.
     win.topics_mode_combo.addItem("NSFW (mature)", "nsfw")
+    win.topics_mode_combo.setVisible(False)
     try:
         nsfw_ok = normalize_video_format(str(getattr(win.settings, "video_format", "news") or "news")) == "nsfw"
         model = win.topics_mode_combo.model()
@@ -268,9 +283,26 @@ def attach_topics_tab(win) -> None:
         tm = "news"
     tmi = win.topics_mode_combo.findData(tm)
     win.topics_mode_combo.setCurrentIndex(tmi if tmi >= 0 else 0)
-    mode_row.addWidget(win.topics_mode_combo, 1)
-    mode_row.addStretch(1)
-    tags_lay.addLayout(mode_row)
+    if tmi >= 0:
+        win._topics_format_tiles.setCurrentIndex(tmi)
+
+    def _sync_topics_mode_from_tiles() -> None:
+        m = str(win._topics_format_tiles.currentData() or "news")
+        ix = win.topics_mode_combo.findData(m)
+        if ix >= 0:
+            win.topics_mode_combo.blockSignals(True)
+            win.topics_mode_combo.setCurrentIndex(ix)
+            win.topics_mode_combo.blockSignals(False)
+            win._on_topics_mode_changed()
+
+    def _sync_topics_mode_to_tiles() -> None:
+        m = str(win.topics_mode_combo.currentData() or "news")
+        ix = win._topics_format_tiles.findData(m)
+        if ix >= 0:
+            win._topics_format_tiles.setCurrentIndex(ix)
+
+    win._topics_format_tiles.currentIndexChanged.connect(lambda _i: _sync_topics_mode_from_tiles())
+    win.topics_mode_combo.currentIndexChanged.connect(lambda _i: _sync_topics_mode_to_tiles())
     win.topics_mode_combo.setToolTip(
         help_tooltip_rich(
             "Separate lists per source mode (same as Run). Photo mode: tags still steer prompts. "
@@ -280,6 +312,12 @@ def attach_topics_tab(win) -> None:
             slide=1,
         )
     )
+
+    win._topic_suggest_chips = PromptChips(
+        ["AI tools", "True crime", "Wellness tips", "Meme culture", "Space news"],
+        on_apply=lambda t: win.tag_input.setText(t),
+    )
+    tags_lay.addWidget(win._topic_suggest_chips)
 
     row = QHBoxLayout()
     win.tag_input = QLineEdit()
@@ -304,25 +342,26 @@ def attach_topics_tab(win) -> None:
     chips_scroll.setWidget(win.tag_chips_inner)
     tags_lay.addWidget(chips_scroll)
 
-    win.topics_empty_hint = QLabel(
-        "No tags for this format yet. Add a few above, or use Discover to seed ideas."
-    )
+    win.topics_empty_hint = QLabel("No tags yet — add above or Discover.")
     win.topics_empty_hint.setWordWrap(True)
     win.topics_empty_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
     win.topics_empty_hint.setVisible(False)
     tags_lay.addWidget(win.topics_empty_hint)
 
-    tags_lay.addWidget(section_title("Grounding for selected tag", emphasis=False))
+    win._topics_advanced_grounding = QWidget()
+    grounding_lay = QVBoxLayout(win._topics_advanced_grounding)
+    grounding_lay.setContentsMargins(0, 0, 0, 0)
+    grounding_lay.addWidget(section_title("Grounding", emphasis=False))
     win.topic_selected_label = QLabel("Select a tag to add optional grounding notes.")
     win.topic_selected_label.setWordWrap(True)
     win.topic_selected_label.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    tags_lay.addWidget(win.topic_selected_label)
+    grounding_lay.addWidget(win.topic_selected_label)
 
     win.topic_selected_note_edit = QLineEdit()
     win.topic_selected_note_edit.setPlaceholderText("Optional grounding (tone, anchors, bans)…")
     win.topic_selected_note_edit.setEnabled(False)
     win.topic_selected_note_edit.editingFinished.connect(lambda: win._flush_selected_topic_note())
-    tags_lay.addWidget(win.topic_selected_note_edit)
+    grounding_lay.addWidget(win.topic_selected_note_edit)
 
     notes_btns = QHBoxLayout()
     win.topic_notes_llm_btn = QPushButton("Suggest with LLM")
@@ -336,11 +375,12 @@ def attach_topics_tab(win) -> None:
     )
     win.topic_notes_llm_btn.clicked.connect(win._topic_notes_suggest_llm)
     notes_btns.addWidget(win.topic_notes_llm_btn)
-    win.topic_notes_llm_overwrite = QCheckBox("Replace existing notes")
+    win.topic_notes_llm_overwrite = ThemedSwitch("Replace existing notes")
     win.topic_notes_llm_overwrite.setToolTip("When unchecked, only tags with blank grounding boxes are filled.")
     notes_btns.addWidget(win.topic_notes_llm_overwrite)
     notes_btns.addStretch(1)
-    tags_lay.addLayout(notes_btns)
+    grounding_lay.addLayout(notes_btns)
+    tags_lay.addWidget(win._topics_advanced_grounding)
 
     btn_row = QHBoxLayout()
     win.discover_btn = QPushButton("Discover")
@@ -367,6 +407,7 @@ def attach_topics_tab(win) -> None:
     tags_lay.addLayout(btn_row)
 
     lay.addWidget(tags_card, 0)
+    register_advanced_sections(win, "topics", [win._topics_advanced_grounding])
 
     win.topics_mode_combo.currentIndexChanged.connect(win._on_topics_mode_changed)
     win._sync_tags_to_ui()
