@@ -3,7 +3,6 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -21,8 +20,11 @@ from PyQt6.QtWidgets import (
 )
 
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
+from UI.widgets.themed_switch import ThemedSwitch
+from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
 from UI.widgets.collapsible import CollapsibleSection
 from UI.widgets.tab_sections import add_section_spacing, section_title
+from UI.widgets.visual_primitives import PreviewStrip
 from UI.help.tutorial_links import help_tooltip_rich
 from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
@@ -49,9 +51,13 @@ def attach_video_tab(win) -> None:
     lay.setSpacing(12)
     lay.setContentsMargins(14, 12, 14, 14)
 
-    header = QLabel("Video settings")
+    header = QLabel("Video")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
+    hdr_row = QWidget()
+    hdr_lay = QHBoxLayout(hdr_row)
+    hdr_lay.setContentsMargins(0, 0, 0, 0)
+    attach_basic_advanced_header(win, "video", title_row_parent_layout=hdr_lay, title_widget=header)
+    lay.addWidget(hdr_row)
     lay.addSpacing(4)
 
     lay.addWidget(section_title("Platform template"))
@@ -137,17 +143,9 @@ def attach_video_tab(win) -> None:
 
     lay.addWidget(tile_wrap)
 
-    preset_hint = QLabel(
-        "Click a card to apply a platform profile (like graphics presets). "
-        "Editing any value below switches selection to Custom."
-    )
-    preset_hint.setWordWrap(True)
+    preset_hint = QLabel("Tap a card — tweak below for Custom.")
     preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lay.addWidget(preset_hint)
-
-    add_section_spacing(lay, px=14)
-    lay.addWidget(section_title("Quality presets", emphasis=True))
-    lay.addSpacing(2)
 
     from src.render.video_quality_presets import (
         FPS_PRESETS,
@@ -155,6 +153,62 @@ def attach_video_tab(win) -> None:
         RESOLUTION_PRESETS,
         SCENE_PRESETS,
     )
+
+    win._video_preview_strip = PreviewStrip(aspect="9:16", label="9:16 preview")
+    lay.addWidget(win._video_preview_strip)
+
+    def _update_video_preview_strip(width: int, height: int) -> None:
+        strip = getattr(win, "_video_preview_strip", None)
+        if strip is None:
+            return
+        w, h = int(width), int(height)
+        if w == h:
+            strip._inner.setMinimumSize(72, 72)  # noqa: SLF001
+            strip.set_caption(f"{w}×{h}")
+        elif w > h:
+            strip._inner.setMinimumSize(96, 54)  # noqa: SLF001
+            strip.set_caption(f"{w}×{h}")
+        else:
+            strip._inner.setMinimumSize(54, 96)  # noqa: SLF001
+            strip.set_caption(f"{w}×{h}")
+
+    basic_presets = QFormLayout()
+    basic_presets.setVerticalSpacing(8)
+
+    win._video_advanced_host = QWidget()
+    adv_lay = QVBoxLayout(win._video_advanced_host)
+    adv_lay.setContentsMargins(0, 0, 0, 0)
+    adv_lay.setSpacing(12)
+    lay.addWidget(win._video_advanced_host)
+
+    win.video_fps_preset_combo = NoWheelComboBox()
+    for fp in FPS_PRESETS.values():
+        win.video_fps_preset_combo.addItem(fp.label, fp.id)
+    cur_fp = str(getattr(win.settings.video, "video_fps_preset_id", "standard_30") or "standard_30")
+    idx_fp = win.video_fps_preset_combo.findData(cur_fp)
+    if idx_fp >= 0:
+        win.video_fps_preset_combo.setCurrentIndex(idx_fp)
+    win._video_fps_res_basic_wrap = QWidget()
+    _fps_res_form = QFormLayout(win._video_fps_res_basic_wrap)
+    _fps_res_form.setVerticalSpacing(8)
+    _fps_res_form.addRow("FPS", win.video_fps_preset_combo)
+
+    win.video_resolution_preset_combo = NoWheelComboBox()
+    for rp in RESOLUTION_PRESETS.values():
+        win.video_resolution_preset_combo.addItem(rp.label, rp.id)
+    cur_rp = str(
+        getattr(win.settings.video, "video_resolution_preset_id", "vertical_1080p") or "vertical_1080p"
+    )
+    idx_rp = win.video_resolution_preset_combo.findData(cur_rp)
+    if idx_rp >= 0:
+        win.video_resolution_preset_combo.setCurrentIndex(idx_rp)
+    _fps_res_form.addRow("Resolution", win.video_resolution_preset_combo)
+    win._video_fps_res_basic_wrap.setVisible(False)
+    lay.addWidget(win._video_fps_res_basic_wrap)
+
+    add_section_spacing(adv_lay, px=14)
+    adv_lay.addWidget(section_title("Quality presets", emphasis=True))
+    adv_lay.addSpacing(2)
 
     presets_form = QFormLayout()
     presets_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -203,48 +257,6 @@ def attach_video_tab(win) -> None:
     )
     presets_form.addRow("Scene length", win.video_scene_preset_combo)
 
-    win.video_fps_preset_combo = NoWheelComboBox()
-    for fp in FPS_PRESETS.values():
-        win.video_fps_preset_combo.addItem(fp.label, fp.id)
-        win.video_fps_preset_combo.setItemData(
-            win.video_fps_preset_combo.count() - 1, fp.description, Qt.ItemDataRole.ToolTipRole
-        )
-    _prep_combo(win.video_fps_preset_combo, min_w=240)
-    cur_fp = str(getattr(win.settings.video, "video_fps_preset_id", "standard_30") or "standard_30")
-    idx_fp = win.video_fps_preset_combo.findData(cur_fp)
-    if idx_fp >= 0:
-        win.video_fps_preset_combo.setCurrentIndex(idx_fp)
-    win.video_fps_preset_combo.setToolTip(
-        help_tooltip_rich(
-            "FPS preset: 24 (cinematic film look), 30 (default short-form), 60 (smooth - needs Smoothness ≥ ffmpeg).",
-            "video",
-            slide=0,
-        )
-    )
-    presets_form.addRow("Frame rate", win.video_fps_preset_combo)
-
-    win.video_resolution_preset_combo = NoWheelComboBox()
-    for rp in RESOLUTION_PRESETS.values():
-        win.video_resolution_preset_combo.addItem(rp.label, rp.id)
-        win.video_resolution_preset_combo.setItemData(
-            win.video_resolution_preset_combo.count() - 1, rp.description, Qt.ItemDataRole.ToolTipRole
-        )
-    _prep_combo(win.video_resolution_preset_combo, min_w=240)
-    cur_rp = str(
-        getattr(win.settings.video, "video_resolution_preset_id", "vertical_1080p") or "vertical_1080p"
-    )
-    idx_rp = win.video_resolution_preset_combo.findData(cur_rp)
-    if idx_rp >= 0:
-        win.video_resolution_preset_combo.setCurrentIndex(idx_rp)
-    win.video_resolution_preset_combo.setToolTip(
-        help_tooltip_rich(
-            "Resolution preset: 1080×1920 (default), 720×1280 (lighter render), or square 1080×1080.",
-            "video",
-            slide=0,
-        )
-    )
-    presets_form.addRow("Resolution", win.video_resolution_preset_combo)
-
     win.video_smoothness_combo = NoWheelComboBox()
     win.video_smoothness_combo.addItem("Off - encode at native fps", "off")
     win.video_smoothness_combo.addItem("FFmpeg minterpolate (CPU)", "ffmpeg")
@@ -283,18 +295,14 @@ def attach_video_tab(win) -> None:
     )
     presets_form.addRow("Spatial upscale", win.video_spatial_upscale_combo)
 
-    lay.addLayout(presets_form)
+    adv_lay.addLayout(presets_form)
 
-    presets_hint = QLabel(
-        "Pick the four knobs above for typical workflows. Edit individual spinners under Output & timing "
-        "for full manual control - that switches the matching preset to the closest legacy match."
-    )
-    presets_hint.setWordWrap(True)
+    presets_hint = QLabel("Presets map to Output & timing below.")
     presets_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(presets_hint)
+    adv_lay.addWidget(presets_hint)
 
-    add_section_spacing(lay, px=14)
-    lay.addWidget(section_title("Output & timing", emphasis=True))
+    add_section_spacing(adv_lay, px=14)
+    adv_lay.addWidget(section_title("Output & timing", emphasis=True))
 
     # --- Form 1: core video output
     form_video = QFormLayout()
@@ -329,7 +337,7 @@ def attach_video_tab(win) -> None:
     win.images_spin.setValue(int(win.settings.video.images_per_video))
     form_video.addRow("Images per video", win.images_spin)
 
-    win.use_slideshow_chk = QCheckBox("Generate images and stitch (slideshow mode)")
+    win.use_slideshow_chk = ThemedSwitch("Generate images and stitch (slideshow mode)")
     win.use_slideshow_chk.setChecked(bool(win.settings.video.use_image_slideshow))
     form_video.addRow("", win.use_slideshow_chk)
     # Video mode now always uses Pro (scene-by-scene motion). Slideshow is disabled.
@@ -405,15 +413,15 @@ def attach_video_tab(win) -> None:
     )
     form_video.addRow("Bitrate preset", win.bitrate_combo)
 
-    win.export_microclips_chk = QCheckBox("Export intermediate micro-scenes into assets/")
+    win.export_microclips_chk = ThemedSwitch("Export intermediate micro-scenes into assets/")
     win.export_microclips_chk.setChecked(bool(win.settings.video.export_microclips))
     form_video.addRow("", win.export_microclips_chk)
 
-    win.cleanup_images_chk = QCheckBox("Delete generated images after run (save storage)")
+    win.cleanup_images_chk = ThemedSwitch("Delete generated images after run (save storage)")
     win.cleanup_images_chk.setChecked(bool(getattr(win.settings.video, "cleanup_images_after_run", False)))
     form_video.addRow("", win.cleanup_images_chk)
 
-    win.allow_nsfw_chk = QCheckBox("Allow NSFW image output (disables diffusion safety checker)")
+    win.allow_nsfw_chk = ThemedSwitch("Allow NSFW image output (disables diffusion safety checker)")
     win.allow_nsfw_chk.setChecked(bool(getattr(win.settings, "allow_nsfw", False)))
     win.allow_nsfw_chk.setToolTip(
         help_tooltip_rich(
@@ -425,32 +433,32 @@ def attach_video_tab(win) -> None:
     )
     form_video.addRow("", win.allow_nsfw_chk)
 
-    lay.addLayout(form_video)
+    adv_lay.addLayout(form_video)
 
-    add_section_spacing(lay)
-    lay.addWidget(section_title("Quality / performance", emphasis=True))
-    lay.addSpacing(2)
+    add_section_spacing(adv_lay)
+    adv_lay.addWidget(section_title("Quality / performance", emphasis=True))
+    adv_lay.addSpacing(2)
 
-    win.prefer_gpu_chk = QCheckBox("Prefer GPU (when available)")
+    win.prefer_gpu_chk = ThemedSwitch("Prefer GPU")
     win.prefer_gpu_chk.setChecked(bool(win.settings.prefer_gpu))
-    lay.addWidget(win.prefer_gpu_chk)
+    adv_lay.addWidget(win.prefer_gpu_chk)
 
-    win.hq_topics_chk = QCheckBox("High quality topic selection (score + diversify)")
+    win.hq_topics_chk = ThemedSwitch("HQ topic pick")
     win.hq_topics_chk.setChecked(bool(getattr(win.settings.video, "high_quality_topic_selection", True)))
-    lay.addWidget(win.hq_topics_chk)
+    adv_lay.addWidget(win.hq_topics_chk)
 
-    win.fetch_article_chk = QCheckBox("Fetch article text for accuracy (slower)")
+    win.fetch_article_chk = ThemedSwitch("Fetch article text")
     win.fetch_article_chk.setChecked(bool(getattr(win.settings.video, "fetch_article_text", True)))
-    lay.addWidget(win.fetch_article_chk)
+    adv_lay.addWidget(win.fetch_article_chk)
 
-    win.prompt_cond_chk = QCheckBox("Stronger prompt conditioning (scene types + negatives)")
+    win.prompt_cond_chk = ThemedSwitch("Strong prompts")
     win.prompt_cond_chk.setChecked(bool(getattr(win.settings.video, "prompt_conditioning", True)))
-    lay.addWidget(win.prompt_cond_chk)
+    adv_lay.addWidget(win.prompt_cond_chk)
 
-    add_section_spacing(lay, px=12)
-    lay.addWidget(section_title("Story pipeline (LLM)"))
+    add_section_spacing(adv_lay, px=12)
+    adv_lay.addWidget(section_title("Story pipeline (LLM)"))
 
-    win.story_multistage_chk = QCheckBox("Multi-stage script review (format-specific LLM passes)")
+    win.story_multistage_chk = ThemedSwitch("Multi-stage script")
     win.story_multistage_chk.setChecked(bool(getattr(win.settings.video, "story_multistage_enabled", False)))
     win.story_multistage_chk.setToolTip(
         help_tooltip_rich(
@@ -460,9 +468,9 @@ def attach_video_tab(win) -> None:
             slide=2,
         )
     )
-    lay.addWidget(win.story_multistage_chk)
+    adv_lay.addWidget(win.story_multistage_chk)
 
-    win.story_web_chk = QCheckBox("Gather web context for the script (Firecrawl search + scrape)")
+    win.story_web_chk = ThemedSwitch("Web context")
     win.story_web_chk.setChecked(bool(getattr(win.settings.video, "story_web_context", False)))
     win.story_web_chk.setToolTip(
         help_tooltip_rich(
@@ -473,9 +481,9 @@ def attach_video_tab(win) -> None:
             slide=2,
         )
     )
-    lay.addWidget(win.story_web_chk)
+    adv_lay.addWidget(win.story_web_chk)
 
-    win.story_refimg_chk = QCheckBox("Download reference images for diffusion (from scraped pages)")
+    win.story_refimg_chk = ThemedSwitch("Reference images")
     win.story_refimg_chk.setChecked(bool(getattr(win.settings.video, "story_reference_images", False)))
     win.story_refimg_chk.setToolTip(
         help_tooltip_rich(
@@ -486,21 +494,21 @@ def attach_video_tab(win) -> None:
             slide=2,
         )
     )
-    lay.addWidget(win.story_refimg_chk)
+    adv_lay.addWidget(win.story_refimg_chk)
 
-    win.resume_partial_chk = QCheckBox("Resume partial pipeline after crashes (checkpoint file in assets/)")
+    win.resume_partial_chk = ThemedSwitch("Resume partial runs")
     win.resume_partial_chk.setChecked(bool(getattr(win.settings.video, "resume_partial_pipeline", False)))
     win.resume_partial_chk.setToolTip(
         "Writes run_checkpoint.json in each run's assets folder when stages finish. "
         "Enable if a crash wastes long LLM/script work; rerun with similar models and this option to accumulate checkpoints."
     )
-    lay.addWidget(win.resume_partial_chk)
+    adv_lay.addWidget(win.resume_partial_chk)
 
-    info = QLabel("Tip: On 8GB VRAM, the app loads/unloads models per stage to reduce OOM risk. Motion, transitions, and audio mix live on the Effects tab.")
-    info.setStyleSheet("color: #B7B7C2; margin-top: 6px;")
-    lay.addWidget(info)
+    info = QLabel("Motion & audio: Effects tab.")
+    info.setStyleSheet("color: #B7B7C2; margin-top: 6px; font-size: 11px;")
+    adv_lay.addWidget(info)
 
-    add_section_spacing(lay)
+    add_section_spacing(adv_lay)
 
     def _on_adv_toggled(_checked: bool) -> None:
         fn = getattr(win, "_resize_to_current_tab", None)
@@ -510,8 +518,8 @@ def attach_video_tab(win) -> None:
             except Exception:
                 pass
 
-    adv = CollapsibleSection("Advanced", expanded=False, on_toggled=_on_adv_toggled)
-    lay.addWidget(adv)
+    adv = CollapsibleSection("More", expanded=False, on_toggled=_on_adv_toggled)
+    adv_lay.addWidget(adv)
 
     row = QHBoxLayout()
     row.setSpacing(10)
@@ -533,6 +541,8 @@ def attach_video_tab(win) -> None:
     cache_row.addWidget(clear_seen)
     cache_row.addStretch(1)
     adv.setContentLayout(cache_row)
+
+    register_advanced_sections(win, "video", [win._video_advanced_host, win._video_fps_res_basic_wrap])
 
     hint = lay.sizeHint()
     content.setMinimumHeight(max(hint.height(), 400))
@@ -581,6 +591,7 @@ def attach_video_tab(win) -> None:
             win.clip_seconds_spin.setValue(int(round(pr.clip_seconds)))
             win.pro_clip_seconds_spin.setValue(float(getattr(pr, "pro_clip_seconds", 4.0)))
             win.use_slideshow_chk.setChecked(False)
+            _update_video_preview_strip(pr.width, pr.height)
         finally:
             win._applying_video_template = False
 
@@ -716,11 +727,12 @@ def attach_video_tab(win) -> None:
                 win._video_platform_preset_id = ""
     finally:
         win._applying_video_template = False
-        # Hide slideshow-only control (images_per_video) since Video is always Pro.
-        try:
-            lbl = form_video.labelForField(win.images_spin)
-            if lbl is not None:
-                lbl.setVisible(False)
-            win.images_spin.setVisible(False)
-        except Exception:
-            pass
+    _update_video_preview_strip(int(v.width), int(v.height))
+    # Hide slideshow-only control (images_per_video) since Video is always Pro.
+    try:
+        lbl = form_video.labelForField(win.images_spin)
+        if lbl is not None:
+            lbl.setVisible(False)
+        win.images_spin.setVisible(False)
+    except Exception:
+        pass

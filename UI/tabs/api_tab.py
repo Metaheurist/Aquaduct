@@ -4,7 +4,6 @@ import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
@@ -19,9 +18,12 @@ from PyQt6.QtWidgets import (
 
 from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.themed_switch import ThemedSwitch
+from UI.widgets.basic_advanced import register_advanced_sections
 from UI.widgets.collapsible import CollapsibleSection
 from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.visual_primitives import ProviderCard
 
 
 def attach_api_tab(win) -> None:
@@ -51,149 +53,90 @@ def attach_api_tab(win) -> None:
     win._api_gen_panel_parent_layout.addWidget(win.generation_api_panel)
 
     inner_root, _, _, lay = make_tab_root(
-        title="API & accounts",
-        intro_text="Store API keys and social logins on this computer.",
-        intro_tooltip=help_tooltip_rich(
-            "Values are saved in your Aquaduct data folder. "
-            "When set, environment variables override saved keys "
-            "(HF_TOKEN, FIRECRAWL_API_KEY, ELEVENLABS_API_KEY, and similar).",
-            "api_social",
-            slide=0,
-        ),
+        title="API",
+        intro_text="Keys saved locally on this machine.",
+        tab_id="api",
+        win=win,
+        basic_advanced=True,
         before_card=(_api_gen_strip,),
     )
     scroll.setWidget(inner_root)
     il = lay
 
     # ---- Hugging Face ----
-    hf_card, hf_lay = section_card()
-    hf_lay.addWidget(section_title("Hugging Face", emphasis=True))
-
-    win.api_hf_enabled_chk = QCheckBox("Use my Hugging Face sign-in for downloads and size checks")
+    win.api_hf_enabled_chk = ThemedSwitch("Enabled")
     win.api_hf_enabled_chk.setChecked(bool(getattr(win.settings, "hf_api_enabled", True)))
-    hf_lay.addWidget(win.api_hf_enabled_chk)
-
-    hf_hint = QLabel(
-        "Get a (read) token at "
-        '<a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a> - '
-        "needed for some models and live file sizes."
-    )
-    hf_hint.setTextFormat(Qt.TextFormat.RichText)
-    hf_hint.setOpenExternalLinks(True)
-    hf_hint.setWordWrap(True)
-    hf_hint.setStyleSheet(
-        "QLabel { color: #9BB0C4; font-size: 12px; } "
-        "QLabel a { color: #25F4EE; text-decoration: none; } "
-        "QLabel a:hover { text-decoration: underline; }"
-    )
-    hf_lay.addWidget(hf_hint)
-
-    form_hf = QFormLayout()
     win.api_hf_token_edit = QLineEdit()
     win.api_hf_token_edit.setPlaceholderText("hf_… (optional paste)")
     win.api_hf_token_edit.setText(str(getattr(win.settings, "hf_token", "") or ""))
     win.api_hf_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
-    form_hf.addRow("Token", win.api_hf_token_edit)
-    hf_lay.addLayout(form_hf)
-
-    il.addWidget(hf_card)
+    hf_hint = QLabel("Token: huggingface.co/settings/tokens")
+    hf_hint.setStyleSheet("color: #9BB0C4; font-size: 11px;")
+    win._api_advanced_hf_hint = hf_hint
+    hf_card = ProviderCard(
+        "Hugging Face",
+        switch=win.api_hf_enabled_chk,
+        key_edit=win.api_hf_token_edit,
+        status="Models & downloads",
+    )
+    hf_wrap = QWidget()
+    hf_wrap_lay = QVBoxLayout(hf_wrap)
+    hf_wrap_lay.setContentsMargins(0, 0, 0, 0)
+    hf_wrap_lay.addWidget(hf_card)
+    hf_wrap_lay.addWidget(hf_hint)
+    il.addWidget(hf_wrap)
     add_section_spacing(il)
 
     # ---- Firecrawl ----
-    fc_card, fc_lay = section_card()
-    fc_lay.addWidget(section_title("Firecrawl (optional)", emphasis=True))
-
-    win.api_fc_enabled_chk = QCheckBox("Use Firecrawl for web search & page text (when a key is set)")
+    win.api_fc_enabled_chk = ThemedSwitch("Enabled")
     win.api_fc_enabled_chk.setChecked(bool(getattr(win.settings, "firecrawl_enabled", False)))
-    fc_lay.addWidget(win.api_fc_enabled_chk)
-
-    fc_doc = QLabel(
-        '<a href="https://www.firecrawl.dev/">firecrawl.dev</a> - optional paid API for richer web results. '
-        "Without it, Aquaduct falls back to free feeds (e.g. Google News RSS)."
-    )
-    fc_doc.setTextFormat(Qt.TextFormat.RichText)
-    fc_doc.setOpenExternalLinks(True)
-    fc_doc.setWordWrap(True)
-    fc_doc.setStyleSheet(
-        "QLabel { color: #9BB0C4; font-size: 12px; } "
-        "QLabel a { color: #25F4EE; text-decoration: none; } "
-        "QLabel a:hover { text-decoration: underline; }"
-    )
-    fc_lay.addWidget(fc_doc)
-
-    form_fc = QFormLayout()
     win.api_fc_key_edit = QLineEdit()
     win.api_fc_key_edit.setPlaceholderText("fc-… or paste API key")
     win.api_fc_key_edit.setText(str(getattr(win.settings, "firecrawl_api_key", "") or ""))
     win.api_fc_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-    form_fc.addRow("API key", win.api_fc_key_edit)
-    fc_lay.addLayout(form_fc)
-
+    fc_doc = QLabel("Optional — richer web search.")
+    fc_doc.setStyleSheet("color: #9BB0C4; font-size: 11px;")
+    fc_card = ProviderCard("Firecrawl", switch=win.api_fc_enabled_chk, key_edit=win.api_fc_key_edit, status="Web discover")
+    fc_wrap = QWidget()
+    fc_wrap_lay = QVBoxLayout(fc_wrap)
+    fc_wrap_lay.setContentsMargins(0, 0, 0, 0)
+    fc_wrap_lay.addWidget(fc_card)
+    fc_wrap_lay.addWidget(fc_doc)
     win.api_fc_key_hint = QLabel("")
     win.api_fc_key_hint.setWordWrap(True)
     win.api_fc_key_hint.setStyleSheet("color: #E8A040; font-size: 12px;")
-    fc_lay.addWidget(win.api_fc_key_hint)
-
-    il.addWidget(fc_card)
+    fc_wrap_lay.addWidget(win.api_fc_key_hint)
+    il.addWidget(fc_wrap)
     add_section_spacing(il)
 
     # ---- ElevenLabs (optional cloud TTS) ----
-    el_card, el_lay = section_card()
-    el_lay.addWidget(section_title("ElevenLabs (optional TTS)", emphasis=True))
-
-    win.api_el_enabled_chk = QCheckBox("Enable ElevenLabs voices for Character Builder + narration")
+    win.api_el_enabled_chk = ThemedSwitch("Enabled")
     win.api_el_enabled_chk.setChecked(bool(getattr(win.settings, "elevenlabs_enabled", False)))
-    el_lay.addWidget(win.api_el_enabled_chk)
-
-    el_doc = QLabel(
-        '<a href="https://elevenlabs.io/docs/api-reference/">ElevenLabs docs</a>. '
-        "Cloud voices need internet; if the API fails, narration falls back to local TTS. "
-        "You can also set ELEVENLABS_API_KEY in the environment instead of pasting here."
-    )
-    el_doc.setTextFormat(Qt.TextFormat.RichText)
-    el_doc.setOpenExternalLinks(True)
-    el_doc.setWordWrap(True)
-    el_doc.setStyleSheet(
-        "QLabel { color: #9BB0C4; font-size: 12px; } "
-        "QLabel a { color: #25F4EE; text-decoration: none; } "
-        "QLabel a:hover { text-decoration: underline; }"
-    )
-    el_doc.setToolTip(help_tooltip_rich("Step-by-step: docs/integrations/elevenlabs.md in the Aquaduct repo.", "api_social", slide=0))
-    el_lay.addWidget(el_doc)
-
-    form_el = QFormLayout()
     win.api_el_key_edit = QLineEdit()
     win.api_el_key_edit.setPlaceholderText("xi-api-key (optional paste)")
     win.api_el_key_edit.setText(str(getattr(win.settings, "elevenlabs_api_key", "") or ""))
     win.api_el_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-    form_el.addRow("API key", win.api_el_key_edit)
-    el_lay.addLayout(form_el)
-
-    il.addWidget(el_card)
+    el_doc = QLabel("Cloud TTS — falls back to local voice.")
+    el_doc.setStyleSheet("color: #9BB0C4; font-size: 11px;")
+    el_card = ProviderCard("ElevenLabs", switch=win.api_el_enabled_chk, key_edit=win.api_el_key_edit, status="Cloud voice")
+    el_wrap = QWidget()
+    el_wrap_lay = QVBoxLayout(el_wrap)
+    el_wrap_lay.setContentsMargins(0, 0, 0, 0)
+    el_wrap_lay.addWidget(el_card)
+    el_wrap_lay.addWidget(el_doc)
+    il.addWidget(el_wrap)
     add_section_spacing(il)
 
     # ---- TikTok (optional upload) ----
     tt_card, tt_lay = section_card()
     tt_lay.addWidget(section_title("TikTok (Content Posting API)", emphasis=True))
 
-    win.api_tt_enabled_chk = QCheckBox("Enable TikTok upload from the Tasks tab")
+    win.api_tt_enabled_chk = ThemedSwitch("TikTok upload")
     win.api_tt_enabled_chk.setChecked(bool(getattr(win.settings, "tiktok_enabled", False)))
     tt_lay.addWidget(win.api_tt_enabled_chk)
 
-    tt_doc = QLabel(
-        "Create an app at "
-        '<a href="https://developers.tiktok.com/">developers.tiktok.com</a>, add the redirect URI below, then Connect. '
-        "Posts usually finish inside the TikTok app (inbox flow)."
-    )
-    tt_doc.setTextFormat(Qt.TextFormat.RichText)
-    tt_doc.setOpenExternalLinks(True)
-    tt_doc.setWordWrap(True)
-    tt_doc.setStyleSheet(
-        "QLabel { color: #9BB0C4; font-size: 12px; } "
-        "QLabel a { color: #25F4EE; text-decoration: none; } "
-        "QLabel a:hover { text-decoration: underline; }"
-    )
-    tt_doc.setToolTip(help_tooltip_rich("Full setup: docs/integrations/tiktok.md in the Aquaduct repo.", "api_social", slide=0))
+    tt_doc = QLabel("Finish posts in the TikTok app.")
+    tt_doc.setStyleSheet("color: #9BB0C4; font-size: 11px;")
     tt_lay.addWidget(tt_doc)
 
     form_tt = QFormLayout()
@@ -228,7 +171,7 @@ def attach_api_tab(win) -> None:
     win.api_tt_pub_mode.setCurrentIndex(idxp if idxp >= 0 else 0)
     form_tt.addRow("Publishing", win.api_tt_pub_mode)
 
-    win.api_tt_auto_upload_chk = QCheckBox("Auto-start TikTok upload when a render finishes (Tasks)")
+    win.api_tt_auto_upload_chk = ThemedSwitch("Auto-upload TikTok")
     win.api_tt_auto_upload_chk.setChecked(bool(getattr(win.settings, "tiktok_auto_upload_after_render", False)))
     tt_lay.addWidget(win.api_tt_auto_upload_chk)
 
@@ -264,24 +207,12 @@ def attach_api_tab(win) -> None:
     yt_card, yt_lay = section_card()
     yt_lay.addWidget(section_title("YouTube (Data API v3)", emphasis=True))
 
-    win.api_yt_enabled_chk = QCheckBox("Enable YouTube upload from the Tasks tab")
+    win.api_yt_enabled_chk = ThemedSwitch("YouTube upload")
     win.api_yt_enabled_chk.setChecked(bool(getattr(win.settings, "youtube_enabled", False)))
     yt_lay.addWidget(win.api_yt_enabled_chk)
 
-    yt_doc = QLabel(
-        "In Google Cloud: enable YouTube Data API v3, create OAuth “Desktop” credentials, "
-        "and add this redirect URI. "
-        '<a href="https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps">Google’s OAuth guide</a>.'
-    )
-    yt_doc.setTextFormat(Qt.TextFormat.RichText)
-    yt_doc.setOpenExternalLinks(True)
-    yt_doc.setWordWrap(True)
-    yt_doc.setStyleSheet(
-        "QLabel { color: #9BB0C4; font-size: 12px; } "
-        "QLabel a { color: #25F4EE; text-decoration: none; } "
-        "QLabel a:hover { text-decoration: underline; }"
-    )
-    yt_doc.setToolTip(help_tooltip_rich("Full walkthrough: docs/integrations/youtube.md in the Aquaduct repo.", "api_social", slide=0))
+    yt_doc = QLabel("OAuth desktop app in Google Cloud.")
+    yt_doc.setStyleSheet("color: #9BB0C4; font-size: 11px;")
     yt_lay.addWidget(yt_doc)
 
     form_yt = QFormLayout()
@@ -317,11 +248,11 @@ def attach_api_tab(win) -> None:
     win.api_yt_privacy.setCurrentIndex(iy if iy >= 0 else 0)
     form_yt.addRow("Default privacy", win.api_yt_privacy)
 
-    win.api_yt_shorts_tag_chk = QCheckBox('Add #Shorts to title/description when missing (helps Shorts discovery)')
+    win.api_yt_shorts_tag_chk = ThemedSwitch("Add #Shorts tag")
     win.api_yt_shorts_tag_chk.setChecked(bool(getattr(win.settings, "youtube_add_shorts_hashtag", True)))
     yt_lay.addWidget(win.api_yt_shorts_tag_chk)
 
-    win.api_yt_auto_upload_chk = QCheckBox("Auto-start YouTube upload when a render finishes (Tasks)")
+    win.api_yt_auto_upload_chk = ThemedSwitch("Auto-upload YouTube")
     win.api_yt_auto_upload_chk.setChecked(bool(getattr(win.settings, "youtube_auto_upload_after_render", False)))
     yt_lay.addWidget(win.api_yt_auto_upload_chk)
 
@@ -349,6 +280,17 @@ def attach_api_tab(win) -> None:
     il.addStretch(1)
 
     root.addWidget(scroll)
+
+    register_advanced_sections(
+        win,
+        "api",
+        [
+            win._api_advanced_hf_hint,
+            fc_doc,
+            el_doc,
+            social,
+        ],
+    )
 
     def _refresh_fc_hint() -> None:
         en = bool(win.api_fc_enabled_chk.isChecked())

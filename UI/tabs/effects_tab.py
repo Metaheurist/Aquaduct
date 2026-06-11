@@ -3,11 +3,11 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -21,7 +21,9 @@ from PyQt6.QtWidgets import (
 from src.settings.effects_presets import EFFECT_PRESETS, find_best_preset_for_effects, preset_by_id
 from src.render.ffmpeg_slideshow import XFADE_TRANSITIONS
 from UI.help.tutorial_links import help_tooltip_rich
+from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.themed_switch import ThemedSwitch
 
 
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:
@@ -65,9 +67,13 @@ def attach_effects_tab(win) -> None:
     lay.setSpacing(12)
     lay.setContentsMargins(14, 12, 14, 14)
 
-    header = QLabel("Effects & audio")
+    hdr_row = QWidget()
+    hdr_lay = QHBoxLayout(hdr_row)
+    hdr_lay.setContentsMargins(0, 0, 0, 0)
+    header = QLabel("Effects")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
+    attach_basic_advanced_header(win, "effects", title_row_parent_layout=hdr_lay, title_widget=header)
+    lay.addWidget(hdr_row)
     lay.addSpacing(2)
 
     preset_header = QLabel("Effects template")
@@ -152,25 +158,23 @@ def attach_effects_tab(win) -> None:
 
     lay.addWidget(tile_wrap)
 
-    preset_hint = QLabel(
-        "Click a card to apply an effects profile (like graphics presets). "
-        "Editing any value below switches selection to Custom."
-    )
-    preset_hint.setWordWrap(True)
+    preset_hint = QLabel("Tap a card for a preset.")
     preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lay.addWidget(preset_hint)
 
+    win._effects_advanced_host = QWidget()
+    adv_lay = QVBoxLayout(win._effects_advanced_host)
+    adv_lay.setContentsMargins(0, 0, 0, 0)
+    adv_lay.setSpacing(12)
+    lay.addWidget(win._effects_advanced_host)
+
     sub = QLabel("Visual & motion")
     sub.setStyleSheet("font-size: 13px; font-weight: 600; margin-top: 8px;")
-    lay.addWidget(sub)
+    adv_lay.addWidget(sub)
 
-    hint = QLabel(
-        "Motion between images, slideshow transitions, image seed, and mix options. "
-        "Transition strength controls duration; type picks the FFmpeg xfade style."
-    )
-    hint.setWordWrap(True)
+    hint = QLabel("Motion, transitions, and audio mix.")
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-    lay.addWidget(hint)
+    adv_lay.addWidget(hint)
 
     form_vis = QFormLayout()
     form_vis.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -183,7 +187,7 @@ def attach_effects_tab(win) -> None:
     win.quality_retries_spin.setValue(int(getattr(win.settings.video, "quality_retries", 2)))
     form_vis.addRow("Bad frame retries", win.quality_retries_spin)
 
-    win.enable_motion_chk = QCheckBox("Enable motion + transitions (FFmpeg)")
+    win.enable_motion_chk = ThemedSwitch("Motion & transitions")
     win.enable_motion_chk.setChecked(bool(getattr(win.settings.video, "enable_motion", True)))
     form_vis.addRow(win.enable_motion_chk)
 
@@ -221,16 +225,16 @@ def attach_effects_tab(win) -> None:
     win.seed_base_input.setText("" if cur_seed is None else str(cur_seed))
     form_vis.addRow("Image seed (optional)", win.seed_base_input)
 
-    lay.addLayout(form_vis)
+    adv_lay.addLayout(form_vis)
 
     divider_audio = QFrame()
     divider_audio.setFrameShape(QFrame.Shape.HLine)
     divider_audio.setStyleSheet("color: #2A2A34; margin-top: 10px; margin-bottom: 6px;")
-    lay.addWidget(divider_audio)
+    adv_lay.addWidget(divider_audio)
 
     ah2 = QLabel("Audio mix")
     ah2.setStyleSheet("font-size: 14px; font-weight: 700; margin-top: 4px;")
-    lay.addWidget(ah2)
+    adv_lay.addWidget(ah2)
 
     form_audio = QFormLayout()
     form_audio.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -249,7 +253,7 @@ def attach_effects_tab(win) -> None:
     _prep_combo(win.audio_polish_combo)
     form_audio.addRow("Audio polish", win.audio_polish_combo)
 
-    win.music_ducking_chk = QCheckBox("Music ducking under voice (FFmpeg)")
+    win.music_ducking_chk = ThemedSwitch("Music ducking")
     win.music_ducking_chk.setChecked(bool(getattr(win.settings.video, "music_ducking", True)))
     form_audio.addRow(win.music_ducking_chk)
 
@@ -273,7 +277,7 @@ def attach_effects_tab(win) -> None:
     _prep_combo(win.sfx_combo)
     form_audio.addRow("SFX layer", win.sfx_combo)
 
-    lay.addLayout(form_audio)
+    adv_lay.addLayout(form_audio)
 
     def _sync_audio_controls() -> None:
         enabled = str(win.audio_polish_combo.currentData() or "basic") != "off"
@@ -282,10 +286,11 @@ def attach_effects_tab(win) -> None:
         win.music_fade_spin.setEnabled(enabled)
         win.sfx_combo.setEnabled(enabled)
 
-    tip = QLabel("Tip: Set transition strength to Off to disable crossfades; motion zoom may still apply.")
-    tip.setWordWrap(True)
+    tip = QLabel("Off transitions = no crossfade.")
     tip.setStyleSheet("color: #B7B7C2; margin-top: 8px; font-size: 11px;")
-    lay.addWidget(tip)
+    adv_lay.addWidget(tip)
+
+    register_advanced_sections(win, "effects", [win._effects_advanced_host])
 
     win._applying_effects_template = False
 

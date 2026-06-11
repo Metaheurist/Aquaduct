@@ -39,11 +39,38 @@ Replaces unicode checkmarks and warning symbols in the Model and Run tabs.
 
 Title-bar and dialog buttons: [`UI/widgets/title_bar_outline_button.py`](../../UI/widgets/title_bar_outline_button.py) (`styled_outline_button`, icon-only close/pause).
 
+## Basic | Advanced (per tab)
+
+[`UI/widgets/basic_advanced.py`](../../UI/widgets/basic_advanced.py) — title-row **Basic | Advanced** segmented control. **Advanced** shows widgets registered with `register_advanced_sections(win, tab_id, [...])`. Persisted in `ui_settings.json` as `advanced_tabs` (per-tab booleans). Uses [`SegmentedPicker`](../../UI/widgets/segmented_picker.py).
+
+## Visual Basic Mode primitives
+
+[`UI/widgets/visual_primitives.py`](../../UI/widgets/visual_primitives.py):
+
+- `StepCard` — numbered step container (Pipeline, Picture)
+- `CoachStrip` — one-line hint under the tab header
+- `QuantityStepper` — large ± stepper wrapping a hidden spin (harvest-compatible)
+- `PresetCardGrid` / `SwatchGrid` — checkable cards with SVG chips
+- `ProviderCard`, `PromptChips`, `PreviewStrip`
+
+[`UI/widgets/option_tiles.py`](../../UI/widgets/option_tiles.py) + [`UI/widgets/tile_svg_icons.py`](../../UI/widgets/tile_svg_icons.py) — format/layout pickers with SVG icons (no emoji).
+
+[`UI/widgets/themed_switch.py`](../../UI/widgets/themed_switch.py) — animated pill switch (`QCheckBox` drop-in).
+
+[`UI/widgets/segmented_picker.py`](../../UI/widgets/segmented_picker.py) — horizontal pill segments (`currentData()` / `setCurrentIndex()` combo-subset API). Also used for caption highlight, content source, and Basic|Advanced headers.
+
+[`UI/widgets/tab_scaffold.py`](../../UI/widgets/tab_scaffold.py) — `make_tab_root(..., basic_advanced=True, tab_id=…, win=…)` wires the header automatically.
+
 ## Tests
 
 - [`tests/ui/test_ui_modernization_widgets.py`](../../tests/ui/test_ui_modernization_widgets.py)
 - [`tests/ui/test_ui_modernization_tabs.py`](../../tests/ui/test_ui_modernization_tabs.py)
 - [`tests/ui/test_ui_preflight_install_prompt.py`](../../tests/ui/test_ui_preflight_install_prompt.py)
+- [`tests/ui/test_visual_primitives.py`](../../tests/ui/test_visual_primitives.py)
+- [`tests/ui/test_themed_switch.py`](../../tests/ui/test_themed_switch.py)
+- [`tests/ui/test_basic_advanced_mode.py`](../../tests/ui/test_basic_advanced_mode.py)
+- [`tests/ui/test_optional_basic_advanced_tabs.py`](../../tests/ui/test_optional_basic_advanced_tabs.py)
+- [`tests/settings/test_advanced_tabs_roundtrip.py`](../../tests/settings/test_advanced_tabs_roundtrip.py)
 
 See [Desktop UI overview](ui.md).
 

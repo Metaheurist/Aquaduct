@@ -35,6 +35,12 @@ def settings_path() -> Path:
     return application_data_dir() / "ui_settings.json"
 
 
+def _dict_section(data: dict[str, Any], key: str) -> dict[str, Any]:
+    """Return a nested settings dict; treat missing or JSON-null as empty."""
+    raw = data.get(key)
+    return raw if isinstance(raw, dict) else {}
+
+
 def _sanitize_tags(tags: Any) -> list[str]:
     if not isinstance(tags, list):
         return []
@@ -196,6 +202,16 @@ def _parse_llm_chat_geometry(raw: Any) -> LLMChatGeometry:
     return LLMChatGeometry(width=w, height=h, x=x, y=y)
 
 
+def _parse_advanced_tabs(raw: Any) -> dict[str, bool]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, bool] = {}
+    for k, v in raw.items():
+        if isinstance(k, str) and k.strip():
+            out[k.strip()] = bool(v)
+    return out
+
+
 def migrate_settings_dict(data: Any) -> dict[str, Any]:
     """In-place migrations for ``ui_settings.json`` payloads missing ``settings_schema_version``."""
     if not isinstance(data, dict):
@@ -245,7 +261,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
     if not isinstance(data, dict):
         return AppSettings()
 
-    video_raw = data.get("video", {}) if isinstance(data, dict) else {}
+    video_raw = _dict_section(data, "video")
     try:
         from src.render.video_quality_presets import (
             apply_video_presets,
@@ -325,7 +341,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         article_relevance_screen=bool(video_raw.get("article_relevance_screen", True)),
     )
 
-    branding_raw = data.get("branding", {}) if isinstance(data, dict) else {}
+    branding_raw = _dict_section(data, "branding")
     branding = BrandingSettings(
         theme_enabled=bool(branding_raw.get("theme_enabled", False)),
         palette_id=str(branding_raw.get("palette_id", "default")),
@@ -376,9 +392,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
     models_storage_mode = _norm_models_storage_mode(data.get("models_storage_mode")) if isinstance(data, dict) else "default"
     models_external_path = str(data.get("models_external_path", "") or "") if isinstance(data, dict) else ""
 
-    picture_raw = data.get("picture", {}) if isinstance(data, dict) else {}
-    if not isinstance(picture_raw, dict):
-        picture_raw = {}
+    picture_raw = _dict_section(data, "picture")
     pic_out = str(picture_raw.get("output_type", "single_image") or "single_image").strip()
     if pic_out not in ("single_image", "image_set", "layouted"):
         pic_out = "single_image"
@@ -514,6 +528,7 @@ def app_settings_from_dict(data: Any) -> AppSettings:
         if isinstance(data, dict)
         else LLMChatGeometry(),
         tutorial_completed=bool(data.get("tutorial_completed", False)) if isinstance(data, dict) else False,
+        advanced_tabs=_parse_advanced_tabs(data.get("advanced_tabs")) if isinstance(data, dict) else {},
         gpu_selection_mode=_norm_gpu_selection_mode(data.get("gpu_selection_mode")) if isinstance(data, dict) else "auto",
         gpu_device_index=int(data.get("gpu_device_index", 0)) if isinstance(data, dict) else 0,
         multi_gpu_shard_mode=(

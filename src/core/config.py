@@ -419,6 +419,8 @@ class AppSettings:
     llm_chat_geometry: LLMChatGeometry = field(default_factory=LLMChatGeometry)
     #: Set True after the user dismisses the first-run tutorial (stored in ``ui_settings.json``).
     tutorial_completed: bool = False
+    #: Per-tab UI mode: ``tab_id`` -> True when Advanced controls are shown (default Basic).
+    advanced_tabs: dict[str, bool] = field(default_factory=dict)
     #: Multi-GPU: ``auto`` uses max-VRAM GPU for diffusion and heuristic-fast GPU for LLM; ``single`` pins ``gpu_device_index``.
     gpu_selection_mode: GpuSelectionMode = "auto"
     #: Experimental: intra-model VRAM-first sharding with Auto + ``>=`` 2 CUDA devices (honors curated registry + quant gates).

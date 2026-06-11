@@ -3,18 +3,18 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
-    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -23,10 +23,16 @@ from src.core.config import MAX_CUSTOM_VIDEO_INSTRUCTIONS, VIDEO_FORMATS
 from src.content.characters_store import load_all
 from src.content.personalities import get_personality_presets
 from src.settings.art_style_presets import ART_STYLE_PRESETS
+from UI.widgets.basic_advanced import register_advanced_sections
 from UI.widgets.character_tag_picker import CharacterTagPicker
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
+from UI.widgets.option_tiles import OptionTiles, TileOption
+from UI.widgets.segmented_picker import SegmentOption, SegmentedPicker
 from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title, section_title_with_help
+from UI.widgets.themed_switch import ThemedSwitch
+from UI.widgets.tile_svg_icons import qicon_tile
+from UI.widgets.visual_primitives import CoachStrip, PromptChips, QuantityStepper, StepCard
 from UI.help.tutorial_links import help_tooltip_rich
 
 
@@ -36,33 +42,74 @@ def attach_run_tab(win) -> None:
     root.setContentsMargins(0, 0, 0, 0)
     root.setSpacing(0)
 
-    _attach_getting_started_card(win, root)
-
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QScrollArea.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    inner_root, _, _, lay = make_tab_root(title="Pipeline")
+    inner_root, _, _, lay = make_tab_root(
+        title="Pipeline",
+        tab_id="pipeline",
+        win=win,
+        basic_advanced=True,
+    )
     scroll.setWidget(inner_root)
 
-    out_card, out_lay = section_card()
-    out_lay.addWidget(section_title("Output", emphasis=True))
+    win._pipeline_coach = CoachStrip("")
+    lay.addWidget(win._pipeline_coach)
+
     _ser0_qty = getattr(win.settings, "series", None)
     _init_batch = 1
     if _ser0_qty and bool(getattr(_ser0_qty, "series_mode", False)):
         _init_batch = max(1, min(50, int(getattr(_ser0_qty, "episode_count", 1) or 1)))
+
+    step1 = StepCard(1, "Pick format", subtitle="What kind of video or photo?")
+    cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
+    if cur_vf not in VIDEO_FORMATS:
+        cur_vf = "news"
+    _vf_tiles = [
+        TileOption("News", "news", icon="news", subtitle="Headlines", tooltip="Headlines + topics", recommended=(cur_vf == "news")),
+        TileOption("Cartoon", "cartoon", icon="cartoon", subtitle="Creative", tooltip="Creative web seeds"),
+        TileOption("Explainer", "explainer", icon="explainer", subtitle="How-to", tooltip="Product / how-to"),
+        TileOption("Unhinged", "unhinged", icon="unhinged", subtitle="Satire", tooltip="Satire cartoon"),
+        TileOption("Horror", "creepypasta", icon="horror", subtitle="Fiction", tooltip="Web horror fiction"),
+        TileOption("Health", "health_advice", icon="health", subtitle="Wellness", tooltip="Wellness tips"),
+        TileOption("NSFW", "nsfw", icon="nsfw", subtitle="18+", tooltip="Adults only (18+)"),
+    ]
+    idx_vf = next((i for i, t in enumerate(_vf_tiles) if t.value == cur_vf), 0)
+    win.video_format_combo = OptionTiles(_vf_tiles, columns=4, default_index=idx_vf)
+    step1.addWidget(win.video_format_combo)
+    win.nsfw_format_warning = QLabel("Adults only — auto-upload disabled.")
+    win.nsfw_format_warning.setStyleSheet("color: #FE2C55; font-size: 11px;")
+    win.nsfw_format_warning.setVisible(False)
+    step1.addWidget(win.nsfw_format_warning)
+
+    win._picture_format_step = QWidget()
+    pic_lay = QVBoxLayout(win._picture_format_step)
+    pic_lay.setContentsMargins(0, 0, 0, 0)
+    win._picture_format_label = QLabel("Layout style")
+    win._picture_format_label.setStyleSheet("color: #B7B7C2; font-size: 11px;")
+    pic_lay.addWidget(win._picture_format_label)
+    _pf_tiles = [
+        TileOption("Poster", "poster", icon="poster", subtitle="Bold"),
+        TileOption("Newspaper", "newspaper", icon="newspaper", subtitle="Editorial"),
+        TileOption("Comic", "comic", icon="comic", subtitle="Panels"),
+    ]
+    win.picture_format_run_combo = OptionTiles(_pf_tiles, columns=3, default_index=0)
+    pic_lay.addWidget(win.picture_format_run_combo)
+    step1.addWidget(win._picture_format_step)
+    lay.addWidget(step1)
+
+    step2 = StepCard(2, "How many", subtitle="One full pipeline per count")
     qty_wrap = QWidget()
     qty_wrap.setObjectName("RunQtyRowWrap")
     qty_row = QHBoxLayout(qty_wrap)
     qty_row.setContentsMargins(0, 0, 0, 0)
-    qty_lbl = QLabel("Videos to generate")
-    qty_lbl.setStyleSheet("color: #B7B7C2;")
-    win._run_qty_label = qty_lbl
-    qty_row.addWidget(qty_lbl)
-    win.run_qty_spin = NoWheelSpinBox()
-    win.run_qty_spin.setRange(1, 50)
-    win.run_qty_spin.setValue(_init_batch)
+    win._run_qty_label = QLabel("Videos to generate")
+    win._run_qty_label.setStyleSheet("color: #B7B7C2;")
+    qty_row.addWidget(win._run_qty_label)
+    win._run_qty_stepper = QuantityStepper(minimum=1, maximum=50, value=_init_batch)
+    win.run_qty_spin = win._run_qty_stepper.spin()
     win.run_qty_spin.setToolTip(
         help_tooltip_rich(
             "Each count is one full pipeline run (one video). "
@@ -71,82 +118,24 @@ def attach_run_tab(win) -> None:
             slide=0,
         )
     )
-    qty_row.addWidget(win.run_qty_spin)
+    qty_row.addWidget(win._run_qty_stepper, 1)
     qty_row.addStretch(1)
-    out_lay.addWidget(qty_wrap)
+    step2.addWidget(qty_wrap)
     win._run_qty_row_wrap = qty_wrap
-
-    fmt_row = QHBoxLayout()
-    win._video_format_label = QLabel("Video format")
-    win._video_format_label.setStyleSheet("color: #B7B7C2;")
-    fmt_row.addWidget(win._video_format_label)
-    win.video_format_combo = NoWheelComboBox()
-    win.video_format_combo.addItem("News (headlines)", "news")
-    win.video_format_combo.addItem("Cartoon", "cartoon")
-    win.video_format_combo.addItem("Explainer", "explainer")
-    win.video_format_combo.addItem("Cartoon (unhinged)", "unhinged")
-    win.video_format_combo.addItem("Creepypasta (web horror)", "creepypasta")
-    win.video_format_combo.addItem("Health advice (wellness tips)", "health_advice")
-    win.video_format_combo.addItem("NSFW (adult, 18+ only)", "nsfw")
-    cur_vf = str(getattr(win.settings, "video_format", "news") or "news")
-    if cur_vf not in VIDEO_FORMATS:
-        cur_vf = "news"
-    idx_vf = win.video_format_combo.findData(cur_vf)
-    win.video_format_combo.setCurrentIndex(idx_vf if idx_vf >= 0 else 0)
-    win.video_format_combo.setToolTip(
-        help_tooltip_rich(
-            "Video format selects which topic list and crawler behavior apply, together with the Topics tab.",
-            "run",
-            slide=2,
-        )
-    )
-    fmt_row.addWidget(win.video_format_combo, 1)
-    fmt_row.addStretch(1)
-    out_lay.addLayout(fmt_row)
-
-    win.nsfw_format_warning = QLabel(
-        "Adults only. Auto-enables NSFW image output for this run. "
-        "TikTok/YouTube auto-upload is disabled in the UI while this format is selected — "
-        "turn it off in settings before running if preflight still complains."
-    )
-    win.nsfw_format_warning.setWordWrap(True)
-    win.nsfw_format_warning.setStyleSheet("color: #FE2C55; font-size: 11px;")
-    win.nsfw_format_warning.setVisible(False)
-    out_lay.addWidget(win.nsfw_format_warning)
-
-    pic_row = QHBoxLayout()
-    win._picture_format_label = QLabel("Picture format")
-    win._picture_format_label.setStyleSheet("color: #B7B7C2;")
-    pic_row.addWidget(win._picture_format_label)
-    win.picture_format_run_combo = NoWheelComboBox()
-    win.picture_format_run_combo.addItem("Poster", "poster")
-    win.picture_format_run_combo.addItem("Newspaper", "newspaper")
-    win.picture_format_run_combo.addItem("Comic", "comic")
-    win.picture_format_run_combo.setCurrentIndex(0)
-    win.picture_format_run_combo.setToolTip(
-        help_tooltip_rich(
-            "Picture format (poster / newspaper / comic) for photo-mode runs. This is the same setting as the "
-            "Picture tab - changing it here updates the Picture tab and vice versa.",
-            "run",
-            slide=2,
-        )
-    )
-    win.picture_format_run_combo.setAccessibleName("Picture format (mirrors Picture tab)")
-    pic_row.addWidget(win.picture_format_run_combo, 1)
-    pic_row.addStretch(1)
-    out_lay.addLayout(pic_row)
+    lay.addWidget(step2)
 
     # Initial mode visibility (title-bar toggle updates via main_window._apply_media_mode_ui).
     try:
         mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
         is_photo = mm == "photo"
-        win._picture_format_label.setVisible(is_photo)
-        win.picture_format_run_combo.setVisible(is_photo)
+        win._picture_format_step.setVisible(is_photo)
     except Exception:
         pass
 
-    style_row = QHBoxLayout()
-    style_lbl = QLabel("Art style (visual continuity)")
+    win._pipeline_advanced_style = QWidget()
+    style_row = QHBoxLayout(win._pipeline_advanced_style)
+    style_row.setContentsMargins(0, 0, 0, 0)
+    style_lbl = QLabel("Art style")
     style_lbl.setStyleSheet("color: #B7B7C2;")
     style_row.addWidget(style_lbl)
     win.art_style_preset_combo = NoWheelComboBox()
@@ -165,10 +154,10 @@ def attach_run_tab(win) -> None:
     win.art_style_preset_combo.setCurrentIndex(ix_as if ix_as >= 0 else 0)
     style_row.addWidget(win.art_style_preset_combo, 1)
     style_row.addStretch(1)
-    out_lay.addLayout(style_row)
+    lay.addWidget(win._pipeline_advanced_style)
 
     ser0 = getattr(win.settings, "series", None)
-    series_grp = QGroupBox("Video series (continuation)")
+    series_grp = QGroupBox("Series")
     series_grp.setToolTip(
         help_tooltip_rich(
             "Queue N episodes that share style and continue the same story. Each episode is a separate pipeline job "
@@ -182,7 +171,7 @@ def attach_run_tab(win) -> None:
     series_grp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
     sv = QVBoxLayout(series_grp)
     sv.setSpacing(10)
-    win.series_mode_check = QCheckBox("Generate as multi-episode series")
+    win.series_mode_check = ThemedSwitch("Multi-episode series")
     win.series_mode_check.setChecked(bool(getattr(ser0, "series_mode", False)) if ser0 else False)
     win.series_mode_check.setToolTip(
         help_tooltip_rich(
@@ -270,7 +259,7 @@ def attach_run_tab(win) -> None:
     )
     win.series_source_strategy_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     sv.addWidget(win.series_source_strategy_combo)
-    win.series_lock_style_check = QCheckBox("Lock art style, models & characters\nacross episodes")
+    win.series_lock_style_check = ThemedSwitch("Lock style & cast")
     win.series_lock_style_check.setToolTip(
         help_tooltip_rich(
             "Keep the same art style preset, diffusion/checkpoint choices, and character selection for every episode in this run.",
@@ -280,10 +269,10 @@ def attach_run_tab(win) -> None:
     )
     win.series_lock_style_check.setChecked(bool(getattr(ser0, "lock_style", True)) if ser0 else True)
     sv.addWidget(win.series_lock_style_check)
-    win.series_carry_recap_check = QCheckBox("Carry recap / series bible into\nthe next script")
+    win.series_carry_recap_check = ThemedSwitch("Carry recap")
     win.series_carry_recap_check.setChecked(bool(getattr(ser0, "carry_recap", True)) if ser0 else True)
     sv.addWidget(win.series_carry_recap_check)
-    win.series_continue_on_failure_check = QCheckBox("Continue series if an episode fails")
+    win.series_continue_on_failure_check = ThemedSwitch("Continue on failure")
     win.series_continue_on_failure_check.setChecked(bool(getattr(ser0, "continue_on_failure", False)) if ser0 else False)
     win.series_continue_on_failure_check.setToolTip(
         help_tooltip_rich(
@@ -293,7 +282,8 @@ def attach_run_tab(win) -> None:
         )
     )
     sv.addWidget(win.series_continue_on_failure_check)
-    out_lay.addWidget(series_grp)
+    win._pipeline_advanced_series = series_grp
+    lay.addWidget(series_grp)
 
     def _series_controls_enabled(on: bool) -> None:
         ep_lbl.setEnabled(on)
@@ -321,51 +311,37 @@ def attach_run_tab(win) -> None:
     _refresh_series_controls()
     win._run_tab_refresh_series_controls = _refresh_series_controls
 
-    lay.addWidget(out_card)
-
     add_section_spacing(lay)
-    sc_card, sc_lay = section_card()
-    sc_lay.addWidget(
-        section_title_with_help(
-            "Script & content",
-            "run",
-            slide=1,
-            emphasis=True,
-            on_open=getattr(win, "_open_help", None),
-        )
+    step3 = StepCard(3, "Content", subtitle="Topics or your own brief")
+    _content_custom = str(getattr(win.settings, "run_content_mode", "preset") or "preset") == "custom"
+    win.run_content_picker = SegmentedPicker(
+        [
+            SegmentOption("Preset", "preset", tooltip="Topics + headlines for this format."),
+            SegmentOption("Custom", "custom", tooltip="Your instructions (two LLM passes)."),
+        ],
+        accessible_name="Content source",
+        default_index=1 if _content_custom else 0,
     )
-    mode_row = QHBoxLayout()
-    mode_lbl = QLabel("Content source")
-    mode_lbl.setStyleSheet("color: #B7B7C2;")
-    mode_row.addWidget(mode_lbl)
-    win.run_content_preset_radio = QRadioButton("Preset")
-    win.run_content_custom_radio = QRadioButton("Custom (your instructions)")
+    step3.addWidget(win.run_content_picker)
+    # Hidden radios for harvest / legacy code paths.
+    win.run_content_preset_radio = QRadioButton()
+    win.run_content_custom_radio = QRadioButton()
+    win.run_content_preset_radio.setVisible(False)
+    win.run_content_custom_radio.setVisible(False)
     win.run_content_mode_group = QButtonGroup(w)
     win.run_content_mode_group.addButton(win.run_content_preset_radio)
     win.run_content_mode_group.addButton(win.run_content_custom_radio)
-    if str(getattr(win.settings, "run_content_mode", "preset") or "preset") == "custom":
+    if _content_custom:
         win.run_content_custom_radio.setChecked(True)
     else:
         win.run_content_preset_radio.setChecked(True)
-    win.run_content_preset_radio.setToolTip(
-        help_tooltip_rich(
-            "Preset uses your per-format topic tags plus the news/headline cache (behavior depends on video format).",
-            "run",
-            slide=1,
-        )
-    )
-    win.run_content_custom_radio.setToolTip(
-        help_tooltip_rich(
-            "Custom uses your multiline instructions: the script model expands them into a brief, then writes "
-            "the full script (two LLM passes - slower than Preset).",
-            "run",
-            slide=1,
-        )
-    )
-    mode_row.addWidget(win.run_content_preset_radio)
-    mode_row.addWidget(win.run_content_custom_radio)
-    mode_row.addStretch(1)
-    sc_lay.addLayout(mode_row)
+
+    def _sync_content_radios_from_picker() -> None:
+        custom = win.run_content_picker.currentData() == "custom"
+        win.run_content_preset_radio.setChecked(not custom)
+        win.run_content_custom_radio.setChecked(custom)
+
+    win.run_content_picker.currentIndexChanged.connect(lambda _i: _sync_content_radios_from_picker())
 
     win.custom_instructions_edit = QTextEdit()
     win.custom_instructions_edit.setAcceptRichText(False)
@@ -384,7 +360,21 @@ def attach_run_tab(win) -> None:
     )
     win.custom_instructions_edit.setMinimumHeight(72)
     win.custom_instructions_edit.setMaximumHeight(160)
-    sc_lay.addWidget(win.custom_instructions_edit)
+    step3.addWidget(win.custom_instructions_edit)
+
+    win._custom_prompt_chips = PromptChips(
+        [
+            "Explain like I'm 5",
+            "Dramatic hook",
+            "Listicle",
+            "Mystery tone",
+            "Call to action",
+        ],
+        on_apply=lambda t: win.custom_instructions_edit.insertPlainText(
+            ("" if not win.custom_instructions_edit.toPlainText().strip() else " ") + t
+        ),
+    )
+    step3.addWidget(win._custom_prompt_chips)
 
     vf_hint = QLabel("")
     vf_hint.setWordWrap(True)
@@ -404,8 +394,11 @@ def attach_run_tab(win) -> None:
         return "Preset (topics + headlines)"
 
     def _sync_content_mode_ui() -> None:
-        custom = win.run_content_custom_radio.isChecked()
+        custom = win.run_content_picker.currentData() == "custom"
+        _sync_content_radios_from_picker()
         win.custom_instructions_edit.setVisible(custom)
+        if hasattr(win, "_custom_prompt_chips"):
+            win._custom_prompt_chips.setVisible(custom)
         mm = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
         vf = str(win.video_format_combo.currentData() or "news")
         if hasattr(win, "nsfw_format_warning"):
@@ -415,59 +408,25 @@ def attach_run_tab(win) -> None:
         if hasattr(win, "_refresh_character_preset_combo"):
             win._refresh_character_preset_combo()
         if mm == "photo":
-            win.run_content_preset_radio.setText("Preset (topics + headlines for prompts)")
-            if custom:
-                vf_hint.setText(
-                    "Custom mode: your instructions drive the still / layout brief (no headline crawl). "
-                    "Use the Picture tab for template size, output type, and poster/newspaper/comic format. "
-                    f"Topic tags from the Topics tab (for the selected source mode below) still bias prompts when relevant. "
-                    f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters.)"
-                )
-            else:
-                vf_hint.setText(
-                    "Preset uses the source mode below and your Topics tab to pick ideas - same flow as making a video, "
-                    "except this run creates still images or a layout instead of an MP4. "
-                    "Choose template, how many images, output type, and picture format on the Picture tab."
-                )
+            win.run_content_picker.setItemText(0, "Preset")
+            vf_hint.setText("Custom: your brief. Preset: Topics tab ideas." if custom else "Uses Topics tab for photo runs.")
             return
-        win.run_content_preset_radio.setText(_preset_mode_caption(vf))
+        win.run_content_picker.setItemText(0, _preset_mode_caption(vf).replace("Preset ", ""))
         if custom:
-            extra = ""
-            if vf == "unhinged":
-                extra = (
-                    " Cartoon (unhinged) targets adult-animation satire (absurdist / shock-cartoon energy); "
-                    "local TTS rotates voices per beat (single cloud voice if your character uses ElevenLabs)."
-                )
-            elif vf == "creepypasta":
-                extra = " Short horror from the web; keep it fiction only."
-            elif vf == "nsfw":
-                extra = " Adults-only mode: enable Firecrawl for best source discovery; guardrails apply to scripts and topics."
-            vf_hint.setText(
-                "Custom mode does not pick headlines from the news cache. The LLM expands your notes into a brief, "
-                "then writes the script (two passes - slower than Preset). Topic tags from the Topics tab still bias "
-                "hashtags when relevant."
-                + extra
-            )
-        elif vf == "unhinged":
-            vf_hint.setText(
-                "Comedy headlines from the web using your Topics tags. Satire tone. "
-                "Local voices rotate by beat; ElevenLabs uses one voice for the whole track if set."
-            )
-        elif vf == "creepypasta":
-            vf_hint.setText(
-                "Creepypasta: Preset crawls the open web for short horror / creepypasta fiction (Firecrawl search + optional RSS fallback). "
-                "Uses your Topics tags to steer queries; no local seen-URL cache. Enable Firecrawl on the API tab for best results."
-            )
+            vf_hint.setText("Custom: two LLM passes from your notes.")
         elif vf == "nsfw":
-            vf_hint.setText(
-                "NSFW: Firecrawl-first discover with adults-only guardrails on topics and script prompts. "
-                "Fresh headline URLs each run. Auto-upload to TikTok/YouTube is blocked — not suitable for those platforms."
-            )
+            vf_hint.setText("Adults only — Firecrawl recommended.")
         else:
-            vf_hint.setText("Tags for the run come from the Topics tab list for this format.")
+            vf_hint.setText("Topics tab drives this run.")
+        if hasattr(win, "_pipeline_coach"):
+            if custom:
+                win._pipeline_coach.set_message("Tip: add tone, structure, and a hook — chips can jump-start your brief.")
+            elif mm == "photo":
+                win._pipeline_coach.set_message("Photo mode: pick a layout, then run from Topics or a custom brief.")
+            else:
+                win._pipeline_coach.set_message("Preset mode uses your Topics tab — switch to Custom for full control.")
 
-    win.run_content_preset_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
-    win.run_content_custom_radio.toggled.connect(lambda _c: _sync_content_mode_ui())
+    win.run_content_picker.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
     win.video_format_combo.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
     win._sync_run_content_hints = _sync_content_mode_ui
     # Set the contextual, format-aware hint on first load (do not overwrite with a generic tip);
@@ -482,10 +441,11 @@ def attach_run_tab(win) -> None:
         )
     )
     win.vf_hint_label = vf_hint
-    sc_lay.addWidget(vf_hint)
+    step3.addWidget(vf_hint)
 
-    # Personality selection
-    p_row = QHBoxLayout()
+    win._pipeline_advanced_personality = QWidget()
+    p_row = QHBoxLayout(win._pipeline_advanced_personality)
+    p_row.setContentsMargins(0, 0, 0, 0)
     p_lbl = QLabel("Personality")
     p_lbl.setStyleSheet("color: #B7B7C2;")
     p_row.addWidget(p_lbl)
@@ -502,14 +462,17 @@ def attach_run_tab(win) -> None:
         win.personality_combo.setCurrentIndex(idx)
     p_row.addWidget(win.personality_combo, 1)
     p_row.addStretch(1)
-    sc_lay.addLayout(p_row)
+    lay.addWidget(win._pipeline_advanced_personality)
 
     win.personality_hint = QLabel("")
-    win.personality_hint.setStyleSheet("color: #B7B7C2;")
+    win.personality_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     win.personality_hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-    sc_lay.addWidget(win.personality_hint)
+    win._pipeline_advanced_personality_hint = win.personality_hint
+    lay.addWidget(win.personality_hint)
 
-    c_row = QHBoxLayout()
+    win._pipeline_advanced_characters = QWidget()
+    c_row = QHBoxLayout(win._pipeline_advanced_characters)
+    c_row.setContentsMargins(0, 0, 0, 0)
     c_lbl = QLabel("Characters")
     c_lbl.setStyleSheet("color: #B7B7C2;")
     c_row.addWidget(c_lbl)
@@ -555,9 +518,9 @@ def attach_run_tab(win) -> None:
     win.character_tag_picker.orderChanged.connect(_sync_character_combo_shim)
     _sync_character_combo_shim()
     c_row.addStretch(1)
-    sc_lay.addLayout(c_row)
+    lay.addWidget(win._pipeline_advanced_characters)
 
-    win.auto_save_generated_cast_check = QCheckBox("Save generated cast to Characters tab")
+    win.auto_save_generated_cast_check = ThemedSwitch("Save generated cast")
     win.auto_save_generated_cast_check.setChecked(
         bool(getattr(win.settings, "auto_save_generated_cast", True))
     )
@@ -570,17 +533,35 @@ def attach_run_tab(win) -> None:
             slide=2,
         )
     )
-    sc_lay.addWidget(win.auto_save_generated_cast_check)
-    lay.addWidget(sc_card)
+    win._pipeline_advanced_cast_save = win.auto_save_generated_cast_check
+    lay.addWidget(win.auto_save_generated_cast_check)
+    register_advanced_sections(
+        win,
+        "pipeline",
+        [
+            win._pipeline_advanced_style,
+            win._pipeline_advanced_series,
+            win._pipeline_advanced_personality,
+            win._pipeline_advanced_personality_hint,
+            win._pipeline_advanced_characters,
+            win._pipeline_advanced_cast_save,
+        ],
+    )
+    lay.addWidget(step3)
 
     lay.addStretch(1)
 
     act_card, act_lay = section_card()
-    act_lay.addWidget(section_title("Actions", emphasis=True))
-
     row = QHBoxLayout()
+    win.run_readiness_dot = QLabel()
+    win.run_readiness_dot.setFixedSize(10, 10)
+    win.run_readiness_dot.setVisible(False)
+    win.run_readiness_dot.setStyleSheet("border-radius: 5px; background-color: #6A6A78;")
+    row.addWidget(win.run_readiness_dot, 0)
+
     win.run_btn = QPushButton("Run")
     win.run_btn.setObjectName("primary")
+    win.run_btn.setMinimumHeight(40)
     win.run_btn.setToolTip(
         help_tooltip_rich(
             "While a job runs, live stage + percent appear as the top row on the Tasks tab.",
@@ -589,7 +570,7 @@ def attach_run_tab(win) -> None:
         )
     )
     win.run_btn.clicked.connect(win._on_run)
-    row.addWidget(win.run_btn)
+    row.addWidget(win.run_btn, 1)
 
     win.preview_btn = QPushButton("Preview")
     win.preview_btn.setToolTip(
@@ -600,7 +581,7 @@ def attach_run_tab(win) -> None:
         )
     )
     win.preview_btn.clicked.connect(win._on_preview)
-    row.addWidget(win.preview_btn)
+    win.preview_btn.setVisible(False)
 
     win.storyboard_btn = QPushButton("Storyboard Preview")
     win.storyboard_btn.setToolTip(
@@ -611,7 +592,7 @@ def attach_run_tab(win) -> None:
         )
     )
     win.storyboard_btn.clicked.connect(win._on_storyboard_preview)
-    row.addWidget(win.storyboard_btn)
+    win.storyboard_btn.setVisible(False)
 
     win.open_videos_btn = QPushButton("Open videos folder")
     win.open_videos_btn.setToolTip(
@@ -622,7 +603,7 @@ def attach_run_tab(win) -> None:
         )
     )
     win.open_videos_btn.clicked.connect(win._open_videos)
-    row.addWidget(win.open_videos_btn)
+    win.open_videos_btn.setVisible(False)
 
     win.save_btn = QPushButton("Save settings")
     win.save_btn.setToolTip(
@@ -633,23 +614,22 @@ def attach_run_tab(win) -> None:
         )
     )
     win.save_btn.clicked.connect(win._save_settings)
-    row.addWidget(win.save_btn)
+    win.save_btn.setVisible(False)
 
-    row.addStretch(1)
+    overflow = QToolButton()
+    overflow.setIcon(qicon_tile("more", "#E8E8EE", 20))
+    overflow.setToolTip("More actions")
+    overflow.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    menu = QMenu(overflow)
+    menu.addAction("Preview", win._on_preview)
+    menu.addAction("Storyboard Preview", win._on_storyboard_preview)
+    menu.addAction("Open outputs folder", win._open_videos)
+    menu.addAction("Save settings", win._save_settings)
+    overflow.setMenu(menu)
+    row.addWidget(overflow, 0)
+
     act_lay.addLayout(row)
 
-    from UI.widgets.tab_sections import status_glyph_label, status_glyph_set_text
-
-    win.run_readiness_badge = status_glyph_label("dot", "")
-    win.run_readiness_badge.setVisible(False)
-    win.run_readiness_badge.setToolTip(
-        help_tooltip_rich(
-            "Readiness reflects the same preflight checks used by Run, Preview, and Storyboard.",
-            "run",
-            slide=0,
-        )
-    )
-    act_lay.addWidget(win.run_readiness_badge)
     _attach_run_readiness(win)
 
     root.addWidget(scroll, 1)
@@ -661,154 +641,38 @@ def attach_run_tab(win) -> None:
 
 
 def _attach_run_readiness(win) -> None:
-    """Shared readiness badge so Run / Preview / Storyboard show one consistent prerequisite state."""
-    from UI.widgets.tab_sections import status_glyph_set_text
-
-    def _refresh() -> None:
-        badge = getattr(win, "run_readiness_badge", None)
-        if badge is None:
-            return
-        try:
-            from src.runtime.preflight import preflight_check
-
-            pf = preflight_check(settings=win.settings, strict=False)
-        except Exception:
-            badge.setVisible(False)
-            return
-        if pf.ok and not pf.warnings:
-            status_glyph_set_text(
-                badge,
-                "Ready - Run, Preview, and Storyboard are good to go.",
-                kind="check",
-                color_token="accent",
-            )
-            badge.setVisible(True)
-        elif pf.ok and pf.warnings:
-            status_glyph_set_text(
-                badge,
-                f"Ready with warnings: {pf.warnings[0]}",
-                kind="warning",
-                color_token="muted",
-            )
-            badge.setVisible(True)
-        else:
-            first = pf.errors[0] if pf.errors else "Some prerequisites are missing."
-            status_glyph_set_text(
-                badge,
-                f"Not ready: {first}",
-                kind="dot",
-                color_token="danger",
-            )
-            badge.setVisible(True)
-
-    win._refresh_run_readiness = _refresh
-    QTimer.singleShot(0, _refresh)
-
-
-def _attach_getting_started_card(win, root: QVBoxLayout) -> None:
-    """State-aware first-run checklist shown above the Pipeline form.
-
-    Auto-hides once the app is set up and the user has finished a run, or when dismissed.
-    """
+    """Readiness dot + tooltip on Run row (replaces text badge under actions)."""
     from UI.theme import token
 
-    card = QWidget()
-    card.setObjectName("GettingStartedCard")
-    card.setStyleSheet(
-        "QWidget#GettingStartedCard { border: 1px solid %s; border-radius: 12px; "
-        "background-color: rgba(255,255,255,0.02); }" % token("accent", "#25F4EE")
-    )
-    lay = QVBoxLayout(card)
-    lay.setContentsMargins(14, 12, 14, 12)
-    lay.setSpacing(6)
-
-    head_row = QHBoxLayout()
-    head = QLabel("Getting started")
-    head.setStyleSheet(f"color: {token('text', '#FFFFFF')}; font-size: 14px; font-weight: 700;")
-    head_row.addWidget(head, 1)
-    dismiss = QPushButton("Dismiss")
-    dismiss.setProperty("buttonRole", "secondary")
-    dismiss.setMaximumHeight(26)
-    dismiss.setAccessibleName("Dismiss getting started checklist")
-    head_row.addWidget(dismiss, 0)
-    lay.addLayout(head_row)
-
-    from UI.widgets.tab_sections import status_glyph_label, status_glyph_set_text
-
-    win._gs_step_models = status_glyph_label("dot", "")
-    win._gs_step_topics = status_glyph_label("dot", "")
-    win._gs_step_run = status_glyph_label("dot", "")
-    for lb in (win._gs_step_models, win._gs_step_topics, win._gs_step_run):
-        lay.addWidget(lb)
-
-    root.addWidget(card)
-    win._gs_card = card
-
-    def _dismiss() -> None:
-        win._getting_started_dismissed = True
-        card.setVisible(False)
-        if hasattr(win, "_resize_to_current_tab"):
-            try:
-                win._resize_to_current_tab()
-            except Exception:
-                pass
-
-    dismiss.clicked.connect(_dismiss)
-
     def _refresh() -> None:
-        if getattr(win, "_getting_started_dismissed", False):
-            card.setVisible(False)
+        dot = getattr(win, "run_readiness_dot", None)
+        if dot is None:
             return
-        ready = True
-        models_line = "1. Choose and download your models on the Model tab"
         try:
             from src.runtime.preflight import preflight_check
 
             pf = preflight_check(settings=win.settings, strict=False)
-            ready = bool(pf.ok)
-            if ready:
-                models_line = "1. Models and FFmpeg look ready"
-            elif pf.errors:
-                models_line = f"1. Set up models: {pf.errors[0]}"
         except Exception:
-            ready = False
-        status_glyph_set_text(
-            win._gs_step_models,
-            models_line,
-            kind="check" if ready else "dot",
-            color_token="accent" if ready else "muted",
-        )
+            dot.setVisible(False)
+            return
+        accent = token("accent", "#25F4EE")
+        danger = token("danger", "#FE2C55")
+        warn = "#E8B84A"
+        if pf.ok and not pf.warnings:
+            dot.setStyleSheet(f"border-radius: 5px; background-color: {accent};")
+            dot.setToolTip("Ready — Run, Preview, and Storyboard are good to go.")
+            dot.setVisible(True)
+        elif pf.ok and pf.warnings:
+            dot.setStyleSheet(f"border-radius: 5px; background-color: {warn};")
+            dot.setToolTip(f"Ready with warnings: {pf.warnings[0]}")
+            dot.setVisible(True)
+        else:
+            first = pf.errors[0] if pf.errors else "Some prerequisites are missing."
+            dot.setStyleSheet(f"border-radius: 5px; background-color: {danger};")
+            dot.setToolTip(f"Not ready: {first}")
+            dot.setVisible(True)
 
-        has_topics = False
-        try:
-            key = win._topics_bucket_key() if hasattr(win, "_topics_bucket_key") else ""
-            has_topics = bool((win.settings.topic_tags_by_mode or {}).get(key))
-        except Exception:
-            has_topics = False
-        status_glyph_set_text(
-            win._gs_step_topics,
-            "2. Add a topic on the Topics tab or a character (optional)",
-            kind="check" if has_topics else "dot",
-            color_token="accent" if has_topics else "muted",
-        )
-        status_glyph_set_text(
-            win._gs_step_run,
-            "3. Press Run below to create your first video",
-            kind="dot",
-            color_token="muted",
-        )
-
-        finished = False
-        try:
-            from src.platform.upload_tasks import load_tasks
-
-            finished = len(load_tasks()) > 0
-        except Exception:
-            finished = False
-        # Hide once the user is clearly set up and has produced output.
-        card.setVisible(not (ready and finished))
-
-    win._refresh_getting_started = _refresh
+    win._refresh_run_readiness = _refresh
     QTimer.singleShot(0, _refresh)
 
 
@@ -855,8 +719,8 @@ def refresh_run_tab_for_media_mode(win) -> None:
                     slide=0,
                 )
             )
-    if hasattr(win, "_video_format_label"):
-        win._video_format_label.setText("Headline & topic mode" if is_photo else "Video format")
+    if hasattr(win, "_picture_format_step"):
+        win._picture_format_step.setVisible(is_photo)
     if hasattr(win, "custom_instructions_edit"):
         if is_photo:
             win.custom_instructions_edit.setPlaceholderText(

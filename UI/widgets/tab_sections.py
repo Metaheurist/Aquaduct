@@ -47,6 +47,44 @@ def section_card(*, margins: int = SECTION_CARD_MARGINS, spacing: int = SECTION_
     return frame, lay
 
 
+def setting_row(
+    label: str,
+    control: QWidget,
+    *,
+    info_tooltip: str | None = None,
+    label_style: str | None = None,
+) -> QWidget:
+    """
+    Single-line setting: muted label + control + optional (i) info glyph (tooltip holds detail).
+    """
+    row = QWidget()
+    lay = QHBoxLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(8)
+    lab = QLabel(label)
+    lab.setStyleSheet(label_style or "color: #B7B7C2; min-width: 120px;")
+    lay.addWidget(lab, 0)
+    lay.addWidget(control, 1)
+    if info_tooltip:
+        info = QToolButton()
+        info.setText("i")
+        info.setCursor(Qt.CursorShape.PointingHandCursor)
+        info.setAutoRaise(True)
+        accent = token("accent", "#25F4EE")
+        border = token("border", "#23232B")
+        info.setStyleSheet(
+            "QToolButton { color: %s; border: 1px solid %s; border-radius: 8px; "
+            "font-weight: 800; font-size: 10px; padding: 0; }"
+            "QToolButton:hover { border: 1px solid %s; }" % (accent, border, accent)
+        )
+        info.setFixedSize(16, 16)
+        info.setToolTip(info_tooltip)
+        info.setAccessibleName(f"Info: {label}")
+        lay.addWidget(info, 0)
+    lay.addStretch(0)
+    return row
+
+
 def section_title(text: str, *, emphasis: bool = False) -> QLabel:
     """Muted subsection label (emphasis = slightly larger for major breaks)."""
     lab = QLabel(text)

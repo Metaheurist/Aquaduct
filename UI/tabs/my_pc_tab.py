@@ -20,9 +20,11 @@ from src.models.hardware import (
 from src.models.model_manager import model_options
 from src.util.cuda_device_policy import effective_vram_gb_for_kind
 from UI.help.tutorial_links import help_tooltip_rich
+from UI.widgets.basic_advanced import register_advanced_sections
 from UI.widgets.gpu_policy_toggle import GpuPolicyToggle
 from UI.widgets.no_wheel_controls import NoWheelComboBox
-from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
+from UI.widgets.tab_scaffold import make_tab_root
+from UI.widgets.tab_sections import section_card, section_title
 
 
 def _fit_colors(marker: str) -> tuple[QColor, QColor]:
@@ -40,22 +42,19 @@ def _fit_colors(marker: str) -> tuple[QColor, QColor]:
 
 def attach_my_pc_tab(win) -> None:
     w = QWidget()
-    lay = QVBoxLayout(w)
+    root = QVBoxLayout(w)
+    root.setContentsMargins(0, 0, 0, 0)
 
-    header = QLabel("My PC")
-    header.setStyleSheet("font-size: 16px; font-weight: 700;")
-    lay.addWidget(header)
-
-    sub = QLabel("Hardware summary and per-model fit (uses GPU policy below).")
-    sub.setStyleSheet("color: #B7B7C2;")
-    sub.setToolTip(
-        help_tooltip_rich(
-            "Effective VRAM per model kind follows Auto vs Select GPU and cuda_device_policy.",
-            "my_pc",
-            slide=0,
-        )
+    inner_root, _, _, lay = make_tab_root(
+        title="My PC",
+        intro_text="Hardware summary and model fit.",
+        tab_id="my_pc",
+        win=win,
+        basic_advanced=True,
+        body_card=False,
+        fill_vertical=True,
     )
-    lay.addWidget(sub)
+    root.addWidget(inner_root, 1)
 
     info = get_hardware_info()
     gpus = list_cuda_gpus()
@@ -83,13 +82,17 @@ def attach_my_pc_tab(win) -> None:
     form.addRow("GPU(s)", gpu_block)
     sys_lay.addLayout(form)
 
+    win._my_pc_advanced_policy = QWidget()
+    pol_lay = QVBoxLayout(win._my_pc_advanced_policy)
+    pol_lay.setContentsMargins(0, 0, 0, 0)
+
     policy_row = QHBoxLayout()
     policy_row.addWidget(QLabel("GPU policy"))
     win.gpu_policy_toggle = GpuPolicyToggle()
     win.gpu_policy_toggle.setMinimumHeight(34)
     policy_row.addWidget(win.gpu_policy_toggle, 0)
     policy_row.addStretch(1)
-    sys_lay.addLayout(policy_row)
+    pol_lay.addLayout(policy_row)
 
     shard_row = QHBoxLayout()
     shard_row.addWidget(QLabel("VRAM-first sharding"))
@@ -107,7 +110,7 @@ def attach_my_pc_tab(win) -> None:
     win.multi_gpu_shard_combo.addItem("Off", "off")
     win.multi_gpu_shard_combo.addItem("VRAM-first multi-GPU", "vram_first_auto")
     shard_row.addWidget(win.multi_gpu_shard_combo, 1)
-    sys_lay.addLayout(shard_row)
+    pol_lay.addLayout(shard_row)
 
     dev_wrap = QWidget()
     dev_row = QHBoxLayout(dev_wrap)
@@ -116,9 +119,10 @@ def attach_my_pc_tab(win) -> None:
     win.gpu_device_combo = NoWheelComboBox()
     win.gpu_device_combo.setMinimumHeight(32)
     dev_row.addWidget(win.gpu_device_combo, 1)
-    sys_lay.addWidget(dev_wrap)
+    pol_lay.addWidget(dev_wrap)
     win._my_pc_device_row = dev_wrap
 
+    sys_lay.addWidget(win._my_pc_advanced_policy)
     lay.addWidget(sys_f)
 
     table = QTableWidget()
@@ -252,10 +256,11 @@ def attach_my_pc_tab(win) -> None:
     win.gpu_device_combo.currentIndexChanged.connect(_on_gpu_device_changed)
     win.multi_gpu_shard_combo.currentIndexChanged.connect(_on_multi_gpu_shard_changed)
 
-    add_section_spacing(lay)
     fit_f, fit_lay = section_card()
     fit_lay.addWidget(section_title("Model fit", emphasis=True))
     fit_lay.addWidget(table, 1)
     lay.addWidget(fit_f, 1)
+
+    register_advanced_sections(win, "my_pc", [win._my_pc_advanced_policy])
 
     win.tabs.addTab(w, "My PC")

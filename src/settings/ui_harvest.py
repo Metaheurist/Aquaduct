@@ -479,6 +479,7 @@ def collect_settings_from_ui(win: Any) -> AppSettings:
             youtube_add_shorts_hashtag=yt_shorts_tag,
             youtube_auto_upload_after_render=yt_auto,
             tutorial_completed=bool(getattr(win.settings, "tutorial_completed", False)),
+            advanced_tabs=dict(getattr(win.settings, "advanced_tabs", None) or {}),
             gpu_selection_mode=_gpu_mode,  # type: ignore[arg-type]
             gpu_device_index=_gpu_dev_idx,
             multi_gpu_shard_mode=_mgsm,  # type: ignore[arg-type]

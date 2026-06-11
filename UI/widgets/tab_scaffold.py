@@ -18,6 +18,9 @@ def make_tab_root(
     before_card: Iterable[QWidget] | None = None,
     body_card: bool = True,
     fill_vertical: bool = False,
+    tab_id: str | None = None,
+    win=None,
+    basic_advanced: bool = False,
 ) -> tuple[QWidget, QVBoxLayout, QWidget, QVBoxLayout]:
     """
     Standard scroll-host layout for settings-style tabs: outer vertical layout, optional header,
@@ -37,7 +40,12 @@ def make_tab_root(
     if title:
         hdr = QLabel(title)
         hdr.setStyleSheet("font-size: 16px; font-weight: 700; margin: 0; padding: 0 0 2px 0;")
-        outer.addWidget(hdr)
+        if basic_advanced and tab_id and win is not None:
+            from UI.widgets.basic_advanced import attach_basic_advanced_header
+
+            attach_basic_advanced_header(win, tab_id, title_row_parent_layout=outer, title_widget=hdr)
+        else:
+            outer.addWidget(hdr)
     if intro_text:
         hint = QLabel(intro_text)
         hint.setWordWrap(True)

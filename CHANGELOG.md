@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Visual Basic Mode (desktop UI)
+
+Per-tab **Basic | Advanced** mode with visual-first controls, SVG tiles, and layout polish across settings tabs.
+
+#### Basic | Advanced
+- **Segmented toggle** on each settings tab title row ([`UI/widgets/basic_advanced.py`](UI/widgets/basic_advanced.py)); choice persisted per tab in **`advanced_tabs`** in `ui_settings.json`.
+- **Basic** shows step cards, tiles, and essential fields; **Advanced** reveals legacy combos, quantization panels, `runs/` library, task log, and other power-user blocks via [`register_advanced_sections`](UI/widgets/basic_advanced.py).
+- **Fix**: [`SegmentedPicker`](UI/widgets/segmented_picker.py) now adds its shell to the layout (toggle was invisible before).
+
+#### Visual primitives & tiles
+- [`UI/widgets/visual_primitives.py`](UI/widgets/visual_primitives.py): `StepCard`, `CoachStrip`, `QuantityStepper`, `PresetCardGrid`, `SwatchGrid`, `ProviderCard`, `PromptChips`, `PreviewStrip`.
+- [`UI/widgets/option_tiles.py`](UI/widgets/option_tiles.py) + [`UI/widgets/tile_svg_icons.py`](UI/widgets/tile_svg_icons.py): SVG icon cards (no emoji) for format/layout pickers.
+- [`UI/widgets/themed_switch.py`](UI/widgets/themed_switch.py): pill on/off switch; [`UI/widgets/segmented_picker.py`](UI/widgets/segmented_picker.py): shared pill segments (combo-subset API).
+- **RGBA fix** on switches/segmented controls (Qt stylesheets use alpha 0–255, not 0–1) — removes harsh pixel borders on toggles and highlight pickers.
+
+#### Tab updates
+- **Pipeline**: step cards, format tiles, quantity stepper, prompt chips, overflow menu (SVG **more**).
+- **Topics / Picture / API**: format or canvas tiles; API **cloud preset** cards with distinct accent chips.
+- **Captions**: on-screen toggle + highlight segmented picker; advanced caption/facts fields in Advanced.
+- **Branding**: theme **swatch grid** (readable labels, real palette accents, full width); advanced color rows.
+- **Library**: compact empty state, stacked layout (finished media + `runs/` in Advanced), search stretches toolbar.
+- **Video**: removed duplicate quality-preset card grid (platform templates only in Basic).
+- **Tasks / My PC / Model / Effects / Characters**: Basic|Advanced sections registered per tab.
+
+#### Settings & stability
+- [`src/settings/ui_settings.py`](src/settings/ui_settings.py): null/missing nested dicts (`branding`, `video`, `picture`) load as `{}` (fixes startup crash).
+- [`UI/tabs/effects_tab.py`](UI/tabs/effects_tab.py): missing `QHBoxLayout` import.
+
+#### Tests
+- [`tests/ui/test_visual_primitives.py`](tests/ui/test_visual_primitives.py), [`test_themed_switch.py`](tests/ui/test_themed_switch.py), [`test_basic_advanced_mode.py`](tests/ui/test_basic_advanced_mode.py), [`test_optional_basic_advanced_tabs.py`](tests/ui/test_optional_basic_advanced_tabs.py), [`tests/settings/test_advanced_tabs_roundtrip.py`](tests/settings/test_advanced_tabs_roundtrip.py).
+
 ### Deep-dive remediation & feature rollout (2026-06)
 
 Cross-cutting pass: performance, prompting, cinematography presets, UX, security, reliability, and publishing/series features. **767** headless tests pass (`pytest -m "not qt"`).

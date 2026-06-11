@@ -13,7 +13,8 @@ Each mode-specific block lives in its own section container so **Photo | Video**
 
 ## Theme (optional)
 
-- Enable **“Enable theme overrides”** to apply a custom palette.
+- Enable **Theme overrides** (`ThemedSwitch`) to apply a custom palette.
+- **Basic**: click a card in the **theme swatch grid** (accent color chip + preset name). **Advanced**: use the palette dropdown and per-color hex rows.
 - Choose a **preset palette** (see `PRESET_PALETTES` in [`UI/theme/palette.py`](../../UI/theme/palette.py)) or **Custom**.
 - When you pick a **named preset** (not Custom), the **Theme color** rows update to that preset’s canonical colors. Per-row override checkboxes keep saved colors on load when checked.
 - **Hex input + Pick…** for each color row. Invalid hex values fall back safely.
