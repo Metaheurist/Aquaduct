@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QScrollArea,
     QTabWidget,
     QPushButton,
     QStyle,
@@ -1246,6 +1247,89 @@ class MainWindow(QMainWindow):
 
         self._resize_to_current_tab()
 
+    def _tab_page_name(self, page: QWidget | None) -> str:
+        if page is None:
+            return ""
+        idx = self.tabs.indexOf(page)
+        if idx < 0:
+            return ""
+        return self.tabs.tabText(idx).strip()
+
+    def _find_primary_scroll(self, page: QWidget) -> QScrollArea | None:
+        """Return the tab's outer scroll host, not nested inner scroll areas."""
+        lay = page.layout()
+        if lay is None:
+            return None
+        for i in range(lay.count()):
+            item = lay.itemAt(i)
+            if item is None:
+                continue
+            w = item.widget()
+            if isinstance(w, QScrollArea):
+                return w
+            child_lay = w.layout() if w is not None else None
+            if child_lay is not None:
+                for j in range(child_lay.count()):
+                    sub = child_lay.itemAt(j)
+                    if sub is not None and isinstance(sub.widget(), QScrollArea):
+                        return sub.widget()
+        return None
+
+    def _reset_page_scroll_constraints(self, page: QWidget) -> None:
+        """Clear height pins on the tab's outer scroll host (never nested scroll areas)."""
+        scroll = self._find_primary_scroll(page)
+        if scroll is None:
+            return
+        inner = scroll.widget()
+        if inner is not None:
+            inner.setMinimumHeight(0)
+            inner.setMaximumHeight(16777215)
+        scroll.setMinimumHeight(0)
+        scroll.setMaximumHeight(16777215)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+    def _measure_page_content_height(self, page: QWidget) -> int:
+        lay = page.layout()
+        if lay is not None:
+            lay.activate()
+            return int(lay.sizeHint().height())
+        return int(page.sizeHint().height())
+
+    def _apply_compact_scroll_pin(self, scroll: QScrollArea, *, viewport_max: int) -> int:
+        """
+        Video/Effects only: shrink the window to visible content instead of leaving a dead void.
+        """
+        inner = scroll.widget()
+        if inner is not None:
+            inner.setMinimumHeight(0)
+            inner.setMaximumHeight(16777215)
+            inner.adjustSize()
+        lay = inner.layout() if inner is not None else None
+        if lay is not None:
+            lay.activate()
+            content_h = int(lay.sizeHint().height())
+        elif inner is not None:
+            content_h = int(inner.sizeHint().height())
+        else:
+            content_h = int(scroll.sizeHint().height())
+        content_h = max(1, content_h)
+
+        if content_h <= viewport_max:
+            if inner is not None:
+                inner.setMaximumHeight(content_h)
+            scroll.setMinimumHeight(content_h)
+            scroll.setMaximumHeight(content_h)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            return content_h
+
+        if inner is not None:
+            inner.setMinimumHeight(content_h)
+            inner.setMaximumHeight(content_h)
+        scroll.setMinimumHeight(viewport_max)
+        scroll.setMaximumHeight(viewport_max)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        return viewport_max
+
     def _resize_to_current_tab(self) -> None:
         """
         Keep window non-resizable, but adjust fixed height to current tab contents.
@@ -1260,29 +1344,40 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_network_banner") and self._network_banner.isVisible():
             banner_h = int(self._network_banner.sizeHint().height()) + 8
         tabbar_h = self.tabs.tabBar().sizeHint().height()
-        lay = page.layout()
-        if lay is not None:
-            page_h = int(lay.sizeHint().height())
-        else:
-            page_h = int(page.sizeHint().height())
+        chrome = int(title_h + banner_h + tabbar_h + 14 + 14 + 52)
+        max_h = 980
+        viewport_max = max(280, max_h - chrome)
 
-        idx_cur = self.tabs.currentIndex()
-        tab_txt = self.tabs.tabText(idx_cur).strip() if idx_cur >= 0 else ""
+        tab_txt = self._tab_page_name(page)
         api_mode = hasattr(self, "model_execution_mode_combo") and str(self.model_execution_mode_combo.currentData() or "local") == "api"
+
+        self._reset_page_scroll_constraints(page)
+        if tab_txt not in ("Video", "Effects"):
+            primary = self._find_primary_scroll(page)
+            for scroll in page.findChildren(QScrollArea):
+                if scroll is primary:
+                    continue
+                inner = scroll.widget()
+                if inner is not None:
+                    inner.setMinimumHeight(0)
+                    inner.setMaximumHeight(16777215)
+        if tab_txt in ("Video", "Effects"):
+            scroll = self._find_primary_scroll(page)
+            if scroll is not None:
+                page_h = self._apply_compact_scroll_pin(scroll, viewport_max=viewport_max)
+            else:
+                page_h = self._measure_page_content_height(page)
+        else:
+            page_h = self._measure_page_content_height(page)
+
         if tab_txt == "Model" and api_mode:
-            # API page uses a scroll area; layout size hints can be too small before the panel lays out.
-            page_h = max(page_h, 560)
-        if tab_txt == "Library":
-            page_h = max(page_h, 640)
+            page_h = max(page_h, min(560, viewport_max))
 
-        # Layout margins (top+bottom) + small padding inside tab pane.
-        h = int(title_h + banner_h + tabbar_h + page_h + 14 + 14 + 52)
+        h = int(chrome + page_h)
 
-        # Clamp so it doesn't get too tiny or exceed the screen.
         min_h = 360
         if tab_txt == "Model" and api_mode:
             min_h = max(min_h, 500)
-        max_h = 980
         h = max(min_h, min(max_h, int(h)))
 
         base_w = int(getattr(self, "_default_window_width", 1000) or 1000)
@@ -2252,20 +2347,11 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.runs_dir)))
 
     def _library_selected_video_path(self) -> Path | None:
-        if not hasattr(self, "library_videos_table"):
-            return None
-        items = self.library_videos_table.selectedItems()
-        if not items:
-            return None
-        row = items[0].row()
-        it = self.library_videos_table.item(row, 0)
-        if it is None:
-            return None
-        raw = it.data(Qt.ItemDataRole.UserRole)
-        if not raw:
-            return None
-        p = Path(str(raw))
-        return p if p.is_dir() else None
+        raw = getattr(self, "_library_selected_path", None)
+        if raw is not None:
+            p = Path(str(raw))
+            return p if p.is_dir() else None
+        return None
 
     def _library_selected_run_path(self) -> Path | None:
         if not hasattr(self, "library_runs_table"):

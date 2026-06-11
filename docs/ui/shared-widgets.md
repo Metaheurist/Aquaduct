@@ -25,6 +25,10 @@ Replaces unicode checkmarks and warning symbols in the Model and Run tabs.
 
 [`UI/widgets/two_column.py`](../../UI/widgets/two_column.py) — `two_column_row(left, right, ratio=(1,1), spacing=12)` for side-by-side section cards (Library media + runs, Characters grid + editor).
 
+## Library project cards
+
+[`UI/widgets/library_project_card.py`](../../UI/widgets/library_project_card.py) — selectable portrait card (thumbnail, title, folder, meta). Thumbnails from [`UI/services/library_thumbnails.py`](../../UI/services/library_thumbnails.py) (`final.png` or generated `thumbnail.jpg`).
+
 ## Topic chips
 
 [`UI/widgets/topic_chip.py`](../../UI/widgets/topic_chip.py) — removable pill chips with select + remove signals. Used on the Topics tab (~160px capped scroll area).
@@ -50,8 +54,9 @@ Title-bar and dialog buttons: [`UI/widgets/title_bar_outline_button.py`](../../U
 - `StepCard` — numbered step container (Pipeline, Picture)
 - `CoachStrip` — one-line hint under the tab header
 - `QuantityStepper` — large ± stepper wrapping a hidden spin (harvest-compatible)
-- `PresetCardGrid` / `SwatchGrid` — checkable cards with SVG chips
+- `PresetCardGrid` / `SwatchGrid` — checkable cards with SVG chips (label under icon; grid uses fixed vertical size where needed)
 - `ProviderCard`, `PromptChips`, `PreviewStrip`
+- `QuantityStepper` — fixed-size ± buttons (Pipeline batch count)
 
 [`UI/widgets/option_tiles.py`](../../UI/widgets/option_tiles.py) + [`UI/widgets/tile_svg_icons.py`](../../UI/widgets/tile_svg_icons.py) — format/layout pickers with SVG icons (no emoji).
 
@@ -71,6 +76,7 @@ Title-bar and dialog buttons: [`UI/widgets/title_bar_outline_button.py`](../../U
 - [`tests/ui/test_basic_advanced_mode.py`](../../tests/ui/test_basic_advanced_mode.py)
 - [`tests/ui/test_optional_basic_advanced_tabs.py`](../../tests/ui/test_optional_basic_advanced_tabs.py)
 - [`tests/settings/test_advanced_tabs_roundtrip.py`](../../tests/settings/test_advanced_tabs_roundtrip.py)
+- [`tests/ui/test_library_thumbnails.py`](../../tests/ui/test_library_thumbnails.py)
 
 See [Desktop UI overview](ui.md).
 

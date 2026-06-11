@@ -22,15 +22,20 @@ class Palette(TypedDict):
 
 
 QSS_TEMPLATE = r"""
-QWidget {{ background: {bg}; color: {text}; font-family: "Segoe UI", "Arial"; font-size: 12px; }}
-/* QLabel subclasses QWidget; the rule above would paint every label with {bg}, so text looks like black bars on
-   section cards (card color is different). Keep labels visually transparent so the parent/card shows through. */
+/* Layout wrappers stay transparent; paint only top-level shells so nested rows don't read as black bars. */
+QWidget {{ background-color: transparent; color: {text}; font-family: "Segoe UI", "Arial"; font-size: 12px; }}
+QMainWindow {{ background-color: {bg}; }}
 QLabel {{ background-color: transparent; }}
-/* Plain QWidget / group / radio inherit QWidget's window {bg} (#0F0…), which reads as a harsh black
-   slab inside lighter section cards. Let the card color show through; controls keep their own QSS. */
-QFrame#SettingsSectionCard QWidget#RunQtyRowWrap,
-QFrame#SettingsSectionCard QWidget#RunEpisodeRowWrap {{
+QTabWidget, QStackedWidget, QScrollArea {{
   background-color: transparent;
+  border: none;
+}}
+QScrollArea > QWidget > QWidget {{
+  background-color: transparent;
+}}
+QFrame#SettingsSectionCard, QFrame#ProviderCard, QFrame#StepCard {{
+  background-color: transparent;
+  border: none;
 }}
 QFrame#SettingsSectionCard QGroupBox {{
   background-color: transparent;
@@ -75,19 +80,6 @@ QTabWidget::tab-bar {{
   left: 10px;
 }}
 QTabWidget::pane {{ border: 1px solid {border}; border-radius: 14px; padding: 12px 16px 16px 16px; background: {panel}; }}
-QFrame#SettingsSectionCard {{
-  background: {card};
-  border: 1px solid {border};
-  border-radius: 12px;
-}}
-/* Slightly lift inputs inside cards so nested controls don’t read as a second heavy slab on {card}. */
-QFrame#SettingsSectionCard QComboBox,
-QFrame#SettingsSectionCard QLineEdit,
-QFrame#SettingsSectionCard QTextEdit,
-QFrame#SettingsSectionCard QPlainTextEdit,
-QFrame#SettingsSectionCard QAbstractSpinBox {{
-  background-color: rgba(255, 255, 255, 0.06);
-}}
 QTabBar::tab {{ background: {control_bg}; color: {muted}; padding: 10px 16px; margin: 8px 8px 0 0;
                border-top-left-radius: 14px; border-top-right-radius: 14px; border: 1px solid {border}; }}
 QTabBar::tab:selected {{ color: {text}; border-bottom: 3px solid {accent}; }}

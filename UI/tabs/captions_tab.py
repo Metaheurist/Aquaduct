@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QFormLayout, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QFormLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from UI.widgets.basic_advanced import register_advanced_sections
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
@@ -12,8 +13,11 @@ from UI.widgets.visual_primitives import PreviewStrip
 
 def attach_captions_tab(win) -> None:
     w = QWidget()
+    w.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
     root_lay = QVBoxLayout(w)
     root_lay.setContentsMargins(0, 0, 0, 0)
+    root_lay.setSpacing(0)
+    root_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     inner_root, _, _, lay = make_tab_root(
         title="Captions",
@@ -21,11 +25,18 @@ def attach_captions_tab(win) -> None:
         tab_id="captions",
         win=win,
         basic_advanced=True,
+        body_card=False,
+        fill_vertical=False,
     )
-    root_lay.addWidget(inner_root, 1)
+    inner_root.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+    lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+    root_lay.addWidget(inner_root, 0)
 
     form = QFormLayout()
-    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    form.setVerticalSpacing(14)
+    form.setHorizontalSpacing(16)
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     win.captions_enabled_chk = ThemedSwitch("On-screen captions")
     win.captions_enabled_chk.setChecked(bool(getattr(win.settings.video, "captions_enabled", True)))
@@ -48,11 +59,19 @@ def attach_captions_tab(win) -> None:
         accessible_name="Caption highlight",
         default_index=0 if ch == "subtle" else 1,
     )
+    win._caption_highlight_picker.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+    )
     form.addRow("Highlight", win._caption_highlight_picker)
 
     win._captions_preview = PreviewStrip(aspect="9:16", label="Caption preview")
+    win._captions_preview.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+    )
+
     lay.addLayout(form)
-    lay.addWidget(win._captions_preview)
+    lay.addSpacing(8)
+    lay.addWidget(win._captions_preview, 0, Qt.AlignmentFlag.AlignLeft)
 
     def _sync_highlight_from_picker() -> None:
         v = str(win._caption_highlight_picker.currentData() or "strong")
@@ -69,8 +88,14 @@ def attach_captions_tab(win) -> None:
     win.caption_highlight_combo.currentIndexChanged.connect(lambda _i: _sync_picker_from_combo())
 
     win._captions_advanced_host = QWidget()
+    win._captions_advanced_host.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    )
     adv_form = QFormLayout(win._captions_advanced_host)
-    adv_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    adv_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    adv_form.setVerticalSpacing(14)
+    adv_form.setHorizontalSpacing(16)
+    adv_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     win.caption_max_words_spin = NoWheelSpinBox()
     win.caption_max_words_spin.setRange(6, 10)
@@ -109,7 +134,8 @@ def attach_captions_tab(win) -> None:
         win.facts_card_dur_combo.setCurrentIndex(fdi)
     adv_form.addRow("Facts duration", win.facts_card_dur_combo)
 
-    lay.addWidget(win._captions_advanced_host)
+    lay.addSpacing(10)
+    lay.addWidget(win._captions_advanced_host, 0)
     register_advanced_sections(win, "captions", [win._captions_advanced_host])
 
     win.tabs.addTab(w, "Captions")

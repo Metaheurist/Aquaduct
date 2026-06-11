@@ -55,11 +55,7 @@ class StepCard(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("StepCard")
-        border = _qss_color(token("border", "#2E2E38"))
-        self.setStyleSheet(
-            f"QFrame#StepCard {{ border: 1px solid {border}; border-radius: 12px; "
-            f"background-color: {_rgba('#FFFFFF', 0.02)}; }}"
-        )
+        self.setStyleSheet("QFrame#StepCard { background: transparent; border: none; }")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(8)
@@ -145,6 +141,8 @@ class QuantityStepper(QWidget):
 
     valueChanged = pyqtSignal(int)
 
+    _BTN = 34
+
     def __init__(
         self,
         *,
@@ -155,6 +153,8 @@ class QuantityStepper(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("QuantityStepper")
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._spin = NoWheelSpinBox()
         self._spin.setRange(minimum, maximum)
         self._spin.setValue(value)
@@ -162,40 +162,63 @@ class QuantityStepper(QWidget):
         self._spin.valueChanged.connect(self._sync_display)
         self._spin.valueChanged.connect(self.valueChanged.emit)
 
+        border = _qss_color(token("border", "#2E2E38"))
+        panel = _qss_color(token("panel", "#0B0B0F"))
+        accent = _qss_color(token("accent", "#25F4EE"))
+        sz = self._BTN
+        self.setStyleSheet(
+            f"QWidget#QuantityStepper QPushButton {{"
+            f"  background-color: {panel};"
+            f"  color: #E8E8EE;"
+            f"  border: 1px solid {border};"
+            f"  border-radius: {sz // 2}px;"
+            f"  padding: 0px;"
+            f"  min-width: {sz}px;"
+            f"  max-width: {sz}px;"
+            f"  min-height: {sz}px;"
+            f"  max-height: {sz}px;"
+            f"  font-weight: 700;"
+            f"  font-size: 12px;"
+            f"}}"
+            f"QWidget#QuantityStepper QPushButton:hover {{"
+            f"  border-color: {accent};"
+            f"}}"
+        )
+
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(6)
+        root.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self._minus = QPushButton()
-        self._minus.setFixedSize(36, 36)
-        self._minus.setIcon(qicon_tile("minus", "#E8E8EE", 18))
-        self._minus.setIconSize(QSize(18, 18))
-        self._minus.setProperty("buttonRole", "secondary")
+        self._minus.setFixedSize(sz, sz)
+        self._minus.setIcon(qicon_tile("minus", "#E8E8EE", 16))
+        self._minus.setIconSize(QSize(16, 16))
+        self._minus.setCursor(Qt.CursorShape.PointingHandCursor)
         self._minus.clicked.connect(self._dec)
         root.addWidget(self._minus)
 
         self._val_lbl = QLabel()
         self._val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._val_lbl.setMinimumWidth(48)
-        self._val_lbl.setStyleSheet("color: #FFFFFF; font-size: 20px; font-weight: 700;")
+        self._val_lbl.setFixedWidth(40)
+        self._val_lbl.setStyleSheet("color: #FFFFFF; font-size: 18px; font-weight: 700; background: transparent; border: none;")
         root.addWidget(self._val_lbl)
 
         self._plus = QPushButton()
-        self._plus.setFixedSize(36, 36)
-        self._plus.setIcon(qicon_tile("plus", "#E8E8EE", 18))
-        self._plus.setIconSize(QSize(18, 18))
-        self._plus.setProperty("buttonRole", "secondary")
+        self._plus.setFixedSize(sz, sz)
+        self._plus.setIcon(qicon_tile("plus", "#E8E8EE", 16))
+        self._plus.setIconSize(QSize(16, 16))
+        self._plus.setCursor(Qt.CursorShape.PointingHandCursor)
         self._plus.clicked.connect(self._inc)
         root.addWidget(self._plus)
 
         for p in presets:
             chip = QPushButton(str(p))
-            chip.setFixedHeight(28)
-            chip.setProperty("buttonRole", "secondary")
+            chip.setFixedSize(sz, sz)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
             chip.clicked.connect(lambda _c=False, v=p: self.setValue(v))
             root.addWidget(chip)
 
-        root.addStretch(1)
         self._sync_display()
 
     def _sync_display(self) -> None:
@@ -475,10 +498,7 @@ class ProviderCard(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("ProviderCard")
-        border = _qss_color(token("border", "#2E2E38"))
-        self.setStyleSheet(
-            f"QFrame#ProviderCard {{ border: 1px solid {border}; border-radius: 10px; padding: 4px; }}"
-        )
+        self.setStyleSheet("QFrame#ProviderCard { background: transparent; border: none; padding: 0; }")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(6)

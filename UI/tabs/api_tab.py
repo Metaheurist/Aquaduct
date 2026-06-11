@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -20,7 +21,6 @@ from UI.help.tutorial_links import help_tooltip_rich
 from UI.widgets.no_wheel_controls import NoWheelComboBox, NoWheelSpinBox
 from UI.widgets.themed_switch import ThemedSwitch
 from UI.widgets.basic_advanced import register_advanced_sections
-from UI.widgets.collapsible import CollapsibleSection
 from UI.widgets.tab_scaffold import make_tab_root
 from UI.widgets.tab_sections import add_section_spacing, section_card, section_title
 from UI.widgets.visual_primitives import ProviderCard
@@ -33,8 +33,8 @@ def attach_api_tab(win) -> None:
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-    scroll.setMinimumHeight(420)
-    scroll.setMaximumHeight(620)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
 
     from UI.services.api_model_widgets import build_generation_api_panel
 
@@ -127,6 +127,11 @@ def attach_api_tab(win) -> None:
     il.addWidget(el_wrap)
     add_section_spacing(il)
 
+    win._api_social_advanced = QWidget()
+    social_lay = QVBoxLayout(win._api_social_advanced)
+    social_lay.setContentsMargins(0, 0, 0, 0)
+    social_lay.setSpacing(0)
+
     # ---- TikTok (optional upload) ----
     tt_card, tt_lay = section_card()
     tt_lay.addWidget(section_title("TikTok (Content Posting API)", emphasis=True))
@@ -194,14 +199,8 @@ def attach_api_tab(win) -> None:
         win.api_tt_status_lbl.setText("Status: not connected")
     tt_lay.addWidget(win.api_tt_status_lbl)
 
-    _social_expanded = bool(getattr(win.settings, "tiktok_enabled", False)) or bool(
-        getattr(win.settings, "youtube_enabled", False)
-    )
-    social = CollapsibleSection(
-        "Social uploads (TikTok, YouTube) - optional", expanded=_social_expanded
-    )
-    il.addWidget(social)
-    social.addWidget(tt_card)
+    social_lay.addWidget(tt_card)
+    add_section_spacing(social_lay)
 
     # ---- YouTube (optional Shorts / uploads) ----
     yt_card, yt_lay = section_card()
@@ -275,11 +274,14 @@ def attach_api_tab(win) -> None:
         win.api_yt_status_lbl.setText("Status: not connected")
     yt_lay.addWidget(win.api_yt_status_lbl)
 
-    social.addWidget(yt_card)
+    social_lay.addWidget(yt_card)
+    il.addWidget(win._api_social_advanced)
 
     il.addStretch(1)
 
-    root.addWidget(scroll)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.setSpacing(0)
+    root.addWidget(scroll, 1)
 
     register_advanced_sections(
         win,
@@ -288,7 +290,7 @@ def attach_api_tab(win) -> None:
             win._api_advanced_hf_hint,
             fc_doc,
             el_doc,
-            social,
+            win._api_social_advanced,
         ],
     )
 

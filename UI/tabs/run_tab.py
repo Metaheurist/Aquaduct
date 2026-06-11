@@ -118,7 +118,7 @@ def attach_run_tab(win) -> None:
             slide=0,
         )
     )
-    qty_row.addWidget(win._run_qty_stepper, 1)
+    qty_row.addWidget(win._run_qty_stepper, 0)
     qty_row.addStretch(1)
     step2.addWidget(qty_wrap)
     win._run_qty_row_wrap = qty_wrap
@@ -572,7 +572,7 @@ def attach_run_tab(win) -> None:
     win.run_btn.clicked.connect(win._on_run)
     row.addWidget(win.run_btn, 1)
 
-    win.preview_btn = QPushButton("Preview")
+    win.preview_btn = QPushButton("Preview", act_card)
     win.preview_btn.setToolTip(
         help_tooltip_rich(
             "Preview drafts a script package without a full render. Progress appears on the Tasks tab.",
@@ -583,7 +583,7 @@ def attach_run_tab(win) -> None:
     win.preview_btn.clicked.connect(win._on_preview)
     win.preview_btn.setVisible(False)
 
-    win.storyboard_btn = QPushButton("Storyboard Preview")
+    win.storyboard_btn = QPushButton("Storyboard Preview", act_card)
     win.storyboard_btn.setToolTip(
         help_tooltip_rich(
             "Storyboard preview builds a visual grid plan. Progress appears on the Tasks tab.",
@@ -594,7 +594,7 @@ def attach_run_tab(win) -> None:
     win.storyboard_btn.clicked.connect(win._on_storyboard_preview)
     win.storyboard_btn.setVisible(False)
 
-    win.open_videos_btn = QPushButton("Open videos folder")
+    win.open_videos_btn = QPushButton("Open videos folder", act_card)
     win.open_videos_btn.setToolTip(
         help_tooltip_rich(
             "Opens the videos/ output root in the file manager (finished projects with final.mp4).",
@@ -605,7 +605,7 @@ def attach_run_tab(win) -> None:
     win.open_videos_btn.clicked.connect(win._open_videos)
     win.open_videos_btn.setVisible(False)
 
-    win.save_btn = QPushButton("Save settings")
+    win.save_btn = QPushButton("Save settings", act_card)
     win.save_btn.setToolTip(
         help_tooltip_rich(
             "Writes every tab’s settings to ui_settings.json (same as the title bar Save button).",
@@ -635,6 +635,8 @@ def attach_run_tab(win) -> None:
     root.addWidget(scroll, 1)
     add_section_spacing(root)
     root.addWidget(act_card, 0)
+
+    _pin_overflow_action_buttons_hidden(win)
 
     win._run_tab_widget = w
     win.tabs.addTab(w, "Pipeline")
@@ -674,6 +676,14 @@ def _attach_run_readiness(win) -> None:
 
     win._refresh_run_readiness = _refresh
     QTimer.singleShot(0, _refresh)
+
+
+def _pin_overflow_action_buttons_hidden(win) -> None:
+    """Keep menu-only action buttons hidden (they are not in the action row layout)."""
+    for _attr in ("preview_btn", "storyboard_btn", "open_videos_btn", "save_btn"):
+        btn = getattr(win, _attr, None)
+        if btn is not None:
+            btn.setVisible(False)
 
 
 def refresh_run_tab_for_media_mode(win) -> None:
@@ -732,10 +742,7 @@ def refresh_run_tab_for_media_mode(win) -> None:
                 "Describe the video: topic, angle, tone, structure, visual vibe, CTA… "
                 f"(max {MAX_CUSTOM_VIDEO_INSTRUCTIONS} characters stored.)"
             )
-    if hasattr(win, "preview_btn"):
-        win.preview_btn.setVisible(not is_photo)
-    if hasattr(win, "storyboard_btn"):
-        win.storyboard_btn.setVisible(not is_photo)
+    _pin_overflow_action_buttons_hidden(win)
     if hasattr(win, "open_videos_btn"):
         win.open_videos_btn.setText("Open outputs folder" if is_photo else "Open videos folder")
         win.open_videos_btn.setToolTip(

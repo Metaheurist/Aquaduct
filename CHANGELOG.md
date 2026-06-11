@@ -35,6 +35,29 @@ Per-tab **Basic | Advanced** mode with visual-first controls, SVG tiles, and lay
 #### Tests
 - [`tests/ui/test_visual_primitives.py`](tests/ui/test_visual_primitives.py), [`test_themed_switch.py`](tests/ui/test_themed_switch.py), [`test_basic_advanced_mode.py`](tests/ui/test_basic_advanced_mode.py), [`test_optional_basic_advanced_tabs.py`](tests/ui/test_optional_basic_advanced_tabs.py), [`tests/settings/test_advanced_tabs_roundtrip.py`](tests/settings/test_advanced_tabs_roundtrip.py).
 
+### Basic Mode layout polish (desktop UI)
+
+Follow-up pass after Visual Basic Mode: fix empty voids, clipped forms, stray windows, and opaque section chrome.
+
+#### Window & scroll
+- [`UI/main_window.py`](UI/main_window.py): `_resize_to_current_tab` measures tab pages from layout `sizeHint()` again; only **Video** and **Effects** use **compact scroll pin** on the tab’s **outer** scroll host (never nested scroll areas like Library chips or Topics tags).
+- **Video** / **Effects**: flat layouts, fixed-size preset grids, Advanced blocks on `Minimum` vertical policy; window height shrinks to visible Basic content instead of a tall black void.
+
+#### Tabs
+- **Pipeline** ([`UI/tabs/run_tab.py`](UI/tabs/run_tab.py)): **Preview**, **Storyboard Preview**, **Open outputs folder**, and **Save settings** live in the **⋯** overflow menu only; hidden helper buttons are parented and kept invisible (fixes stray **Preview** / **Storyboard Preview** floating windows on startup).
+- **Captions** ([`UI/tabs/captions_tab.py`](UI/tabs/captions_tab.py)): Basic form uses `FieldsStayAtSizeHint`; highlight picker and preview strip no longer stretch vertically.
+- **Library** ([`UI/tabs/library_tab.py`](UI/tabs/library_tab.py)): **thumbnail project cards** when finished projects exist ([`UI/widgets/library_project_card.py`](UI/widgets/library_project_card.py), [`UI/services/library_thumbnails.py`](UI/services/library_thumbnails.py)); compact empty state in Basic.
+- **API** ([`UI/tabs/api_tab.py`](UI/tabs/api_tab.py)): TikTok and YouTube blocks always visible (removed easy-to-miss collapsible); scroll area no longer capped to a short viewport.
+- **Model** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): per-role **quantization** panel inside each model card; removed duplicate coach strip.
+
+#### Widgets & theme
+- [`UI/widgets/tab_sections.py`](UI/widgets/tab_sections.py), [`UI/theme/palette.py`](UI/theme/palette.py): `SettingsSectionCard` wrappers are **transparent** (spacing only, no filled black boxes).
+- [`UI/widgets/visual_primitives.py`](UI/widgets/visual_primitives.py): `QuantityStepper` ± buttons fixed size; `PresetCard` / `ProviderCard` text-under-icon layout.
+- [`UI/widgets/collapsible.py`](UI/widgets/collapsible.py): clearer collapse toggle styling.
+
+#### Tests
+- [`tests/ui/test_library_thumbnails.py`](tests/ui/test_library_thumbnails.py): thumbnail resolution and card selection helpers.
+
 ### Deep-dive remediation & feature rollout (2026-06)
 
 Cross-cutting pass: performance, prompting, cinematography presets, UX, security, reliability, and publishing/series features. **767** headless tests pass (`pytest -m "not qt"`).

@@ -36,11 +36,18 @@ class CollapsibleSection(QWidget):
         self._toggle.setCheckable(True)
         self._toggle.setChecked(bool(expanded))
         self._toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._toggle.setAutoRaise(True)
+        self._toggle.setAutoRaise(False)
+        self._toggle.setMinimumHeight(36)
+        text_c = token("text", "#E8E8EE")
+        accent = token("accent", "#25F4EE")
+        border = token("border", "#2E2E38")
         self._toggle.setStyleSheet(
-            f"QToolButton {{ color: {token('muted', '#9BA6B8')}; font-size: 12px; "
-            "font-weight: 700; border: none; padding: 2px 0; text-align: left; }"
+            f"QToolButton {{ color: {text_c}; font-size: 13px; font-weight: 700; "
+            f"border: 1px solid {border}; border-radius: 8px; padding: 6px 10px; text-align: left; }}"
+            f"QToolButton:hover {{ border-color: {accent}; color: {text_c}; }}"
+            f"QToolButton:checked {{ border-color: {accent}; color: {text_c}; }}"
         )
+        self._toggle.setToolTip("Click to expand or collapse")
         self._toggle.toggled.connect(self._on_toggle)
         root.addWidget(self._toggle)
 
@@ -58,9 +65,10 @@ class CollapsibleSection(QWidget):
         from UI.widgets.toolbar_svg_icons import qicon_toolbar
 
         kind = "chevron_down" if self._toggle.isChecked() else "chevron_right"
-        self._toggle.setIcon(qicon_toolbar(kind, token("muted", "#9BA6B8"), 14))
-        self._toggle.setIconSize(QSize(14, 14))
-        self._toggle.setText(f"  {self._title}")
+        icon_color = token("accent", "#25F4EE")
+        self._toggle.setIcon(qicon_toolbar(kind, icon_color, 16))
+        self._toggle.setIconSize(QSize(16, 16))
+        self._toggle.setText(f" {self._title}")
 
     def _on_toggle(self, checked: bool) -> None:
         self._content.setVisible(checked)

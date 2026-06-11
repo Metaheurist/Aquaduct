@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -24,7 +22,7 @@ from UI.widgets.themed_switch import ThemedSwitch
 from UI.widgets.basic_advanced import attach_basic_advanced_header, register_advanced_sections
 from UI.widgets.collapsible import CollapsibleSection
 from UI.widgets.tab_sections import add_section_spacing, section_title
-from UI.widgets.visual_primitives import PreviewStrip
+from UI.widgets.visual_primitives import PresetCard, PresetCardGrid, PreviewStrip
 from UI.help.tutorial_links import help_tooltip_rich
 from src.settings.video_platform_presets import (
     PLATFORM_PRESETS,
@@ -32,6 +30,16 @@ from src.settings.video_platform_presets import (
     find_best_preset_for_video,
     preset_by_id,
 )
+
+
+def _platform_preset_icon(p) -> str:
+    if bool(getattr(p, "pro_mode", False)):
+        return "star"
+    if int(p.width) == int(p.height):
+        return "square"
+    if int(p.width) > int(p.height):
+        return "landscape"
+    return "phone_vertical"
 
 
 def _prep_combo(combo: QComboBox, *, min_w: int = 260, max_w: int = 520, pop_min: int = 400) -> None:
@@ -47,9 +55,11 @@ def attach_video_tab(win) -> None:
     # Scroll: window height is capped (~980px) but this tab is taller - without a scroll area
     # QFormLayout rows get vertically compressed and overlap.
     content = QWidget()
+    content.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
     lay = QVBoxLayout(content)
     lay.setSpacing(12)
     lay.setContentsMargins(14, 12, 14, 14)
+    lay.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     header = QLabel("Video")
     header.setStyleSheet("font-size: 16px; font-weight: 700;")
@@ -62,88 +72,36 @@ def attach_video_tab(win) -> None:
 
     lay.addWidget(section_title("Platform template"))
 
-    # Game-style preset tiles (exclusive selection, like graphics quality menus)
-    _TILE_QSS = """
-        QPushButton#videoPresetTile {
-            background-color: #1A1A22;
-            border: 2px solid #2E2E38;
-            border-radius: 8px;
-            padding: 6px 8px;
-            min-height: 44px;
-            max-height: 64px;
-            text-align: left;
-            font-size: 10px;
-            color: #E8E8EE;
-        }
-        QPushButton#videoPresetTile:hover {
-            border-color: #4A90D9;
-            background-color: #22222C;
-        }
-        QPushButton#videoPresetTile:checked {
-            border-color: #25F4EE;
-            background-color: #252532;
-        }
-        QPushButton#videoPresetTile:pressed {
-            background-color: #2A2A36;
-        }
-    """
-
-    tile_wrap = QWidget()
-    tile_grid = QGridLayout(tile_wrap)
-    tile_grid.setHorizontalSpacing(8)
-    tile_grid.setVerticalSpacing(8)
-    tile_grid.setContentsMargins(0, 0, 0, 0)
-
-    win._platform_preset_tile_group = QButtonGroup(win)
-    win._platform_preset_tile_group.setExclusive(True)
-    win._platform_preset_tile_buttons: dict[str, QPushButton] = {}
-
-    # Four columns so tiles stay narrow inside the fixed ~1000px window (long platform names were clipping).
-    cols = 4
-    r, c = 0, 0
+    _platform_cards: list[PresetCard] = []
     for p in PLATFORM_PRESETS:
-        btn = QPushButton()
-        btn.setObjectName("videoPresetTile")
-        btn.setCheckable(True)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(_TILE_QSS)
-        # Compact lines: wide platform strings force huge min-width; full list stays in the tooltip.
-        btn.setText(f"{p.title}\n{p.width}×{p.height} · {p.fps}fps")
+        _platform_cards.append(
+            PresetCard(
+                p.id,
+                p.title,
+                f"{p.width}×{p.height} · {p.fps}fps",
+                icon=_platform_preset_icon(p),
+                recommended=(p.id == "shortform_vertical_1080"),
+            )
+        )
+    _platform_cards.append(PresetCard("", "Custom", "Manual settings", icon="more"))
+    win._platform_preset_grid = PresetCardGrid(_platform_cards, columns=4, object_name="videoPresetTile")
+    win._platform_preset_grid.setSizePolicy(
+        QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    )
+    for i, p in enumerate(PLATFORM_PRESETS):
+        btn = win._platform_preset_grid._buttons[i]  # noqa: SLF001
         btn.setToolTip(help_tooltip_rich(f"{p.title}\n\n{p.platforms}", "video", slide=0))
-        btn.setProperty("preset_id", p.id)
-        btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
-        win._platform_preset_tile_group.addButton(btn)
-        win._platform_preset_tile_buttons[p.id] = btn
-        tile_grid.addWidget(btn, r, c)
-        c += 1
-        if c >= cols:
-            c = 0
-            r += 1
-
-    custom_tile = QPushButton()
-    custom_tile.setObjectName("videoPresetTile")
-    custom_tile.setCheckable(True)
-    custom_tile.setCursor(Qt.CursorShape.PointingHandCursor)
-    custom_tile.setStyleSheet(_TILE_QSS)
-    custom_tile.setText("Custom\nManual settings")
-    custom_tile.setToolTip(
+    win._platform_preset_grid._buttons[-1].setToolTip(  # noqa: SLF001
         help_tooltip_rich(
             "Keep your own mix of settings. Pick a template first, then tweak fields below.",
             "video",
             slide=0,
         )
     )
-    custom_tile.setProperty("preset_id", "")
-    custom_tile.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
-    win._platform_preset_tile_group.addButton(custom_tile)
-    win._platform_preset_custom_tile = custom_tile
-    tile_grid.addWidget(custom_tile, r, c)
-    for col in range(cols):
-        tile_grid.setColumnStretch(col, 1)
+    lay.addWidget(win._platform_preset_grid)
 
-    lay.addWidget(tile_wrap)
-
-    preset_hint = QLabel("Tap a card — tweak below for Custom.")
+    preset_hint = QLabel("Tap a card — switch to Advanced to tweak settings.")
+    preset_hint.setWordWrap(True)
     preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lay.addWidget(preset_hint)
 
@@ -153,9 +111,6 @@ def attach_video_tab(win) -> None:
         RESOLUTION_PRESETS,
         SCENE_PRESETS,
     )
-
-    win._video_preview_strip = PreviewStrip(aspect="9:16", label="9:16 preview")
-    lay.addWidget(win._video_preview_strip)
 
     def _update_video_preview_strip(width: int, height: int) -> None:
         strip = getattr(win, "_video_preview_strip", None)
@@ -180,6 +135,9 @@ def attach_video_tab(win) -> None:
     adv_lay.setContentsMargins(0, 0, 0, 0)
     adv_lay.setSpacing(12)
     lay.addWidget(win._video_advanced_host)
+
+    win._video_preview_strip = PreviewStrip(aspect="9:16", label="9:16 preview")
+    adv_lay.addWidget(win._video_preview_strip)
 
     win.video_fps_preset_combo = NoWheelComboBox()
     for fp in FPS_PRESETS.values():
@@ -211,7 +169,7 @@ def attach_video_tab(win) -> None:
     adv_lay.addSpacing(2)
 
     presets_form = QFormLayout()
-    presets_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    presets_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
     presets_form.setVerticalSpacing(10)
     presets_form.setHorizontalSpacing(18)
     presets_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -306,7 +264,7 @@ def attach_video_tab(win) -> None:
 
     # --- Form 1: core video output
     form_video = QFormLayout()
-    form_video.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form_video.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
     form_video.setVerticalSpacing(14)
     form_video.setHorizontalSpacing(18)
     form_video.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -545,21 +503,24 @@ def attach_video_tab(win) -> None:
     register_advanced_sections(win, "video", [win._video_advanced_host, win._video_fps_res_basic_wrap])
 
     hint = lay.sizeHint()
-    content.setMinimumHeight(max(hint.height(), 400))
-    content.setMinimumWidth(max(hint.width(), 520))
+    content.setMinimumWidth(max(hint.width(), 480))
 
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setMinimumHeight(520)
+    scroll.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
     scroll.setWidget(content)
+    win._video_scroll = scroll
+    win._video_content = content
 
     shell = QWidget()
+    shell.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
     shell_lay = QVBoxLayout(shell)
     shell_lay.setContentsMargins(0, 0, 0, 0)
     shell_lay.setSpacing(0)
-    shell_lay.addWidget(scroll)
+    shell_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+    shell_lay.addWidget(scroll, 0)
 
     win.tabs.addTab(shell, "Video")
 
@@ -598,20 +559,21 @@ def attach_video_tab(win) -> None:
     def _mark_video_template_custom() -> None:
         if getattr(win, "_applying_video_template", False):
             return
-        if not hasattr(win, "_platform_preset_custom_tile"):
+        if not hasattr(win, "_platform_preset_grid"):
             return
         win._applying_video_template = True
         try:
-            win._platform_preset_custom_tile.setChecked(True)
+            cix = win._platform_preset_grid.findData("")
+            if cix >= 0:
+                win._platform_preset_grid.setCurrentIndex(cix)
             win._video_platform_preset_id = ""
         finally:
             win._applying_video_template = False
 
-    def _on_preset_tile_clicked(btn: QPushButton) -> None:
+    def _on_preset_tile_changed(_index: int) -> None:
         if getattr(win, "_applying_video_template", False):
             return
-        raw = btn.property("preset_id")
-        pid = "" if raw is None else str(raw)
+        pid = str(win._platform_preset_grid.currentData() or "")
         win._video_platform_preset_id = pid
         if pid:
             _apply_platform_preset(pid)
@@ -620,7 +582,7 @@ def attach_video_tab(win) -> None:
     win._mark_video_template_custom = _mark_video_template_custom
     win._video_platform_preset_id = ""
 
-    win._platform_preset_tile_group.buttonClicked.connect(_on_preset_tile_clicked)
+    win._platform_preset_grid.currentIndexChanged.connect(_on_preset_tile_changed)
 
     # Phase 5: live wiring for the four-knob v2 presets - picking a preset
     # snaps the legacy spinners to its values so the rest of the pipeline
@@ -702,8 +664,8 @@ def attach_video_tab(win) -> None:
     saved_id = str(getattr(v, "platform_preset_id", "") or "").strip()
     win._applying_video_template = True
     try:
-        if saved_id and preset_by_id(saved_id) and saved_id in win._platform_preset_tile_buttons:
-            win._platform_preset_tile_buttons[saved_id].setChecked(True)
+        if saved_id and preset_by_id(saved_id) and win._platform_preset_grid.findData(saved_id) >= 0:
+            win._platform_preset_grid.setCurrentData(saved_id)
             win._video_platform_preset_id = saved_id
         else:
             inferred = find_best_preset_for_video(
@@ -719,11 +681,13 @@ def attach_video_tab(win) -> None:
                 pro_mode=True,
                 pro_clip_seconds=float(getattr(v, "pro_clip_seconds", 4.0)),
             )
-            if inferred and inferred in win._platform_preset_tile_buttons:
-                win._platform_preset_tile_buttons[inferred].setChecked(True)
+            if inferred and win._platform_preset_grid.findData(inferred) >= 0:
+                win._platform_preset_grid.setCurrentData(inferred)
                 win._video_platform_preset_id = inferred
             else:
-                win._platform_preset_custom_tile.setChecked(True)
+                cix = win._platform_preset_grid.findData("")
+                if cix >= 0:
+                    win._platform_preset_grid.setCurrentIndex(cix)
                 win._video_platform_preset_id = ""
     finally:
         win._applying_video_template = False
