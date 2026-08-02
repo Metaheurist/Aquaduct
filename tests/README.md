@@ -1,6 +1,6 @@
 # Test layout
 
-Run the suite from the repository root; `pytest` collects everything under this directory.
+Run the suite from the repository root so `pytest.ini` applies; `pytest` then collects everything under this directory.
 
 | Subfolder | What lives here |
 |-----------|-----------------|
