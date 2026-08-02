@@ -69,3 +69,8 @@ build/exe-smoke-*.txt
 
 # MoviePy intermediate clips in repo root during encode
 *TEMP_MPY*.mp4
+
+# OS / Explorer junk
+.DS_Store
+Thumbs.db
+desktop.ini
