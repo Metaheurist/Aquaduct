@@ -22,7 +22,7 @@ python -m debug.tools.smoke_categories
 python -m debug.print_active          # shim → tools.print_active
 ```
 
-Requires repo root on `PYTHONPATH` (running from repo root as above is fine).
+Requires the repo root on `PYTHONPATH`; running these helpers from the repository root (as shown above) is enough.
 
 ## Categories (index)
 
