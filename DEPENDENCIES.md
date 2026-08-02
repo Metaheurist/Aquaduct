@@ -5,7 +5,7 @@ This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM)
 ## Python
 - **Python**: 3.11+
 - **Project metadata**: [`pyproject.toml`](pyproject.toml) (name, version, pytest markers)
-- **Virtualenv**: recommended (`python -m venv .venv`)
+- **Virtualenv**: strongly recommended for day-to-day work (`python -m venv .venv`)
 - **Windows shell**: after `cd` to the repo, you can dot-source [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1) (`. .\scripts\setup_terminal_env.ps1`) to activate `.venv` and set the working directory; optional **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** for gated Hugging Face models (or use **Settings → API** in the UI).
 
 ### System-wide install (optional; Windows)
