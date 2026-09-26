@@ -17,7 +17,7 @@ For **Cartoon** and **Cartoon (unhinged)** preset runs, when **Gather web contex
 
 ## Commands
 
-### Run once (recommended for testing)
+### Run once
 ```powershell
 python main.py --once
 ```

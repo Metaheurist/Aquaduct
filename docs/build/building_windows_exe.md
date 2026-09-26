@@ -4,13 +4,13 @@ Operator-focused guide for **PyInstaller** builds of the **Aquaduct** desktop UI
 
 ## Prerequisites
 
-- **Windows 10/11**, **Python 3.11 or 3.12** (avoid 3.14 for PyTorch wheels).
+- **Windows 10/11**, **Python 3.11 or 3.12** (PyTorch wheels; 3.14 often unsupported).
 - Repo cloned; PowerShell **ExecutionPolicy** that allows `build/build.ps1` (e.g. `RemoteSigned` for your user scope).
 - Enough disk space for a **`.venv-build`** (or your chosen venv dir) plus PyTorch and project wheels.
 
 ## Build environment (one clean venv)
 
-The recommended flow avoids **duplicate PyTorch** installs and keeps **test wheels out** of the packaging environment:
+Build flow (single PyTorch install; no test wheels in the packaging env):
 
 1. **Fresh venv** — `.\build\build.ps1 -Clean` recreates **`.venv-build`** (only what the script installs).
 2. **PyTorch for this machine** — [`scripts/install_pytorch.py`](../../scripts/install_pytorch.py) **`--with-rest`** runs **`install_pytorch_for_hardware`** (CUDA index when an NVIDIA GPU is detected, else CPU wheels; macOS uses PyPI), then **`pip install -r requirements.txt`**. **`requirements.txt` does not list `torch`**, so pip does not reinstall torch a second time from that file.

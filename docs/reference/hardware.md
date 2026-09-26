@@ -34,13 +34,6 @@ The sample shows **CPU for the whole process tree** (Python plus subprocesses su
 
 For **local diffusion** (image + video model slots), the app can also use **CPU offload** (weights staged in system RAM vs VRAM) with automatic rules from VRAM + free RAM. With **multiple CUDA devices**, **`auto`** offload defaults to **sequential** staging on the **diffusion** GPU index to keep peak VRAM low — see [Performance: Diffusion VRAM vs system RAM](../pipeline/performance.md#diffusion-vram-vs-system-ram-cpu-offload) and [`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py).
 
-## Minimum requirements (guidance)
-Recommended for best results:
-- **GPU VRAM**: ≥ 8GB
-- **RAM**: ≥ 16GB
-
-The pipeline can still run with fallbacks (template scripts, placeholder images) if a model can’t load.
-
 ## Fit markers
 The My PC tab assigns each model option a marker (internal codes; UI labels match **`fit_marker_display()`** in `src/models/hardware.py`):
 - `EXCELLENT`
@@ -68,13 +61,11 @@ For **heavy** Motion models, **`next_smaller_repo_id("video", …)`** in [`varia
 - **Voice (TTS)**:
   - Marked `OK` because the MVP has an offline TTS fallback.
 
-These rules are meant to be conservative and easy to understand, not perfect benchmarks.
-
 ### Intra-stage multi-GPU (VRAM-first mode)
 Stage routing (which CUDA index owns **script** vs **diffusion** vs **voice**) is unchanged above. Optionally, **My PC → VRAM-first sharding** turns on **experimental** intra-model splitting when **GPU policy Auto**, **shard mode VRAM-first multi-GPU**, **≥ 2 CUDA devices**, and **`AQUADUCT_CUDA_DEVICE` is not set**:
 
 - **Causal LM** ([`src/content/brain.py`](../../src/content/brain.py)): for **BF16 / FP16** chains only, loaders may combine Accelerate **`device_map="balanced"`** with a **`max_memory`** budget built from **free VRAM estimates** (`src/gpu/multi_device/hardware_budget.py`). **BitsAndBytes (`int8` / `NF4`)** stays **pinned to one GPU**.
-- **Diffusers** ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)): with **VRAM-first**, **`auto`** may prefer **full GPU** (**offload `none`**) for **video** placement when host RAM allows, so modules stay resident for **peer submodule** moves (**experimental** — see [`src/gpu/multi_device/registry.py`](../../src/gpu/multi_device/registry.py)). **Image** placement (`placement_role="image"` — e.g. slideshow stills and **Characters → Generate portrait**) still uses **model** or **sequential** CPU offload in that regime so the diffusion GPU keeps headroom (avoids common OOM when a heavy still model runs next to other loads on one card).
+- **Diffusers** ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)): with **VRAM-first**, **`auto`** may prefer **full GPU** (**offload `none`**) for **video** placement when host RAM allows, so modules stay resident for **peer submodule** moves (**experimental** — see [`src/gpu/multi_device/registry.py`](../../src/gpu/multi_device/registry.py)). **Image** placement (`placement_role="image"` — e.g. slideshow stills and **Characters → Generate portrait**) still uses **model** or **sequential** CPU offload in that regime so peak VRAM on the diffusion GPU stays lower for still generation.
 - **Voice**: **MOSS** respects the **voice** slot from **`cuda_device_policy`** (explicit **`cuda:N`** pinning). **Kokoro** remains **upstream single-stack** (`unsupported_intra_shard` registry row).
 
 VRAM is **not additive** across cards; PCIe traffic makes this path **much slower** than pinning one dense model per GPU via stage routing alone. Use debug category **`gpu_plan`** (see [`debug/debug_log.py`](../../debug/debug_log.py)) for placement breadcrumbs.

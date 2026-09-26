@@ -74,7 +74,7 @@ Read-only list of render/upload tasks (same data as the **Tasks** tab).
 
 ## Environment variables (cloud)
 
-Prefer env for secrets so containers do not store keys in JSON:
+Environment variables (override saved keys when set):
 
 | Variable | Role |
 |----------|------|

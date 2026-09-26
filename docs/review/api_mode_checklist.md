@@ -31,7 +31,7 @@ All green → proceed. Any failure → fix before running phases below; most fai
 |---|--------|---------------|--------------------------|
 | A1 | Launch the desktop UI and open the **Model** tab. Toggle **Local ↔ API**. | Local HF controls hide in API mode; the **API** Generation rows (LLM / Image / Voice / Pro video) show. | [`UI/main_window.py`](../../UI/main_window.py) — `_sync_api_gen_row_states` and the Model tab builders. |
 | A2 | With only a subset of env keys present, open each row's **Provider** dropdown. | Rows whose provider has an env key (or a saved key, per the rules in [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py)) are enabled; others are disabled with a tooltip hint. | [`UI/services/api_model_widgets.py`](../../UI/services/api_model_widgets.py) and `provider_has_key` in [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py). |
-| A3 | Pick a recommended default per role (Gemini, SiliconFlow, Inworld, Kling), click **Save**, restart the app. | `ui_settings.json` round-trips the `api_models` / `api_openai_key` / provider picks; the UI re-loads the same selection. | [`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py) and the `AppSettings` load/save in [`src/settings`](../../src/settings). |
+| A3 | Pick a catalog default per role (Gemini, SiliconFlow, Inworld, Kling), click **Save**, restart the app. | `ui_settings.json` round-trips the `api_models` / `api_openai_key` / provider picks; the UI re-loads the same selection. | [`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py) and the `AppSettings` load/save in [`src/settings`](../../src/settings). |
 
 ## 4. Phase B — Preflight
 

@@ -52,16 +52,13 @@ Automatic mitigation (runs [`retry_stage`](../../src/runtime/oom_retry.py) aroun
 
 Always-on **`[Aquaduct][run]`** stderr lines from [`pipeline_console`](../../debug/debug_log.py) record coarse stages (`workspace`, `script_llm`, `video_t2v_load`, …); **`AQUADUCT_DEBUG`** categories still drive verbose [`dprint`](../../debug/debug_log.py) output.
 
-**Note:** On Windows a **native** GPU/driver fault may still exit Python with **`3221225477` (`0xC0000005` access violation)** — that is **not** catchable as a Python exception; use driver updates, lighter models, **`cpu_offload`**, or Event Viewer faulting-module hints.
-
 Mitigations:
 
 1. **Model** tab → **Video** → set quantization to **`cpu_offload`** (or another memory-saving mode your build supports), then Save — see [Quantization](quantization.md).
 2. Choose a **lighter T2V repo** from the curated list, or switch **execution** to API mode if you use a hosted video provider.
 3. On **multi-GPU** setups, confirm **My PC** → GPU policy assigns **video** to the card with the **most VRAM** (effective VRAM per role appears in the `[Aquaduct][inference_profile]` lines).
-4. Avoid starting a second heavy download/load (e.g. HF **Loading weights**) at the same time as a run — competing loads reduce headroom.
 
-5. **Observability during long HF loads:** periodic heartbeat lines (**`AQUADUCT_LOAD_HEARTBEAT_INTERVAL_S`**, optional stalled-load watchdog **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** / **`AQUADUCT_LOAD_TIMEOUT_S`**) mirror to the desktop **Resource usage** footer — see [Performance — Resource graph heartbeat](../pipeline/performance.md), [Crash resilience overview](../pipeline/crash-resilience.md).
+4. **Observability during long HF loads:** periodic heartbeat lines (**`AQUADUCT_LOAD_HEARTBEAT_INTERVAL_S`**, optional stalled-load watchdog **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** / **`AQUADUCT_LOAD_TIMEOUT_S`**) mirror to the desktop **Resource usage** footer — see [Performance — Resource graph heartbeat](../pipeline/performance.md), [Crash resilience overview](../pipeline/crash-resilience.md).
 
 Partial outputs for a dated folder under **`.Aquaduct_data`** (for example `runs/<timestamp>/` or project folders under `videos/`) may exist without **`final.mp4`** if the pipeline stopped before the editor stage. With **Resume partial pipeline** enabled, coarse **`assets/run_checkpoint.json`** milestones can shorten the **next** desktop run — see [Crash resilience](../pipeline/crash-resilience.md).
 

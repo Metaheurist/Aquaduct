@@ -1,6 +1,6 @@
 # TikTok upload (Content Posting API)
 
-Aquaduct can send finished `final.mp4` files to your **TikTok creator inbox** so you complete posting in the **TikTok mobile app** (recommended first integration). A **Tasks** tab lists each finished render; the **API** tab holds TikTok developer credentials and **Connect TikTok account**.
+Aquaduct can send finished `final.mp4` files to your **TikTok creator inbox** so posting is finished in the **TikTok mobile app**. A **Tasks** tab lists each finished render; the **API** tab holds TikTok developer credentials and **Connect TikTok account**.
 
 ## Prerequisites
 

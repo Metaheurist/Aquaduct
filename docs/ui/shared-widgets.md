@@ -1,6 +1,6 @@
 # Shared UI widgets (modernization)
 
-Reusable building blocks added in the 2026 UI polish pass. Prefer these over ad-hoc layouts and unicode status glyphs.
+Reusable building blocks used by the desktop UI tabs (layouts, tiles, status glyphs).
 
 ## SVG toolbar icons
 

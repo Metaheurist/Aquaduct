@@ -60,7 +60,7 @@ Follow-up pass after Visual Basic Mode: fix empty voids, clipped forms, stray wi
 
 ### Deep-dive remediation & feature rollout (2026-06)
 
-Cross-cutting pass: performance, prompting, cinematography presets, UX, security, reliability, and publishing/series features. **767** headless tests pass (`pytest -m "not qt"`).
+Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets storage, reliability, and publishing/series features. **767** headless tests pass (`pytest -m "not qt"`).
 
 #### Performance & pipeline
 - **Spatial upscale**: skip second editor pass when clips already upscaled (`.aq_spatial` marker); **RealESRGAN** model cache reused across clips in one job ([`src/render/spatial_upscale.py`](src/render/spatial_upscale.py)).
@@ -90,7 +90,7 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, security
 - **Library search** over title, folder, and `meta.json`; **Tasks** tab copy is photo-aware.
 - [`UI/controllers/`](UI/controllers/) scaffold for incremental `MainWindow` decomposition.
 
-#### Security
+#### Secrets storage & content guards
 - **Fernet encryption** for API/OAuth secrets in `ui_settings.json` ([`src/settings/secrets_crypto.py`](src/settings/secrets_crypto.py)); plaintext migrates on load.
 - **SSRF guard** on outbound URL fetchers ([`src/util/ssrf_guard.py`](src/util/ssrf_guard.py)).
 - **F12 guardrail bypass** requires `AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS=1` at process start.

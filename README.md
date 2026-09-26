@@ -70,7 +70,7 @@ pytest -q
 
 If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set. For a short table of tiers, see **Test tiers** in [`DEPENDENCIES.md`](DEPENDENCIES.md). The pytest tree is grouped under `tests/<area>/`; see [`tests/README.md`](tests/README.md).
 
-### 2) Run once (recommended for first test)
+### 2) Run once
 
 ```powershell
 python main.py --once

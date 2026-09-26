@@ -6,18 +6,20 @@ When **Model execution** is set to **API** (Model tab or persisted in `ui_settin
 
 **FFmpeg** and MoviePy assembly still run locally for mux, captions, and music/SFX where enabled.
 
-### Recommended provider defaults (UI catalog)
+### Catalog defaults (UI order)
 
-The per-role **Provider** / **Model** dropdowns list optional “recommended” entries first; approximate free-tier notes are in the label (see each vendor for current limits):
+Per-role **Provider** / **Model** dropdowns list catalog defaults first ([`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py)):
 
-| Role | Suggested entry | Env keys (see table below) | Notes |
-|------|-----------------|-----------------------------|--------|
-| **LLM** | Google AI Studio (Gemini) | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (fallback: saved / `OPENAI_API_KEY`) | OpenAI-compatible chat at Google’s `…/v1beta/openai` — large context, generous free daily quota. |
-| **Image** | SiliconFlow | `SILICONFLOW_API_KEY` (fallback: saved bearer) | OpenAI-shaped `POST …/v1/images/generations` — Flux, SD3-class models (see catalog slugs). |
-| **Video (Pro / motion)** | **Kling AI** (recommended) | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` (optional `KLING_API_BASE` — default `https://api-singapore.klingai.com`) | Official **Open Platform** text-to-video: HS256 **JWT** auth, `POST /v1/videos/text2video` + poll. Free tier is often on the order of **~66 credits / 24h** (resets on a daily window) — enough for roughly **six high-quality ~5s** clips per day; confirm in the [Kling developer console](https://kling.ai/dev). **Alternatives (UI):** **Pika** (Pika.art) is listed in product comparisons as **~30 credits / month** for lighter monthly use. **Magic Hour** and **Replicate** remain available in the same Video row. |
-| **Voice** | Inworld | `INWORLD_API_KEY` (fallback: saved bearer) | `POST https://api.inworld.ai/tts/v1/voice` — set **Voice / speaker id** in the UI (e.g. `Sarah`). **Alternatives:** OpenAI `tts-1` / `tts-1-hd`, or ElevenLabs (API tab) when enabled. |
+| Role | Default catalog entry | Env keys |
+|------|----------------------|----------|
+| **LLM** | Google AI Studio (Gemini) | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (fallback: saved / `OPENAI_API_KEY`) |
+| **Image** | SiliconFlow | `SILICONFLOW_API_KEY` (fallback: saved bearer) |
+| **Video (Pro / motion)** | Kling AI | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` (optional `KLING_API_BASE`) |
+| **Voice** | Inworld | `INWORLD_API_KEY` (fallback: saved bearer) |
 
-Implementation: [`src/settings/api_model_catalog.py`](../../src/settings/api_model_catalog.py) (metadata), [`src/platform/openai_client.py`](../../src/platform/openai_client.py) (LLM + DALL·E / SiliconFlow image client; Gemini base URL without an extra `/v1`), [`src/runtime/api_generation.py`](../../src/runtime/api_generation.py), [`src/platform/kling_client.py`](../../src/platform/kling_client.py) (Kling JWT + text-to-video + poll), [`src/platform/magichour_client.py`](../../src/platform/magichour_client.py), [`src/speech/inworld_tts.py`](../../src/speech/inworld_tts.py), [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py), [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py) (keys + preflight for Pro + Kling, Magic Hour, or Replicate).
+Other providers remain in the same dropdowns (OpenAI, Groq, Replicate, Magic Hour, ElevenLabs, etc.).
+
+Wire-up: [`src/platform/openai_client.py`](../../src/platform/openai_client.py), [`src/runtime/api_generation.py`](../../src/runtime/api_generation.py), [`src/platform/kling_client.py`](../../src/platform/kling_client.py), [`src/platform/magichour_client.py`](../../src/platform/magichour_client.py), [`src/speech/inworld_tts.py`](../../src/speech/inworld_tts.py), [`src/runtime/pipeline_api.py`](../../src/runtime/pipeline_api.py), [`src/runtime/model_backend.py`](../../src/runtime/model_backend.py).
 
 ## Environment variables (env wins over saved keys)
 

@@ -1,17 +1,17 @@
 # Dependencies
 
-This project is designed to run locally on Windows with an NVIDIA GPU (8GB VRAM).
+Local desktop stack: Windows + NVIDIA CUDA (see Model / My PC fit heuristics for VRAM).
 
 ## Python
 - **Python**: 3.11+
 - **Project metadata**: [`pyproject.toml`](pyproject.toml) (name, version, pytest markers)
-- **Virtualenv**: strongly recommended for day-to-day work (`python -m venv .venv`)
+- **Virtualenv**: `python -m venv .venv` (scripts use `.venv` when present)
 - **Windows shell**: after `cd` to the repo, you can dot-source [`scripts/setup_terminal_env.ps1`](scripts/setup_terminal_env.ps1) (`. .\scripts\setup_terminal_env.ps1`) to activate `.venv` and set the working directory; optional **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** for gated Hugging Face models (or use **Settings → API** in the UI).
 
 ### System-wide install (optional; Windows)
 Use this only if you want packages in a **global** Python instead of `.venv`.
 
-- **Avoid Python 3.14 as the default target** for PyTorch: `torchaudio` (and sometimes full CUDA stacks) may have **no wheels** yet. Prefer **Python 3.11 or 3.12** (e.g. `C:\Program Files\Python312\python.exe` if installed).
+- **Python 3.11 or 3.12**: matching PyTorch / `torchaudio` CUDA wheels; **3.14** often has none yet.
 - From the repo root, using **Python 3.12** explicitly:
 
 ```powershell
