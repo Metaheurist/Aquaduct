@@ -42,6 +42,21 @@ class _Toast(QFrame):
         self._effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self._effect)
         self._effect.setOpacity(0.0)
+        self._fade_out: QPropertyAnimation | None = None
+        # Parented to the toast so a pending fade-out never fires after the host is destroyed.
+        self._dismiss_timer = QTimer(self)
+        self._dismiss_timer.setSingleShot(True)
+        self._dismiss_timer.timeout.connect(self._begin_fade_out)
+
+    def _begin_fade_out(self) -> None:
+        fade_out = QPropertyAnimation(self._effect, b"opacity", self)
+        fade_out.setDuration(320)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.setEasingCurve(QEasingCurve.Type.InCubic)
+        fade_out.finished.connect(self.deleteLater)
+        fade_out.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        self._fade_out = fade_out
 
 
 def show_toast(host: QWidget | None, message: str, *, kind: str = "info", msec: int = 2600) -> None:
@@ -75,15 +90,4 @@ def show_toast(host: QWidget | None, message: str, *, kind: str = "info", msec: 
     fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
     fade_in.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    def _begin_fade_out() -> None:
-        fade_out = QPropertyAnimation(toast._effect, b"opacity", toast)
-        fade_out.setDuration(320)
-        fade_out.setStartValue(1.0)
-        fade_out.setEndValue(0.0)
-        fade_out.setEasingCurve(QEasingCurve.Type.InCubic)
-        fade_out.finished.connect(toast.deleteLater)
-        fade_out.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
-        # Keep a reference on the toast so it is not GC'd mid-animation.
-        toast._fade_out = fade_out  # type: ignore[attr-defined]
-
-    QTimer.singleShot(max(600, int(msec)), _begin_fade_out)
+    toast._dismiss_timer.start(max(600, int(msec)))

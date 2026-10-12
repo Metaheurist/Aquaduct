@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - [`settings_tab.py`](UI/tabs/settings_tab.py): Hub size probe results go through a `QObject` sink parented to the status label, so a late worker signal can no longer call into a deleted widget.
 - [`MainWindow`](UI/main_window.py): `_ensure_all_tabs_built()` runs before settings are collected. Clicking **Run** or **Save** before deferred tabs finished building previously raised `AttributeError` (for example `fps_spin`).
 - **Run** tab: **Videos to generate** and series **Episodes to generate** stay in sync both ways; quantity no longer reverts after toggling series mode off.
+- [Toasts](UI/widgets/toast.py): the fade-out timer is owned by the toast, so closing a window with a pending toast no longer touches a deleted opacity effect.
 - Runtime dependency install prompt: a successful install (exit code 0) was reported as incomplete.
 - Preset and catalog labels (video platform templates, quality presets, API provider names) no longer use em dashes.
 
