@@ -12,6 +12,10 @@ from PyQt6.QtWidgets import QTabWidget, QWidget
 class _WinStub(QWidget):
     """Minimal QWidget host for attach_* tab builders in unit tests."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._tab_advanced_sections: dict[str, list] = {}
+
     def __getattr__(self, name: str):
         if name.startswith("_"):
 

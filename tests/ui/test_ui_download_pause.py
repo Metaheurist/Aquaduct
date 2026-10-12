@@ -6,7 +6,7 @@ import pytest
 
 
 @pytest.mark.qt
-def test_download_popup_pause_saves_resume_queue(qtbot, monkeypatch):
+def test_download_popup_pause_saves_resume_queue(qtbot, monkeypatch, built_main_window):
     import UI.main_window as mw
 
     class DummyWorker:
@@ -42,15 +42,13 @@ def test_download_popup_pause_saves_resume_queue(qtbot, monkeypatch):
 
     monkeypatch.setattr(mw, "ModelDownloadWorker", DummyWorker)
 
-    # Make popup.exec() non-blocking and auto-pause immediately.
-    def _exec_and_pause(self):
+    # The popup is shown non-modally; request a pause as soon as it opens.
+    def _show_and_pause(self):
         QTimer.singleShot(0, self.pause_requested.emit)
-        return 0
 
-    monkeypatch.setattr(mw.DownloadPopup, "exec", _exec_and_pause, raising=True)
+    monkeypatch.setattr(mw.DownloadPopup, "show", _show_and_pause, raising=True)
 
-    win = mw.MainWindow()
-    qtbot.addWidget(win)
+    win = built_main_window()
 
     win._paused_download_repo_ids = None
     win._start_download(["a/model", "b/model"], title="Downloading models")

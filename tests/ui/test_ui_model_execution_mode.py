@@ -4,18 +4,9 @@ import pytest
 
 
 @pytest.mark.qt
-def test_model_execution_mode_toggle_hides_download_button(patch_paths, write_ui_settings):
+def test_model_execution_mode_toggle_hides_download_button(built_main_window):
     """API mode on the Model tab hides the Hugging Face Download menu (local weights)."""
-    pytest.importorskip("PyQt6.QtWidgets")
-    write_ui_settings({"topic_tags": [], "model_execution_mode": "local"})
-    from PyQt6.QtWidgets import QApplication
-    from UI.main_window import MainWindow
-
-    if QApplication.instance() is None:
-        _ = QApplication([])
-
-    w = MainWindow()
-    w.show()
+    w = built_main_window({"topic_tags": [], "model_execution_mode": "local"})
 
     assert hasattr(w, "dl_menu_btn")
     assert hasattr(w, "model_execution_mode_combo")
@@ -32,4 +23,3 @@ def test_model_execution_mode_toggle_hides_download_button(patch_paths, write_ui
 
     w.model_execution_mode_combo.setCurrentIndex(0)
     assert w.dl_menu_btn.isVisible()
-    w.close()

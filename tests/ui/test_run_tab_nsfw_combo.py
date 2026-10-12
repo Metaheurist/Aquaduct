@@ -4,23 +4,17 @@ import pytest
 
 
 @pytest.mark.qt
-def test_run_tab_includes_nsfw_video_format(qapplication, patch_paths, write_ui_settings) -> None:
-    write_ui_settings({"topic_tags": []})
-    from UI.main_window import MainWindow
-
-    w = MainWindow()
-    combo = w.video_format_combo
-    ids = [combo.itemData(i) for i in range(combo.count())]
-    assert "nsfw" in ids
+def test_run_tab_includes_nsfw_video_format(built_main_window) -> None:
+    w = built_main_window()
+    assert w.video_format_combo.findData("nsfw") >= 0
 
 
 @pytest.mark.qt
-def test_nsfw_video_format_keeps_auto_upload_enabled_when_session_guardrail_bypass_env(monkeypatch: pytest.MonkeyPatch, qapplication, patch_paths, write_ui_settings) -> None:
+def test_nsfw_video_format_keeps_auto_upload_enabled_when_session_guardrail_bypass_env(
+    monkeypatch: pytest.MonkeyPatch, built_main_window
+) -> None:
     monkeypatch.setenv("AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS", "1")
-    write_ui_settings({"topic_tags": []})
-    from UI.main_window import MainWindow
-
-    w = MainWindow()
+    w = built_main_window()
     ix = w.video_format_combo.findData("nsfw")
     assert ix >= 0
     w.video_format_combo.setCurrentIndex(ix)
@@ -29,11 +23,8 @@ def test_nsfw_video_format_keeps_auto_upload_enabled_when_session_guardrail_bypa
 
 
 @pytest.mark.qt
-def test_nsfw_video_format_disables_auto_upload_toggles(qapplication, patch_paths, write_ui_settings) -> None:
-    write_ui_settings({"topic_tags": []})
-    from UI.main_window import MainWindow
-
-    w = MainWindow()
+def test_nsfw_video_format_disables_auto_upload_toggles(built_main_window) -> None:
+    w = built_main_window()
     ix = w.video_format_combo.findData("nsfw")
     assert ix >= 0
     w.video_format_combo.setCurrentIndex(ix)

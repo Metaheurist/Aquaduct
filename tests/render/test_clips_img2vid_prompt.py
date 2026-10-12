@@ -60,11 +60,15 @@ def test_svd_decode_chunk_smaller_on_12gb_vram(monkeypatch: pytest.MonkeyPatch) 
     assert kw["decode_chunk_size"] == 2
 
 
+@pytest.mark.slow
 def test_strip_negative_caps_openai_clip_token_count() -> None:
     """CLIP text encoders in many pipelines are hard-limited to 77 tokens; words ≠ tokens."""
-    from transformers import CLIPTokenizerFast
+    try:
+        from transformers import CLIPTokenizerFast
 
-    tok = CLIPTokenizerFast.from_pretrained("openai/clip-vit-large-patch14")
+        tok = CLIPTokenizerFast.from_pretrained("openai/clip-vit-large-patch14")
+    except Exception as exc:  # offline, or transformers/tokenizers version mismatch
+        pytest.skip(f"CLIP tokenizer unavailable: {exc}")
     long = "hello, " * 100
     out = _strip_negative_and_cap_for_clip("cerspense/zeroscope_v2_576w", long)
     assert len(tok.encode(out)) <= 77

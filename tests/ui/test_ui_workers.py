@@ -38,10 +38,6 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
         lambda: SimpleNamespace(llm_id="m", sdxl_turbo_id="i", kokoro_id="k"),
     )
 
-    def fake_expand(**kwargs):
-        assert "cats" in kwargs["raw_instructions"]
-        return "expanded brief"
-
     def fake_generate_script(**kwargs):
         assert kwargs.get("creative_brief") == "expanded brief"
         assert kwargs["items"][0].get("source") == "custom"
@@ -54,8 +50,6 @@ def test_preview_worker_custom_mode_skips_news_cache(qtbot, monkeypatch):
             cta="C",
         )
 
-    monkeypatch.setattr(wmod, "expand_custom_video_instructions", fake_expand)
-    monkeypatch.setattr(wmod, "generate_script", fake_generate_script)
     monkeypatch.setattr(wmod, "enforce_arc", lambda pkg, **kwargs: pkg)
     # Bypass optional API mode + any accidental real LLM loads — PreviewWorker calls these unified helpers.
     monkeypatch.setattr(wmod, "is_api_mode", lambda _app: False)

@@ -52,27 +52,13 @@ def test_advanced_tabs_persist_roundtrip(qtbot, qapplication, tmp_path, monkeypa
 
 
 @pytest.mark.qt
-def test_harvest_invariant_when_advanced_hidden(qtbot, monkeypatch):
+def test_harvest_invariant_when_advanced_hidden(built_main_window):
     """collect_settings_from_ui output must not depend on Advanced visibility."""
     from src.settings.ui_harvest import collect_settings_from_ui
 
-    try:
-        from UI.main_window import MainWindow
-    except Exception as exc:
-        pytest.skip(f"MainWindow unavailable: {exc}")
-
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    win = MainWindow()
-    qtbot.addWidget(win)
-
-    if hasattr(win, "_attach_deferred_tabs"):
-        try:
-            win._attach_deferred_tabs()
-        except Exception:
-            pass
-
-    if not hasattr(win, "_tab_advanced_sections") or not hasattr(win, "fps_spin"):
-        pytest.skip("deferred tabs not fully attached")
+    win = built_main_window()
+    assert win._tab_advanced_sections
+    assert hasattr(win, "fps_spin")
 
     before = collect_settings_from_ui(win)
 

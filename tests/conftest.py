@@ -6,6 +6,14 @@ from pathlib import Path
 import pytest
 
 
+def pytest_configure(config: pytest.Config) -> None:  # noqa: ARG001
+    # On Windows, loading torch DLLs after a QApplication exists can access-violate; load torch first.
+    try:
+        import torch  # noqa: F401
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _disable_memory_preflight_host_ram_gating(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prevent catastrophic-RAM shortfall checks from failing tests on constrained hosts.
@@ -141,6 +149,14 @@ def _fast_main_window_for_qt_tests(monkeypatch, request):
         lambda self: None,
     )
     monkeypatch.setattr(
+        "UI.workers.models.ModelSizePingWorker.run",
+        lambda self: self.done.emit({}),
+    )
+    monkeypatch.setattr(
+        "src.util.network_status.is_internet_likely_reachable",
+        lambda *_a, **_k: False,
+    )
+    monkeypatch.setattr(
         "UI.main_window.MainWindow._maybe_prompt_hf_token",
         lambda self: None,
     )
@@ -197,13 +213,35 @@ def qtbot(qapplication):
 
 
 @pytest.fixture()
+def built_main_window(qtbot, patch_paths, write_ui_settings):
+    """Factory: shown ``MainWindow`` with every deferred tab attached (temp app data)."""
+
+    def _make(payload: dict | None = None):
+        write_ui_settings(payload if payload is not None else {"topic_tags": []})
+        from UI.main_window import MainWindow
+
+        w = MainWindow()
+        qtbot.addWidget(w)
+        w._ensure_all_tabs_built()
+        return w
+
+    return _make
+
+
+@pytest.fixture()
 def write_ui_settings(tmp_repo_root: Path, monkeypatch: pytest.MonkeyPatch):
     """
     Helper to write ui_settings.json into a temp root and patch application_data_dir().
     """
-    from src.settings import ui_settings as ui_mod
-
-    monkeypatch.setattr(ui_mod, "application_data_dir", lambda: tmp_repo_root)
+    for target in (
+        "src.core.app_dirs.application_data_dir",
+        "src.core.config.application_data_dir",
+        "src.settings.ui_settings.application_data_dir",
+        "src.runtime.pipeline_queue_store.application_data_dir",
+        "src.settings.secrets_crypto.application_data_dir",
+        "src.content.llm_chat_rag.application_data_dir",
+    ):
+        monkeypatch.setattr(target, lambda: tmp_repo_root)
 
     def _write(payload: dict) -> Path:
         p = tmp_repo_root / "ui_settings.json"
