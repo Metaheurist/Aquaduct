@@ -1,6 +1,6 @@
 # Debug category: `editor`
 
-**Where:** src/render/editor.py — Micro-clips and final concat
+**Where:** src/render/editor.py: Micro-clips and final concat
 
 ## Enable
 

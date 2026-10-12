@@ -79,7 +79,7 @@ def attach_run_tab(win) -> None:
     idx_vf = next((i for i, t in enumerate(_vf_tiles) if t.value == cur_vf), 0)
     win.video_format_combo = OptionTiles(_vf_tiles, columns=4, default_index=idx_vf)
     step1.addWidget(win.video_format_combo)
-    win.nsfw_format_warning = QLabel("Adults only — auto-upload disabled.")
+    win.nsfw_format_warning = QLabel("Adults only: auto-upload disabled.")
     win.nsfw_format_warning.setStyleSheet("color: #FE2C55; font-size: 11px;")
     win.nsfw_format_warning.setVisible(False)
     step1.addWidget(win.nsfw_format_warning)
@@ -415,16 +415,16 @@ def attach_run_tab(win) -> None:
         if custom:
             vf_hint.setText("Custom: two LLM passes from your notes.")
         elif vf == "nsfw":
-            vf_hint.setText("Adults only — Firecrawl recommended.")
+            vf_hint.setText("Adults only: Firecrawl recommended.")
         else:
             vf_hint.setText("Topics tab drives this run.")
         if hasattr(win, "_pipeline_coach"):
             if custom:
-                win._pipeline_coach.set_message("Tip: add tone, structure, and a hook — chips can jump-start your brief.")
+                win._pipeline_coach.set_message("Tip: add tone, structure, and a hook. Chips can jump-start your brief.")
             elif mm == "photo":
                 win._pipeline_coach.set_message("Photo mode: pick a layout, then run from Topics or a custom brief.")
             else:
-                win._pipeline_coach.set_message("Preset mode uses your Topics tab — switch to Custom for full control.")
+                win._pipeline_coach.set_message("Preset mode uses your Topics tab; switch to Custom for full control.")
 
     win.run_content_picker.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
     win.video_format_combo.currentIndexChanged.connect(lambda _i: _sync_content_mode_ui())
@@ -662,7 +662,7 @@ def _attach_run_readiness(win) -> None:
         warn = "#E8B84A"
         if pf.ok and not pf.warnings:
             dot.setStyleSheet(f"border-radius: 5px; background-color: {accent};")
-            dot.setToolTip("Ready — Run, Preview, and Storyboard are good to go.")
+            dot.setToolTip("Ready: Run, Preview, and Storyboard are good to go.")
             dot.setVisible(True)
         elif pf.ok and pf.warnings:
             dot.setStyleSheet(f"border-radius: 5px; background-color: {warn};")

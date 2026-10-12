@@ -100,7 +100,7 @@ def attach_video_tab(win) -> None:
     )
     lay.addWidget(win._platform_preset_grid)
 
-    preset_hint = QLabel("Tap a card — switch to Advanced to tweak settings.")
+    preset_hint = QLabel("Tap a card; switch to Advanced to tweak settings.")
     preset_hint.setWordWrap(True)
     preset_hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     lay.addWidget(preset_hint)

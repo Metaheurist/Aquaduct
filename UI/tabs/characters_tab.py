@@ -186,7 +186,7 @@ def attach_characters_tab(win) -> None:
     attach_basic_advanced_header(win, "characters", title_row_parent_layout=hdr_lay, title_widget=char_hdr)
     list_lay.addWidget(hdr_row)
 
-    hero = StepCard(1, "Create a host", subtitle="Lead voice + portrait — assign on Pipeline")
+    hero = StepCard(1, "Create a host", subtitle="Lead voice + portrait: assign on Pipeline")
     hint = QLabel("Tap + or Generate with LLM to add your first character.")
     hint.setStyleSheet("color: #B7B7C2; font-size: 11px;")
     hero.addWidget(hint)

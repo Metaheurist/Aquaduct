@@ -1,6 +1,6 @@
 # Debug category: `pipeline`
 
-**Where:** main.run_once — Pipeline orchestration and stage flow
+**Where:** main.run_once: Pipeline orchestration and stage flow
 
 ## Enable
 

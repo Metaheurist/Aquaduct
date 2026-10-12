@@ -65,7 +65,7 @@ def image_model_id_from_ui(win) -> str:
 
 def video_model_id_from_ui(win) -> str:
     """
-    Video (motion / T2V) Hugging Face repo id — matches Model tab ``vid_combo``.
+    Video (motion / T2V) Hugging Face repo id: matches Model tab ``vid_combo``.
     """
     try:
         vid_data = win.vid_combo.currentData() if hasattr(win, "vid_combo") else None  # type: ignore[attr-defined]

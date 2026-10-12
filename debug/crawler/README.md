@@ -1,6 +1,6 @@
 # Debug category: `crawler`
 
-**Where:** Headline / news pipeline — Item selection and crawl seeds
+**Where:** Headline / news pipeline: Item selection and crawl seeds
 
 ## Enable
 

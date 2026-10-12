@@ -2,7 +2,7 @@
 
 ## Overview
 
-When **Model execution** is set to **API** (Model tab or persisted in `ui_settings.json`), the desktop pipeline uses **HTTP providers** for script (LLM), image stills, optional **Pro** text-to-video (**Kling AI** is the default *motion* option in the UI, with Magic Hour and Replicate as alternatives), and voice (OpenAI TTS, **Inworld**, or **ElevenLabs** when enabled) — instead of loading local Hugging Face diffusion / causal LM weights for those roles.
+When **Model execution** is set to **API** (Model tab or persisted in `ui_settings.json`), the desktop pipeline uses **HTTP providers** for script (LLM), image stills, optional **Pro** text-to-video (**Kling AI** is the default *motion* option in the UI, with Magic Hour and Replicate as alternatives), and voice (OpenAI TTS, **Inworld**, or **ElevenLabs** when enabled): instead of loading local Hugging Face diffusion / causal LM weights for those roles.
 
 **FFmpeg** and MoviePy assembly still run locally for mux, captions, and music/SFX where enabled.
 
@@ -65,8 +65,8 @@ Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../../src
 | Script | HF transformers | OpenAI-compatible chat → `VideoPackage` (OpenAI, **Gemini** via Google AI Studio, Groq, …) |
 | Stills / slideshow | Local diffusion | OpenAI DALL·E, **SiliconFlow** (OpenAI `images` API), or **Replicate** image model/version id |
 | Voice | Kokoro / pyttsx3 / ElevenLabs | **Inworld** TTS, OpenAI `tts-1` / `tts-1-hd`, or ElevenLabs (API tab) when enabled |
-| Pro text-to-video | Local T2V / ZeroScope, etc. | **Kling** (default in UI; JWT + official API), or **Magic Hour**, or **Replicate** (version id) — MP4 clips |
-| Motion (no slideshow) | Image + clip models | **Not supported** — use slideshow or Pro + Magic Hour or Replicate |
+| Pro text-to-video | Local T2V / ZeroScope, etc. | **Kling** (default in UI; JWT + official API), or **Magic Hour**, or **Replicate** (version id): MP4 clips |
+| Motion (no slideshow) | Image + clip models | **Not supported**: use slideshow or Pro + Magic Hour or Replicate |
 
 ## Security
 
@@ -76,7 +76,7 @@ Catalog and suggested model ids: [`src/settings/api_model_catalog.py`](../../src
 ## Characters tab (API mode)
 
 - **Generate with LLM** uses the configured **LLM** API (OpenAI chat JSON) via [`generate_character_from_preset_openai`](../../src/content/brain_api.py); no local transformers load.
-- **Generate portrait** uses the **Image** API path ([`generate_still_png_bytes`](../../src/runtime/api_generation.py)) — OpenAI DALL·E, SiliconFlow, or Replicate — matching slideshow stills. Save settings after configuring **Generation APIs**.
+- **Generate portrait** uses the **Image** API path ([`generate_still_png_bytes`](../../src/runtime/api_generation.py)): OpenAI DALL·E, SiliconFlow, or Replicate, matching slideshow stills. Save settings after configuring **Generation APIs**.
 
 ## Configuration
 
@@ -97,7 +97,7 @@ OpenAI, Replicate, Magic Hour, and other HTTP clients in this path use a small *
 
 ## See also
 
-- [API mode review checklist](../review/api_mode_checklist.md) — step-by-step QA runbook for verifying API-mode runs end to end.
+- [API mode review checklist](../review/api_mode_checklist.md): step-by-step QA runbook for verifying API-mode runs end to end.
 
 ---
 

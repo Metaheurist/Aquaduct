@@ -4,11 +4,11 @@ Curated **local** models come from `model_options()`; **API** providers from `ap
 
 **Tiers** (`[Pro]`, `[Standard]`, `[Lite]`) are defined in `src/models/model_tiers.py`.
 
-**Local VRAM** is the **heuristic** label from `vram_requirement_hint()` in `src/models/hardware.py` (quantization, offload, and settings change real needs). **API** rows use the provider’s cloud—**no local GPU** for that step.
+**Local VRAM** is the **heuristic** label from `vram_requirement_hint()` in `src/models/hardware.py` (quantization, offload, and settings change real needs). **API** rows use the provider’s cloud, **no local GPU** for that step.
 
 ---
 
-## Local (Hugging Face) — `Model` tab, execution: Local
+## Local (Hugging Face): `Model` tab, execution: Local
 
 | Role | `repo_id` | Tier | Size hint (UI) | Speed | Typical GPU / RAM (heuristic) |
 |------|-----------|------|----------------|-------|----------------------------------|
@@ -39,29 +39,29 @@ Curated **local** models come from `model_options()`; **API** providers from `ap
 
 ---
 
-## API — `Model` + `API` tab, execution: API
+## API: `Model` + `API` tab, execution: API
 
 One row per **provider + role + default model** from `default_models_for_provider`. Custom model ids and Replicate version strings are also supported in the UI.
 
 | Provider | Role | `model` id | Tier | Local GPU for this step | Env keys (first listed) |
 |----------|------|------------|------|--------------------------|------------------------|
-| Google AI Studio (Gemini) — large context, ~1.5k req/day (free) | llm | `gemini-2.5-flash` | Standard | **No** | GEMINI_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY |
-| Google AI Studio (Gemini) — large context, ~1.5k req/day (free) | llm | `gemini-2.5-pro` | Pro | **No** | GEMINI_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY |
-| Google AI Studio (Gemini) — large context, ~1.5k req/day (free) | llm | `gemini-2.0-flash` | Standard | **No** | GEMINI_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY |
-| SiliconFlow (Flux, SD3, …) — daily free credits | image | `black-forest-labs/FLUX.1-schnell` | Lite | **No** | SILICONFLOW_API_KEY, OPENAI_API_KEY |
-| SiliconFlow (Flux, SD3, …) — daily free credits | image | `stabilityai/stable-diffusion-3-5-large` | Pro | **No** | SILICONFLOW_API_KEY, OPENAI_API_KEY |
-| Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v3` | Pro | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
-| Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v2-6` | Standard | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
-| Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v2-master` | Pro | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
-| Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v2-5-turbo` | Standard | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
-| Magic Hour — generative video API, ~100 credits/day (free) | video | `default` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
-| Magic Hour — generative video API, ~100 credits/day (free) | video | `ltx-2` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
-| Magic Hour — generative video API, ~100 credits/day (free) | video | `wan-2.2` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
-| Magic Hour — generative video API, ~100 credits/day (free) | video | `seedance` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
-| Magic Hour — generative video API, ~100 credits/day (free) | video | `kling-3.0` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
-| Magic Hour — generative video API, ~100 credits/day (free) | video | `kling-1.6` | Standard | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
-| Inworld — low-latency TTS (free tier) | voice | `inworld-tts-1.5-max` | Pro | **No** | INWORLD_API_KEY, OPENAI_API_KEY |
-| Inworld — low-latency TTS (free tier) | voice | `inworld-tts-1.5-mini` | Lite | **No** | INWORLD_API_KEY, OPENAI_API_KEY |
+| Google AI Studio (Gemini): large context, ~1.5k req/day (free) | llm | `gemini-2.5-flash` | Standard | **No** | GEMINI_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY |
+| Google AI Studio (Gemini): large context, ~1.5k req/day (free) | llm | `gemini-2.5-pro` | Pro | **No** | GEMINI_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY |
+| Google AI Studio (Gemini): large context, ~1.5k req/day (free) | llm | `gemini-2.0-flash` | Standard | **No** | GEMINI_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY |
+| SiliconFlow (Flux, SD3, …): daily free credits | image | `black-forest-labs/FLUX.1-schnell` | Lite | **No** | SILICONFLOW_API_KEY, OPENAI_API_KEY |
+| SiliconFlow (Flux, SD3, …): daily free credits | image | `stabilityai/stable-diffusion-3-5-large` | Pro | **No** | SILICONFLOW_API_KEY, OPENAI_API_KEY |
+| Kling AI (motion): ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v3` | Pro | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
+| Kling AI (motion): ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v2-6` | Standard | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
+| Kling AI (motion): ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v2-master` | Pro | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
+| Kling AI (motion): ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo | video | `kling-v2-5-turbo` | Standard | **No** | KLING_ACCESS_KEY, KLING_SECRET_KEY |
+| Magic Hour: generative video API, ~100 credits/day (free) | video | `default` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
+| Magic Hour: generative video API, ~100 credits/day (free) | video | `ltx-2` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
+| Magic Hour: generative video API, ~100 credits/day (free) | video | `wan-2.2` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
+| Magic Hour: generative video API, ~100 credits/day (free) | video | `seedance` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
+| Magic Hour: generative video API, ~100 credits/day (free) | video | `kling-3.0` | Pro | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
+| Magic Hour: generative video API, ~100 credits/day (free) | video | `kling-1.6` | Standard | **No** | MAGIC_HOUR_API_KEY, MAGICHOUR_API_KEY |
+| Inworld: low-latency TTS (free tier) | voice | `inworld-tts-1.5-max` | Pro | **No** | INWORLD_API_KEY, OPENAI_API_KEY |
+| Inworld: low-latency TTS (free tier) | voice | `inworld-tts-1.5-mini` | Lite | **No** | INWORLD_API_KEY, OPENAI_API_KEY |
 | OpenAI | llm | `gpt-4o-mini` | Lite | **No** | OPENAI_API_KEY |
 | OpenAI | llm | `gpt-4o` | Pro | **No** | OPENAI_API_KEY |
 | OpenAI | image | `dall-e-3` | Pro | **No** | OPENAI_API_KEY |
@@ -105,7 +105,7 @@ One row per **provider + role + default model** from `default_models_for_provide
 
 ### Notes
 
-- **OpenAI `video` role:** `default_models_for_provider` falls back to the provider’s full `model_slugs` tuple, so the Video row may list chat/image/TTS ids—use a real Pro text-to-video id from the provider’s docs, or choose **Kling / Magic Hour / Replicate** for motion.
+- **OpenAI `video` role:** `default_models_for_provider` falls back to the provider’s full `model_slugs` tuple, so the Video row may list chat/image/TTS ids, use a real Pro text-to-video id from the provider’s docs, or choose **Kling / Magic Hour / Replicate** for motion.
 - **Regenerate:** `python scripts/gen_model_inventory_md.py` from the repo root.
 
 ---

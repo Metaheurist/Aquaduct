@@ -15,7 +15,7 @@ A trace of the `Two_Sentenced_Horror_Stories` Pro run showed:
 - Clip pipeline: encoded the 49 returned frames at 30 fps, so each clip is
   ~1.6 s of motion crammed into the user-fps file. After per-clip equal-T
   audio chunking, the visible motion was a fraction of a second long with
-  static padding — i.e. the "stitched motion pictures" effect.
+  static padding: i.e. the "stitched motion pictures" effect.
 
 We now fix this with a small native-FPS registry plus a per-clip metadata
 sidecar that downstream stages trust.
@@ -72,7 +72,7 @@ LTX-2 audio-aware export path (`encode_video(...)`) also writes it.
 ## Spatial AI upscale (export resolution)
 
 **Temporal** quality (raising clip playback fps) is handled by **Smoothness**
-([`temporal_smooth.py`](../../src/render/temporal_smooth.py) — FFmpeg `minterpolate` or optional RIFE).
+([`temporal_smooth.py`](../../src/render/temporal_smooth.py): FFmpeg `minterpolate` or optional RIFE).
 
 **Spatial** quality (sharper pixels when T2V outputs are smaller than the Video tab
 width×height) is handled by [`spatial_upscale.py`](../../src/render/spatial_upscale.py):
@@ -85,7 +85,7 @@ width×height) is handled by [`spatial_upscale.py`](../../src/render/spatial_ups
 - During **local** `generate_clips`, the pipeline emits progress messages **Spatial upscale clip i/n…** so long SR passes do not look hung ([`main.py`](../../main.py)).
 - **API** cloud runs skip this path (preflight warns that `auto` has no effect).
 
-See [Config — spatial upscale env](../reference/config.md#spatial-upscale-environment-optional) and
+See [Config: spatial upscale env](../reference/config.md#spatial-upscale-environment-optional) and
 [`requirements-optional-upscale.txt`](../../requirements-optional-upscale.txt).
 
 ## Editor: per-clip duration alignment (no more equal-T chunking)
@@ -107,12 +107,12 @@ video clip and the matching audio chunk. When omitted (or any entry is
 1. `clip_durations[i]` (caller-supplied, in seconds).
 2. `read_clip_meta(clip).duration_s` (sidecar written by the T2V/I2V step).
 3. `VideoFileClip.duration` (decoded from the mp4 itself).
-4. `total_dur / clip_count` (legacy equal chunk — only if everything above
+4. `total_dur / clip_count` (legacy equal chunk: only if everything above
    fails).
 
 The audio cursor advances by the resolved per-clip duration, so a 6.125 s
 CogVideoX clip and a 5.0 s Mochi clip get exactly 6.125 s and 5.0 s of audio
-each — captions stay aligned and the final video stops feeling like static
+each: captions stay aligned and the final video stops feeling like static
 keyframes with a soundtrack glued on top.
 
 ## Audio-track length is now `sum(actual_durations)`
@@ -162,7 +162,7 @@ upsampling pass driven from `VideoSettings.smoothness_mode`:
 
 | Mode      | Backend                                     | Resource cost                | Quality           |
 |-----------|---------------------------------------------|------------------------------|-------------------|
-| `off`     | (no-op — default)                           | none                          | identical to legacy |
+| `off`     | (no-op: default)                           | none                          | identical to legacy |
 | `ffmpeg`  | `minterpolate=mci:aobmc:vsbmf=1`            | CPU only, bundled binary     | smooth, occasional warps |
 | `rife`    | `rife_ncnn_vulkan_python` (lazy import)     | CPU + ≥1.5 GB free VRAM      | best, requires extra package |
 
@@ -177,7 +177,7 @@ Behaviour summary, all implemented in
   rewritten so the editor + audio aligner pick up the new fps and frame
   count.
 - On any failure the original clip is kept and a `mode_used="off"`
-  result is returned — smoothing must never break a successful render.
+  result is returned: smoothing must never break a successful render.
 - `rife` falls back to `ffmpeg` when the package is missing or
   `torch.cuda.mem_get_info()` reports too little headroom (< 1500 MB by
   default; see `RIFE_VRAM_BUDGET_MB`).
@@ -190,7 +190,7 @@ mp4s and matching sidecars without further changes.
 `src/runtime/preflight.py` now warns up-front when:
 
 - `smoothness_mode == "rife"` is selected in API mode (silently ignored).
-- `rife_available()` returns `False` (package missing — falls back to
+- `rife_available()` returns `False` (package missing: falls back to
   ffmpeg).
 - Free VRAM is below `RIFE_VRAM_BUDGET_MB` (falls back to ffmpeg).
 
@@ -200,8 +200,8 @@ free GPU memory, install the optional package, or simply switch to
 
 ## See also
 
-- [`docs/pipeline/editor.md`](editor.md) — overall mux and overlay pipeline.
-- [`docs/pipeline/main.md`](main.md) — Pro-mode call sites for T2V / I2V.
+- [`docs/pipeline/editor.md`](editor.md): overall mux and overlay pipeline.
+- [`docs/pipeline/main.md`](main.md): Pro-mode call sites for T2V / I2V.
 - `tests/render/test_native_fps_encode.py`
 - `tests/render/test_audio_alignment_real_durations.py`
 - `tests/render/test_temporal_smooth.py`

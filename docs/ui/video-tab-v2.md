@@ -1,9 +1,9 @@
-# Video tab v2 — four-knob preset model (Phase 5)
+# Video tab v2: four-knob preset model (Phase 5)
 
 The legacy Video tab exposed five raw spinners (`clips_per_video`,
 `pro_clip_seconds`, `fps`, `width`, `height`, plus the smoothness toggle
 introduced in Phase 2). The trace from `Two_Sentenced_Horror_Stories`
-showed users mismatching the values — e.g. picking 30 fps for a model
+showed users mismatching the values: e.g. picking 30 fps for a model
 that natively encodes at 8 fps, which produced the "flashing slideshow"
 look. v2 wraps the spinners with **four named presets** plus the existing
 smoothness mode and a hidden Advanced disclosure for power users.
@@ -23,16 +23,16 @@ defines the registries (`LENGTH_PRESETS`, `SCENE_PRESETS`, `FPS_PRESETS`,
 `RESOLUTION_PRESETS`) and the helpers used everywhere else:
 
 - `length_preset(pid)` / `scene_preset(pid)` / `fps_preset(pid)` /
-  `resolution_preset(pid)` — total-of-strings → preset lookups with
+  `resolution_preset(pid)`: total-of-strings → preset lookups with
   default fall-backs.
-- `length_factor_for(settings)` — reads `video_length_preset_id` (off the
+- `length_factor_for(settings)`: reads `video_length_preset_id` (off the
   `VideoSettings`) and returns the scalar factor (`0.85` / `1.0` / `1.25`).
-- `apply_t2v_length_factor(kwargs, factor)` — rescale a T2V kwargs dict's
+- `apply_t2v_length_factor(kwargs, factor)`: rescale a T2V kwargs dict's
   `num_frames` while keeping the **8-frame floor** so a misconfigured
   factor can't ask the pipeline for zero motion.
-- `migrate_legacy_video_settings(legacy)` — pick the closest preset id
+- `migrate_legacy_video_settings(legacy)`: pick the closest preset id
   for each knob from existing raw values. Idempotent.
-- `apply_video_presets(legacy)` — when a preset id is set, override the
+- `apply_video_presets(legacy)`: when a preset id is set, override the
   matching raw value(s). Blank id leaves the raw value alone (which is
   how the Advanced disclosure stays useful for power users).
 
@@ -69,14 +69,14 @@ Length:        Medium clip (~25–35 s)
 Scene length:  Balanced scenes
 Frame rate:    Standard 30 fps
 Resolution:    Vertical 1080×1920
-Smoothness:    Off — encode at native fps
+Smoothness:    Off: encode at native fps
 ```
 
 Picking any combo box snaps the matching legacy spinners
 (`fps_spin`, `clips_spin`, `pro_clip_seconds_spin`, `format_combo`)
 through the same `_applying_video_template` mutex used by the platform
 template tiles, so the user always sees a coherent state. Editing the
-spinners directly does *not* reset the v2 presets — that lets advanced
+spinners directly does *not* reset the v2 presets: that lets advanced
 users tweak a single value without losing the rest of the preset.
 
 The selections are persisted via `UI/main_window.py::_settings_from_ui`,
@@ -110,9 +110,9 @@ covers (19 cases):
 
 ## See also
 
-- [`docs/pipeline/video-quality.md`](../pipeline/video-quality.md) —
+- [`docs/pipeline/video-quality.md`](../pipeline/video-quality.md):
   Phase 1 native fps and Phase 2 smoothing.
-- [`docs/pipeline/scene-prompts.md`](../pipeline/scene-prompts.md) —
+- [`docs/pipeline/scene-prompts.md`](../pipeline/scene-prompts.md):
   Phase 4 scene-prompt builder which receives `clips_per_video` as the
   scene-count budget.
 

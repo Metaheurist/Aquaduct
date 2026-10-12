@@ -37,7 +37,7 @@ SECTION_SPACING_PX = 14
 def section_card(*, margins: int = SECTION_CARD_MARGINS, spacing: int = SECTION_CARD_SPACING) -> tuple[QFrame, QVBoxLayout]:
     """
     Layout wrapper (``QFrame#SettingsSectionCard``) for a logical block inside a tab.
-    Background is transparent in global QSS — only margins/spacing group the content.
+    Background is transparent in global QSS: only margins/spacing group the content.
     """
     frame = QFrame()
     frame.setObjectName("SettingsSectionCard")

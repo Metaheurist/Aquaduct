@@ -22,9 +22,9 @@ Replace `NAME` with `main`, `src.runtime.pipeline_api`, or `UI.app`.
 
 ## Takeaways
 
-1. **MoviePy / editor** — Importing `src.render.editor` (and anything that imports `moviepy.editor` eagerly) dominates CLI and API pipeline import paths. This is expected for a video app; deferring or lazy-importing moviepy inside hot paths would shrink *incremental* import graphs but is a larger refactor.
-2. **UI cold start** — `UI.main_window` plus **all tabs** loaded at import time accounts for a large share of desktop startup before the event loop runs. Tab code pulls crawler/workers and transitively `main` / editor again.
-3. **`run_once_api`** — Not separately profiled here; it lives in `src.runtime.pipeline_api` and reuses the same render/brain stack as local runs. First call cost is dominated by **network I/O** and any **lazy** local imports (e.g. torch) on first model touch, not by the `run_once_api` function wrapper itself.
+1. **MoviePy / editor**: Importing `src.render.editor` (and anything that imports `moviepy.editor` eagerly) dominates CLI and API pipeline import paths. This is expected for a video app; deferring or lazy-importing moviepy inside hot paths would shrink *incremental* import graphs but is a larger refactor.
+2. **UI cold start**: `UI.main_window` plus **all tabs** loaded at import time accounts for a large share of desktop startup before the event loop runs. Tab code pulls crawler/workers and transitively `main` / editor again.
+3. **`run_once_api`**: Not separately profiled here; it lives in `src.runtime.pipeline_api` and reuses the same render/brain stack as local runs. First call cost is dominated by **network I/O** and any **lazy** local imports (e.g. torch) on first model touch, not by the `run_once_api` function wrapper itself.
 
 ## Spatial upscale (editor path)
 
@@ -40,8 +40,8 @@ Failed slideshow/keyframes quality passes are retried in a **single** diffusion 
 
 ## “Won’t fix” in the short term
 
-- **First torch / diffusers / transformers load** — Large GPU RAM and seconds of startup when a local model is first materialized; normal for HF stacks.
-- **FFmpeg download** — One-time network + disk cost under `.cache/ffmpeg/` (see [ffmpeg.md](ffmpeg.md)).
+- **First torch / diffusers / transformers load**: Large GPU RAM and seconds of startup when a local model is first materialized; normal for HF stacks.
+- **FFmpeg download**: One-time network + disk cost under `.cache/ffmpeg/` (see [ffmpeg.md](ffmpeg.md)).
 
 ## CPU cores (OpenMP, BLAS, PyTorch CPU pools)
 
@@ -56,37 +56,37 @@ After **`import torch`**, the same helper applies **`torch.set_num_threads`** to
 | `AQUADUCT_CPU_THREADS` | Override the target (1–256). Also drives BLAS env vars and `torch.set_num_threads`. |
 | `AQUADUCT_TORCH_INTEROP_THREADS` | Optional override (1–32) for `torch.set_num_interop_threads` if you want to tune CPU-side overlap manually. |
 
-**UI workers**: Hugging Face **model size probes** (startup) run **concurrent HTTP** tasks via a thread pool; **checksum verification** across multiple repos can verify **several folders in parallel** (capped so disk I/O does not thrash). GPU inference for diffusion stays **sequential per pipeline** — parallelizing two models on one GPU would usually hurt more than help.
+**UI workers**: Hugging Face **model size probes** (startup) run **concurrent HTTP** tasks via a thread pool; **checksum verification** across multiple repos can verify **several folders in parallel** (capped so disk I/O does not thrash). GPU inference for diffusion stays **sequential per pipeline**: parallelizing two models on one GPU would usually hurt more than help.
 
 ## Diffusion: VRAM vs system RAM (CPU offload)
 
 Local **image** and **video** diffusion use a shared placement helper ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)) so weights can stay mostly in **system RAM** and move to the GPU per module/step (**Diffusers** `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()`), instead of loading the full pipeline into VRAM at once. This is **not** Windows paging to disk; it trades **speed** for **lower peak VRAM**.
 
-When a job finishes, render code calls **`dispose_diffusion_pipeline()`** in the same module right before **`del pipe`**. That invokes diffusers **`maybe_free_model_hooks()`** when available so offload hooks are not left attached; otherwise weights can remain reachable and **tree RSS** stays inflated even after **Resource usage → Purge memory** (extra `gc` + CUDA cache flush). Allocator pools may still moderate how much RSS falls on Windows — see [VRAM utilities](../reference/vram.md).
+When a job finishes, render code calls **`dispose_diffusion_pipeline()`** in the same module right before **`del pipe`**. That invokes diffusers **`maybe_free_model_hooks()`** when available so offload hooks are not left attached; otherwise weights can remain reachable and **tree RSS** stays inflated even after **Resource usage → Purge memory** (extra `gc` + CUDA cache flush). Allocator pools may still moderate how much RSS falls on Windows: see [VRAM utilities](../reference/vram.md).
 
 **Automatic policy** uses detected **GPU VRAM** ([`get_hardware_info()`](../../src/models/hardware.py)) and **available RAM** (`psutil.virtual_memory().available`). Override anytime with environment variables:
 
 | Variable | Values |
 |----------|--------|
 | `AQUADUCT_DIFFUSION_CPU_OFFLOAD` | `auto` (default), `off` / `none` / `0` (full GPU when CUDA works), `model`, `sequential` |
-| `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true` — legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
+| `AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD` | `1` / `true`: legacy alias; forces **sequential** offload when the main variable is unset or `auto` |
 
-**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** normally chooses **sequential** offload so only one diffusers submodule at a time uses the diffusion GPU’s VRAM. Enabling **My PC → VRAM-first sharding** under **Auto** policy (and sufficient host RAM) can steer **`auto`** toward **`off`** offload so **`src/gpu/multi_device`** submodule moves remain viable — expect transient higher peak VRAM while weights first populate the primary CUDA device.
+**Multi-GPU:** when **`torch.cuda.device_count() >= 2`**, **`auto`** normally chooses **sequential** offload so only one diffusers submodule at a time uses the diffusion GPU’s VRAM. Enabling **My PC → VRAM-first sharding** under **Auto** policy (and sufficient host RAM) can steer **`auto`** toward **`off`** offload so **`src/gpu/multi_device`** submodule moves remain viable: expect transient higher peak VRAM while weights first populate the primary CUDA device.
 
 **Laboratory CUDA checklist** (manual, GPU workstation): toggle **VRAM-first**, keep **two** GPUs under **Auto** routing, render one curated diffusion still plus a BF16 causal LLM branch with **`AQUADUCT_DEBUG` including `gpu_plan`**; stderr should emit **`accelerate_balanced`** / **`diffusion_placement`** breadcrumbs when the gated path engages.
 
 Sequential and model offload both pass the resolved **diffusion CUDA index** into Diffusers as **`gpu_id`** where supported so the active weights move on the intended GPU.
 
-The title-bar **Resource usage** graph ([`UI/dialogs/resource_graph_dialog.py`](../../UI/dialogs/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry** (approximate **tree RSS MB**, **host free RAM**, **system-wide RAM used %**, subprocess counts); with multiple GPUs you can pick which device’s VRAM to chart in the Monitor dropdown, or choose **Split view — all GPUs** there for one trace per device. Between major stages the pipeline calls [`release_between_stages`](../../src/util/memory_budget.py), which delegates to [`cleanup_vram`](../reference/vram.md) / [`prepare_for_next_model`](../reference/vram.md) so VRAM watchdog behavior stays centralized. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
+The title-bar **Resource usage** graph ([`UI/dialogs/resource_graph_dialog.py`](../../UI/dialogs/resource_graph_dialog.py)) shows live CPU/RAM/GPU **telemetry** (approximate **tree RSS MB**, **host free RAM**, **system-wide RAM used %**, subprocess counts); with multiple GPUs you can pick which device’s VRAM to chart in the Monitor dropdown, or choose **Split view: all GPUs** there for one trace per device. Between major stages the pipeline calls [`release_between_stages`](../../src/util/memory_budget.py), which delegates to [`cleanup_vram`](../reference/vram.md) / [`prepare_for_next_model`](../reference/vram.md) so VRAM watchdog behavior stays centralized. Offload **policy** is decided at **pipeline load** from hardware + free RAM, not from the graph in a closed loop.
 
 **Multi-GPU CUDA routing** (which device runs local LLM vs diffusion) is configured on the **My PC** tab (**Auto** \| **Select GPU** and optional **Device** when pinning one index) and implemented in [`src/util/cuda_device_policy.py`](../../src/util/cuda_device_policy.py); see [hardware.md](../reference/hardware.md). This is separate from **CPU thread** tuning above.
 
-**Resource graph — model load heartbeat:** long synchronous Hugging Face / diffusers **`from_pretrained`** calls run a background heartbeat (see [`src/runtime/load_heartbeat.py`](../../src/runtime/load_heartbeat.py)). The latest line is mirrored in the Resource usage dialog footer when fresh. Tunables:
+**Resource graph: model load heartbeat:** long synchronous Hugging Face / diffusers **`from_pretrained`** calls run a background heartbeat (see [`src/runtime/load_heartbeat.py`](../../src/runtime/load_heartbeat.py)). The latest line is mirrored in the Resource usage dialog footer when fresh. Tunables:
 
 | Variable | Role |
 |----------|------|
 | `AQUADUCT_LOAD_HEARTBEAT_INTERVAL_S` | Seconds between heartbeat log lines (default **30**). |
-| `AQUADUCT_LOAD_FATAL_TIMEOUT_S` or `AQUADUCT_LOAD_TIMEOUT_S` | If \> **0**, emits a stalled-load watchdog message after this many seconds (**does not** cancel the load — best-effort observability only). |
+| `AQUADUCT_LOAD_FATAL_TIMEOUT_S` or `AQUADUCT_LOAD_TIMEOUT_S` | If \> **0**, emits a stalled-load watchdog message after this many seconds (**does not** cancel the load: best-effort observability only). |
 
 Checkpoint / resume (optional): enable **Resume partial pipeline** on the Video tab. The pipeline writes **`assets/run_checkpoint.json`** and **`assets/pipeline_script_package.json`** as coarse milestones complete; on the next Run, the app may offer to resume the newest incomplete folder under **`videos/`** (same model fingerprint). See [`src/runtime/run_checkpoint.py`](../../src/runtime/run_checkpoint.py).
 

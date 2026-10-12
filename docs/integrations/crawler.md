@@ -1,4 +1,4 @@
-# `src/content/crawler.py` — Crawler
+# `src/content/crawler.py`: Crawler
 
 ## Purpose
 Fetch trending AI-tool news with a **free default path** (no paid news APIs), optionally using **Firecrawl** when configured in the app/API tab.
@@ -7,14 +7,14 @@ Fetch trending AI-tool news with a **free default path** (no paid news APIs), op
 
 ## Inputs
 - **Optional Firecrawl** (`firecrawl_enabled` + API key, or `FIRECRAWL_API_KEY` in the environment): v2 search for headlines; v1 scrape for article text when `fetch_article_text` is on. On failure or when disabled, Aquaduct falls back automatically.
-- Google News RSS query — used only when **`discover_uses_headline_sources()`** is true (**news** and **explainer** modes).
-- MarkTechPost homepage — same headline-style fallback, **news/explainer only**.
+- Google News RSS query: used only when **`discover_uses_headline_sources()`** is true (**news** and **explainer** modes).
+- MarkTechPost homepage: same headline-style fallback, **news/explainer only**.
 
 ### Mode-aware search strings
 Search combines **topic tags** (if any) with a **video-format bias** (`topic_mode` / `cache_mode`):
-- **news** and **explainer** — **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/content/topics.py`](../../src/content/topics.py)); Google News RSS + MarkTechPost may supplement Firecrawl.
-- **cartoon**, **unhinged**, and **creepypasta** — Firecrawl queries bias toward **animation / meme / absurdist** or **horror fiction** language (not generic SEO listicles). In the **Topics → Discover** UI only, Google News RSS and MarkTechPost are skipped (`topic_discover_only=True`). For **runs, storyboard, and `get_scored_items`**, if Firecrawl still returns nothing, RSS + MarkTechPost are used as a last resort so the pipeline is not empty. Topic phrase extraction ([`src/content/topic_discovery.py`](../../src/content/topic_discovery.py)) drops listicle titles and bare platform names for these modes.
-- **health_advice** — Firecrawl-first **wellness / health-education** queries (evidence-based lifestyle, sleep, nutrition, etc.); **Discover** skips Google News RSS (`topic_discover_only=True`); topic ranking favors health-relevant phrases. Same last-resort RSS/MarkTechPost behavior as other creative modes when Firecrawl returns nothing on pipeline fetches.
+- **news** and **explainer**: **same** AI product / release–style queries (`video_format_uses_news_style_sourcing()` in [`src/content/topics.py`](../../src/content/topics.py)); Google News RSS + MarkTechPost may supplement Firecrawl.
+- **cartoon**, **unhinged**, and **creepypasta**: Firecrawl queries bias toward **animation / meme / absurdist** or **horror fiction** language (not generic SEO listicles). In the **Topics → Discover** UI only, Google News RSS and MarkTechPost are skipped (`topic_discover_only=True`). For **runs, storyboard, and `get_scored_items`**, if Firecrawl still returns nothing, RSS + MarkTechPost are used as a last resort so the pipeline is not empty. Topic phrase extraction ([`src/content/topic_discovery.py`](../../src/content/topic_discovery.py)) drops listicle titles and bare platform names for these modes.
+- **health_advice**: Firecrawl-first **wellness / health-education** queries (evidence-based lifestyle, sleep, nutrition, etc.); **Discover** skips Google News RSS (`topic_discover_only=True`); topic ranking favors health-relevant phrases. Same last-resort RSS/MarkTechPost behavior as other creative modes when Firecrawl returns nothing on pipeline fetches.
 
 `fetch_latest_items(..., topic_mode=...)` and pipeline fetches pass the current mode so **Discover** and runs match the selected format.
 
@@ -27,7 +27,7 @@ Returns a list of `NewsItem`:
 - `image_url` (optional; Firecrawl v2 search preview when the API returns it)
 
 ## Topic research pack (creative + Health advice Discover)
-When you click **Discover** on the **Topics** tab for **Cartoon**, **Cartoon (unhinged)**, **Creepypasta**, or **Health advice**, the app saves a small research bundle under **`.Aquaduct_data/data/topic_research/<cartoon|unhinged|creepypasta|health_advice>/`** — see [`src/content/topic_research_assets.py`](../../src/content/topic_research_assets.py) and [`video_format_writes_topic_research_pack()`](../../src/content/topics.py) (`manifest.json` + downloaded preview images). The latest manifest is also turned into markdown and prepended to **`build_script_context`** `extra_markdown` during runs / preview / storyboard when story web context or reference-image gathering runs ([`main.py`](../../main.py), [`UI/workers.py`](../../UI/workers.py)), so the script LLM sees those URLs and local image paths as extra context.
+When you click **Discover** on the **Topics** tab for **Cartoon**, **Cartoon (unhinged)**, **Creepypasta**, or **Health advice**, the app saves a small research bundle under **`.Aquaduct_data/data/topic_research/<cartoon|unhinged|creepypasta|health_advice>/`**: see [`src/content/topic_research_assets.py`](../../src/content/topic_research_assets.py) and [`video_format_writes_topic_research_pack()`](../../src/content/topics.py) (`manifest.json` + downloaded preview images). The latest manifest is also turned into markdown and prepended to **`build_script_context`** `extra_markdown` during runs / preview / storyboard when story web context or reference-image gathering runs ([`main.py`](../../main.py), [`UI/workers.py`](../../UI/workers.py)), so the script LLM sees those URLs and local image paths as extra context.
 
 ## Dedupe / caching
 Persisted under `data/news_cache/`:
@@ -37,11 +37,11 @@ Persisted under `data/news_cache/`:
 `fetch_latest_items()` does **not** consult the seen files (used for topic discovery). For **news/explainer** that still means “newest headline-like” results; for **cartoon/unhinged/creepypasta/health_advice** in **Discover** it means web-first seeds without forcing Google News; for **pipeline** fetches, RSS may still backfill when Firecrawl is empty.
 
 ## Key functions
-- `fetch_latest_items(..., topic_discover_only=False)` — uncached fetch; set `topic_discover_only=True` only for the Topics tab **Discover** button (creative modes skip headline RSS in that path).
-- `get_latest_items(..., cache_mode=...)` — fresh headlines with URL dedupe + persist
-- `get_scored_items(..., cache_mode=...)` — scored + diversified selection; updates seen URLs and seen titles for that mode
-- `clear_news_seen_cache_files(news_cache_dir)` — delete legacy + all per-mode `seen_*.json` / `seen_titles_*.json` (used by the UI “clear cache” action)
-- `news_seen_paths(news_cache_dir, mode)` — resolved paths for a mode’s seen files
+- `fetch_latest_items(..., topic_discover_only=False)`: uncached fetch; set `topic_discover_only=True` only for the Topics tab **Discover** button (creative modes skip headline RSS in that path).
+- `get_latest_items(..., cache_mode=...)`: fresh headlines with URL dedupe + persist
+- `get_scored_items(..., cache_mode=...)`: scored + diversified selection; updates seen URLs and seen titles for that mode
+- `clear_news_seen_cache_files(news_cache_dir)`: delete legacy + all per-mode `seen_*.json` / `seen_titles_*.json` (used by the UI “clear cache” action)
+- `news_seen_paths(news_cache_dir, mode)`: resolved paths for a mode’s seen files
 - `pick_one_item(items)` (currently selects the first fresh item)
 
 ## Article excerpt sanitization (Phase 3)
@@ -53,7 +53,7 @@ on the longest text candidate before returning it. The sanitizer:
 - removes citation markers (`[12]`, `[citation needed]`),
 - strips wiki nav tabs (`Edit | Talk | View source`) and pagers,
 - truncates at the first recognized Fandom / wiki rail header
-  (`Fan Feed`, `Trending pages`, `Categories: …`, etc.) — auto-enabled when
+  (`Fan Feed`, `Trending pages`, `Categories: …`, etc.): auto-enabled when
   the URL is on a Fandom / Wikipedia / `*wiki*` domain, or forced via
   `aggressive=True`,
 - collapses dense numbered link lists (`1 X 2 Y 3 Z …`) into a single

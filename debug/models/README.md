@@ -1,6 +1,6 @@
 # Debug category: `models`
 
-**Where:** src/models/model_manager.py — HF downloads and snapshots
+**Where:** src/models/model_manager.py: HF downloads and snapshots
 
 ## Enable
 

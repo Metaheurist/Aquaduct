@@ -1,6 +1,6 @@
 # Debug category: `brain`
 
-**Where:** src/content/brain.py — Local / API LLM script generation
+**Where:** src/content/brain.py: Local / API LLM script generation
 
 ## Enable
 

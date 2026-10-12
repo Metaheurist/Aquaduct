@@ -8,12 +8,12 @@ leaking into the script LLM prompt, Aquaduct now runs an optional
 
 ## Modules
 
-* [`src/content/article_chunker.py`](../../src/content/article_chunker.py) —
+* [`src/content/article_chunker.py`](../../src/content/article_chunker.py):
   sentence-aware chunking. Splits at `. ! ?` boundaries, then paragraph
   breaks, then a hard cut. Defaults: `target_chars=1800`, `max_chunks=8`,
   `min_chars=100`.
 * [`src/content/article_relevance.py`](../../src/content/article_relevance.py)
-  — runs the per-chunk classification (`{"keep": true|false}`) using the
+: runs the per-chunk classification (`{"keep": true|false}`) using the
   shared LLM holder, recomposes kept chunks, and persists a per-URL cache.
 
 ## Pipeline integration
@@ -35,7 +35,7 @@ runs:
   `8` chunks).
 * Per-chunk `max_new_tokens=96` so the LLM only generates the
   `{"keep": ...}` JSON envelope.
-* When the LLM rejects every chunk, we keep all of them — the relevance
+* When the LLM rejects every chunk, we keep all of them: the relevance
   pass cannot return an empty excerpt.
 * Per-URL cache under
   [`get_paths().cache_dir`](../../src/core/config.py)`/article_relevance/<hash>.json`,

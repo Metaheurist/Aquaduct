@@ -49,15 +49,15 @@ heavy brain stack.
 
 The module reads `video_format` to pick:
 
-- **Motion cues** — per-format vocabulary used to keep consecutive clips
+- **Motion cues**: per-format vocabulary used to keep consecutive clips
   visually distinct (`creepypasta` → "slow dolly into darkness", "rack
   focus through fog"; `cartoon` → "snap zoom, squash-stretch", "lunge to
   camera"; `news` → "slow push-in", "parallax drift"; etc.).
-- **Style tail** — short composition note appended once per scene
+- **Style tail**: short composition note appended once per scene
   (`"9:16 vertical, low-key cinematic horror, fog and grain, no gore"`
   for `creepypasta`, etc.). Skipped if the caller already passes a richer
   `art_style_affix` for the same job.
-- **Source preference** — comedy/horror formats favour
+- **Source preference**: comedy/horror formats favour
   `segment.visual_prompt`; news/explainer favour `segment.narration` so
   the spoken language drives the picture.
 

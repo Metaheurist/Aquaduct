@@ -342,7 +342,7 @@ def attach_topics_tab(win) -> None:
     chips_scroll.setWidget(win.tag_chips_inner)
     tags_lay.addWidget(chips_scroll)
 
-    win.topics_empty_hint = QLabel("No tags yet — add above or Discover.")
+    win.topics_empty_hint = QLabel("No tags yet: add above or Discover.")
     win.topics_empty_hint.setWordWrap(True)
     win.topics_empty_hint.setStyleSheet("color: #8A96A3; font-size: 11px;")
     win.topics_empty_hint.setVisible(False)

@@ -4,7 +4,7 @@ Reusable building blocks used by the desktop UI tabs (layouts, tiles, status gly
 
 ## SVG toolbar icons
 
-[`UI/widgets/toolbar_svg_icons.py`](../../UI/widgets/toolbar_svg_icons.py) — `qicon_toolbar(kind, color_hex, size)` and `pixmap_toolbar(...)` for compact toolbars.
+[`UI/widgets/toolbar_svg_icons.py`](../../UI/widgets/toolbar_svg_icons.py): `qicon_toolbar(kind, color_hex, size)` and `pixmap_toolbar(...)` for compact toolbars.
 
 Kinds include: `check`, `cross`, `dot`, `half`, `warning`, `info`, `chevron_right`, `chevron_down`, `arrow_left`, `arrow_right`, `sparkles`, plus existing `refresh`, `pause`, `play`, `stop`, folder/duplicate/trash.
 
@@ -12,59 +12,59 @@ Kinds include: `check`, `cross`, `dot`, `half`, `warning`, `info`, `chevron_righ
 
 [`UI/widgets/tab_sections.py`](../../UI/widgets/tab_sections.py):
 
-- `status_glyph_label(kind, text, color_token=…)` — icon + label row for readiness / model badges
-- `status_glyph_set_text(row, text, kind=…)` — update an existing row
+- `status_glyph_label(kind, text, color_token=…)`: icon + label row for readiness / model badges
+- `status_glyph_set_text(row, text, kind=…)`: update an existing row
 
 Replaces unicode checkmarks and warning symbols in the Model and Run tabs.
 
 ## Flow layout
 
-[`UI/widgets/flow_layout.py`](../../UI/widgets/flow_layout.py) — wrapping `QLayout` for Topics tag chips and the Characters card grid.
+[`UI/widgets/flow_layout.py`](../../UI/widgets/flow_layout.py): wrapping `QLayout` for Topics tag chips and the Characters card grid.
 
 ## Two-column rows
 
-[`UI/widgets/two_column.py`](../../UI/widgets/two_column.py) — `two_column_row(left, right, ratio=(1,1), spacing=12)` for side-by-side section cards (Library media + runs, Characters grid + editor).
+[`UI/widgets/two_column.py`](../../UI/widgets/two_column.py): `two_column_row(left, right, ratio=(1,1), spacing=12)` for side-by-side section cards (Library media + runs, Characters grid + editor).
 
 ## Library project cards
 
-[`UI/widgets/library_project_card.py`](../../UI/widgets/library_project_card.py) — selectable portrait card (thumbnail, title, folder, meta). Thumbnails from [`UI/services/library_thumbnails.py`](../../UI/services/library_thumbnails.py) (`final.png` or generated `thumbnail.jpg`).
+[`UI/widgets/library_project_card.py`](../../UI/widgets/library_project_card.py): selectable portrait card (thumbnail, title, folder, meta). Thumbnails from [`UI/services/library_thumbnails.py`](../../UI/services/library_thumbnails.py) (`final.png` or generated `thumbnail.jpg`).
 
 ## Topic chips
 
-[`UI/widgets/topic_chip.py`](../../UI/widgets/topic_chip.py) — removable pill chips with select + remove signals. Used on the Topics tab (~160px capped scroll area).
+[`UI/widgets/topic_chip.py`](../../UI/widgets/topic_chip.py): removable pill chips with select + remove signals. Used on the Topics tab (~160px capped scroll area).
 
 ## Character cards
 
-[`UI/widgets/character_card.py`](../../UI/widgets/character_card.py) — avatar, name, and identity snippet; click to select. Used in the Characters tab card grid.
+[`UI/widgets/character_card.py`](../../UI/widgets/character_card.py): avatar, name, and identity snippet; click to select. Used in the Characters tab card grid.
 
 ## Button chrome
 
-[`UI/theme/palette.py`](../../UI/theme/palette.py) — rounder `QPushButton` radii; `QPushButton[shape="pill"]` and `QPushButton[shape="circle"]` for icon-only controls.
+[`UI/theme/palette.py`](../../UI/theme/palette.py): rounder `QPushButton` radii; `QPushButton[shape="pill"]` and `QPushButton[shape="circle"]` for icon-only controls.
 
 Title-bar and dialog buttons: [`UI/widgets/title_bar_outline_button.py`](../../UI/widgets/title_bar_outline_button.py) (`styled_outline_button`, icon-only close/pause).
 
 ## Basic | Advanced (per tab)
 
-[`UI/widgets/basic_advanced.py`](../../UI/widgets/basic_advanced.py) — title-row **Basic | Advanced** segmented control. **Advanced** shows widgets registered with `register_advanced_sections(win, tab_id, [...])`. Persisted in `ui_settings.json` as `advanced_tabs` (per-tab booleans). Uses [`SegmentedPicker`](../../UI/widgets/segmented_picker.py).
+[`UI/widgets/basic_advanced.py`](../../UI/widgets/basic_advanced.py): title-row **Basic | Advanced** segmented control. **Advanced** shows widgets registered with `register_advanced_sections(win, tab_id, [...])`. Persisted in `ui_settings.json` as `advanced_tabs` (per-tab booleans). Uses [`SegmentedPicker`](../../UI/widgets/segmented_picker.py).
 
 ## Visual Basic Mode primitives
 
 [`UI/widgets/visual_primitives.py`](../../UI/widgets/visual_primitives.py):
 
-- `StepCard` — numbered step container (Pipeline, Picture)
-- `CoachStrip` — one-line hint under the tab header
-- `QuantityStepper` — large ± stepper wrapping a hidden spin (harvest-compatible)
-- `PresetCardGrid` / `SwatchGrid` — checkable cards with SVG chips (label under icon; grid uses fixed vertical size where needed)
+- `StepCard`: numbered step container (Pipeline, Picture)
+- `CoachStrip`: one-line hint under the tab header
+- `QuantityStepper`: large ± stepper wrapping a hidden spin (harvest-compatible)
+- `PresetCardGrid` / `SwatchGrid`: checkable cards with SVG chips (label under icon; grid uses fixed vertical size where needed)
 - `ProviderCard`, `PromptChips`, `PreviewStrip`
-- `QuantityStepper` — fixed-size ± buttons (Pipeline batch count)
+- `QuantityStepper`: fixed-size ± buttons (Pipeline batch count)
 
-[`UI/widgets/option_tiles.py`](../../UI/widgets/option_tiles.py) + [`UI/widgets/tile_svg_icons.py`](../../UI/widgets/tile_svg_icons.py) — format/layout pickers with SVG icons (no emoji).
+[`UI/widgets/option_tiles.py`](../../UI/widgets/option_tiles.py) + [`UI/widgets/tile_svg_icons.py`](../../UI/widgets/tile_svg_icons.py): format/layout pickers with SVG icons (no emoji).
 
-[`UI/widgets/themed_switch.py`](../../UI/widgets/themed_switch.py) — animated pill switch (`QCheckBox` drop-in).
+[`UI/widgets/themed_switch.py`](../../UI/widgets/themed_switch.py): animated pill switch (`QCheckBox` drop-in).
 
-[`UI/widgets/segmented_picker.py`](../../UI/widgets/segmented_picker.py) — horizontal pill segments (`currentData()` / `setCurrentIndex()` combo-subset API). Also used for caption highlight, content source, and Basic|Advanced headers.
+[`UI/widgets/segmented_picker.py`](../../UI/widgets/segmented_picker.py): horizontal pill segments (`currentData()` / `setCurrentIndex()` combo-subset API). Also used for caption highlight, content source, and Basic|Advanced headers.
 
-[`UI/widgets/tab_scaffold.py`](../../UI/widgets/tab_scaffold.py) — `make_tab_root(..., basic_advanced=True, tab_id=…, win=…)` wires the header automatically.
+[`UI/widgets/tab_scaffold.py`](../../UI/widgets/tab_scaffold.py): `make_tab_root(..., basic_advanced=True, tab_id=…, win=…)` wires the header automatically.
 
 ## Tests
 

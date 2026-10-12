@@ -1,4 +1,4 @@
-# Editor — Micro-scenes, Pro assembly, captions
+# Editor: Micro-scenes, Pro assembly, captions
 
 ## Purpose
 Assemble a final vertical (9:16) MP4 by:
@@ -25,7 +25,7 @@ MoviePy requires FFmpeg for encoding. The project auto-downloads a Windows build
 - Each image is shown for **`1/fps`** seconds; voice is aligned to **`pro_clip_seconds`** (trim + silence pad) before the final mux.
 
 ## Pillow 10+ and channel matching
-- **[`src/models/pillow_compat.py`](../../src/models/pillow_compat.py)**: MoviePy’s **`resize`** may reference **`PIL.Image.ANTIALIAS`**, removed in Pillow 10+ — compat shim runs before importing MoviePy in [`src/render/editor.py`](../../src/render/editor.py).
+- **[`src/models/pillow_compat.py`](../../src/models/pillow_compat.py)**: MoviePy’s **`resize`** may reference **`PIL.Image.ANTIALIAS`**, removed in Pillow 10+: compat shim runs before importing MoviePy in [`src/render/editor.py`](../../src/render/editor.py).
 - Base **ImageClip** / **VideoFileClip** frames are often **RGB**; caption and facts overlays are **RGBA**. **`_ensure_rgba_np`** pads an opaque alpha on base/watermark for consistency. Composites use **`CompositeVideoClip(..., use_bgclip=True)`** so the **first** layer is the full-frame background.
 
 ## Optional watermark

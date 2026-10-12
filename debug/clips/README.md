@@ -1,6 +1,6 @@
 # Debug category: `clips`
 
-**Where:** src/render/clips.py — Text/image-to-video clips
+**Where:** src/render/clips.py: Text/image-to-video clips
 
 ## Enable
 

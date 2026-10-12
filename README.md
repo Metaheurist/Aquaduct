@@ -1,9 +1,9 @@
 # Aquaduct (MVP)
 
-This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for cloud script (e.g. OpenAI, **Google Gemini**), stills (e.g. DALL·E, **SiliconFlow**, Replicate), Pro *motion* / text-to-video (**Kling AI**, **Magic Hour**, or Replicate), and voice (**Inworld**, OpenAI, ElevenLabs) — see [docs/integrations/api_generation.md](docs/integrations/api_generation.md)) that:
+This project builds **Aquaduct**, a **local-first** tool (with optional **API execution mode** for cloud script (e.g. OpenAI, **Google Gemini**), stills (e.g. DALL·E, **SiliconFlow**, Replicate), Pro *motion* / text-to-video (**Kling AI**, **Magic Hour**, or Replicate), and voice (**Inworld**, OpenAI, ElevenLabs): see [docs/integrations/api_generation.md](docs/integrations/api_generation.md)) that:
 - scrapes AI tool news (no paid APIs)
 - writes a short vertical video script locally (LLM in 4-bit when possible)
-- generates images locally (curated **FLUX.1** + **SD3.5** options on the Model tab; other Hub ids work — see [Models + downloads](docs/reference/models.md))
+- generates images locally (curated **FLUX.1** + **SD3.5** options on the Model tab; other Hub ids work: see [Models + downloads](docs/reference/models.md))
 - generates voice locally (Kokoro-82M target; with safe fallback if unavailable)
 - assembles a **9:16** MP4 as **few-second micro-scenes** (slideshow) or **scene**-based motion / Pro video, with word-by-word captions
 
@@ -33,7 +33,7 @@ python -m venv .venv
 python scripts/install_pytorch.py --with-rest
 ```
 
-Optional — activate **and** `cd` to the repo in one step (PowerShell):
+Optional: activate **and** `cd` to the repo in one step (PowerShell):
 
 ```powershell
 cd d:\Aquaduct
@@ -49,7 +49,7 @@ pytest -q -m "not qt"
 
 (`torch` / CUDA wheels: use `python scripts/install_pytorch.py --with-rest` before or as documented in `requirements.txt`.)
 
-**Optional — AI spatial upscale** toward export resolution (Video tab **Spatial upscale → Auto**): install pip deps from [`requirements-optional-upscale.txt`](requirements-optional-upscale.txt) for the CUDA Real-ESRGAN path, and/or install **`realesrgan-ncnn-vulkan`** on your `PATH` (see [docs/reference/config.md](docs/reference/config.md)).
+**Optional: AI spatial upscale** toward export resolution (Video tab **Spatial upscale → Auto**): install pip deps from [`requirements-optional-upscale.txt`](requirements-optional-upscale.txt) for the CUDA Real-ESRGAN path, and/or install **`realesrgan-ncnn-vulkan`** on your `PATH` (see [docs/reference/config.md](docs/reference/config.md)).
 
 `tests/runtime/test_pipeline_run_queue_contract.py` exercises pipeline **run-queue** payload shapes (no Qt; runs under `pytest -m "not qt"`). Queue behavior on the main window is in `tests/ui/test_ui_main_window.py` (needs PyQt6 + pytest-qt from `requirements-dev.txt`). API / packaging import smoke: `tests/runtime/test_import_smoke_api.py`.
 
@@ -112,7 +112,7 @@ Same folder, optional: `. .\scripts\setup_terminal_env.ps1` after `cd` to activa
 - `main.py`: one-shot run (`--once`) or infinite loop (default); `python main.py <subcommand>` for [headless CLI](docs/reference/cli.md)
 - `src/`: pipeline modules
 - `UI/`: PyQt6 desktop UI package (TikTok-style theme; tabs under `UI/tabs/`; launcher `UI/ui_app.py`)
-- `Model-Downloads/`: generator + README for **offsite** model download bundles (generated `offsite/` output is gitignored — see [Model-Downloads/README.md](Model-Downloads/README.md))
+- `Model-Downloads/`: generator + README for **offsite** model download bundles (generated `offsite/` output is gitignored: see [Model-Downloads/README.md](Model-Downloads/README.md))
 - `data/upload_tasks.json`: local queue for finished renders (Tasks tab); gitignored
 - `data/characters.json`: Character Builder profiles (Tasks/Run); gitignored
 - `data/news_cache/`: URL + title dedupe caches (`seen_<mode>.json`, `seen_titles_<mode>.json`; legacy `seen.json` may still appear until cleared or migrated)
@@ -158,7 +158,7 @@ Tabs:
 - **Model**: **Local | API** toggle; **Model files location** always visible above the model list; Download menu (verify checksums); **Check Python dependencies** in Download menu; missing deps prompt at **Run** time (Install / Not now); model select/download (script/video/voice)
 - **My PC**: GPU lines in the spec (name + VRAM per adapter), **Auto** \| **Select GPU** policy control, model **Fit** table aligned with **Model** tab (`rate_model_fit_for_repo` + effective VRAM per role). See [Hardware + model fit](docs/reference/hardware.md). Optional env **`AQUADUCT_CUDA_DEVICE`** overrides saved policy.
 
-Optional: pre-download HF snapshots without the UI — `python scripts/download_hf_models.py` (see [Models + downloads](docs/reference/models.md)).
+Optional: pre-download HF snapshots without the UI: `python scripts/download_hf_models.py` (see [Models + downloads](docs/reference/models.md)).
 
 ## Build Windows EXE
 - Build script: [`build/build.ps1`](build/build.ps1) (canonical onedir/onefile flags + post-build smoke)
@@ -200,7 +200,7 @@ Example:
 - [ElevenLabs TTS (optional)](docs/integrations/elevenlabs.md)
 
 ## Acknowledgments
-Parts of Aquaduct (including crash‑resilience work, docs, and fixes) benefit from **[Cursor Composer](https://cursor.com)** — AI coding assistance integrated with the Cursor editor.
+Parts of Aquaduct (including crash‑resilience work, docs, and fixes) benefit from **[Cursor Composer](https://cursor.com)**: AI coding assistance integrated with the Cursor editor.
 
 ## Notes
 - First run will download models from Hugging Face (can be large).

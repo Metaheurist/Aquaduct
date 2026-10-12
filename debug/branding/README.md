@@ -1,6 +1,6 @@
 # Debug category: `branding`
 
-**Where:** Branding / palette — Prompt styling
+**Where:** Branding / palette: Prompt styling
 
 ## Enable
 

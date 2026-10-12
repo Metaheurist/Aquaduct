@@ -34,8 +34,8 @@ cast_to_characters(*, cast, video_format, headline_seed="") -> list[Character]
 merge_cast_into_store(*, cast, video_format, headline_seed="") -> list[Character]
 ```
 
-`cast_to_characters` builds full `Character` instances. The IDs are deterministic —
-derived from `(name, video_format, headline_seed)` via Adler-32 + a UUID5 suffix — so:
+`cast_to_characters` builds full `Character` instances. The IDs are deterministic:
+derived from `(name, video_format, headline_seed)` via Adler-32 + a UUID5 suffix: so:
 
 - Re-running the same article does not duplicate cast entries; entries are upserted.
 - Different video formats keep their own profiles (a “Lead” for `cartoon` is a
@@ -49,7 +49,7 @@ that aren’t in the supplied cast.
 
 Both `main.run_once` (local LLM path) and `src.runtime.pipeline_api.run_once_api`
 (API path) call `merge_cast_into_store(...)` immediately after writing the per-run
-`assets/generated_cast.json` sidecar — but only when:
+`assets/generated_cast.json` sidecar: but only when:
 
 - the user has not selected an explicit character (so the cast is auto-generated), and
 - `AppSettings.auto_save_generated_cast` is `True` (the default).

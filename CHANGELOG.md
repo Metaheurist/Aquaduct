@@ -17,7 +17,7 @@ Per-tab **Basic | Advanced** mode with visual-first controls, SVG tiles, and lay
 - [`UI/widgets/visual_primitives.py`](UI/widgets/visual_primitives.py): `StepCard`, `CoachStrip`, `QuantityStepper`, `PresetCardGrid`, `SwatchGrid`, `ProviderCard`, `PromptChips`, `PreviewStrip`.
 - [`UI/widgets/option_tiles.py`](UI/widgets/option_tiles.py) + [`UI/widgets/tile_svg_icons.py`](UI/widgets/tile_svg_icons.py): SVG icon cards (no emoji) for format/layout pickers.
 - [`UI/widgets/themed_switch.py`](UI/widgets/themed_switch.py): pill on/off switch; [`UI/widgets/segmented_picker.py`](UI/widgets/segmented_picker.py): shared pill segments (combo-subset API).
-- **RGBA fix** on switches/segmented controls (Qt stylesheets use alpha 0–255, not 0–1) — removes harsh pixel borders on toggles and highlight pickers.
+- **RGBA fix** on switches/segmented controls (Qt stylesheets use alpha 0–255, not 0–1): removes harsh pixel borders on toggles and highlight pickers.
 
 #### Tab updates
 - **Pipeline**: step cards, format tiles, quantity stepper, prompt chips, overflow menu (SVG **more**).
@@ -121,7 +121,7 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets 
 
 ### UI modernization (desktop polish)
 
-- **SVG-only chrome**: status badges, disclosure chevrons, dialog close/pause, and LLM expand use vector icons ([`UI/widgets/toolbar_svg_icons.py`](UI/widgets/toolbar_svg_icons.py), [`status_glyph_label`](UI/widgets/tab_sections.py)) — no emoji/unicode glyphs in user-facing UI.
+- **SVG-only chrome**: status badges, disclosure chevrons, dialog close/pause, and LLM expand use vector icons ([`UI/widgets/toolbar_svg_icons.py`](UI/widgets/toolbar_svg_icons.py), [`status_glyph_label`](UI/widgets/tab_sections.py)): no emoji/unicode glyphs in user-facing UI.
 - **Shared widgets**: [`FlowLayout`](UI/widgets/flow_layout.py), [`two_column_row`](UI/widgets/two_column.py), [`TopicChip`](UI/widgets/topic_chip.py), [`CharacterCard`](UI/widgets/character_card.py). Docs: [`docs/ui/shared-widgets.md`](docs/ui/shared-widgets.md).
 - **Topics tab**: capped chip flow + single selected-tag note editor (removed per-tag notes block).
 - **Characters tab**: avatar card grid with side-panel profile editor.
@@ -145,7 +145,7 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets 
 - **Tab scaffold**: **`make_tab_root`** supports **`intro_tooltip`**, **`intro_stylesheet`**, and **`before_card`** widgets; **Run**, **Topics**, **Library**, **API**, and **Model** (local-weights scroll) use it for consistent headers + body cards.
 - **Tests**: `patch_paths` now also patches **`src.content.characters_store.get_paths`**, matching the temp data layout (fixes character store tests that import `get_paths` at module load).
 
-### Characters — identity tokens & multi-select (Run tab)
+### Characters: identity tokens & multi-select (Run tab)
 
 - **Profiles**: optional **gender**, **ethnicity**, **age_range** on each character; persisted in `data/characters.json`; **Characters** tab fields + LLM preset/cast JSON extended accordingly.
 - **Run tab**: ordered multi-select (**Lead** = first) → `active_character_ids` + `active_character_id` (lead) in `ui_settings.json`; pipeline **merges** multiple picks into one `Character` for script/storyboard/TTS with lead voice + portrait reference.
@@ -156,14 +156,14 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets 
 ### NSFW video format (adults-only preset)
 
 - **Run tab**: **NSFW (adult, 18+ only)** `video_format`; warning when selected; greys out TikTok/YouTube **auto-upload** checkboxes session-only (unless **F12** session guardrail bypass is on).
-- **Session guardrail bypass**: title bar **F12** toggles process-only **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** when that env var is set at launch — skips NSFW LLM guard blocks, topic/crawl denylist, NSFW+auto-upload preflight errors and safety-checker warning, Tasks upload blocks for explicit renders; selects NSFW + **Allow NSFW** and copies topic tags to all `topic_tags_by_mode` buckets. Documented in [docs/reference/config.md](docs/reference/config.md#session-guardrail-bypass) and [docs/ui/ui.md](docs/ui/ui.md).
+- **Session guardrail bypass**: title bar **F12** toggles process-only **`AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS`** when that env var is set at launch: skips NSFW LLM guard blocks, topic/crawl denylist, NSFW+auto-upload preflight errors and safety-checker warning, Tasks upload blocks for explicit renders; selects NSFW + **Allow NSFW** and copies topic tags to all `topic_tags_by_mode` buckets. Documented in [docs/reference/config.md](docs/reference/config.md#session-guardrail-bypass) and [docs/ui/ui.md](docs/ui/ui.md).
 - **Topics / crawler**: Firecrawl-first discover + denylist filtering ([`src/content/nsfw_guardrails.py`](src/content/nsfw_guardrails.py)); research pack under **`data/topic_research/nsfw/`**; topic line heuristics in [`src/content/topic_discovery.py`](src/content/topic_discovery.py).
 - **Brain**: [`_prompt_for_nsfw_items`](src/content/brain/prompts.py), custom-brief + expand paths, `enforce_arc` skip; multi-stage refinements in [`src/content/story_pipeline.py`](src/content/story_pipeline.py); character presets `nsfw_*` in [`src/content/character_presets.py`](src/content/character_presets.py); portrait / character generation prepend guardrails when format or preset is NSFW.
 - **Pipeline**: `main.py` forces `allow_nsfw` for NSFW runs; **`meta.json`** includes **`video_format`** for Tasks upload guards; scene prompts NSFW motion/style in [`src/render/scene_prompts.py`](src/render/scene_prompts.py).
 - **Preflight / Tasks**: hard error when NSFW + auto-upload toggles on; Tasks manual TikTok/YouTube upload blocked when `meta.json` says NSFW (both skipped when session guardrail bypass is active).
 - **Docs / tests**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/ui/topics.md`](docs/ui/topics.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/reference/config.md`](docs/reference/config.md); [`tests/content/test_nsfw_prompt_branch.py`](tests/content/test_nsfw_prompt_branch.py), [`tests/content/test_nsfw_topic_filter.py`](tests/content/test_nsfw_topic_filter.py), [`tests/content/test_brain_api.py`](tests/content/test_brain_api.py), [`tests/runtime/test_preflight_nsfw_uploads.py`](tests/runtime/test_preflight_nsfw_uploads.py), [`tests/ui/test_run_tab_nsfw_combo.py`](tests/ui/test_run_tab_nsfw_combo.py).
 
-### Title bar — LLM chat
+### Title bar: LLM chat
 
 - **Chat window** ([`UI/dialogs/llm_chat_dialog.py`](UI/dialogs/llm_chat_dialog.py)): non-modal **LLM chat** from the title bar (**chat** icon); uses the same target as pipeline script generation (**API** tab vs **Model** tab / `llm_combo`). API path uses **SSE streaming** ([`chat_completion_stream`](src/platform/openai_client.py)); local path uses **[`infer_text_with_optional_holder`](src/content/brain_api.py)** with cooperative **cancel** and unloads via **`dispose_causal_lm_pair`** on close.
 - **Persistence**: encrypted transcripts under the app data dir ([`src/util/llm_chat_transcript_store.py`](src/util/llm_chat_transcript_store.py)); **`cryptography`** (Fernet) in [`requirements.txt`](requirements.txt). Install with `pip install -r requirements.txt` so imports succeed.
@@ -176,11 +176,11 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets 
 - **Dependency**: **`hnswlib>=0.8.0`** in [`requirements.txt`](requirements.txt) (optional index path; import failure falls back to brute-force cosine).
 - **Tests**: [`tests/content/test_chat_generation.py`](tests/content/test_chat_generation.py) (pipeline routing + Alpaca strip), [`tests/content/test_llm_chat_rag_ann_rerank.py`](tests/content/test_llm_chat_rag_ann_rerank.py), [`tests/ui/test_llm_chat_dialog_size.py`](tests/ui/test_llm_chat_dialog_size.py).
 
-### Title bar — image playground (F4)
+### Title bar: image playground (F4)
 
 - **Image playground** ([`UI/dialogs/image_playground_dialog.py`](UI/dialogs/image_playground_dialog.py)): non-modal **text-to-image** window (title-bar **frame** icon + **F4**); **`resolve_image_target`** parallels LLM **`resolve_chat_target`** for the **Image** API/local role. **[`ImagePlaygroundWorker`](UI/workers/impl.py)** calls **`generate_still_png_bytes`** (API) or **`generate_images`** (local, `max_images=1`, no style chain). Session scratch under **`<data_dir>/.cache/image_playground/`**. Main window: singleton ref, **`closeEvent`** teardown, **`ApplicationShortcut`** **F1–F5** (including **F5 → Save**). Tests: [`tests/ui/test_image_playground_dialog.py`](tests/ui/test_image_playground_dialog.py).
 
-### Title bar — video playground (F6)
+### Title bar: video playground (F6)
 
 - **Video playground** ([`UI/dialogs/video_playground_dialog.py`](UI/dialogs/video_playground_dialog.py)): non-modal **text-to-video** window (title-bar **video_gen** icon + **F6**); **`resolve_video_target`** mirrors **`resolve_image_target`** for the **Video** API/local role. **[`VideoPlaygroundWorker`](UI/workers/impl.py)** calls **`cloud_video_mp4_paths`** (API) or **`generate_clips`** (local T2V, `max_clips=1`). Session scratch under **`<data_dir>/.cache/video_playground/`**. MVP: no in-window player (**Open video** / **Open folder** / **Save as…**). Main window: singleton, pipeline-running guard, **`closeEvent`** teardown, **`ApplicationShortcut` F6**. **`video_model_id_from_ui`** in [`UI/services/brain_expand.py`](UI/services/brain_expand.py). Docs: [`docs/ui/ui.md`](docs/ui/ui.md). Tests: [`tests/ui/test_video_playground_dialog.py`](tests/ui/test_video_playground_dialog.py).
 
@@ -191,13 +191,13 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets 
 - **Failure / cancel**: optional **continue on failure**; otherwise remaining `series_episode` rows for the same slug are dropped; cancel log counts dropped series episodes.
 - **Library**: nested series folders are scanned for finished MP4s. Docs: [`docs/pipeline/series-mode.md`](docs/pipeline/series-mode.md). Tests: `tests/content/test_brain_series_blocks.py`, `tests/series/test_recap_and_layout.py`, `tests/ui/test_pipeline_series_queue.py`, `tests/ui/test_series_failure_abort.py`.
 
-### Hugging Face — Mochi video id
+### Hugging Face: Mochi video id
 
 - **Curated Mochi T2V** now uses **`genmo/mochi-1-preview`** (public **MochiPipeline** weights on the Hub). The id **`genmo/mochi-1.5-final`** is not available via the Hub API (404 / “repository not found”); settings and **`resolve_pretrained_load_path`** remap it to **preview**, and local snapshots under the legacy folder name still resolve.
 
-### Video / export — spatial AI upscale (Real-ESRGAN-class)
+### Video / export: spatial AI upscale (Real-ESRGAN-class)
 
-- **`VideoSettings.spatial_upscale_mode`** ([`off` \| `auto`](src/core/config.py)): **Video** tab **Spatial upscale** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)); persisted in **`ui_settings.json`**. **`auto`** runs [`src/render/spatial_upscale.py`](src/render/spatial_upscale.py) after temporal smoothing on **local** T2V clips ([`src/render/clips.py`](src/render/clips.py)) and in the editor ([`src/render/editor.py`](src/render/editor.py)) for slideshow / motion-base paths — **PyTorch CUDA** (optional **`requirements-optional-upscale.txt`**) then **realesrgan-ncnn-vulkan**, else Lanczos. Local runs report **Spatial upscale clip i/n…** via pipeline progress while each clip is processed. Preflight notes + env table in [`docs/reference/config.md`](docs/reference/config.md); overview in [`docs/pipeline/video-quality.md`](docs/pipeline/video-quality.md). Tests: [`tests/render/test_spatial_upscale.py`](tests/render/test_spatial_upscale.py). Optional pip stack documented in [`README.md`](README.md).
+- **`VideoSettings.spatial_upscale_mode`** ([`off` \| `auto`](src/core/config.py)): **Video** tab **Spatial upscale** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)); persisted in **`ui_settings.json`**. **`auto`** runs [`src/render/spatial_upscale.py`](src/render/spatial_upscale.py) after temporal smoothing on **local** T2V clips ([`src/render/clips.py`](src/render/clips.py)) and in the editor ([`src/render/editor.py`](src/render/editor.py)) for slideshow / motion-base paths: **PyTorch CUDA** (optional **`requirements-optional-upscale.txt`**) then **realesrgan-ncnn-vulkan**, else Lanczos. Local runs report **Spatial upscale clip i/n…** via pipeline progress while each clip is processed. Preflight notes + env table in [`docs/reference/config.md`](docs/reference/config.md); overview in [`docs/pipeline/video-quality.md`](docs/pipeline/video-quality.md). Tests: [`tests/render/test_spatial_upscale.py`](tests/render/test_spatial_upscale.py). Optional pip stack documented in [`README.md`](README.md).
 
 - **Video tab copy**: Preset block title is **Quality presets** (removed the **(v2)** suffix) in [`UI/tabs/video_tab.py`](UI/tabs/video_tab.py); [`docs/ui/ui.md`](docs/ui/ui.md) and [`docs/ui/video-tab-v2.md`](docs/ui/video-tab-v2.md) updated to match. [`DEPENDENCIES.md`](DEPENDENCIES.md) notes optional [`requirements-optional-upscale.txt`](requirements-optional-upscale.txt).
 
@@ -205,17 +205,17 @@ Cross-cutting pass: performance, prompting, cinematography presets, UX, secrets 
 
 - **Off-pipeline progress + VRAM purge** ([`UI/dialogs/auxiliary_progress_dialog.py`](UI/dialogs/auxiliary_progress_dialog.py), [`UI/workers/impl.py`](UI/workers/impl.py)): **🧠** field expand ([`UI/services/brain_expand.py`](UI/services/brain_expand.py)), **Characters → Generate with LLM** / **Generate portrait**, and **Topics → Suggest with LLM** open a **frameless, fixed-size** modal with status text + progress bar wired to **`on_llm_task`** / **`on_image_progress`** (local) or coarse API-phase messages; **`title_bar_draggable=False`** so the shell does not move when dragging the title area. Each job schedules **`purge_process_memory_aggressive()`** on the GUI thread after **done** / **failed** via **`schedule_auxiliary_job_memory_purge()`**.
 - **`FramelessDialog`** ([`UI/dialogs/frameless_dialog.py`](UI/dialogs/frameless_dialog.py)): optional **`close_button_visible=False`** for shells that omit the title-bar ✕ (auxiliary progress: no dismiss mid-job; **Escape** ignored on that shell).
-- **Characters portrait** ([`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)): click the thumbnail when an image is loaded to open a **maximized** **`FramelessDialog`** preview (**Portrait — \<name\>**) using **`_FitPixmapLabel`** (aspect-preserving scale on resize).
-- **Diffusion `auto` offload — image vs VRAM-first multi-GPU** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): **`resolve_diffusion_offload_mode(..., placement_role=)`** passes through from **`place_diffusion_pipeline`**; when **VRAM-first** + **≥ 2 GPUs** + ample host RAM, **video** may still prefer full-GPU (**`none`**) for sharding paths, while **`placement_role="image"`** (still generation / character portrait) prefers **model** or **sequential** offload so ~12 GB diffusion GPUs avoid OOM. Tests extended in [`tests/models/test_diffusion_placement.py`](tests/models/test_diffusion_placement.py).
+- **Characters portrait** ([`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)): click the thumbnail when an image is loaded to open a **maximized** **`FramelessDialog`** preview (**Portrait: \<name\>**) using **`_FitPixmapLabel`** (aspect-preserving scale on resize).
+- **Diffusion `auto` offload: image vs VRAM-first multi-GPU** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): **`resolve_diffusion_offload_mode(..., placement_role=)`** passes through from **`place_diffusion_pipeline`**; when **VRAM-first** + **≥ 2 GPUs** + ample host RAM, **video** may still prefer full-GPU (**`none`**) for sharding paths, while **`placement_role="image"`** (still generation / character portrait) prefers **model** or **sequential** offload so ~12 GB diffusion GPUs avoid OOM. Tests extended in [`tests/models/test_diffusion_placement.py`](tests/models/test_diffusion_placement.py).
 - **Tests**: [`tests/ui/test_auxiliary_llm_progress_map.py`](tests/ui/test_auxiliary_llm_progress_map.py) (**`map_llm_on_task_to_overall`**).
-- **Diffusion teardown / host RSS after offload** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py) — **`dispose_diffusion_pipeline()`**): local **image** ([`src/render/artist.py`](src/render/artist.py)) and **video** ([`src/render/clips.py`](src/render/clips.py)) paths invoke **`maybe_free_model_hooks()`** (when diffusers exposes it) immediately before deleting the pipeline, so **model / sequential CPU offload** does not leave Accelerate hooks holding weights after one-shot jobs (e.g. **Characters → Generate portrait**). Works together with **`purge_process_memory_aggressive()`** ([`src/util/utils_vram.py`](src/util/utils_vram.py)) but addresses a separate failure mode (**Purge** alone could not reclaim that heap). Tests: [`tests/models/test_diffusion_placement.py`](tests/models/test_diffusion_placement.py). Docs: [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md).
+- **Diffusion teardown / host RSS after offload** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py): **`dispose_diffusion_pipeline()`**): local **image** ([`src/render/artist.py`](src/render/artist.py)) and **video** ([`src/render/clips.py`](src/render/clips.py)) paths invoke **`maybe_free_model_hooks()`** (when diffusers exposes it) immediately before deleting the pipeline, so **model / sequential CPU offload** does not leave Accelerate hooks holding weights after one-shot jobs (e.g. **Characters → Generate portrait**). Works together with **`purge_process_memory_aggressive()`** ([`src/util/utils_vram.py`](src/util/utils_vram.py)) but addresses a separate failure mode (**Purge** alone could not reclaim that heap). Tests: [`tests/models/test_diffusion_placement.py`](tests/models/test_diffusion_placement.py). Docs: [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md).
 
 ### Video quality & tab redesign (in progress)
 
 This is an in-flight track; bullets land per phase as they ship.
 
-- **Phase 7 — tests roll-up + docs + deterministic pytest RAM preflight**:
-  new / expanded tests —
+- **Phase 7: tests roll-up + docs + deterministic pytest RAM preflight**:
+  new / expanded tests:
   [`tests/models/test_length_factor_in_merge_t2v.py`](tests/models/test_length_factor_in_merge_t2v.py),
   [`tests/runtime/test_smoothness_preflight.py`](tests/runtime/test_smoothness_preflight.py),
   [`tests/render/test_scene_prompts_expansion.py`](tests/render/test_scene_prompts_expansion.py),
@@ -231,46 +231,46 @@ This is an in-flight track; bullets land per phase as they ship.
   ([`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py),
   [`UI/main_window.py`](UI/main_window.py)).
 
-- **Phase 6 — topic tags as hard constraints + source quality**:
+- **Phase 6: topic tags as hard constraints + source quality**:
   new [`src/content/topic_constraints.py`](src/content/topic_constraints.py)
   treats topic tags as a hard requirement instead of a soft mood bias.
   `topic_constraints_block(tags, notes, cast_names)` produces a structured
-  block ("HARD CONSTRAINTS — every required tag must appear in the angle,
+  block ("HARD CONSTRAINTS: every required tag must appear in the angle,
   hook, payoff, hashtags, and at least one segment's narration / on-screen
   text") that `main.py` appends to `script_digest` after the style-context
   merge. Per-tag context notes from a new
   `AppSettings.topic_tag_notes: dict[str, str]` are loaded/sanitised by
   [`src/settings/ui_settings.py`](src/settings/ui_settings.py) (≤ 240
   chars per note after [`sanitize_topic_tag_notes`](src/content/topic_constraints.py))
-  `Tag context: <tag> — <note>` lines. Cast names parsed from the active
-  Characters-tab character (or the auto-cast roster — see Phase 8) are
+  `Tag context: <tag>: <note>` lines. Cast names parsed from the active
+  Characters-tab character (or the auto-cast roster: see Phase 8) are
   injected as required on-screen presence so scenes stop drifting to
   generic stock-footage subjects. `score_source_url(url, body_length)`
   + `source_quality_label(...)` produce a deterministic 0–1 score with
   reasons (TLD heuristics, body length, fandom/aggregator demerits) and
   the orchestrator writes `source_quality.json` next to the article and
-  emits a pipeline notice (`source_quality: high — wikipedia.org, body
+  emits a pipeline notice (`source_quality: high: wikipedia.org, body
   12,341 chars`). The format-specific prompts in
   [`src/content/brain.py`](src/content/brain.py) (`creepypasta`, `news`,
   `explainer`, `wellness`) now phrase the tag line as
-  `Topic tags (HARD constraint — ...)` so the LLM cannot silently drop
+  `Topic tags (HARD constraint: ...)` so the LLM cannot silently drop
   them. Tests:
   [`tests/content/test_topic_constraints.py`](tests/content/test_topic_constraints.py)
-  (24 cases — normalisation, block / JSON shape, per-tag notes, cast
+  (24 cases: normalisation, block / JSON shape, per-tag notes, cast
   injection, sanitisation, URL scoring across high/aggregator/fandom
   sources and short / long bodies). Topics tab: **Per-tag notes (grounding)**
   scroll area ([`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py),
   [`UI/main_window.py`](UI/main_window.py)) edits the same map alongside
   each mode’s tag list.
 
-- **Phase 5 — Video tab v2 quality presets**: new
+- **Phase 5: Video tab v2 quality presets**: new
   [`src/render/video_quality_presets.py`](src/render/video_quality_presets.py)
   introduces four named knobs (Length / Scene / FPS / Resolution) plus
   the existing Smoothness mode. Replaces five raw spinners on the Video
   tab with `LENGTH_PRESETS` (`short` ≈ 10–15 s, `medium` ≈ 25–35 s,
   `long` ≈ 50–70 s + matching `length_factor` 0.85 / 1.0 / 1.25),
   `SCENE_PRESETS` (`punchy` 3 s / `balanced` 5 s / `cinematic` 7 s),
-  `FPS_PRESETS` (`cinematic_24` / `standard_30` / `smooth_60` — keeps
+  `FPS_PRESETS` (`cinematic_24` / `standard_30` / `smooth_60`: keeps
   `smoothness_target_fps` in sync), and `RESOLUTION_PRESETS`
   (`vertical_1080p` / `vertical_720p` / `square_1080`).
   `migrate_legacy_video_settings(...)` is invoked on every settings load
@@ -292,7 +292,7 @@ This is an in-flight track; bullets land per phase as they ship.
   (19 cases). Docs:
   [`docs/ui/video-tab-v2.md`](docs/ui/video-tab-v2.md).
 
-- **Phase 4 — diversified scene-prompt builder**: new
+- **Phase 4: diversified scene-prompt builder**: new
   [`src/render/scene_prompts.py`](src/render/scene_prompts.py) replaces
   the inline scene splitting in `main.py`. Drops the legacy
   forced `"<title> | "` prefix for every format (CLIP-class T2V encoders
@@ -305,7 +305,7 @@ This is an in-flight track; bullets land per phase as they ship.
   `_ensure_unique_starts` rotates consecutive scenes whose first 4 words
   match so the prompt set stays visually distinct. New
   `expand_scenes_via_llm(...)` lazily extends a short script up to
-  `n_scenes` via the script LLM (caller-supplied invoker — keeps the
+  `n_scenes` via the script LLM (caller-supplied invoker: keeps the
   module unit-testable). `main.py::_split_into_pro_scenes_from_script`
   is now a thin delegator and the Pro T2V branch in `run_once` forwards
   `char_ctx`, `style_ctx.as_t2v_affix()`, and
@@ -316,9 +316,9 @@ This is an in-flight track; bullets land per phase as they ship.
   Docs:
   [`docs/pipeline/scene-prompts.md`](docs/pipeline/scene-prompts.md).
 
-- **Phase 2 — optional temporal smoothing**: new
+- **Phase 2: optional temporal smoothing**: new
   [`src/render/temporal_smooth.py`](src/render/temporal_smooth.py)
-  adds a post-generation motion-aware upsampling pass with three modes —
+  adds a post-generation motion-aware upsampling pass with three modes:
   `off` (default no-op), `ffmpeg` (bundled binary, `minterpolate=mci:aobmc`),
   and `rife` (lazy import of `rife_ncnn_vulkan_python`, gated on
   `RIFE_VRAM_BUDGET_MB ≥ 1500` and falling back to `ffmpeg` otherwise).
@@ -336,7 +336,7 @@ This is an in-flight track; bullets land per phase as they ship.
   (16 cases). Docs updated:
   [`docs/pipeline/video-quality.md`](docs/pipeline/video-quality.md).
 
-- **Phase 8 — auto-cast parity & persistence**: the LLM cast generator
+- **Phase 8: auto-cast parity & persistence**: the LLM cast generator
   ([`generate_cast_from_storyline_llm`](src/content/brain.py)) now also
   emits a per-character `voice_instruction`, and
   [`fallback_cast_for_show`](src/content/characters_store.py) mirrors the
@@ -360,7 +360,7 @@ This is an in-flight track; bullets land per phase as they ship.
   (18 cases). Docs:
   [`docs/pipeline/character-persistence.md`](docs/pipeline/character-persistence.md).
 
-- **Phase 9 — fused prompt context**: new
+- **Phase 9: fused prompt context**: new
   [`src/content/prompt_context.py`](src/content/prompt_context.py)
   resolves `video_format`, `personality`, `art_style`, and `branding`
   once per run and emits ready-to-paste blocks for the script LLM
@@ -378,7 +378,7 @@ This is an in-flight track; bullets land per phase as they ship.
   (14 cases). Docs:
   [`docs/pipeline/prompt-context.md`](docs/pipeline/prompt-context.md).
 
-- **Phase 10 — chunked LLM article relevance pass**: new
+- **Phase 10: chunked LLM article relevance pass**: new
   [`src/content/article_chunker.py`](src/content/article_chunker.py) and
   [`src/content/article_relevance.py`](src/content/article_relevance.py).
   After `crawler.fetch_article_text` returns and `article_clean` strips the
@@ -399,11 +399,11 @@ This is an in-flight track; bullets land per phase as they ship.
   [`tests/content/test_article_relevance.py`](tests/content/test_article_relevance.py).
   Docs: [`docs/pipeline/article-relevance.md`](docs/pipeline/article-relevance.md).
 
-- **Phase 3 — script repair + article sanitizer**:
+- **Phase 3: script repair + article sanitizer**:
   [`brain._to_package`](src/content/brain.py) now synthesizes a
   `visual_prompt` from the narration (and on-screen text / title) when the
   LLM returns only one of the two fields, instead of silently dropping the
-  segment — fixes the
+  segment: fixes the
   [`Two_Sentenced_Horror_Stories`](.Aquaduct_data/videos/Two_Sentenced_Horror_Stories/assets/pipeline_script_package.json)
   collapse where multiple beats reduced to a single placeholder. The
   synthesis is format-aware (`creepypasta`, `cartoon`, `unhinged`,
@@ -422,7 +422,7 @@ This is an in-flight track; bullets land per phase as they ship.
   Docs: [`docs/pipeline/brain.md`](docs/pipeline/brain.md),
   [`docs/integrations/crawler.md`](docs/integrations/crawler.md).
 
-- **Phase 1 — native FPS + per-clip duration alignment**: every T2V / I2V
+- **Phase 1: native FPS + per-clip duration alignment**: every T2V / I2V
   clip is encoded at the model's trained playback fps (CogVideoX **8**,
   Wan **16**, Mochi **30**, LTX **24**, Hunyuan **24**) instead of the user's
   export fps; LTX-2 keeps its `frame_rate` kwarg. Each clip mp4 now ships
@@ -453,18 +453,18 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Voice** ([`main.py`](main.py), [`src/speech/voice.py`](src/speech/voice.py), [`src/runtime/variant_fallback.py`](src/runtime/variant_fallback.py)): local voice path uses **`retry_stage`**; pyttsx3-only sentinel repo `aquaduct/system-tts-pyttsx3`; MOSS → Kokoro → pyttsx3 style mapping in variant table.
 - **Load heartbeat UI** ([`src/runtime/load_heartbeat.py`](src/runtime/load_heartbeat.py), [`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): Resource graph footer shows recent model-load heartbeat; **`AQUADUCT_LOAD_TIMEOUT_S`** mirrors **`AQUADUCT_LOAD_FATAL_TIMEOUT_S`** for the stalled-load watchdog.
 - **Preflight HF** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): token guidance for gated/frontier Hub ids when no token is configured.
-- **Runtime Motion variants** ([`src/runtime/variant_fallback.py`](src/runtime/variant_fallback.py)): curated **`next_smaller_repo_id("video", …)`** mapping still participates in **`retry_stage`** / load fallbacks — the redundant **Models** tab **Use lighter Motion / Video checkpoint** button was removed (choose a lighter repo from the dropdown or **Auto-fit for this PC**).
+- **Runtime Motion variants** ([`src/runtime/variant_fallback.py`](src/runtime/variant_fallback.py)): curated **`next_smaller_repo_id("video", …)`** mapping still participates in **`retry_stage`** / load fallbacks: the redundant **Models** tab **Use lighter Motion / Video checkpoint** button was removed (choose a lighter repo from the dropdown or **Auto-fit for this PC**).
 - **Tests**: [`tests/runtime/test_resource_and_deps.py`](tests/runtime/test_resource_and_deps.py), [`tests/runtime/test_load_heartbeat.py`](tests/runtime/test_load_heartbeat.py), [`tests/content/test_llm_session.py`](tests/content/test_llm_session.py), [`tests/content/test_factcheck_pkg_roundtrip.py`](tests/content/test_factcheck_pkg_roundtrip.py).
 - **Docs**: consolidated guide **[`docs/pipeline/crash-resilience.md`](docs/pipeline/crash-resilience.md)** (checkpoints/resume, heartbeat, RAM preflight, LLM holder, HF token); touches **[`README.md`](README.md)**, **[`docs/README.md`](docs/README.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md), [`docs/reference/quantization.md`](docs/reference/quantization.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/pipeline/main.md`](docs/pipeline/main.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/pipeline/voice.md`](docs/pipeline/voice.md), [`docs/ui/ui.md`](docs/ui/ui.md)**.
 
 ### Multi-GPU VRAM-first intra-model splitting
-- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `multi_gpu_shard_mode` — **`off`** (default) or **`vram_first_auto`**; persisted in **`ui_settings.json`**.
+- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `multi_gpu_shard_mode`: **`off`** (default) or **`vram_first_auto`**; persisted in **`ui_settings.json`**.
 - **My PC** ([`UI/tabs/my_pc_tab.py`](UI/tabs/my_pc_tab.py), [`UI/main_window.py`](UI/main_window.py)): **VRAM-first sharding** combo (Off \| VRAM-first multi-GPU); collected into **`AppSettings`** like other GPU fields.
-- **Module** [`src/gpu/multi_device/`](src/gpu/multi_device/): **`registry.py`** — lookup + normalized Hub keys; one row per curated **`model_options()`** repo plus per-kind **`__fallback__`** unknown IDs; **`hardware_budget.py`** — `torch.cuda.mem_get_info` estimates + **`max_memory`** dict for Accelerate; **`gates.py`** — master toggle (`Auto`, ≥2 CUDA, no **`AQUADUCT_CUDA_DEVICE`**); **`validators.py`**; **`runtime.py`** — LLM **`device_map="balanced"`** + **`max_memory`** when BF16/FP16 and registry allows; optional diffusers **peer-GPU** submodule moves (`text_encoder`, …) after full-GPU placement.
+- **Module** [`src/gpu/multi_device/`](src/gpu/multi_device/): **`registry.py`**: lookup + normalized Hub keys; one row per curated **`model_options()`** repo plus per-kind **`__fallback__`** unknown IDs; **`hardware_budget.py`**, `torch.cuda.mem_get_info` estimates + **`max_memory`** dict for Accelerate; **`gates.py`**, master toggle (`Auto`, ≥2 CUDA, no **`AQUADUCT_CUDA_DEVICE`**); **`validators.py`**; **`runtime.py`**, LLM **`device_map="balanced"`** + **`max_memory`** when BF16/FP16 and registry allows; optional diffusers **peer-GPU** submodule moves (`text_encoder`, …) after full-GPU placement.
 - **CUDA env API** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): public **`cuda_env_override_device_index()`** ( **`AQUADUCT_CUDA_DEVICE`** ); **`resolve_voice_cuda_device_index()`** for TTS routing.
 - **LLM** ([`src/content/brain.py`](src/content/brain.py)): **`load_causal_lm_from_pretrained(..., inference_settings=, hub_model_id=)`**; resolves **`auto`** quant before placement; BitsAndBytes paths stay **`{"": llm_index}`**; float paths may use Accelerate-balanced + **`max_memory`** when gates pass. **`_load_causal_lm_pair`** passes **`model_id`** + settings.
 - **Factcheck** ([`src/content/factcheck.py`](src/content/factcheck.py), [`main.py`](main.py)): **`rewrite_with_uncertainty`** threads **`inference_settings`** and **`llm_cuda_device_index`** into the loader.
-- **Diffusion** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): optional **`inference_settings`** into **`resolve_diffusion_offload_mode`** — with VRAM-first + Auto + ≥2 GPUs + ≥**~8 GiB** free host RAM, **`auto`** offload may prefer **`none`** so peer submodule moves can run; **`place_diffusion_pipeline(..., model_repo_id=, placement_role=, quant_mode=)`**; post-load **`_maybe_apply_vram_first_peer_modules`** (effective quant includes resolved **`auto`**).
+- **Diffusion** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): optional **`inference_settings`** into **`resolve_diffusion_offload_mode`**: with VRAM-first + Auto + ≥2 GPUs + ≥**~8 GiB** free host RAM, **`auto`** offload may prefer **`none`** so peer submodule moves can run; **`place_diffusion_pipeline(..., model_repo_id=, placement_role=, quant_mode=)`**; post-load **`_maybe_apply_vram_first_peer_modules`** (effective quant includes resolved **`auto`**).
 - **Image / video** ([`src/render/artist.py`](src/render/artist.py), [`src/render/clips.py`](src/render/clips.py)): **`_place_pipe_on_device`** / T2V paths pass **`inference_settings`**, repo id, and role into placement.
 - **Voice** ([`src/speech/tts_kokoro_moss.py`](src/speech/tts_kokoro_moss.py), [`src/speech/voice.py`](src/speech/voice.py), [`main.py`](main.py), [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py)): **MOSS** uses explicit **`cuda:N`** + **`torch.cuda.set_device`** when a voice CUDA index is resolved; **`synthesize`** / **`synthesize_unhinged_moss`** accept **`voice_cuda_device_index`**.
 - **Debug** ([`debug/debug_log.py`](debug/debug_log.py)): **`gpu_plan`** category for placement breadcrumbs; [`debug/gpu_plan/README.md`](debug/gpu_plan/README.md).
@@ -479,7 +479,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Tests**: [`tests/models/test_torch_install_gate.py`](tests/models/test_torch_install_gate.py).
 
 ### Resource usage dialog (expanded)
-- **UI** ([`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): substantial refresh — metrics, layout, and interaction updates for the title-bar **Resource usage** window.
+- **UI** ([`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): substantial refresh: metrics, layout, and interaction updates for the title-bar **Resource usage** window.
 
 ### Pipeline / observability (incremental)
 - **OOM recovery** ([`src/runtime/oom_retry.py`](src/runtime/oom_retry.py), [`tests/runtime/test_oom_retry_fit.py`](tests/runtime/test_oom_retry_fit.py)): broader edge-case handling and tests.
@@ -501,7 +501,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **`src/render/clips.py`**: text-to-video / image-to-video preload passes **`cuda_device_index`** into **`prepare_diffusion`**; post-batch **`cheap`** boundary after **`del pipe`**.
 - **`src/render/artist.py`**: **`_maybe_enable_slice_inference`** after placement on image pipelines; post-batch teardown uses **`release_between_stages`** (**`cheap`**).
 - **`src/util/resource_sample.py`**, **`UI/dialogs/resource_graph_dialog.py`**: sparkline samples expose **tree RSS MB**, **host free RAM**, **machine-wide system RAM used %** (`psutil.virtual_memory().percent`), and **child-process count** (CPU / RAM tooltips; FFmpeg called out on CPU). Sampling uses **one** recursive process-tree walk per tick (CPU + RSS + child count).
-- **`src/util/memory_budget.py`**: module doc notes CPU thread env belongs in hardware docs — boundaries do not alter ``OMP_*`` mid-run.
+- **`src/util/memory_budget.py`**: module doc notes CPU thread env belongs in hardware docs: boundaries do not alter ``OMP_*`` mid-run.
 - **`src/runtime/preflight.py`**: optional **`AQUADUCT_HOST_RAM_PREFLIGHT`** adds a soft warning when free host RAM is under ~**4 GiB** in **local** execution mode.
 - **`src/runtime/preflight_host_hints.py`**, **`preflight.py`**: optional **`AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM`** (HF size cache + frontier repo ids vs free‑RAM threshold) and **`AQUADUCT_CPU_PREFLIGHT`** (high host CPU % via **`psutil`**).
 - **`src/util/diffusers_load.py`**: **`AQUADUCT_DIFFUSERS_DISABLE_MMAP`** merges **`disable_mmap`** into diffusers **`from_pretrained`** with **`TypeError`** fallback; wired from **`clips.py`** / **`artist.py`**.
@@ -510,7 +510,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Tests**: [`tests/util/test_memory_budget.py`](tests/util/test_memory_budget.py), [`tests/runtime/test_preflight.py`](tests/runtime/test_preflight.py), [`tests/util/test_diffusers_load.py`](tests/util/test_diffusers_load.py), [`tests/runtime/test_vram_watchdog.py`](tests/runtime/test_vram_watchdog.py), [`tests/models/test_resource_sample.py`](tests/models/test_resource_sample.py).
 
 ### VRAM watchdog + pipeline notices
-- **`src/util/vram_watchdog.py`**: **`check_cuda_headroom`** inspects **`torch.cuda.mem_get_info`** before heavy loads — logs warnings, optional **`emit_pipeline_notice`** to the desktop worker, or **`RuntimeError`** when free VRAM is critically low (tunable via **`AQUADUCT_VRAM_WATCHDOG`** and **`AQUADUCT_VRAM_*_FREE_*`** env vars).
+- **`src/util/vram_watchdog.py`**: **`check_cuda_headroom`** inspects **`torch.cuda.mem_get_info`** before heavy loads: logs warnings, optional **`emit_pipeline_notice`** to the desktop worker, or **`RuntimeError`** when free VRAM is critically low (tunable via **`AQUADUCT_VRAM_WATCHDOG`** and **`AQUADUCT_VRAM_*_FREE_*`** env vars).
 - **`src/runtime/pipeline_notice.py`**: context‑scoped callback (**`pipeline_notice_scope`**) so worker threads can raise **non-blocking** UI notices without importing Qt.
 - **`UI/workers/impl.py`**: **`PipelineWorker`** wraps **`run_once`** in **`pipeline_notice_scope`** ( **`pipeline_warning`** signal).
 - **`UI/main_window.py`**: connects **`pipeline_warning`**; **`_run_when_ffmpeg_ready`** returns **`bool`** and **`_pipeline_launch_pending`** avoids queue races while FFmpeg prefetch is in flight or the worker has not yet **`start()`**‑ed.
@@ -518,24 +518,24 @@ This is an in-flight track; bullets land per phase as they ship.
 
 ### Inference profile logging + script JSON extraction
 - **`src/models/inference_profiles.py`**: serialized **`log_inference_profiles_for_run`** (thread lock, batched stderr lines, mirror lines to **`logs/debug.log`** via **`append_debug_log`**).
-- **`src/content/brain.py`**: **`_slice_first_balanced_json_object`** — robust extraction when models wrap JSON in fences or prose with nested braces.
+- **`src/content/brain.py`**: **`_slice_first_balanced_json_object`**: robust extraction when models wrap JSON in fences or prose with nested braces.
 
 ### Desktop UI + Library
-- **`AppSettings`** / **`ui_settings.json`**: **`resource_graph_split_view`** — optional **one VRAM sparkline per CUDA GPU** in the resource graph (wired from **`MainWindow`** snapshot → worker).
+- **`AppSettings`** / **`ui_settings.json`**: **`resource_graph_split_view`**: optional **one VRAM sparkline per CUDA GPU** in the resource graph (wired from **`MainWindow`** snapshot → worker).
 - **Resource usage** ([`UI/dialogs/resource_graph_dialog.py`](UI/dialogs/resource_graph_dialog.py)): title-bar **mini / expanded** toggle (SVG expand–compress) left of **Close**; **`resource_graph_compact`** in **`ui_settings.json`** (default **`true`** / missing key → compact). **[`FramelessDialog`](UI/dialogs/frameless_dialog.py)** **`insert_title_bar_widget_before_close`** for title-bar controls; new icons in **[`UI/widgets/title_bar_svg_icons.py`](UI/widgets/title_bar_svg_icons.py)** / **[`UI/widgets/title_bar_outline_button.py`](UI/widgets/title_bar_outline_button.py)**.
 - **`UI/tabs/library_tab.py`**: scrollable Library tab; tighter default **videos** table height (min/max) for small screens.
 
-### My PC — CPU name + nominal clock
+### My PC: CPU name + nominal clock
 - **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): CPU line uses WMI / ``/proc/cpuinfo`` / macOS ``sysctl`` when possible (commercial name + ``~X.XX GHz max`` from nominal max MHz where exposed); falls back to ``platform.processor()`` unchanged if lookups fail. Windows subprocess probes use **`CREATE_NO_WINDOW`** where supported so brief PowerShell/WMI checks do not flash a console.
 - **Docs**: [`docs/reference/hardware.md`](docs/reference/hardware.md).
 - **Tests**: [`tests/models/test_hardware_cpu_display.py`](tests/models/test_hardware_cpu_display.py).
 
 ### Pipeline observability + VRAM OOM recovery
-- **Always-on run logging** ([`debug/debug_log.py`](debug/debug_log.py), [`debug/__init__.py`](debug/__init__.py)): [`pipeline_console`](debug/debug_log.py) / [`log_pipeline_exception`](debug/debug_log.py) — stderr lines `[Aquaduct][run] [stage] …`, failure traceback from [`main.py`](main.py) `run_once`; append to [`logs/debug.log`](src/util/repo_logs.py) when writable.
+- **Always-on run logging** ([`debug/debug_log.py`](debug/debug_log.py), [`debug/__init__.py`](debug/__init__.py)): [`pipeline_console`](debug/debug_log.py) / [`log_pipeline_exception`](debug/debug_log.py): stderr lines `[Aquaduct][run] [stage] …`, failure traceback from [`main.py`](main.py) `run_once`; append to [`logs/debug.log`](src/util/repo_logs.py) when writable.
 - **`main.py`**: `_run_stage(...)` milestones across the desktop pipeline; [`_clear_after_oom`](main.py) runs **`torch.cuda.synchronize()`** before CUDA cache flush; **`retry_stage`** calls for **video** diffusion pass **`max_quant_downgrades=8`** ([`pro_i2v`](main.py), [`pro_t2v`](main.py), [`clips`](main.py), [`scene_clips`](main.py)).
-- **`src/runtime/oom_retry.py`**: broader [`is_oom_error`](src/runtime/oom_retry.py); [`pick_next_gpu_index_after_oom`](src/runtime/oom_retry.py) — prefer larger VRAM, then equal‑VRAM peer, never switch down to a smaller card as recovery; [**preempt**](src/runtime/oom_retry.py) when GPU VRAM use ≥ **`AQUADUCT_VRAM_PREEMPT_USED_FRAC`** (default **0.99**) after [`clear_cb`](src/util/utils_vram.py): try [`pick_relief_gpu_index`](src/runtime/oom_retry.py), then lower quant — **before** the stage runs; [`retry_stage`](src/runtime/oom_retry.py)(…, **`preempt_high_vram`**); default quant retries **5**; OOM recovery logging.
+- **`src/runtime/oom_retry.py`**: broader [`is_oom_error`](src/runtime/oom_retry.py); [`pick_next_gpu_index_after_oom`](src/runtime/oom_retry.py): prefer larger VRAM, then equal‑VRAM peer, never switch down to a smaller card as recovery; [**preempt**](src/runtime/oom_retry.py) when GPU VRAM use ≥ **`AQUADUCT_VRAM_PREEMPT_USED_FRAC`** (default **0.99**) after [`clear_cb`](src/util/utils_vram.py): try [`pick_relief_gpu_index`](src/runtime/oom_retry.py), then lower quant, **before** the stage runs; [`retry_stage`](src/runtime/oom_retry.py)(…, **`preempt_high_vram`**); default quant retries **5**; OOM recovery logging.
 - **`src/render/clips.py`**: Wan / generic T2V load breadcrumbs (**`video_t2v_load`**, **`video_t2v_infer`**).
-- **`UI/workers/impl.py`**: **`PreviewWorker`**, **`StoryboardWorker`**, **`PipelineWorker`**, FFmpeg/downloads/uploads/text expand/character/model workers — [`_reraise_system_interrupt`](UI/workers/impl.py); top-level **`except BaseException`** so e.g. **`torch.cuda.OutOfMemoryError`** reaches **`failed.emit`** with CUDA hints ([`_failure_text_with_cuda_hints`](UI/workers/impl.py)).
+- **`UI/workers/impl.py`**: **`PreviewWorker`**, **`StoryboardWorker`**, **`PipelineWorker`**, FFmpeg/downloads/uploads/text expand/character/model workers: [`_reraise_system_interrupt`](UI/workers/impl.py); top-level **`except BaseException`** so e.g. **`torch.cuda.OutOfMemoryError`** reaches **`failed.emit`** with CUDA hints ([`_failure_text_with_cuda_hints`](UI/workers/impl.py)).
 - **Tests**: [`tests/runtime/test_oom_retry_fit.py`](tests/runtime/test_oom_retry_fit.py).
 - **Docs**: [`docs/reference/inference_profiles.md`](docs/reference/inference_profiles.md), [`debug/README.md`](debug/README.md).
 
@@ -545,7 +545,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Story web context** ([`src/content/story_context.py`](src/content/story_context.py)): `health_advice` uses richer scrape budget + wellness supplement searches like creative modes.
 - **Resolution in script LLM context**: [`main.py`](main.py) and [`UI/workers/impl.py`](UI/workers/impl.py) prepend **width×height** (and portrait/landscape hint) into the script supplement for `health_advice`.
 - **UI**: Run tab **Health advice (wellness tips)**; Topics mode + Discover copy for health ([`UI/tabs/run_tab.py`](UI/tabs/run_tab.py), [`UI/tabs/topics_tab.py`](UI/tabs/topics_tab.py), [`UI/main_window.py`](UI/main_window.py)). Pro img→vid tip includes `health_advice` ([`main.py`](main.py)).
-- **Art style**: **Realism mode** preset `realism` ([`src/settings/art_style_presets.py`](src/settings/art_style_presets.py)) — photoreal / editorial stills bias, distinct from **Documentary real** (`docu_real`).
+- **Art style**: **Realism mode** preset `realism` ([`src/settings/art_style_presets.py`](src/settings/art_style_presets.py)): photoreal / editorial stills bias, distinct from **Documentary real** (`docu_real`).
 - **Tests**: [`tests/cli/test_config_and_settings.py`](tests/cli/test_config_and_settings.py), [`tests/content/test_story_context.py`](tests/content/test_story_context.py), [`tests/content/test_crawler_health_queries.py`](tests/content/test_crawler_health_queries.py).
 - **Docs**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/pipeline/editor.md`](docs/pipeline/editor.md), [`docs/integrations/crawler.md`](docs/integrations/crawler.md), [`README.md`](README.md).
 
@@ -559,19 +559,19 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Observability**: bounded `dprint` at pipeline API / worker / OpenAI / crawler boundaries; UI shell (save settings, queue, tasks stop/pause, downloads); quantization + hardware fit when `models` / `ui` debug is on; download failure logging in [`src/models/model_manager.py`](src/models/model_manager.py); API script path in [`src/content/brain_api.py`](src/content/brain_api.py); diffusion **placement** (CUDA / quant / offload) in [`src/render/artist.py`](src/render/artist.py) and [`src/render/clips.py`](src/render/clips.py) when `artist` / `clips` is on.
 - **Tests** ([`tests/debug/test_debug_registry.py`](tests/debug/test_debug_registry.py)): flag merge, `AQUADUCT_DEBUG=all` with file flags off, `resolve_quant_mode` smoke, `invalidate_debug_cache`, and AST check that every `dprint` category in `src`/`UI`/`debug` matches `DEBUG_CATEGORIES`.
 
-### Tasks tab — remove **queued** pipeline runs without waiting on the active job
+### Tasks tab: remove **queued** pipeline runs without waiting on the active job
 - **UI** ([`UI/main_window.py`](UI/main_window.py)): **Remove** on a **Waiting in queue…** row drops that FIFO snapshot immediately (no disk output yet). The in-progress row uses **Stop** to cancel instead.
 
-### Model tab — quantization **slider** + separate **Automatic**
+### Model tab: quantization **slider** + separate **Automatic**
 - **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/main_window.py`](UI/main_window.py)): per-role **Automatic (fit this GPU)** checkbox (persists `auto`) and a discrete horizontal **NoWheelSlider** over enabled manual modes only, ordered **low VRAM → higher quality** via [`manual_quant_modes_low_to_high`](src/models/quantization.py). **Auto-fit** drives the same controls after ranked picks. Kokoro voice rows lock Automatic and hide the slider.
 - **Policy** ([`src/models/quantization.py`](src/models/quantization.py)): `manual_quant_modes_low_to_high`, `index_of_manual_mode`, `manual_mode_at_index`.
 - **Tests** ([`tests/models/test_quantization_manual_order.py`](tests/models/test_quantization_manual_order.py)); **Docs**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/quantization.md`](docs/reference/quantization.md).
 
-### Fix: Model tab — responsive **row cards** for local model controls
+### Fix: Model tab: responsive **row cards** for local model controls
 - **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): replaced the fragile five-column model grid with one **row card** per role. Each card now stacks title + fit badge, full-width Hub model dropdown, disk/VRAM metadata, and full-width quant dropdown, so long model names, **On disk** status, VRAM labels, and quant mode text no longer overlap or compete for a single horizontal row.
 - **Scroll / 1080p fit**: the Local Model content is now wrapped in a vertical `QScrollArea`, and model / quant combo minimum widths were lowered so cards keep readable natural height instead of being squeezed edge-to-edge at 1080p.
 
-### Fix: Model tab — **quantization** dropdown selection no longer snaps back
+### Fix: Model tab: **quantization** dropdown selection no longer snaps back
 - **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): `_update_fit_badges` repopulates the per-role quant combo; the selection is now restored from the **live** combo value when the same Hub id is still selected (otherwise from `AppSettings` after a model change). **Auto-fit** calls `_collect_settings_from_ui()` into `win.settings` before the badge refresh so ranked quant modes are not overwritten by stale settings.
 
 ### Per-model **quantization controls** (Script / Image / Video / Voice)
@@ -595,21 +595,21 @@ This is an in-flight track; bullets land per phase as they ship.
 - **CLI smoke**: [`tests/cli/test_cli_smoke.py`](tests/cli/test_cli_smoke.py) resolves the repository root by locating `main.py` so it works from the nested path.
 
 ### API mode: **Kling AI** default for Pro *motion* (text-to-video) + Pika note
-- **Catalog** ([`src/settings/api_model_catalog.py`](src/settings/api_model_catalog.py)): **Video (Pro)** list leads with **Kling** — display text notes **~66 credits / 24h** (enough for roughly **6×5s** clips) and **Pika.art** as a ~**30 credits / month** alternative. **Magic Hour** and **Replicate** remain the next options.
+- **Catalog** ([`src/settings/api_model_catalog.py`](src/settings/api_model_catalog.py)): **Video (Pro)** list leads with **Kling**: display text notes **~66 credits / 24h** (enough for roughly **6×5s** clips) and **Pika.art** as a ~**30 credits / month** alternative. **Magic Hour** and **Replicate** remain the next options.
 - **Client** ([`src/platform/kling_client.py`](src/platform/kling_client.py)): HS256 **JWT** from `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` (and optional `KLINGAPI_*` aliases, `KLING_API_BASE`); `POST /v1/videos/text2video` with nested `input` (flat JSON fallback on HTTP 400), poll `GET /v1/videos/text2video/{task_id}`. **Dispatch** in [`src/runtime/api_generation.py`](src/runtime/api_generation.py) `cloud_video_mp4_paths`; preflight in [`src/runtime/model_backend.py`](src/runtime/model_backend.py); **UI** row gating in [`UI/main_window.py`](UI/main_window.py); tooltips in [`UI/services/api_model_widgets.py`](UI/services/api_model_widgets.py).
 - **Tests** ([`tests/platform/test_kling_client.py`](tests/platform/test_kling_client.py), [`tests/runtime/test_api_model_catalog.py`](tests/runtime/test_api_model_catalog.py)). **Docs**: [api_generation.md](docs/integrations/api_generation.md), [config.md](docs/reference/config.md), [models.md](docs/reference/models.md).
 
 ### API mode: recommended cloud providers (Gemini, SiliconFlow, Magic Hour, Inworld)
 - **Catalog** ([`src/settings/api_model_catalog.py`](src/settings/api_model_catalog.py)): per-role “recommended” providers appear first in the **Generation APIs** dropdowns: **Google AI Studio (Gemini)** for the script LLM (OpenAI-compatible `https://generativelanguage.googleapis.com/v1beta/openai`), **SiliconFlow** for OpenAI-style image generation (Flux/SD3 slugs), Pro video via **Kling** (above), **Magic Hour**, or **Replicate**, and **Inworld** for low-latency TTS. Display names include short free-tier hints; existing providers (OpenAI, Groq, Replicate, ElevenLabs, …) remain available.
 - **Keys / preflight** ([`src/runtime/model_backend.py`](src/runtime/model_backend.py)): `effective_siliconflow_api_key`, `effective_kling_access_key` / `effective_kling_secret_key`, `effective_magic_hour_api_key`, `effective_inworld_api_key`; Pro mode accepts **Kling**, **Replicate**, or **Magic Hour** for cloud clips when the corresponding credentials are set.
-- **LLM** ([`src/platform/openai_client.py`](src/platform/openai_client.py)): `_normalize_openai_api_base_path` — Gemini’s OpenAI root must not receive an extra `/v1` suffix. **Image** ([`build_image_generation_openai_client`](src/platform/openai_client.py)): SiliconFlow; `download_image_png` also accepts `url` in the response and converts to PNG via **PIL** when needed.
+- **LLM** ([`src/platform/openai_client.py`](src/platform/openai_client.py)): `_normalize_openai_api_base_path`: Gemini’s OpenAI root must not receive an extra `/v1` suffix. **Image** ([`build_image_generation_openai_client`](src/platform/openai_client.py)): SiliconFlow; `download_image_png` also accepts `url` in the response and converts to PNG via **PIL** when needed.
 - **Video** ([`src/platform/kling_client.py`](src/platform/kling_client.py), [`src/platform/magichour_client.py`](src/platform/magichour_client.py), [`src/runtime/api_generation.py`](src/runtime/api_generation.py)): `cloud_video_mp4_paths` dispatches Kling, Replicate, or Magic Hour. **Voice** ([`src/speech/inworld_tts.py`](src/speech/inworld_tts.py), [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py)): Inworld non-streaming TTS with chunking, MP3→WAV via FFmpeg, optional multi-part concat. **UI** ([`UI/main_window.py`](UI/main_window.py), [`UI/services/api_model_widgets.py`](UI/services/api_model_widgets.py)): row enablement and tooltips for the new env vars.
 - **Tests**: [`tests/runtime/test_api_model_catalog.py`](tests/runtime/test_api_model_catalog.py), [`tests/platform/test_openai_client.py`](tests/platform/test_openai_client.py), [`tests/runtime/test_api_generation.py`](tests/runtime/test_api_generation.py), [`tests/models/test_model_backend.py`](tests/models/test_model_backend.py) (and existing preflight tests).
 - **Docs**: [README](README.md), [docs/integrations/api_generation.md](docs/integrations/api_generation.md), [docs/reference/config.md](docs/reference/config.md), [docs/reference/models.md](docs/reference/models.md), [docs/ui/ui.md](docs/ui/ui.md), [docs/README.md](docs/README.md).
 
-### Fix: curated Qwen3 14B Hub id — `Qwen/Qwen3-14B` (not `-Instruct`)
+### Fix: curated Qwen3 14B Hub id: `Qwen/Qwen3-14B` (not `-Instruct`)
 - **Problem**: curated default **`Qwen/Qwen3-14B-Instruct`** does not exist on the Hub and returned **404 / "Repository Not Found"** in [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1) and [`scripts/download_hf_models.py`](scripts/download_hf_models.py) even when `HF_TOKEN` was authenticated.
-- **Reason**: Qwen3 dropped the separate `-Instruct` suffix used in Qwen2.5 — the base repo [`Qwen/Qwen3-14B`](https://huggingface.co/Qwen/Qwen3-14B) is already the chat / instruct repo (see model card, architecture `Qwen3ForCausalLM`, tokenizer with `<|im_start|>` chat template).
+- **Reason**: Qwen3 dropped the separate `-Instruct` suffix used in Qwen2.5: the base repo [`Qwen/Qwen3-14B`](https://huggingface.co/Qwen/Qwen3-14B) is already the chat / instruct repo (see model card, architecture `Qwen3ForCausalLM`, tokenizer with `<|im_start|>` chat template).
 - **Fix**: normalize Hub id to **`Qwen/Qwen3-14B`** in [`src/core/config.py`](src/core/config.py) (`get_models().llm_id`), [`src/models/model_manager.py`](src/models/model_manager.py) (Script row 1), [`src/models/inference_profiles.py`](src/models/inference_profiles.py) (`pick_script_profile` exact-match + `_fallback_llm`), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1), [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/prune_models.py`](scripts/prune_models.py). The parallel copy at **`H:\AI Models\download_all_for_transfer.ps1`** was updated in place.
 - **Docs**: [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/models.md`](docs/reference/models.md) (note that Qwen3 has no `-Instruct` suffix), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
 
@@ -627,7 +627,7 @@ This is an in-flight track; bullets land per phase as they ship.
 
 ### Video: **Mochi 1** + **LTX-2** (curated)
 - **Mochi** ([`src/models/model_manager.py`](src/models/model_manager.py)): curated id was switched to **`genmo/mochi-1-preview`** after **`genmo/mochi-1.5-final`** proved unavailable on the Hub; **`canonical_hub_repo_id`** + settings migration keep older configs working. **Clips** ([`src/render/clips.py`](src/render/clips.py)): `CURATED_VIDEO_CLIP_REPO_IDS`, **`num_frames`** cap, same `MochiPipeline` loader.
-- **LTX-2** ([`Lightricks/LTX-2`](https://huggingface.co/Lightricks/LTX-2)): fifth curated T2V row — `LTX2Pipeline`, 9:16 **4K**-class defaults (**2176×3840**), VAE **tiling**, optional **PyAV** (`av`) for **encode_video** muxed audio+video. **VRAM** in [`src/models/hardware.py`](src/models/hardware.py); auto-fit ordering **last** among curated T2V (heavy id).
+- **LTX-2** ([`Lightricks/LTX-2`](https://huggingface.co/Lightricks/LTX-2)): fifth curated T2V row: `LTX2Pipeline`, 9:16 **4K**-class defaults (**2176×3840**), VAE **tiling**, optional **PyAV** (`av`) for **encode_video** muxed audio+video. **VRAM** in [`src/models/hardware.py`](src/models/hardware.py); auto-fit ordering **last** among curated T2V (heavy id).
 - **Downloads**: [`scripts/download_hf_models.py`](scripts/download_hf_models.py) `ALL_REPOS`, [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1). **Docs / tests**: [`docs/reference/models.md`](docs/reference/models.md), [`docs/reference/hardware.md`](docs/reference/hardware.md), [`tests/models/test_diffusion_presets_coverage.py`](tests/models/test_diffusion_presets_coverage.py).
 
 ### Image: **FLUX.1.1 [pro] ultra** (curated)
@@ -636,29 +636,29 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Docs**: [`docs/reference/models.md`](docs/reference/models.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
 
 ### Script (LLM): **DeepSeek-V3** 671B MoE (curated)
-- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): fourth script option — **`deepseek-ai/DeepSeek-V3`** (671B total / ~37B active per token, 128K context) for open-weight **complex plot and reasoning** when you have the GPU, RAM, and disk for full-weight or community quantization paths. **VRAM** hints and `rate_model_fit_for_repo` in [`src/models/hardware.py`](src/models/hardware.py).
+- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): fourth script option: **`deepseek-ai/DeepSeek-V3`** (671B total / ~37B active per token, 128K context) for open-weight **complex plot and reasoning** when you have the GPU, RAM, and disk for full-weight or community quantization paths. **VRAM** hints and `rate_model_fit_for_repo` in [`src/models/hardware.py`](src/models/hardware.py).
 - **Downloads**: [`scripts/download_hf_models.py`](scripts/download_hf_models.py) `ALL_REPOS`, [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1).
 - **Docs**: [`docs/reference/models.md`](docs/reference/models.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
 
 ### Script (LLM): default **Qwen3 14B**
-- **Default** curated script model is now **`Qwen/Qwen3-14B`** (replaces the prior 8B Llama-family default; Qwen3 does **not** publish a separate `-Instruct` suffix — the base repo is the chat/instruct model). Rationale: stronger creative and multi-turn behavior in current public stacks; use standard chat / non–extended-thinking generation paths in your own inference setup when you want fastest prose. **VRAM** heuristics for this id in [`src/models/hardware.py`](src/models/hardware.py).
+- **Default** curated script model is now **`Qwen/Qwen3-14B`** (replaces the prior 8B Llama-family default; Qwen3 does **not** publish a separate `-Instruct` suffix: the base repo is the chat/instruct model). Rationale: stronger creative and multi-turn behavior in current public stacks; use standard chat / non–extended-thinking generation paths in your own inference setup when you want fastest prose. **VRAM** heuristics for this id in [`src/models/hardware.py`](src/models/hardware.py).
 - **Downloads / prune** lists updated: [`src/core/config.py`](src/core/config.py) `get_models()`, [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1), [`scripts/prune_models.py`](scripts/prune_models.py).
 - **Docs**: [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/models.md`](docs/reference/models.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
 
 ### Video: curated T2V stack (Wan 2.2, Mochi, CogVideoX 5B, HunyuanVideo)
-- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): four **video** options — *Wan 2.2 T2V A14B* (`Wan-AI/Wan2.2-T2V-A14B-Diffusers`), *Mochi 1* (`genmo/mochi-1-preview`), *CogVideoX 5B*, *HunyuanVideo* — with `ui_sequence` row order. Replaces the prior SVD / ZeroScope / Cog2B / LTX curated set (those Hub ids still work if pasted). **VRAM** heuristics ([`src/models/hardware.py`](src/models/hardware.py)) and auto-fit **preference** order updated (Cog5B first for lighter GPUs).
+- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): four **video** options: *Wan 2.2 T2V A14B* (`Wan-AI/Wan2.2-T2V-A14B-Diffusers`), *Mochi 1* (`genmo/mochi-1-preview`), *CogVideoX 5B*, *HunyuanVideo*, with `ui_sequence` row order. Replaces the prior SVD / ZeroScope / Cog2B / LTX curated set (those Hub ids still work if pasted). **VRAM** heuristics ([`src/models/hardware.py`](src/models/hardware.py)) and auto-fit **preference** order updated (Cog5B first for lighter GPUs).
 - **Clips** ([`src/render/clips.py`](src/render/clips.py)): `CURATED_VIDEO_CLIP_REPO_IDS`, `WanPipeline` + VAE + `UniPC` flow-shift, `MochiPipeline`, prompt/CLIP handling for T5/UMT5-class stacks.
 - **Downloads**: [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1), and the parallel copy at `H:\AI Models\download_all_for_transfer.ps1` (same `ALL_REPOS` as the app). **Dependencies**: `diffusers>=0.32.0` for **Wan** / **Mochi** pipelines in [`requirements.txt`](requirements.txt).
 - **Docs / tests**: [`docs/reference/models.md`](docs/reference/models.md), [`tests/models/test_diffusion_presets_coverage.py`](tests/models/test_diffusion_presets_coverage.py), [`tests/models/test_auto_fit.py`](tests/models/test_auto_fit.py).
 
 ### Image: curated list (FLUX + SD3.5 + turbo)
-- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): five **image** options — *FLUX.1 [dev]*, *FLUX.1 [schnell]*, *Stable Diffusion 3.5 Large*, *3.5 Medium*, *Stable Diffusion 3 Turbo* (`stabilityai/stable-diffusion-3.5-large-turbo` — ADD, few-step). `ui_sequence` keeps this order in the dropdown. Replaces the prior SDXL/SD1.5/SD3 Medium set as curated defaults; users can still paste other Hub ids.
+- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): five **image** options: *FLUX.1 [dev]*, *FLUX.1 [schnell]*, *Stable Diffusion 3.5 Large*, *3.5 Medium*, *Stable Diffusion 3 Turbo* (`stabilityai/stable-diffusion-3.5-large-turbo`, ADD, few-step). `ui_sequence` keeps this order in the dropdown. Replaces the prior SDXL/SD1.5/SD3 Medium set as curated defaults; users can still paste other Hub ids.
 - **T2I presets** ([`src/render/artist.py`](src/render/artist.py)): `CURATED_TEXT2IMAGE_REPO_IDS` + `_IMAGE_T2I_PRESETS` for the five repos; default **`sdxl_turbo_id` fallback** in [`src/core/config.py`](src/core/config.py) is **`black-forest-labs/FLUX.1-schnell`**. **Hardware** auto-fit/tie preferences ([`src/models/hardware.py`](src/models/hardware.py)) and **prune** example preset updated.
 - **Scripts**: [`scripts/download_hf_models.py`](scripts/download_hf_models.py) (`MINIMAL_REPOS` + `ALL_REPOS` image block), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1), [`scripts/prune_models.py`](scripts/prune_models.py).
 - **Docs / tests**: [`docs/reference/models.md`](docs/reference/models.md), [`tests/models/test_auto_fit.py`](tests/models/test_auto_fit.py), [`tests/models/test_diffusion_presets_coverage.py`](tests/models/test_diffusion_presets_coverage.py).
 
-### Script (LLM): curated storytelling stack (four picks) — *superseded default; see “Qwen3 14B” above*
-- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): Script row **(1)** is **`Qwen/Qwen3-14B`**; **(2) Fimbulvetr** — `Sao10K/Fimbulvetr-11B-v2`, **(3) Midnight Miqu** — `sophosympatheia/Midnight-Miqu-70B-v1.5`, **(4) DeepSeek-V3** — `deepseek-ai/DeepSeek-V3`. Users can still paste any compatible Hub id.
+### Script (LLM): curated storytelling stack (four picks): *superseded default; see “Qwen3 14B” above*
+- **Model tab** ([`src/models/model_manager.py`](src/models/model_manager.py)): Script row **(1)** is **`Qwen/Qwen3-14B`**; **(2) Fimbulvetr**: `Sao10K/Fimbulvetr-11B-v2`, **(3) Midnight Miqu**, `sophosympatheia/Midnight-Miqu-70B-v1.5`, **(4) DeepSeek-V3**, `deepseek-ai/DeepSeek-V3`. Users can still paste any compatible Hub id.
 - **Fit** ([`src/models/hardware.py`](src/models/hardware.py)): Tighter per-repo **script** VRAM hints for these picks (plus 8B-class legacy heuristics when a typed id matches).
 - **Downloads**: lists aligned in [`scripts/download_hf_models.py`](scripts/download_hf_models.py), [`scripts/download_all_for_transfer.ps1`](scripts/download_all_for_transfer.ps1). [`scripts/prune_models.py`](scripts/prune_models.py) example preset id updated.
 - **Docs**: [`docs/reference/config.md`](docs/reference/config.md), [`docs/pipeline/brain.md`](docs/pipeline/brain.md), [`docs/reference/models.md`](docs/reference/models.md), [`docs/build/model_youtube_demos.md`](docs/build/model_youtube_demos.md).
@@ -671,7 +671,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Docs**: [`README.md`](README.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/reference/hardware.md`](docs/reference/hardware.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/reference/vram.md`](docs/reference/vram.md), [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/models.md`](docs/reference/models.md).
 
 ### Curated frontier models (image + video), download list, and docs
-- **Model registry** ([`src/models/model_manager.py`](src/models/model_manager.py)): **Image** — *FLUX.1 Schnell*, *Stable Diffusion 3 Medium*, *FLUX.1-dev* alongside SDXL / SD 1.5 / SDXL Base. **Video** — *CogVideoX 2B/5B*, *LTX-Video*, *HunyuanVideo* alongside SVD, ZeroScope, ModelScope T2V.
+- **Model registry** ([`src/models/model_manager.py`](src/models/model_manager.py)): **Image**: *FLUX.1 Schnell*, *Stable Diffusion 3 Medium*, *FLUX.1-dev* alongside SDXL / SD 1.5 / SDXL Base. **Video**: *CogVideoX 2B/5B*, *LTX-Video*, *HunyuanVideo* alongside SVD, ZeroScope, ModelScope T2V.
 - **Rendering** ([`src/render/artist.py`](src/render/artist.py)): T2I loading via **`_load_auto_t2i_pipeline`** / **`_load_auto_i2i_pipeline`** (BF16 for FLUX/SD3; FP16+`variant` for SDXL-class); **`_apply_flux_negative_cfg`** for Flux + negative prompt; presets in **`_IMAGE_T2I_PRESETS`** / **`_diffusion_kw_for_model`**. **Tests**: [`tests/models/test_diffusion_presets_coverage.py`](tests/models/test_diffusion_presets_coverage.py).
 - **Clips** ([`src/render/clips.py`](src/render/clips.py)): **`CogVideoXPipeline`**, **`LTXPipeline`**, **`HunyuanVideoPipeline`** where applicable; **`CURATED_VIDEO_CLIP_REPO_IDS`**, **`_video_pipe_kwargs`**, **`_load_text_to_video_pipeline`**. **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): VRAM hints + **`rate_model_fit_for_repo`** / **`_MOTION_VIDEO_PREF_ORDER`** for new video ids.
 - **Docs**: [`README.md`](README.md), [`docs/reference/models.md`](docs/reference/models.md) (curated table + download commands), [`docs/pipeline/artist.md`](docs/pipeline/artist.md), [`docs/reference/hardware.md`](docs/reference/hardware.md).
@@ -702,14 +702,14 @@ This is an in-flight track; bullets land per phase as they ship.
 
 ### Multi-GPU: My PC, resource monitor, runtime policy
 - **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): `GpuDevice`, `list_cuda_gpus()`, VRAM-max and heuristic compute pickers; `HardwareInfo` can summarize multiple GPUs.
-- **Policy** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): Auto vs single, `effective_vram_gb_for_kind`, `resolve_llm_cuda_device_index` / `resolve_diffusion_cuda_device_index`; optional **`AQUADUCT_CUDA_DEVICE`** override; `DevicePlan` includes reserved **`use_model_parallel_llm`** (currently always `False` — no automatic Accelerate multi-GPU LLM sharding; 4-bit stays single-GPU).
+- **Policy** ([`src/util/cuda_device_policy.py`](src/util/cuda_device_policy.py)): Auto vs single, `effective_vram_gb_for_kind`, `resolve_llm_cuda_device_index` / `resolve_diffusion_cuda_device_index`; optional **`AQUADUCT_CUDA_DEVICE`** override; `DevicePlan` includes reserved **`use_model_parallel_llm`** (currently always `False`: no automatic Accelerate multi-GPU LLM sharding; 4-bit stays single-GPU).
 - **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `gpu_selection_mode`, `gpu_device_index`, `resource_graph_monitor_gpu_index` in `ui_settings.json`.
 - **UI** (see also **Desktop UI: section cards…** above): **My PC** model **Fit** table + GPU policy persistence; **Resource graph** monitor combo + `sample_gpu_mem_pct()`; **Model** tab fit parity with effective VRAM + tab-switch refresh ([`UI/main_window.py`](UI/main_window.py)).
 - **Runtime**: [`src/content/brain.py`](src/content/brain.py), [`src/util/diffusion_placement.py`](src/util/diffusion_placement.py), [`src/render/artist.py`](src/render/artist.py), [`src/render/clips.py`](src/render/clips.py), [`main.py`](main.py) / [`UI/workers.py`](UI/workers.py) pass resolved CUDA indices.
 - **Docs**: [`README.md`](README.md), [`docs/reference/hardware.md`](docs/reference/hardware.md), [`docs/reference/config.md`](docs/reference/config.md), [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/models.md`](docs/reference/models.md), [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/reference/vram.md`](docs/reference/vram.md). **Tests**: [`tests/models/test_cuda_device_policy.py`](tests/models/test_cuda_device_policy.py), [`tests/models/test_resource_sample.py`](tests/models/test_resource_sample.py).
 
 ### Photo mode + API: still images only (no MP4 / clips)
-- **Pipeline** ([`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py)): **`run_once_api`** now branches on **`media_mode == "photo"`** after the script step: generates **API** stills via **`generate_still_png_bytes`**, optional layout / grid (`Picture` settings), writes **`final.png`**, and returns — **no** voice, **no** Replicate video clips, **no** slideshow MP4.
+- **Pipeline** ([`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py)): **`run_once_api`** now branches on **`media_mode == "photo"`** after the script step: generates **API** stills via **`generate_still_png_bytes`**, optional layout / grid (`Picture` settings), writes **`final.png`**, and returns: **no** voice, **no** Replicate video clips, **no** slideshow MP4.
 - **API preflight** ([`src/runtime/model_backend.py`](src/runtime/model_backend.py)): when **`media_mode` is `photo`**, only **LLM** + **Image** providers/keys are required (voice and video/Replicate rules for motion do not apply).
 
 ### Local LLM: prompt truncation (VRAM)
@@ -717,7 +717,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Docs**: [`docs/reference/config.md`](docs/reference/config.md).
 
 ### Run guard: local models + API preflight before pipeline
-- **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): **`local_hf_model_snapshot_errors()`** — in **Local** mode, requires on-disk Hub snapshots for the roles the pipeline loads (defaults match [`main.py`](main.py) `run_once`): **Photo** mode → Script (LLM) + Image; **Video** mode → Script + Image + Voice + Video (motion). Skipped in **API** mode (existing **`api_preflight_errors`** applies).
+- **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): **`local_hf_model_snapshot_errors()`**: in **Local** mode, requires on-disk Hub snapshots for the roles the pipeline loads (defaults match [`main.py`](main.py) `run_once`): **Photo** mode → Script (LLM) + Image; **Video** mode → Script + Image + Voice + Video (motion). Skipped in **API** mode (existing **`api_preflight_errors`** applies).
 - **UI** ([`UI/main_window.py`](UI/main_window.py)): on failed strict preflight, **Run** / queued jobs / approved preview / approved storyboard open the **Model** tab and show a borderless **Download models before running** or **Configure API before running** dialog (other preflight failures use a generic title). Queueing while a job runs also runs preflight before enqueueing.
 
 ### Startup splash (desktop cold start)
@@ -732,15 +732,15 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Tests**: [`tests/ui/test_title_bar_outline_button.py`](tests/ui/test_title_bar_outline_button.py), [`tests/core/test_app_dirs.py`](tests/core/test_app_dirs.py) (`test_media_output_root_video_vs_photo`), [`tests/cli/test_config_and_settings.py`](tests/cli/test_config_and_settings.py) (`test_ui_settings_media_mode_roundtrip`), [`tests/runtime/test_import_smoke_api.py`](tests/runtime/test_import_smoke_api.py) (imports for `UI.frameless_dialog`, `UI.title_bar_outline_button`).
 
 ### Help / first-run tutorial
-- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): **`tutorial_completed`** in `ui_settings.json` — false until the user dismisses the first-run help.
+- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): **`tutorial_completed`** in `ui_settings.json`: false until the user dismisses the first-run help.
 - **UI** ([`UI/tutorial_dialog.py`](UI/tutorial_dialog.py), [`UI/main_window.py`](UI/main_window.py), [`UI/theme.py`](UI/theme.py)): title bar **?** next to **📈** opens a frameless **Help** dialog with a **topic list** (left) and **slide** pages (right) with **Previous** / **Next**; **Close** ends the session. **`QTimer`** (~1.8s) shows the same dialog once on first launch if `tutorial_completed` is false (after the optional HF token prompt). [`UI/main_window.py`](UI/main_window.py) **`_collect_settings_from_ui`** preserves **`tutorial_completed`**. **`TutorialDialog`** accepts **`start_topic_id`** / **`start_slide`** and **`go_to_topic()`** so callers can open on a specific topic/slide.
 - **Help links in tooltips** ([`UI/tutorial_links.py`](UI/tutorial_links.py)): many tab hints use HTML tooltips with an **Open in Help →** link (`topic://…?slide=…`). A **`RichHelpTooltipFilter`** on **`QApplication`** shows a small **`QTextBrowser`** popup (native tooltips are not clickable) and opens Help at the right topic when the link is clicked. Wired on title bar **💾** / **📈** / **?**, Run, Topics, Video, Tasks, Library, Model, and Characters where hints map to tutorial topics.
 - **Packaging** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden imports **`UI.tutorial_dialog`**, **`UI.tutorial_links`**.
 - **Docs / tests**: [`docs/ui/ui.md`](docs/ui/ui.md), [`docs/reference/config.md`](docs/reference/config.md), [`tests/cli/test_config_and_settings.py`](tests/cli/test_config_and_settings.py) (`test_ui_settings_tutorial_completed_roundtrip`), [`tests/runtime/test_import_smoke_api.py`](tests/runtime/test_import_smoke_api.py) (`test_import_ui_tutorial_links`).
 
 ### CPU parallelism (OpenMP, BLAS, PyTorch, Hub probes)
-- **Runtime** ([`src/util/cpu_parallelism.py`](src/util/cpu_parallelism.py)): early **`configure_cpu_parallelism()`** sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, **`VECLIB_MAXIMUM_THREADS`** when unset (default target **`min(32, os.cpu_count())`**; override with **`AQUADUCT_CPU_THREADS`**). This tunes **host CPU** threads for math libraries — not GPU multithreading. Called from [`main.py`](main.py), [`UI/ui_app.py`](UI/ui_app.py), and [`UI/app.py`](UI/app.py) before heavy imports.
-- **PyTorch** ([`src/models/torch_dtypes.py`](src/models/torch_dtypes.py), [`src/content/brain.py`](src/content/brain.py)): after **`import torch`**, **`apply_torch_cpu_settings`** sets **`torch.set_num_threads`** from **`effective_cpu_thread_count()`** and **`torch.set_num_interop_threads`** from **`torch_interop_thread_count()`** — higher inter-op when **no CUDA/MPS** (more overlapping CPU-side ops), modest when an accelerator is present; optional override **`AQUADUCT_TORCH_INTEROP_THREADS`** (1–32).
+- **Runtime** ([`src/util/cpu_parallelism.py`](src/util/cpu_parallelism.py)): early **`configure_cpu_parallelism()`** sets **`OMP_NUM_THREADS`**, **`MKL_NUM_THREADS`**, **`OPENBLAS_NUM_THREADS`**, **`NUMEXPR_NUM_THREADS`**, **`VECLIB_MAXIMUM_THREADS`** when unset (default target **`min(32, os.cpu_count())`**; override with **`AQUADUCT_CPU_THREADS`**). This tunes **host CPU** threads for math libraries: not GPU multithreading. Called from [`main.py`](main.py), [`UI/ui_app.py`](UI/ui_app.py), and [`UI/app.py`](UI/app.py) before heavy imports.
+- **PyTorch** ([`src/models/torch_dtypes.py`](src/models/torch_dtypes.py), [`src/content/brain.py`](src/content/brain.py)): after **`import torch`**, **`apply_torch_cpu_settings`** sets **`torch.set_num_threads`** from **`effective_cpu_thread_count()`** and **`torch.set_num_interop_threads`** from **`torch_interop_thread_count()`**: higher inter-op when **no CUDA/MPS** (more overlapping CPU-side ops), modest when an accelerator is present; optional override **`AQUADUCT_TORCH_INTEROP_THREADS`** (1–32).
 - **UI** ([`UI/workers.py`](UI/workers.py)): **`ModelSizePingWorker`** probes Hugging Face repos with a **thread pool** (I/O-bound); **`ModelIntegrityVerifyWorker`** verifies multiple repos **in parallel** (capped for disk I/O).
 - **Packaging** ([`aquaduct-ui.spec`](aquaduct-ui.spec), [`build/build.ps1`](build/build.ps1)): hidden import **`src.util.cpu_parallelism`**.
 - **Docs / tests**: [`docs/pipeline/performance.md`](docs/pipeline/performance.md), [`docs/reference/config.md`](docs/reference/config.md), [`README.md`](README.md), [`tests/models/test_cpu_parallelism.py`](tests/models/test_cpu_parallelism.py).
@@ -757,19 +757,19 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Model** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py)): spacing after the download/install toolbar before the stack; spacing before **Model files location**; shared titles for model list and storage.
 
 ### Run tab: N videos = N independent pipeline tasks
-- **UI** ([`UI/main_window.py`](UI/main_window.py)): **Videos to generate** no longer uses a single **Batch pipeline (N videos)** worker. Setting **N > 1** appends **N−1** jobs to the FIFO queue and starts the first **`PipelineWorker`** immediately — each completion adds its own Tasks row and the next queued run starts ([`UI/workers.py`](UI/workers.py): removed **`PipelineBatchWorker`**).
+- **UI** ([`UI/main_window.py`](UI/main_window.py)): **Videos to generate** no longer uses a single **Batch pipeline (N videos)** worker. Setting **N > 1** appends **N−1** jobs to the FIFO queue and starts the first **`PipelineWorker`** immediately: each completion adds its own Tasks row and the next queued run starts ([`UI/workers.py`](UI/workers.py): removed **`PipelineBatchWorker`**).
 - **Queue while busy**: one click with **N = 3** appends **three** separate queue entries (not one entry with quantity 3).
 - **Tasks table**: each **FIFO-queued** pipeline job has its own row (**Queued pipeline run**, **Waiting in queue…**) under the active run so **`Tasks (n)`** matches visible pipeline work ([`UI/main_window.py`](UI/main_window.py) `_tasks_refresh`).
 - **Docs / tests**: [`docs/ui/ui.md`](docs/ui/ui.md), [`tests/ui/test_ui_main_window.py`](tests/ui/test_ui_main_window.py), [`tests/runtime/test_pipeline_run_queue_contract.py`](tests/runtime/test_pipeline_run_queue_contract.py), [`UI/tabs/run_tab.py`](UI/tabs/run_tab.py) tooltip.
 
 ### Diffusion: automatic CPU offload (VRAM vs system RAM)
-- **Placement** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): shared **`place_diffusion_pipeline()`** for local **image** ([`src/render/artist.py`](src/render/artist.py)) and **video** ([`src/render/clips.py`](src/render/clips.py)) diffusers loads — **`enable_model_cpu_offload()`** / **`enable_sequential_cpu_offload()`** vs full **`cuda`** based on **detected GPU VRAM** and **available system RAM** (`psutil`), not OS disk swap.
+- **Placement** ([`src/util/diffusion_placement.py`](src/util/diffusion_placement.py)): shared **`place_diffusion_pipeline()`** for local **image** ([`src/render/artist.py`](src/render/artist.py)) and **video** ([`src/render/clips.py`](src/render/clips.py)) diffusers loads: **`enable_model_cpu_offload()`** / **`enable_sequential_cpu_offload()`** vs full **`cuda`** based on **detected GPU VRAM** and **available system RAM** (`psutil`), not OS disk swap.
 - **Auto policy** (override with **`AQUADUCT_DIFFUSION_CPU_OFFLOAD`**: `auto` \| `off` \| `model` \| `sequential`; legacy **`AQUADUCT_DIFFUSION_SEQUENTIAL_CPU_OFFLOAD=1`** still forces sequential when unset/`auto`): favors full GPU when VRAM is ample and host RAM is free; uses **model** offload for mid VRAM (~8–12 GB); **sequential** when VRAM is tight or unknown; if **free RAM &lt; ~3 GB** but **VRAM ≥ ~8 GB**, prefers **full GPU** to avoid extra CPU staging.
 - **Hardware** ([`src/models/hardware.py`](src/models/hardware.py)): **total system RAM** falls back to **`psutil`** when the Windows-specific probe is unavailable (Linux/macOS).
 - **Tests**: [`tests/models/test_diffusion_placement.py`](tests/models/test_diffusion_placement.py).
 
 ### Pro mode: multi-scene video + image-to-video (SVD)
-- **Pipeline** ([`main.py`](main.py)): when **Pro** is on, **slideshow off**, and the **Video** model id is **img2vid** (e.g. `stabilityai/stable-video-diffusion-img2vid-xt` or ids containing **`img2vid`**), the app **generates one keyframe per scene** with the **Image** model, then runs **img2vid** on those paths — same idea as motion mode without Pro. **Text-to-video** models (e.g. ZeroScope) still use **`init_images=None`**. Scene prompts honor **`video_format`**: **news** anchors with the headline; **cartoon** / **unhinged** omit the title prefix ([`_split_into_pro_scenes_from_script`](main.py)); [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py) passes **`video_format`** consistently.
+- **Pipeline** ([`main.py`](main.py)): when **Pro** is on, **slideshow off**, and the **Video** model id is **img2vid** (e.g. `stabilityai/stable-video-diffusion-img2vid-xt` or ids containing **`img2vid`**), the app **generates one keyframe per scene** with the **Image** model, then runs **img2vid** on those paths: same idea as motion mode without Pro. **Text-to-video** models (e.g. ZeroScope) still use **`init_images=None`**. Scene prompts honor **`video_format`**: **news** anchors with the headline; **cartoon** / **unhinged** omit the title prefix ([`_split_into_pro_scenes_from_script`](main.py)); [`src/runtime/pipeline_api.py`](src/runtime/pipeline_api.py) passes **`video_format`** consistently.
 - **Preflight** ([`src/runtime/preflight.py`](src/runtime/preflight.py)): **no longer blocks** Pro + SVD; **slideshow + Pro + SVD** falls back to **still frames from the Image model** (the frame-stacking Pro path cannot drive SVD clip-by-clip).
 - **UI** ([`UI/tabs/video_tab.py`](UI/tabs/video_tab.py)): Pro checkbox label/tooltip describe **text-to-video** vs **image model → img2vid**.
 - **Tests**: [`tests/render/test_pro_img2vid_mock_run.py`](tests/render/test_pro_img2vid_mock_run.py), [`tests/runtime/test_preflight.py`](tests/runtime/test_preflight.py).
@@ -781,12 +781,12 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Run id** ([`main.py`](main.py)): **`_now_run_id()`** uses **timezone-aware** UTC (`datetime.now(timezone.utc)`) instead of deprecated **`utcnow()`**.
 
 ### Model storage (default vs external), pipeline resolution, and offsite downloads
-- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `models_storage_mode` (`default` \| `external`), `models_external_path` — **Default** uses **`.Aquaduct_data/models`**; **External** uses an absolute folder for Hub snapshots (created when valid).
+- **Settings** ([`src/core/config.py`](src/core/config.py), [`src/settings/ui_settings.py`](src/settings/ui_settings.py)): `models_storage_mode` (`default` \| `external`), `models_external_path`: **Default** uses **`.Aquaduct_data/models`**; **External** uses an absolute folder for Hub snapshots (created when valid).
 - **Runtime** ([`src/core/models_dir.py`](src/core/models_dir.py)): `models_dir_for_app()`, `get_models_dir()` (pipeline override during local `run_once`), `set_pipeline_models_dir` / `clear_pipeline_models_dir` in a **`finally`** block in [`main.py`](main.py) so inference always resolves the active folder.
 - **Loaders** ([`src/render/clips.py`](src/render/clips.py), [`src/render/artist.py`](src/render/artist.py), [`src/content/brain.py`](src/content/brain.py), [`src/content/factcheck.py`](src/content/factcheck.py)): `resolve_pretrained_load_path` uses **`get_models_dir()`** during runs.
-- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/models_storage_toggle.py`](UI/models_storage_toggle.py), [`UI/main_window.py`](UI/main_window.py)): **Model** tab (local mode) — **Model files location**: **Default \| External**, path field, **Browse…**, **Apply**, **Detect**; downloads / disk badges / verify use **`effective_models_dir()`** from collected settings. **Clear data** does not delete an external models tree (tooltip).
+- **UI** ([`UI/tabs/settings_tab.py`](UI/tabs/settings_tab.py), [`UI/models_storage_toggle.py`](UI/models_storage_toggle.py), [`UI/main_window.py`](UI/main_window.py)): **Model** tab (local mode): **Model files location**: **Default \| External**, path field, **Browse…**, **Apply**, **Detect**; downloads / disk badges / verify use **`effective_models_dir()`** from collected settings. **Clear data** does not delete an external models tree (tooltip).
 - **CLI** ([`src/cli/main.py`](src/cli/main.py)): `models list` / `models download` use **`models_dir_for_app(load_settings())`** so CLI matches saved storage mode.
-- **Offsite bundle** ([`Model-Downloads/generate_offsite_bundle.py`](Model-Downloads/generate_offsite_bundle.py), [`Model-Downloads/README.md`](Model-Downloads/README.md)): generates a **standalone** `offsite/` folder (gitignored) with embedded **`HF_TOKEN`** from the current env and the full curated repo list — copy to another PC, `pip install -r requirements-offsite.txt`, run `download_all_models.py`, then copy `models/` back. Root [`.gitignore`](.gitignore) ignores `Model-Downloads/*` except the generator + README.
+- **Offsite bundle** ([`Model-Downloads/generate_offsite_bundle.py`](Model-Downloads/generate_offsite_bundle.py), [`Model-Downloads/README.md`](Model-Downloads/README.md)): generates a **standalone** `offsite/` folder (gitignored) with embedded **`HF_TOKEN`** from the current env and the full curated repo list: copy to another PC, `pip install -r requirements-offsite.txt`, run `download_all_models.py`, then copy `models/` back. Root [`.gitignore`](.gitignore) ignores `Model-Downloads/*` except the generator + README.
 - **Orchestrator** ([`main.py`](main.py)): routes **`python main.py <subcommand>`** to [`src/cli/main.py`](src/cli/main.py); legacy **`--cli`** loop reloads **`load_settings()`** each iteration and applies HF token helper; **`--music`** uses **`dataclasses.replace`** on loaded settings.
 
 ### Topics tab: Discover, creative extraction, and topic research pack
@@ -864,15 +864,15 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Preset** dropdown + **Generate with LLM** fills **name**, **identity**, **visual style**, **negatives**, and **use project default voice** from the script model using built-in archetypes ([`src/content/character_presets.py`](src/content/character_presets.py), [`generate_character_from_preset_llm`](src/content/brain.py), [`CharacterGenerateWorker`](UI/workers.py), [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)). Optional one-line **extra notes** biases the run. Docs: [`docs/ui/characters.md`](docs/ui/characters.md).
 
 ### Brain / Model tab: same script LLM as the combo
-- **`resolve_llm_model_id()`** ([`UI/brain_expand.py`](UI/brain_expand.py)) prefers the **Model** tab **`Script (LLM)`** combo’s **`currentData()`**, then saved `llm_model_id`, then the default from [`get_models()`](src/core/config.py). Character generation and **🧠** field expansion no longer use a stale saved id when the combo was changed but **Save** was not clicked — avoiding surprise Hub downloads for a different repo.
+- **`resolve_llm_model_id()`** ([`UI/brain_expand.py`](UI/brain_expand.py)) prefers the **Model** tab **`Script (LLM)`** combo’s **`currentData()`**, then saved `llm_model_id`, then the default from [`get_models()`](src/core/config.py). Character generation and **🧠** field expansion no longer use a stale saved id when the combo was changed but **Save** was not clicked: avoiding surprise Hub downloads for a different repo.
 
 ### Hugging Face: workers + gated-model errors
 - **[`src/models/hf_access.py`](src/models/hf_access.py)**: **`ensure_hf_token_in_env`** applies the saved API token to **`HF_TOKEN`** / **`HUGGINGFACEHUB_API_TOKEN`** inside **`TextExpandWorker`** and **`CharacterGenerateWorker`** when the process env was empty (same rules as the main window: Hugging Face API enabled + token). **`humanize_hf_hub_error`** maps 401 / gated-repo failures to a short dialog instead of a full traceback.
 - Workers receive **`hf_token`** / **`hf_api_enabled`** from settings ([`UI/workers.py`](UI/workers.py), [`UI/brain_expand.py`](UI/brain_expand.py), [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py)).
 
 ### Editor / MoviePy: Pillow 10+ and RGBA compositing
-- **[`src/models/pillow_compat.py`](src/models/pillow_compat.py)**: Pillow removed **`Image.ANTIALIAS`**; older MoviePy still references it in **`resize`** — compat shim runs before MoviePy import in [`src/render/editor.py`](src/render/editor.py).
-- **CompositeVideoClip** could raise **`operands could not be broadcast`** when mixing **RGB** base frames with **RGBA** caption overlays — **`_ensure_rgba_np`** pads an opaque alpha channel on base image/video clips and watermarks before compositing ([`src/render/editor.py`](src/render/editor.py)).
+- **[`src/models/pillow_compat.py`](src/models/pillow_compat.py)**: Pillow removed **`Image.ANTIALIAS`**; older MoviePy still references it in **`resize`**: compat shim runs before MoviePy import in [`src/render/editor.py`](src/render/editor.py).
+- **CompositeVideoClip** could raise **`operands could not be broadcast`** when mixing **RGB** base frames with **RGBA** caption overlays: **`_ensure_rgba_np`** pads an opaque alpha channel on base image/video clips and watermarks before compositing ([`src/render/editor.py`](src/render/editor.py)).
 - **`.gitignore`**: ignore MoviePy temp files (`*TEMP_MPY*.mp4`).
 
 ### Model load path: project snapshot vs Hugging Face cache
@@ -888,7 +888,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Unhinged** queries bias toward **viral / meme / internet-culture** seeds; unhinged prompt copy notes trend satire (`src/content/crawler.py`, `src/content/brain.py`). Docs: [`docs/integrations/crawler.md`](docs/integrations/crawler.md).
 
 ### Key facts card: News & Explainer only
-- The on-screen **Key facts** card (from article text) is **not** rendered for **Cartoon** or **Cartoon (unhinged)** pipeline modes — only **News** and **Explainer** (`video_format`). [`video_format_supports_facts_card()`](src/core/config.py); [`assemble_microclips_then_concat` / `assemble_generated_clips_then_concat`](src/render/editor.py) take `video_format=` from [`main.py`](main.py). **Captions** tab includes a short note.
+- The on-screen **Key facts** card (from article text) is **not** rendered for **Cartoon** or **Cartoon (unhinged)** pipeline modes: only **News** and **Explainer** (`video_format`). [`video_format_supports_facts_card()`](src/core/config.py); [`assemble_microclips_then_concat` / `assemble_generated_clips_then_concat`](src/render/editor.py) take `video_format=` from [`main.py`](main.py). **Captions** tab includes a short note.
 
 ### Video tab: platform presets (tiles) + social templates
 - **Platform template** at the top of **Video** uses **selectable tiles** (game-style preset cards): one tile per curated social profile (short-form vertical HD/720p, Instagram/Facebook square and 4:5, Pinterest 2:3, YouTube/LinkedIn 1080p, landscape 720p, etc.) plus **Custom** for full manual control. Definitions live in [`src/settings/video_platform_presets.py`](src/settings/video_platform_presets.py). Clicking a tile applies **resolution**, **FPS**, **micro-scene min/max**, **images per video**, **bitrate**, **scenes per video** (`clips_per_video`), and **seconds per scene** (`clip_seconds`). The selection is stored as **`video.platform_preset_id`** in [`ui_settings.json`](src/settings/ui_settings.py) and surfaced in [`UI/main_window.py`](UI/main_window.py) as **`_video_platform_preset_id`**. Editing any of those fields switches the UI to **Custom**.
@@ -896,7 +896,7 @@ This is an in-flight track; bullets land per phase as they ship.
 
 ### Image generation: NSFW option + quality-regenerate fix
 - **Allow NSFW image output** on **Video** ([`AppSettings.allow_nsfw`](src/core/config.py)): clears the diffusion **safety checker** / **feature extractor** after load so models such as SD 1.5 do not return black frames when the classifier flags content ([`src/render/artist.py`](src/render/artist.py)). Persisted in UI settings; passed through [`main.py`](main.py) and [`UI/workers.py`](UI/workers.py).
-- **Quality retries** for slideshow/keyframes used to call `generate_images(..., max_images=1)`, which always wrote `img_001.png`, then [`apply_regenerated_image`](src/render/artist.py) deleted that source after copying—wiping **earlier** slides when regenerating a **later** index. Retries now use a **temporary output directory** before copying to the real path ([`main.py`](main.py)).
+- **Quality retries** for slideshow/keyframes used to call `generate_images(..., max_images=1)`, which always wrote `img_001.png`, then [`apply_regenerated_image`](src/render/artist.py) deleted that source after copying, wiping **earlier** slides when regenerating a **later** index. Retries now use a **temporary output directory** before copying to the real path ([`main.py`](main.py)).
 
 ### Model tab: Install dependencies (progress dialog)
 - **Install dependencies** opens a frameless **Installing dependencies** dialog with **step labels** (PyTorch vs `requirements.txt`), a **progress bar** (**indeterminate** until pip prints tqdm-style `%` lines, then **0–100%** from parsed output), a **current action** line from `pip_line_hint` (Collecting / Downloading / Installing…), and a **scrolling log**. Close is disabled until the run finishes. Streaming uses [`src/models/torch_install.py`](src/models/torch_install.py): `run_subprocess_streaming` splits on `\r` and `\n` so same-line pip progress is visible; `pip install` invocations inject `--progress-bar on`; `pip_download_percent` maps lines to the bar. Implementation: [`UI/install_deps_dialog.py`](UI/install_deps_dialog.py).
@@ -923,7 +923,7 @@ This is an in-flight track; bullets land per phase as they ship.
 ### Run tab: queue multiple pipeline jobs
 - While a **pipeline** or **batch** run is active, clicking **Run** again **appends** another job to a FIFO queue (snapshot of settings + batch quantity at click time) instead of being ignored. Same for **Approve and run** (preview) and **approved storyboard render** when a pipeline is already running.
 - When the current run **finishes** or **fails**, the next queued job starts after preflight (and FFmpeg readiness). **Stop** cancels the active run and **clears** any queued jobs, with a log line counting dropped items.
-- Implementation: [`UI/main_window.py`](UI/main_window.py) (`_pipeline_run_queue`, `_try_start_next_queued_pipeline`, `_attach_and_start_pipeline_worker`). Docs: [`README.md`](README.md), [`docs/ui/ui.md`](docs/ui/ui.md). Tests: [`tests/ui/test_ui_main_window.py`](tests/ui/test_ui_main_window.py) (Qt), [`tests/runtime/test_pipeline_run_queue_contract.py`](tests/runtime/test_pipeline_run_queue_contract.py) (no Qt — queue payload shapes).
+- Implementation: [`UI/main_window.py`](UI/main_window.py) (`_pipeline_run_queue`, `_try_start_next_queued_pipeline`, `_attach_and_start_pipeline_worker`). Docs: [`README.md`](README.md), [`docs/ui/ui.md`](docs/ui/ui.md). Tests: [`tests/ui/test_ui_main_window.py`](tests/ui/test_ui_main_window.py) (Qt), [`tests/runtime/test_pipeline_run_queue_contract.py`](tests/runtime/test_pipeline_run_queue_contract.py) (no Qt: queue payload shapes).
 
 ### Resource graph (title bar)
 - Title bar **📈** between **💾 Save** and **✕**: opens a non-modal **Resource usage** window with sparkline graphs (this process CPU, RAM % of system, GPU VRAM % when CUDA is active), **1 second** refresh ([`src/util/resource_sample.py`](src/util/resource_sample.py), [`UI/resource_graph_dialog.py`](UI/resource_graph_dialog.py)). **`psutil`** is a runtime dependency.
@@ -951,7 +951,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Tests**: [`tests/content/test_brain.py`](tests/content/test_brain.py) (creative-brief prompt path), [`tests/content/test_brain_expand.py`](tests/content/test_brain_expand.py) (`expand_custom_video_instructions`), [`tests/cli/test_config_and_settings.py`](tests/cli/test_config_and_settings.py) (settings roundtrip), [`tests/ui/test_ui_workers.py`](tests/ui/test_ui_workers.py) (`PreviewWorker` custom path skips news cache). [`tests/ui/test_ui_download_pause.py`](tests/ui/test_ui_download_pause.py) dummy download worker updated for `ModelDownloadWorker(..., remote_bytes_by_repo=...)`.
 
 ### Tasks: pipeline progress + pause/stop
-- **Tasks** tab **Status** column shows **stage + percent** (e.g. `Pipeline: Writing script (LLM)… — 22%`) during runs, not only “Running…”. Emitted from [`main.py`](main.py) `run_once(..., on_progress=)` → [`UI/workers.py`](UI/workers.py) `PipelineWorker.progress` / batch remapped `PipelineBatchWorker.progress`; labels in [`UI/progress_tasks.py`](UI/progress_tasks.py) (`pipeline_run`, `pipeline_video`).
+- **Tasks** tab **Status** column shows **stage + percent** (e.g. `Pipeline: Writing script (LLM)…: 22%`) during runs, not only “Running…”. Emitted from [`main.py`](main.py) `run_once(..., on_progress=)` → [`UI/workers.py`](UI/workers.py) `PipelineWorker.progress` / batch remapped `PipelineBatchWorker.progress`; labels in [`UI/progress_tasks.py`](UI/progress_tasks.py) (`pipeline_run`, `pipeline_video`).
 - **Pause** / **Resume** and **Stop** while a pipeline, batch run, Preview, or Storyboard job is active (cooperative cancel between steps via [`src/runtime/pipeline_control.py`](src/runtime/pipeline_control.py); `main.run_once` checkpoints). Stop also requests `QThread` interruption.
 - **`tests/runtime/test_pipeline_control.py`**: unit tests for pause/cancel behavior.
 
@@ -970,7 +970,7 @@ This is an in-flight track; bullets land per phase as they ship.
 ### Characters + ElevenLabs TTS
 - **Characters** tab: create, edit, and delete user-defined **characters** (name, identity, visual style, negative prompts, per-character voice options). Persisted locally as `data/characters.json` (gitignored).
 - **Run** tab: **Character** dropdown; chosen character feeds **LLM script context** and optional **storyboard** character consistency ([docs/ui/characters.md](docs/ui/characters.md)).
-- **API** tab: **ElevenLabs** — enable + API key (optional `ELEVENLABS_API_KEY` env). When enabled and a character has an **ElevenLabs voice** selected, **cloud TTS** is used (MP3 → WAV via FFmpeg); on failure or missing key, the pipeline falls back to Kokoro/pyttsx3 ([docs/integrations/elevenlabs.md](docs/integrations/elevenlabs.md)).
+- **API** tab: **ElevenLabs**: enable + API key (optional `ELEVENLABS_API_KEY` env). When enabled and a character has an **ElevenLabs voice** selected, **cloud TTS** is used (MP3 → WAV via FFmpeg); on failure or missing key, the pipeline falls back to Kokoro/pyttsx3 ([docs/integrations/elevenlabs.md](docs/integrations/elevenlabs.md)).
 - Implementation: [`src/content/characters_store.py`](src/content/characters_store.py), [`src/speech/elevenlabs_tts.py`](src/speech/elevenlabs_tts.py), [`src/speech/voice.py`](src/speech/voice.py) `synthesize`, [`main.py`](main.py) run wiring, [`UI/tabs/characters_tab.py`](UI/tabs/characters_tab.py), [`UI/workers.py`](UI/workers.py) async voice list refresh.
 - **Tests**: [`tests/content/test_characters_store.py`](tests/content/test_characters_store.py), [`tests/platform/test_elevenlabs_tts.py`](tests/platform/test_elevenlabs_tts.py) (mocked HTTP); settings/preflight tests extended for new fields.
 
@@ -987,7 +987,7 @@ This is an in-flight track; bullets land per phase as they ship.
 
 ### Tasks + YouTube (Shorts / Data API v3)
 - **Separate enable** from TikTok: **`youtube_enabled`** and its own OAuth client (default loopback port **8888**, vs TikTok **8765**).
-- **API** tab: **YouTube** section — client ID/secret, redirect URI, default privacy, optional **#Shorts** in title/description, optional **auto-upload after render**.
+- **API** tab: **YouTube** section: client ID/secret, redirect URI, default privacy, optional **#Shorts** in title/description, optional **auto-upload after render**.
 - **Tasks** tab: **YouTube** status column, **Upload to YouTube**; uploads via resumable `videos.insert` (`src/platform/youtube_upload.py`, `UI/workers.py` `YouTubeUploadWorker`).
 - See [docs/integrations/youtube.md](docs/integrations/youtube.md).
 
@@ -1002,7 +1002,7 @@ This is an in-flight track; bullets land per phase as they ship.
 - **Topics tab**: **Mode** selector edits one list at a time; **Discover** (headline-based topic suggestions) uses the **selected mode’s** tag list and adds approved picks to that list (not News-only).
 
 ### News cache (dedupe)
-- **Per-format seen files**: URL and title-history caches are split by format — `data/news_cache/seen_<mode>.json` and `seen_titles_<mode>.json` (for example `seen_news.json`, `seen_cartoon.json`). Legacy flat `seen.json` / `seen_titles.json` is read once to seed **news** when the per-mode file is missing.
+- **Per-format seen files**: URL and title-history caches are split by format: `data/news_cache/seen_<mode>.json` and `seen_titles_<mode>.json` (for example `seen_news.json`, `seen_cartoon.json`). Legacy flat `seen.json` / `seen_titles.json` is read once to seed **news** when the per-mode file is missing.
 - **Clear cache** (Video tab): removes legacy files and all `seen_*.json` / `seen_titles_*.json` in `data/news_cache/`. Implementation: `src/content/crawler.py` `clear_news_seen_cache_files()` (used by the desktop UI).
 
 ### Crawler / API
@@ -1037,5 +1037,5 @@ This is an in-flight track; bullets land per phase as they ship.
 - **`tests/content/test_personality_auto.py`** updated for rules-only auto pick.
 - **`tests/social/test_upload_tasks.py`**, **`tests/social/test_tiktok_post.py`**, **`tests/models/test_model_integrity.py`**, **`tests/content/test_brain_expand.py`** (mocked LLM expand). UI tests need **`pip install -r requirements-dev.txt`** (pytest-qt + PyQt6 for `qtbot`).
 
-## 0.1.0 — 2026-04-15
+## 0.1.0: 2026-04-15
 - Initial MVP scaffold: crawler → local script generation → local TTS + captions → SDXL Turbo images → micro-scene editor → per-video outputs under `videos/`.

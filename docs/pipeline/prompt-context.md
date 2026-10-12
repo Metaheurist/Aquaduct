@@ -36,7 +36,7 @@ t2v_affix = ctx.as_t2v_affix()
 ## Style fusion (applies to ALL segments)
 - Video format: creepypasta
 - Default voice: first-person past-tense campfire narrator …
-- Personality: Neutral / Newsroom — Straight, factual, low-flair delivery. | rules: … | guardrails: …
+- Personality: Neutral / Newsroom: Straight, factual, low-flair delivery. | rules: … | guardrails: …
 - Art style: cohesive cinematic lighting, consistent color grade across shots, same film look
 - Art style negatives: inconsistent lighting, jarring color shift between frames
 - Branding (strength=subtle): deep blues, muted teal, gold accents
@@ -47,7 +47,7 @@ t2v_affix = ctx.as_t2v_affix()
 
 Aquaduct calls this block from `main.py`'s non-API script path so the
 script LLM receives a single, deterministic style brief alongside the
-existing web digest. The block is idempotent — re-merging the same context
+existing web digest. The block is idempotent: re-merging the same context
 into a supplement that already contains it does not duplicate.
 
 ## Format / personality reconciliation

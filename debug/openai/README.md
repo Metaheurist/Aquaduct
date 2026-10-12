@@ -1,6 +1,6 @@
 # Debug category: `openai`
 
-**Where:** src/platform/openai_client.py — OpenAI-compatible HTTP
+**Where:** src/platform/openai_client.py: OpenAI-compatible HTTP
 
 ## Enable
 

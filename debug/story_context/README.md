@@ -1,6 +1,6 @@
 # Debug category: `story_context`
 
-**Where:** src/content/story_context.py — Firecrawl / web digest
+**Where:** src/content/story_context.py: Firecrawl / web digest
 
 ## Enable
 

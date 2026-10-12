@@ -1,6 +1,6 @@
 # Debug category: `workers`
 
-**Where:** UI/workers/impl.py — Pipeline, preview, storyboard threads
+**Where:** UI/workers/impl.py: Pipeline, preview, storyboard threads
 
 ## Enable
 

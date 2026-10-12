@@ -101,7 +101,7 @@ class ImagePlaygroundDialog(FramelessDialog):
 
         self._status = QLabel("Ready.")
         self._status.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-        self._status.setToolTip("Short status line—detailed step text from the generator appears here while working.")
+        self._status.setToolTip("Short status line; detailed step text from the generator appears here while working.")
         left_lay.addWidget(self._status)
 
         self._busy = QProgressBar()
@@ -149,7 +149,7 @@ class ImagePlaygroundDialog(FramelessDialog):
         step_row.setContentsMargins(0, 0, 0, 0)
         steps_lbl = QLabel("Steps")
         steps_lbl.setToolTip(
-            "Discrete inference steps for local diffusion—options depend on the selected model "
+            "Discrete inference steps for local diffusion; options depend on the selected model "
             "(turbo models use 1–4; SDXL/SD3/FLUX-dev use higher ranges). Hidden in API mode."
         )
         step_row.addWidget(steps_lbl)
@@ -267,7 +267,7 @@ class ImagePlaygroundDialog(FramelessDialog):
         self._step_values = list(vals)
         if not self._step_values:
             self._steps_slider.setEnabled(False)
-            self._steps_readout.setText("—")
+            self._steps_readout.setText("-")
             return
         self._steps_slider.setEnabled(True)
         self._steps_slider.blockSignals(True)

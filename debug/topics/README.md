@@ -1,6 +1,6 @@
 # Debug category: `topics`
 
-**Where:** Topics / Discover — TopicDiscoverWorker
+**Where:** Topics / Discover: TopicDiscoverWorker
 
 ## Enable
 

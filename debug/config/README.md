@@ -1,6 +1,6 @@
 # Debug category: `config`
 
-**Where:** Settings — Load/save ui_settings
+**Where:** Settings: Load/save ui_settings
 
 ## Enable
 

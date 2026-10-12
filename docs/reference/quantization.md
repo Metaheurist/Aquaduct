@@ -8,7 +8,7 @@ Aquaduct exposes per-row **quantization** controls on the **Settings → Model**
 - **Video** (T2V / I2V diffusion)
 - **Voice** (TTS, MOSS / Kokoro)
 
-The selection is persisted in [`AppSettings`](config.md#local-llm-inference-vram) as `script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode` and feeds the loaders, the **VRAM** label, the **fit** badge, and the **Auto-fit for this PC** ranking. **`auto_quant_downgrade_on_failure`** (default **on** via settings normalization) gates whether failed loads attempt **automatic quant step-down** through [`retry_stage`](../../src/runtime/oom_retry.py) before escalating to resolution / variant ladders — see [Crash resilience](../pipeline/crash-resilience.md). Implementation lives in [`src/models/quantization.py`](../../src/models/quantization.py).
+The selection is persisted in [`AppSettings`](config.md#local-llm-inference-vram) as `script_quant_mode`, `image_quant_mode`, `video_quant_mode`, `voice_quant_mode` and feeds the loaders, the **VRAM** label, the **fit** badge, and the **Auto-fit for this PC** ranking. **`auto_quant_downgrade_on_failure`** (default **on** via settings normalization) gates whether failed loads attempt **automatic quant step-down** through [`retry_stage`](../../src/runtime/oom_retry.py) before escalating to resolution / variant ladders: see [Crash resilience](../pipeline/crash-resilience.md). Implementation lives in [`src/models/quantization.py`](../../src/models/quantization.py).
 
 ## Modes
 | Mode | Meaning |
@@ -17,10 +17,10 @@ The selection is persisted in [`AppSettings`](config.md#local-llm-inference-vram
 | `bf16` | bf16 dtype (best on Ampere+ / Hopper) |
 | `fp16` | fp16 dtype (broadly supported) |
 | `int8` | 8-bit weight quant where the backend supports it (`bitsandbytes` for LLMs / MOSS, experimental in `diffusers`) |
-| `nf4_4bit` | 4-bit NF4 (`BitsAndBytesConfig`) — LLM rows only |
-| `cpu_offload` | route the pipeline to **CPU** / model-CPU-offload — diffusion rows and voice (MOSS) |
+| `nf4_4bit` | 4-bit NF4 (`BitsAndBytesConfig`): LLM rows only |
+| `cpu_offload` | route the pipeline to **CPU** / model-CPU-offload: diffusion rows and voice (MOSS) |
 
-`supported_quant_modes(role, repo_id)` enumerates the modes available per row (LLMs include `nf4_4bit`; diffusion / voice rows include `cpu_offload`). `manual_quant_modes_low_to_high(role, repo_id)` lists **enabled** manual modes (excluding `auto`) in slider order for the UI. Unsupported modes remain policy-disabled (e.g. Kokoro accepts **Automatic** only—the slider is hidden).
+`supported_quant_modes(role, repo_id)` enumerates the modes available per row (LLMs include `nf4_4bit`; diffusion / voice rows include `cpu_offload`). `manual_quant_modes_low_to_high(role, repo_id)` lists **enabled** manual modes (excluding `auto`) in slider order for the UI. Unsupported modes remain policy-disabled (e.g. Kokoro accepts **Automatic** only, the slider is hidden).
 
 When the user checks **Automatic**, `*_quant_mode` is stored as `auto`. Otherwise the slider index maps to the corresponding entry in `manual_quant_modes_low_to_high`.
 
@@ -56,11 +56,11 @@ The Settings UI shows the result as e.g. `~7-9 GB · NF4 4-bit` with a tooltip n
 ## Runtime loaders and fallbacks
 All loaders accept the resolved mode and **fall back gracefully** with a status message if the selected stack doesn’t support it:
 
-- **LLM** ([`src/content/brain.py`](../../src/content/brain.py)) — `load_causal_lm_from_pretrained(..., quant_mode=...)`. Tries `BitsAndBytesConfig` (4-bit NF4 / int8) or fp16 / bf16 dtype, falls back to fp16 / CPU.
-- **Image** ([`src/render/artist.py`](../../src/render/artist.py)) — `_load_auto_t2i_pipeline` / `_load_auto_i2i_pipeline` choose a dtype from the mode and optionally try a `diffusers` `BitsAndBytesConfig` when the installed stack exposes it; failures fall back to the stable dtype path.
-- **Video** ([`src/render/clips.py`](../../src/render/clips.py)) — `_load_text_to_video_pipeline` resolves dtype; experimental int8 / 4-bit currently falls back to fp16 (backend support varies by pipeline).
-- **Voice** ([`src/speech/tts_kokoro_moss.py`](../../src/speech/tts_kokoro_moss.py)) — MOSS attempts `BitsAndBytesConfig` for int8 / nf4 and routes `cpu_offload` to CPU; Kokoro accepts the parameter for symmetry but uses its stable path.
-- **Diffusion placement** ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)) — `place_diffusion_pipeline(..., force_offload="model")` is forced when `quant_mode == "cpu_offload"`. **Device** selection still goes through [`resolve_diffusion_cuda_device_index`](../../src/util/cuda_device_policy.py) and [`resolve_llm_cuda_device_index`](../../src/util/cuda_device_policy.py).
+- **LLM** ([`src/content/brain.py`](../../src/content/brain.py)): `load_causal_lm_from_pretrained(..., quant_mode=...)`. Tries `BitsAndBytesConfig` (4-bit NF4 / int8) or fp16 / bf16 dtype, falls back to fp16 / CPU.
+- **Image** ([`src/render/artist.py`](../../src/render/artist.py)): `_load_auto_t2i_pipeline` / `_load_auto_i2i_pipeline` choose a dtype from the mode and optionally try a `diffusers` `BitsAndBytesConfig` when the installed stack exposes it; failures fall back to the stable dtype path.
+- **Video** ([`src/render/clips.py`](../../src/render/clips.py)): `_load_text_to_video_pipeline` resolves dtype; experimental int8 / 4-bit currently falls back to fp16 (backend support varies by pipeline).
+- **Voice** ([`src/speech/tts_kokoro_moss.py`](../../src/speech/tts_kokoro_moss.py)): MOSS attempts `BitsAndBytesConfig` for int8 / nf4 and routes `cpu_offload` to CPU; Kokoro accepts the parameter for symmetry but uses its stable path.
+- **Diffusion placement** ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)): `place_diffusion_pipeline(..., force_offload="model")` is forced when `quant_mode == "cpu_offload"`. **Device** selection still goes through [`resolve_diffusion_cuda_device_index`](../../src/util/cuda_device_policy.py) and [`resolve_llm_cuda_device_index`](../../src/util/cuda_device_policy.py).
 
 ## Persistence and migration
 Settings load goes through [`src/settings/ui_settings.py`](../../src/settings/ui_settings.py):
@@ -74,22 +74,22 @@ CLI partial settings ([`src/cli/settings_merge.py`](../../src/cli/settings_merge
 `format_inference_profile_report` includes `quant=<mode>` per role next to the band and profile label, so each `[Aquaduct][inference_profile]` line records both **what** profile was selected and **how** the model was loaded.
 
 ## Tests
-- [`tests/models/test_quantization_policy.py`](../../tests/models/test_quantization_policy.py) — labels, role-supported modes, settings normalization, VRAM multipliers, hint parsing, `pick_auto_mode` thresholds.
-- [`tests/models/test_quant_loader_chain.py`](../../tests/models/test_quant_loader_chain.py) — mocked LLM `BitsAndBytesConfig` selection per `quant_mode`, CPU fallback.
-- [`tests/models/test_auto_fit.py`](../../tests/models/test_auto_fit.py) — Auto-fit picks both repo and quant for low / high VRAM hosts.
-- [`tests/ui/test_ui_settings_quantization.py`](../../tests/ui/test_ui_settings_quantization.py) — save / load roundtrip, `try_llm_4bit` migration, alias / unknown-mode handling.
-- [`tests/models/test_quantization_manual_order.py`](../../tests/models/test_quantization_manual_order.py) — `manual_quant_modes_low_to_high` ordering (script / image / video / Kokoro vs MOSS voice).
+- [`tests/models/test_quantization_policy.py`](../../tests/models/test_quantization_policy.py): labels, role-supported modes, settings normalization, VRAM multipliers, hint parsing, `pick_auto_mode` thresholds.
+- [`tests/models/test_quant_loader_chain.py`](../../tests/models/test_quant_loader_chain.py): mocked LLM `BitsAndBytesConfig` selection per `quant_mode`, CPU fallback.
+- [`tests/models/test_auto_fit.py`](../../tests/models/test_auto_fit.py): Auto-fit picks both repo and quant for low / high VRAM hosts.
+- [`tests/ui/test_ui_settings_quantization.py`](../../tests/ui/test_ui_settings_quantization.py): save / load roundtrip, `try_llm_4bit` migration, alias / unknown-mode handling.
+- [`tests/models/test_quantization_manual_order.py`](../../tests/models/test_quantization_manual_order.py): `manual_quant_modes_low_to_high` ordering (script / image / video / Kokoro vs MOSS voice).
 
 ## Risk controls
 Experimental quantization is **opt-in and capability-checked**. `optimum-quanto`, `torchao`, and other backend-specific quant packages are **not** required. If a chosen mode is unsupported for a model / backend, Aquaduct logs a warning and falls back to the nearest stable mode rather than failing the run.
 
 ## Related docs
-- [Config](config.md) — `*_quant_mode` fields, GPU policy
-- [Hardware + model fit](hardware.md) — `vram_requirement_hint` and fit badges
-- [VRAM inference profiles](inference_profiles.md) — bands, profile selection
-- [Models + downloads](models.md) — curated repos
-- [Settings tab](../ui/ui.md) — UI placement of dropdowns and Auto-fit
-- [Brain](../pipeline/brain.md), [Artist](../pipeline/artist.md) — loader paths
+- [Config](config.md): `*_quant_mode` fields, GPU policy
+- [Hardware + model fit](hardware.md): `vram_requirement_hint` and fit badges
+- [VRAM inference profiles](inference_profiles.md): bands, profile selection
+- [Models + downloads](models.md): curated repos
+- [Settings tab](../ui/ui.md): UI placement of dropdowns and Auto-fit
+- [Brain](../pipeline/brain.md), [Artist](../pipeline/artist.md): loader paths
 
 ---
 

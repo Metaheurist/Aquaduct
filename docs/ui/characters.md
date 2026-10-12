@@ -4,16 +4,16 @@ User-defined **characters** store a host identity, optional diffusion visual sty
 
 ## Layout
 
-- **Left**: scrollable **card grid** — round avatar, name, and one-line identity snippet ([`CharacterCard`](../../UI/widgets/character_card.py), [`FlowLayout`](../../UI/widgets/flow_layout.py)).
+- **Left**: scrollable **card grid**: round avatar, name, and one-line identity snippet ([`CharacterCard`](../../UI/widgets/character_card.py), [`FlowLayout`](../../UI/widgets/flow_layout.py)).
 - **Right**: profile editor (form fields, portrait, voice options).
 - Toolbar (**add** / **duplicate** / **delete**) uses SVG icons ([`UI/widgets/toolbar_svg_icons.py`](../../UI/widgets/toolbar_svg_icons.py)).
 
 ## Fields
 
-- **Name** — card label and script context.
-- **Identity / persona** — LLM context for narration consistency. Optional **sparkles** (LLM expand) in the field corner ([`UI/services/brain_expand.py`](../../UI/services/brain_expand.py), [Brain](../pipeline/brain.md)).
-- **Visual style** / **Negatives** — storyboard and diffusion hints; optional LLM expand on each.
-- **Gender**, **Ethnicity**, **Age band** — optional anchoring strings for script and storyboard.
+- **Name**: card label and script context.
+- **Identity / persona**: LLM context for narration consistency. Optional **sparkles** (LLM expand) in the field corner ([`UI/services/brain_expand.py`](../../UI/services/brain_expand.py), [Brain](../pipeline/brain.md)).
+- **Visual style** / **Negatives**: storyboard and diffusion hints; optional LLM expand on each.
+- **Gender**, **Ethnicity**, **Age band**: optional anchoring strings for script and storyboard.
 
 ## Auto presets (LLM)
 
@@ -21,7 +21,7 @@ User-defined **characters** store a host identity, optional diffusion visual sty
 
 ## Run tab
 
-Pick **one or more** saved characters (ordered list — **first = Lead**). Stored as `active_character_ids` in `ui_settings.json`.
+Pick **one or more** saved characters (ordered list: **first = Lead**). Stored as `active_character_ids` in `ui_settings.json`.
 
 ## Portrait preview
 

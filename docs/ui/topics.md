@@ -1,8 +1,8 @@
-# Topics tab — tags, Discover, grounding notes
+# Topics tab: tags, Discover, grounding notes
 
 ## Purpose
 
-The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format** (News, Cartoon, Explainer, Unhinged, Creepypasta, Health advice, NSFW — same buckets as Run). Tags drive crawls, Discover seeds, and the script LLM.
+The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format** (News, Cartoon, Explainer, Unhinged, Creepypasta, Health advice, NSFW: same buckets as Run). Tags drive crawls, Discover seeds, and the script LLM.
 
 ## Tags (chip flow)
 
@@ -13,7 +13,7 @@ The **Topics** tab edits `topic_tags_by_mode`: one tag list per **video format**
 ## Selected-tag notes (grounding)
 
 - One optional note field targets the **currently selected chip** only (replaces the old per-tag notes block).
-- Persisted as `topic_tag_notes` in `ui_settings.json` (keys: tag text **normalized** to lowercase, single-line notes **≤ 240 chars** after sanitisation — [`sanitize_topic_tag_notes`](../../src/content/topic_constraints.py)).
+- Persisted as `topic_tag_notes` in `ui_settings.json` (keys: tag text **normalized** to lowercase, single-line notes **≤ 240 chars** after sanitisation: [`sanitize_topic_tag_notes`](../../src/content/topic_constraints.py)).
 - At run time, `main.py` merges these into [`topic_constraints_block`](../../src/content/topic_constraints.py) alongside active tags (`effective_topic_tags`).
 
 ## Discover
@@ -29,7 +29,7 @@ See [Desktop UI overview](ui.md) and [Crawler](../integrations/crawler.md).
 
 ## Related pipeline docs
 
-- [Brain — topic tags & hard constraints](../pipeline/brain.md#topic-tags--hard-constraints)
+- [Brain: topic tags & hard constraints](../pipeline/brain.md#topic-tags--hard-constraints)
 - [Prompt context fusion](../pipeline/prompt-context.md)
-- [Config — `topic_tag_notes`](../reference/config.md#app-settings-ui--pipeline)
+- [Config: `topic_tag_notes`](../reference/config.md#app-settings-ui--pipeline)
 - [Shared UI widgets](shared-widgets.md)

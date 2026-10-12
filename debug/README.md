@@ -1,6 +1,6 @@
 # Aquaduct debug logging
 
-Central module: **[debug_log.py](debug_log.py)** — categorical `dprint()`, env / CLI merging, and **`MODULE_DEBUG_FLAGS`** (boolean per category; edit in-repo to enable without env).
+Central module: **[debug_log.py](debug_log.py)**: categorical `dprint()`, env / CLI merging, and **`MODULE_DEBUG_FLAGS`** (boolean per category; edit in-repo to enable without env).
 
 ## Enabling categories
 
@@ -10,7 +10,7 @@ Central module: **[debug_log.py](debug_log.py)** — categorical `dprint()`, env
 | **Env** | `AQUADUCT_DEBUG=pipeline,brain` or `AQUADUCT_DEBUG=all` |
 | **Per-var env** | `AQUADUCT_DEBUG_PIPELINE=1` |
 | **CLI** | `python main.py --once --debug brain` · `python -m UI --debug ui,workers` |
-| **Always-on stages** | Coarse `[Aquaduct][run] [stage_name] …` lines (no env) from [`pipeline_console()`](debug_log.py) — see stderr and `logs/debug.log` |
+| **Always-on stages** | Coarse `[Aquaduct][run] [stage_name] …` lines (no env) from [`pipeline_console()`](debug_log.py): see stderr and `logs/debug.log` |
 
 Resolution is a **union**: booleans OR env OR CLI combined (then cached until `invalidate_debug_cache()`).
 

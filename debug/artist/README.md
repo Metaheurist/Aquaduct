@@ -1,6 +1,6 @@
 # Debug category: `artist`
 
-**Where:** src/render/artist.py — Diffusion image generation
+**Where:** src/render/artist.py: Diffusion image generation
 
 ## Enable
 

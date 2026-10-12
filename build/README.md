@@ -5,7 +5,7 @@ This folder contains the scripts to build a Windows executable for the project.
 Canonical driver: **`build/build.ps1`** (onedir / onefile flags, docs glob, metadata).  
 Portable mirror: **`aquaduct-ui.spec`** at repo root (same hidden imports + `docs/**/*.md` via `SPECPATH`; default **onefile** windowless). Build either way with `-UseSpec` (see below).
 
-**Build venv (recommended):** use **`-Clean`** so **`.venv-build`** is only for packaging. The script runs **`scripts/install_pytorch.py --with-rest`** (installs **torch** / **torchvision** / **torchaudio** for this PC’s CUDA or CPU, then **`requirements.txt`** — torch is not listed there, so no second torch install), then **`requirements-build.txt`** (**PyInstaller** only). Run **pytest** from a separate dev venv with **`requirements-dev.txt`**. Optional **`build/build.ps1 -IncludeDevDeps`** restores the old behavior (install **full** `requirements-dev.txt` into the build venv).
+**Build venv (recommended):** use **`-Clean`** so **`.venv-build`** is only for packaging. The script runs **`scripts/install_pytorch.py --with-rest`** (installs **torch** / **torchvision** / **torchaudio** for this PC’s CUDA or CPU, then **`requirements.txt`**: torch is not listed there, so no second torch install), then **`requirements-build.txt`** (**PyInstaller** only). Run **pytest** from a separate dev venv with **`requirements-dev.txt`**. Optional **`build/build.ps1 -IncludeDevDeps`** restores the old behavior (install **full** `requirements-dev.txt` into the build venv).
 
 ## Build
 
@@ -43,7 +43,7 @@ This invokes `pyinstaller aquaduct-ui.spec` from the repo root (outputs **`dist\
 # CLI (main.py)
 .\build\build.ps1 -Clean -OneFile
 
-# Desktop UI (recommended — Aquaduct window)
+# Desktop UI (recommended: Aquaduct window)
 .\build\build.ps1 -Clean -UI -OneFile
 ```
 
@@ -60,7 +60,7 @@ This invokes `pyinstaller aquaduct-ui.spec` from the repo root (outputs **`dist\
 2. **First launch**: Double-click the EXE from Explorer or run from `dist\…`; confirm the main window appears.
 3. **Debug console**: Run `dist\aquaduct-ui\aquaduct-ui.exe -debug` (or `--debug`) to attach a Windows console and see tracebacks/logs. Optional categories: `dist\aquaduct-ui\aquaduct-ui.exe --debug pipeline,ui` (parsed before Qt; see `debug.debug_log`).
 4. **Model / API**: Open the **Model** tab; switch **local vs API** execution if your build includes that control; confirm no crash when toggling.
-5. **Scroll / combos**: Open tabs with combo boxes and scroll areas; confirm mouse wheel does not change combo values unexpectedly (wheel guard — `UI/no_wheel_controls.py`).
+5. **Scroll / combos**: Open tabs with combo boxes and scroll areas; confirm mouse wheel does not change combo values unexpectedly (wheel guard: `UI/no_wheel_controls.py`).
 6. **HTTPS / APIs**: If you use ElevenLabs or other HTTPS features, exercise one short call; on SSL errors, confirm `certifi` is bundled (`--collect-all certifi` in the script).
 
 ## Runtime downloads

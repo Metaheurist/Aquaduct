@@ -10,9 +10,9 @@ python main.py <command> [options]
 
 Legacy flags still work:
 
-- `python main.py` — desktop UI (default).
-- `python main.py --cli --once` — one headless run using saved settings.
-- `python main.py --cli` — watch loop (interval via `--interval-hours`); each iteration reloads **`ui_settings.json`** and applies the Hugging Face token the same way as `--once`.
+- `python main.py`: desktop UI (default).
+- `python main.py --cli --once`: one headless run using saved settings.
+- `python main.py --cli`: watch loop (interval via `--interval-hours`); each iteration reloads **`ui_settings.json`** and applies the Hugging Face token the same way as `--once`.
 
 Print top-level help:
 
@@ -34,8 +34,8 @@ Prints the absolute path to `ui_settings.json`.
 
 Dumps effective settings as one JSON object (stdout). **Secrets are redacted by default** (tokens, API keys, OAuth client secrets). Options:
 
-- `--pretty` — indented JSON.
-- `--show-secrets` — include plaintext secrets (use only in trusted environments).
+- `--pretty`: indented JSON.
+- `--show-secrets`: include plaintext secrets (use only in trusted environments).
 
 ### `config validate`
 
@@ -47,24 +47,24 @@ Runs strict preflight only (no generation). Exit **1** if not OK.
 
 ### `run`
 
-- **`--once`** — single pipeline run; prints the output video folder path (or “No new items found.”).
-- **`--watch`** — repeat forever; **`--interval-hours`** (default `4`) controls sleep between runs. Each iteration reloads settings from disk.
-- **`--merge-json PATH`** — deep-merge a partial JSON object into loaded settings before the run (same top-level keys as `ui_settings.json`, e.g. `video`, `video_format`).
-- **`--music PATH`** — override `background_music_path` for that run.
-- **`--dry-run`** — preflight only, no generation.
+- **`--once`**: single pipeline run; prints the output video folder path (or “No new items found.”).
+- **`--watch`**: repeat forever; **`--interval-hours`** (default `4`) controls sleep between runs. Each iteration reloads settings from disk.
+- **`--merge-json PATH`**: deep-merge a partial JSON object into loaded settings before the run (same top-level keys as `ui_settings.json`, e.g. `video`, `video_format`).
+- **`--music PATH`**: override `background_music_path` for that run.
+- **`--dry-run`**: preflight only, no generation.
 
 Progress messages go to **stderr**; the final path for `--once` goes to **stdout** for scripting.
 
 ### `models list`
 
-Lists curated Hugging Face repos (script / image / video / voice) and whether a local snapshot exists under the **resolved models directory** (same rule as the app: **default** `.Aquaduct_data/models`, or **external** path from `ui_settings.json` when configured — see [Config](config.md) / `models_dir_for_app` in [`src/core/models_dir.py`](../../src/core/models_dir.py)).
+Lists curated Hugging Face repos (script / image / video / voice) and whether a local snapshot exists under the **resolved models directory** (same rule as the app: **default** `.Aquaduct_data/models`, or **external** path from `ui_settings.json` when configured: see [Config](config.md) / `models_dir_for_app` in [`src/core/models_dir.py`](../../src/core/models_dir.py)).
 
 ### `models download`
 
 Downloads snapshots into that same **resolved** models folder (not always `.Aquaduct_data/models/` if **External** storage is saved).
 
 - `--role script|image|video|voice|all` (default: `all`).
-- `--repo-id ORG/NAME` — download only this id (must appear in the curated list).
+- `--repo-id ORG/NAME`: download only this id (must appear in the curated list).
 
 Requires a Hugging Face token for gated models: set **`HF_TOKEN`** or **`HUGGINGFACEHUB_API_TOKEN`**, or save a token in the UI (applied to the environment when present).
 
@@ -102,8 +102,8 @@ Adjust image name and working directory to match your Dockerfile.
 
 ## See also
 
-- [`main.md`](../pipeline/main.md) — orchestrator and legacy `--cli` flags.
-- [`hardware.md`](hardware.md) — VRAM / fit hints for local models.
+- [`main.md`](../pipeline/main.md): orchestrator and legacy `--cli` flags.
+- [`hardware.md`](hardware.md): VRAM / fit hints for local models.
 
 ---
 

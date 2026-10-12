@@ -1,4 +1,4 @@
-"""Pill on/off switch — drop-in QCheckBox replacement with custom paint."""
+"""Pill on/off switch: drop-in QCheckBox replacement with custom paint."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 # Debug category: `ui`
 
-**Where:** UI/main_window.py — Shell actions, tabs, downloads
+**Where:** UI/main_window.py: Shell actions, tabs, downloads
 
 ## UI modernization (2026)
 

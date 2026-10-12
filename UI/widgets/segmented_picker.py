@@ -1,4 +1,4 @@
-"""N-segment pill picker — combo-subset API for small enum choices."""
+"""N-segment pill picker: combo-subset API for small enum choices."""
 
 from __future__ import annotations
 

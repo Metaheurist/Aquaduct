@@ -1,6 +1,6 @@
 # Debug category: `preflight`
 
-**Where:** src/runtime/preflight.py — Run preflight validation
+**Where:** src/runtime/preflight.py: Run preflight validation
 
 ## Enable
 

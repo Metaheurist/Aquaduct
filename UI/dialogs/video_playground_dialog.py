@@ -56,7 +56,7 @@ def resolve_video_target(win) -> tuple[str, str, str, str | None]:
 
     repo = video_model_id_from_ui(win)
     if not repo:
-        return "local", "", "", "Choose a video model on the Model tab (text-to-video or image-to-video — the playground adapts)."
+        return "local", "", "", "Choose a video model on the Model tab (text-to-video or image-to-video: the playground adapts)."
     label = f"Local · {repo}"
     return "local", label, repo, None
 
@@ -105,7 +105,7 @@ class VideoPlaygroundDialog(FramelessDialog):
 
         self._status = QLabel("Ready.")
         self._status.setStyleSheet("color: #B7B7C2; font-size: 11px;")
-        self._status.setToolTip("Short status line — detailed step text from the generator appears here while working.")
+        self._status.setToolTip("Short status line; detailed step text from the generator appears here while working.")
         left_lay.addWidget(self._status)
 
         self._busy = QProgressBar()
@@ -178,7 +178,7 @@ class VideoPlaygroundDialog(FramelessDialog):
         count_row = QHBoxLayout()
         count_row.setContentsMargins(0, 0, 0, 0)
         count_row.addStretch(1)
-        self._prompt_limit_lbl = QLabel("0 / —")
+        self._prompt_limit_lbl = QLabel("0 / -")
         self._prompt_limit_lbl.setMinimumWidth(112)
         self._prompt_limit_lbl.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -212,7 +212,7 @@ class VideoPlaygroundDialog(FramelessDialog):
 
         info_title = QLabel("Output")
         info_title.setStyleSheet("color: #9BA6B8; font-size: 12px; font-weight: 600;")
-        info_title.setToolTip("No in-window player in v1 — use Open video or your file manager.")
+        info_title.setToolTip("No in-window player in v1; use Open video or your file manager.")
         right_lay.addWidget(info_title)
 
         self._out_info = QLabel("No video yet.")
@@ -290,7 +290,7 @@ class VideoPlaygroundDialog(FramelessDialog):
             )
             self._pick_image_btn.setToolTip("Pick one PNG / JPEG / WebP frame to animate. Required before Generate.")
             self._init_image_lbl.setToolTip(
-                (self._init_image_path or "No file chosen.") + " — use Browse to select a still."
+                (self._init_image_path or "No file chosen.") + " (use Browse to select a still)."
             )
         elif kind == "local_img2vid_with_text":
             self._image_section_title.setToolTip(
@@ -298,7 +298,7 @@ class VideoPlaygroundDialog(FramelessDialog):
             )
             self._pick_image_btn.setToolTip("Pick a still to condition the motion model. Required before Generate.")
             self._init_image_lbl.setToolTip(
-                (self._init_image_path or "No file chosen.") + " — required alongside the prompt."
+                (self._init_image_path or "No file chosen.") + " (required alongside the prompt)."
             )
         else:
             self._image_section_title.setToolTip("")
@@ -353,7 +353,7 @@ class VideoPlaygroundDialog(FramelessDialog):
         self._current_prompt_max = max(0, int(lim))
         if self._current_prompt_max <= 0:
             detail = hint
-            self._prompt_limit_lbl.setText("—")
+            self._prompt_limit_lbl.setText("-")
             self._prompt_limit_lbl.setToolTip(hint)
         else:
             detail = (
@@ -387,19 +387,19 @@ class VideoPlaygroundDialog(FramelessDialog):
         kind = getattr(self, "_motion_ui_kind", "local_t2v")
         if kind == "api_t2v":
             pro_sec = float(getattr(vs, "pro_clip_seconds", 4.0) or 4.0) if vs is not None else 4.0
-            lines.append(f"Cloud text-to-video — length ≈ {pro_sec:g} s (Pro settings).")
+            lines.append(f"Cloud text-to-video: length ≈ {pro_sec:g} s (Pro settings).")
         elif kind == "local_t2v":
             sec = float(getattr(vs, "clip_seconds", 4.0) or 4.0) if vs is not None else 4.0
             fps = int(getattr(vs, "fps", 30) or 30) if vs is not None else 30
-            lines.append(f"Local text-to-video — Video tab clip ≈ {sec:g} s, {fps} fps.")
+            lines.append(f"Local text-to-video: Video tab clip ≈ {sec:g} s, {fps} fps.")
         elif kind == "local_img2vid_image_only":
             sec = float(getattr(vs, "clip_seconds", 4.0) or 4.0) if vs is not None else 4.0
             fps = int(getattr(vs, "fps", 30) or 30) if vs is not None else 30
-            lines.append(f"Local image-to-video — still + motion; ~{sec:g} s, {fps} fps. No text prompt for this checkpoint.")
+            lines.append(f"Local image-to-video: still + motion; ~{sec:g} s, {fps} fps. No text prompt for this checkpoint.")
         else:
             sec = float(getattr(vs, "clip_seconds", 4.0) or 4.0) if vs is not None else 4.0
             fps = int(getattr(vs, "fps", 30) or 30) if vs is not None else 30
-            lines.append(f"Local image-to-video with text — still required; ~{sec:g} s, {fps} fps.")
+            lines.append(f"Local image-to-video with text: still required; ~{sec:g} s, {fps} fps.")
         mx = int(getattr(self, "_current_prompt_max", 0))
         if kind in ("api_t2v", "local_t2v", "local_img2vid_with_text") and mx > 0:
             lines.append(f"Prompt budget: up to {mx} characters (see counter).")
@@ -437,7 +437,7 @@ class VideoPlaygroundDialog(FramelessDialog):
             elif motion == "local_t2v":
                 tag = " (local text-to-video)"
             elif motion == "local_img2vid_image_only":
-                tag = " (local image-to-video — still only)"
+                tag = " (local image-to-video: still only)"
             elif motion == "local_img2vid_with_text":
                 tag = " (local image-to-video + prompt)"
             self._subtitle.setText(f"{label}{tag}")

@@ -1,6 +1,6 @@
 # Debug category: `voice`
 
-**Where:** src/speech — TTS synthesis and timing JSON
+**Where:** src/speech: TTS synthesis and timing JSON
 
 ## Enable
 

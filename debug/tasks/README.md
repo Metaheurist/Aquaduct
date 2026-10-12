@@ -1,6 +1,6 @@
 # Debug category: `tasks`
 
-**Where:** Tasks tab — Queue rows, remove queued, refresh
+**Where:** Tasks tab: Queue rows, remove queued, refresh
 
 ## Enable
 

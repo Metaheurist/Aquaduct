@@ -374,7 +374,7 @@ class MainWindow(QMainWindow):
         #   Results:         Tasks, Library
         #   System:          My PC
         # Group adjacency improves discoverability; visibility per media mode is handled by tab text.
-        # Pipeline first (default tab) — remaining tabs attach after the window is shown.
+        # Pipeline first (default tab); remaining tabs attach after the window is shown.
         attach_run_tab(self)
         self._deferred_tab_queue: list[tuple[str, Callable]] = list(_DEFERRED_TAB_ATTACHERS)
         self._tabs_init_finished = False
@@ -563,7 +563,7 @@ class MainWindow(QMainWindow):
         """Toggle session-only bypass for NSFW-related guardrails and NSFW-oriented Run defaults."""
         if not dev_guardrail_f12_bypass_enabled():
             self._append_log(
-                "F12: guardrail bypass disabled — set AQUADUCT_DEV_DISABLE_GUARDRAILS=1 before launch."
+                "F12: guardrail bypass disabled. Set AQUADUCT_DEV_DISABLE_GUARDRAILS=1 before launch."
             )
             self._toast("F12 bypass disabled (dev env not set)", kind="warning", msec=4000)
             return
@@ -587,7 +587,7 @@ class MainWindow(QMainWindow):
             for m in VIDEO_FORMATS:
                 self.settings.topic_tags_by_mode[m] = list(seed)
             self._append_log(
-                "F12: session guardrails off — NSFW format, Allow NSFW, topic lists synced to all modes."
+                "F12: session guardrails off (NSFW format, Allow NSFW, topic lists synced to all modes)."
             )
             self._toast("Content guardrails OFF (this session)", kind="warning", msec=4000)
             if hasattr(self, "video_format_combo"):
@@ -2418,7 +2418,7 @@ class MainWindow(QMainWindow):
             aquaduct_information(
                 self,
                 "Library",
-                "Nothing to queue — series may be complete or episodes are already waiting in the Tasks queue.",
+                "Nothing to queue: series may be complete or episodes are already waiting in the Tasks queue.",
             )
             return
         self._append_log(f"Queued {added} remaining episode(s) for series {slug!r}.")
@@ -3117,7 +3117,7 @@ class MainWindow(QMainWindow):
             then()
             return True
         if self._ffmpeg_ensure_worker and self._ffmpeg_ensure_worker.isRunning():
-            self._append_log('FFmpeg is still downloading — the queued run will start when FFmpeg is ready.')
+            self._append_log('FFmpeg is still downloading; the queued run will start when FFmpeg is ready.')
             self._toast("FFmpeg still downloading…", kind="info")
             return False
         self._append_log(
@@ -4071,7 +4071,7 @@ class MainWindow(QMainWindow):
                 self._tasks_refresh()
                 if task:
                     self._append_log(
-                        "Render queued on Tasks tab — approve it before TikTok/YouTube upload "
+                        "Render queued on Tasks tab; approve it before TikTok/YouTube upload "
                         "(auto-upload runs after Approve when enabled on the API tab)."
                     )
         except Exception as e:
@@ -4648,7 +4648,7 @@ class MainWindow(QMainWindow):
             aquaduct_information(
                 self,
                 "TikTok",
-                "This render was saved in NSFW video format. TikTok prohibits explicit uploads — manual upload is not available from Tasks.",
+                "This render was saved in NSFW video format. TikTok prohibits explicit uploads; manual upload is not available from Tasks.",
             )
             return
         if self.tiktok_upload_worker and self.tiktok_upload_worker.isRunning():
@@ -4672,7 +4672,7 @@ class MainWindow(QMainWindow):
             aquaduct_information(
                 self,
                 "YouTube",
-                "This render was saved in NSFW video format. YouTube prohibits explicit uploads — manual upload is not available from Tasks.",
+                "This render was saved in NSFW video format. YouTube prohibits explicit uploads; manual upload is not available from Tasks.",
             )
             return
         if self.youtube_upload_worker and self.youtube_upload_worker.isRunning():

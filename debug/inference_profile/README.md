@@ -1,6 +1,6 @@
 # Debug category: `inference_profile`
 
-**Where:** src/models/inference_profiles.py — VRAM bands and profile report
+**Where:** src/models/inference_profiles.py: VRAM bands and profile report
 
 ## Enable
 

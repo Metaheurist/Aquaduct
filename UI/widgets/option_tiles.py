@@ -38,7 +38,7 @@ def _rgba(hex_color: str, alpha: float) -> str:
 
 
 class _VisualCardButton(QToolButton):
-    """Checkable card: SVG icon above title/subtitle (QToolButton — layouts on QPushButton overlap)."""
+    """Checkable card: SVG icon above title/subtitle (QToolButton, since layouts on QPushButton overlap)."""
 
     def __init__(
         self,

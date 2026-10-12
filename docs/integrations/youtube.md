@@ -11,7 +11,7 @@ Shorts are determined mainly by **duration (≤ 60s)** and **vertical 9:16** vid
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/).
 2. Enable **YouTube Data API v3** for that project.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID** → Application type **Desktop app**.
-4. Add an authorized redirect URI that matches the app, e.g. `http://127.0.0.1:8888/callback/` (same port as **OAuth port** in the API tab, default **8888** — different from TikTok’s default so OAuth servers do not clash).
+4. Add an authorized redirect URI that matches the app, e.g. `http://127.0.0.1:8888/callback/` (same port as **OAuth port** in the API tab, default **8888**: different from TikTok’s default so OAuth servers do not clash).
 5. Paste **Client ID** and **Client secret** into the API tab, **Save**, then **Connect YouTube account**.
 
 Scopes used: `https://www.googleapis.com/auth/youtube.upload`.
@@ -30,7 +30,7 @@ Default upload visibility is configurable (**Private** / **Unlisted** / **Public
 
 ## See also
 
-- [TikTok upload](tiktok.md) — inbox workflow via TikTok Content Posting API.
+- [TikTok upload](tiktok.md): inbox workflow via TikTok Content Posting API.
 
 ---
 

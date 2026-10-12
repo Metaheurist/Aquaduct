@@ -4,10 +4,10 @@ The **Branding** tab lets you customize the app theme and optionally add logo wa
 
 ## Layout
 
-1. **Theme** — palette presets and per-color overrides (shown first).
-2. **Video look** — optional video style strength (video mode only; whole section hidden in Photo mode).
-3. **Photo layouts** — frame and paper tint (photo mode only).
-4. **Logo watermark** — path, position, opacity, size (video mode only).
+1. **Theme**: palette presets and per-color overrides (shown first).
+2. **Video look**: optional video style strength (video mode only; whole section hidden in Photo mode).
+3. **Photo layouts**: frame and paper tint (photo mode only).
+4. **Logo watermark**: path, position, opacity, size (video mode only).
 
 Each mode-specific block lives in its own section container so **Photo | Video** toggling hides labels and controls together ([`MainWindow._apply_media_mode_ui`](../../UI/main_window.py)).
 
@@ -31,8 +31,8 @@ If watermarking is enabled but the path is invalid, **preflight fails** before R
 
 When enabled, the Branding palette influences generated video prompts and caption accent colors.
 
-- **Subtle** — readability first.
-- **Strong** — more dominant palette in prompts.
+- **Subtle**: readability first.
+- **Strong**: more dominant palette in prompts.
 
 ## Photo layouts (photo mode)
 

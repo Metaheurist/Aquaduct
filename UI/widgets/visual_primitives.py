@@ -364,7 +364,7 @@ def _swatch_chip_icon(color_hex: str, *, width: int = 64, height: int = 28) -> Q
 
 
 class SwatchGrid(QWidget):
-    """Palette swatch picker — color chip above readable label, expands to fill width."""
+    """Palette swatch picker: color chip above readable label, expands to fill width."""
 
     currentIndexChanged = pyqtSignal(int)
 

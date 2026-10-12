@@ -1,6 +1,6 @@
 # Debug category: `story_pipeline`
 
-**Where:** src/content/story_pipeline.py — Multi-stage story review
+**Where:** src/content/story_pipeline.py: Multi-stage story review
 
 ## Enable
 

@@ -81,7 +81,7 @@ class CharacterTagPicker(QWidget):
             cid = str(it.data(Qt.ItemDataRole.UserRole) or "")
             ch = self._catalog.get(cid)
             name = ch.name if ch else cid[:8]
-            label = f"Lead — {name}" if i == 0 else name
+            label = f"Lead: {name}" if i == 0 else name
             it.setText(label)
         empty = getattr(self, "_empty_hint", None)
         if empty is not None:

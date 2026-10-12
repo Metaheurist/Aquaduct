@@ -1,6 +1,6 @@
 # Debug category: `audio`
 
-**Where:** Audio polish — Music ducking and mix
+**Where:** Audio polish: Music ducking and mix
 
 ## Enable
 

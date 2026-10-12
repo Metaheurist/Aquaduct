@@ -1,4 +1,4 @@
-# `src/util/utils_vram.py` — VRAM / memory cleanup
+# `src/util/utils_vram.py`: VRAM / memory cleanup
 
 ## Purpose
 Keep the pipeline stable on **8GB VRAM** by aggressively freeing memory between stages.
@@ -12,9 +12,9 @@ Keep the pipeline stable on **8GB VRAM** by aggressively freeing memory between 
 - [`release_between_stages`](../../src/util/memory_budget.py) ([`memory_budget.py`](../../src/util/memory_budget.py)):
   - thin orchestrator used at pipeline transitions (`main.run_once`, workers, story refinement teardown, render batches).
   - **`variant="cheap"`** → calls `cleanup_vram()` only (no per-device watchdog).
-  - **`variant="prepare_diffusion"`** with a CUDA ordinal → calls `prepare_for_next_model(index)` so **`AQUADUCT_VRAM_WATCHDOG`** / [`check_cuda_headroom`](../../src/util/vram_watchdog.py) behavior stays unchanged (threshold env vars: [Config — VRAM watchdog](config.md#vram-watchdog-cuda-free-memory-before-loads)).
-- `purge_process_memory_aggressive()` — stronger multi-pass GC + **all-device** CUDA cache flush; intended for the Resource dialog **Purge memory** button and OOM retry paths, not every inner loop.
-- **`dispose_diffusion_pipeline()`** ([`diffusion_placement.py`](../../src/util/diffusion_placement.py)) — run before deleting a pipeline that used **model / sequential CPU offload**; invokes diffusers `maybe_free_model_hooks()` when available so offload hooks do not leave weights reachable after **`del pipe`**. Purge and `gc.collect()` alone often **cannot** reclaim that retained heap; on Windows **process RSS** may still reflect allocator pools even after successful teardown.
+  - **`variant="prepare_diffusion"`** with a CUDA ordinal → calls `prepare_for_next_model(index)` so **`AQUADUCT_VRAM_WATCHDOG`** / [`check_cuda_headroom`](../../src/util/vram_watchdog.py) behavior stays unchanged (threshold env vars: [Config: VRAM watchdog](config.md#vram-watchdog-cuda-free-memory-before-loads)).
+- `purge_process_memory_aggressive()`: stronger multi-pass GC + **all-device** CUDA cache flush; intended for the Resource dialog **Purge memory** button and OOM retry paths, not every inner loop.
+- **`dispose_diffusion_pipeline()`** ([`diffusion_placement.py`](../../src/util/diffusion_placement.py)): run before deleting a pipeline that used **model / sequential CPU offload**; invokes diffusers `maybe_free_model_hooks()` when available so offload hooks do not leave weights reachable after **`del pipe`**. Purge and `gc.collect()` alone often **cannot** reclaim that retained heap; on Windows **process RSS** may still reflect allocator pools even after successful teardown.
 
 Enable categorized traces with **`AQUADUCT_DEBUG=memory_budget`** (or **`memory_budget`** in the comma list).
 
@@ -27,7 +27,7 @@ The pipeline may load:
 Loading these simultaneously can cause OOM. Staging + cleanup reduces the chance of VRAM fragmentation and OOM errors.
 
 ## Multi-GPU (related)
-Which **CUDA device** holds the local LLM vs diffusion for a run follows **GPU policy** in the desktop **My PC** tab (persisted in `ui_settings.json`) or the optional **`AQUADUCT_CUDA_DEVICE`** environment override — not covered by `cleanup_vram()` alone. See [Hardware + model fit](hardware.md) and [Config: multi-GPU](config.md#multi-gpu-cuda-policy-override).
+Which **CUDA device** holds the local LLM vs diffusion for a run follows **GPU policy** in the desktop **My PC** tab (persisted in `ui_settings.json`) or the optional **`AQUADUCT_CUDA_DEVICE`** environment override: not covered by `cleanup_vram()` alone. See [Hardware + model fit](hardware.md) and [Config: multi-GPU](config.md#multi-gpu-cuda-policy-override).
 
 **Diffusion offload** ([`src/util/diffusion_placement.py`](../../src/util/diffusion_placement.py)): with multiple CUDA devices, **`AQUADUCT_DIFFUSION_CPU_OFFLOAD=auto`** defaults to **sequential** staging on the diffusion GPU to reduce peak VRAM; see [Performance](../pipeline/performance.md#diffusion-vram-vs-system-ram-cpu-offload) and [Config](config.md#diffusion-cpu-offload-local-image--video).
 

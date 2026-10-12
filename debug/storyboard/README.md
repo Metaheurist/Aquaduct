@@ -1,6 +1,6 @@
 # Debug category: `storyboard`
 
-**Where:** Storyboard flow — Manifest and scene grid
+**Where:** Storyboard flow: Manifest and scene grid
 
 ## Enable
 
