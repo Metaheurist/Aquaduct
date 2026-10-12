@@ -53,8 +53,11 @@ def test_rife_warning_when_vram_tight(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(preflight, "is_api_mode", lambda s: False)
     from src.render import temporal_smooth as ts
 
+    from src.util import vram_watchdog
+
     monkeypatch.setattr(ts, "rife_available", lambda: True)
     monkeypatch.setattr(ts, "rife_vram_budget_ok", lambda *, free_vram_mb=None: False)
+    monkeypatch.setattr(vram_watchdog, "torch_cuda_free_mb", lambda _idx=None: 512)
     out = preflight._preflight_smoothness_warnings(_settings_with_smoothness("rife"))
     assert any("free VRAM" in w for w in out)
 

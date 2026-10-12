@@ -290,6 +290,8 @@ def test_place_sequential_passes_gpu_id(monkeypatch: pytest.MonkeyPatch, clear_o
 
     p = P()
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+    monkeypatch.setattr(dp, "cuda_device_reported_by_torch", lambda: True)
     dp.place_diffusion_pipeline(p, cuda_device_index=1)
     assert p.gpu_id == 1
 
