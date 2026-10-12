@@ -214,6 +214,13 @@ def attach_run_tab(win) -> None:
 
     win.series_episode_spin.valueChanged.connect(_mirror_series_ep_to_run_qty)
 
+    def _mirror_run_qty_to_series_ep(v: int) -> None:
+        win.series_episode_spin.blockSignals(True)
+        win.series_episode_spin.setValue(int(v))
+        win.series_episode_spin.blockSignals(False)
+
+    win.run_qty_spin.valueChanged.connect(_mirror_run_qty_to_series_ep)
+
     def _on_series_mode_toggled(checked: bool) -> None:
         mm0 = str(getattr(win.settings, "media_mode", "video") or "video").strip().lower()
         if mm0 == "photo":

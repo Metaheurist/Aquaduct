@@ -35,6 +35,8 @@ def test_offer_runtime_install_success(monkeypatch, qapplication):
     from UI.main_window import MainWindow
 
     w = QWidget()
+    toasts: list[str] = []
+    w._toast = toasts.append
     pf = PreflightResult(
         ok=False,
         errors=["Missing Python packages: numpy"],
@@ -44,11 +46,39 @@ def test_offer_runtime_install_success(monkeypatch, qapplication):
         "UI.dialogs.frameless_dialog.aquaduct_question",
         lambda *a, **k: True,
     )
+
+    def _no_warning(*_a, **_k):
+        raise AssertionError("a successful install must not show a warning")
+
+    monkeypatch.setattr("UI.dialogs.frameless_dialog.aquaduct_warning", _no_warning)
     monkeypatch.setattr(
         "UI.dialogs.install_deps_dialog.install_dependencies_with_dialog",
         lambda _parent: (0, ""),
     )
     assert MainWindow._offer_runtime_install_for_preflight(w, pf) is True
+    assert toasts
+
+
+@pytest.mark.qt
+def test_offer_runtime_install_nonzero_exit_reports_incomplete(monkeypatch, qapplication):
+    from PyQt6.QtWidgets import QWidget
+
+    from UI.main_window import MainWindow
+
+    w = QWidget()
+    pf = PreflightResult(ok=False, errors=["Missing Python packages: numpy"], warnings=[])
+    warnings: list[str] = []
+    monkeypatch.setattr("UI.dialogs.frameless_dialog.aquaduct_question", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "UI.dialogs.frameless_dialog.aquaduct_warning",
+        lambda _parent, title, *_a, **_k: warnings.append(title),
+    )
+    monkeypatch.setattr(
+        "UI.dialogs.install_deps_dialog.install_dependencies_with_dialog",
+        lambda _parent: (1, "pip failed"),
+    )
+    assert MainWindow._offer_runtime_install_for_preflight(w, pf) is False
+    assert warnings == ["Install incomplete"]
 
 
 @pytest.mark.qt

@@ -439,6 +439,17 @@ class MainWindow(QMainWindow):
         if not self._tabs_init_finished:
             self._finish_init_after_tabs()
 
+    def _ensure_all_tabs_built(self) -> None:
+        """Synchronously attach any tabs still waiting in the deferred queue."""
+        queue = getattr(self, "_deferred_tab_queue", None)
+        if not queue:
+            return
+        while queue:
+            _name, attach_fn = queue.pop(0)
+            attach_fn(self)
+        if not self._tabs_init_finished:
+            self._finish_init_after_tabs()
+
     def _finish_init_after_tabs(self) -> None:
         """Post-tab wiring that depends on every tab widget existing."""
         if self._tabs_init_finished:
@@ -845,7 +856,7 @@ class MainWindow(QMainWindow):
                 from UI.dialogs.install_deps_dialog import install_pytorch_only_with_dialog
 
                 code, _out = install_pytorch_only_with_dialog(self)
-            if int(code or 1) != 0:
+            if code is None or int(code) != 0:
                 aquaduct_warning(self, "Install incomplete", "Setup did not finish. Check the log and try again.")
                 return False
             self._toast("Components installed. Restart Aquaduct if GPU builds were added.")
@@ -2078,6 +2089,7 @@ class MainWindow(QMainWindow):
     def _collect_settings_from_ui(self) -> AppSettings:
         from src.settings.ui_harvest import collect_settings_from_ui
 
+        self._ensure_all_tabs_built()
         return collect_settings_from_ui(self)
 
     def effective_models_dir(self) -> Path:

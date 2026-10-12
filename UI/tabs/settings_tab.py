@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QAction, QFont, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtWidgets import QMenu
@@ -60,6 +60,23 @@ from UI.widgets.themed_switch import ThemedSwitch
 from UI.widgets.tab_sections import add_section_spacing, section_title
 from UI.help.tutorial_links import help_tooltip_rich, help_tooltip_rich_unless_already
 from UI.workers import ModelSizePingWorker
+
+
+class _HubProbeSink(QObject):
+    """Receives ``ModelSizePingWorker`` results; Qt disconnects it when its parent widget is destroyed."""
+
+    def __init__(self, parent: QObject, on_done, on_failed) -> None:  # noqa: ANN001
+        super().__init__(parent)
+        self._on_done = on_done
+        self._on_failed = on_failed
+
+    @pyqtSlot(dict)
+    def handle_done(self, probe: dict) -> None:
+        self._on_done(probe)
+
+    @pyqtSlot(str)
+    def handle_failed(self, err: str) -> None:
+        self._on_failed(err)
 
 
 def _vram_label_style() -> str:
@@ -1463,8 +1480,9 @@ def attach_settings_tab(win) -> None:
         def _on_hub_probe_failed(_err: str) -> None:
             win._hub_status_lbl.setText("Could not finish Hugging Face check (offline?). Sizes may be estimates only.")
 
-        win._size_ping_worker.done.connect(_on_hub_probe_done)
-        win._size_ping_worker.failed.connect(_on_hub_probe_failed)
+        win._hub_probe_sink = _HubProbeSink(win._hub_status_lbl, _on_hub_probe_done, _on_hub_probe_failed)
+        win._size_ping_worker.done.connect(win._hub_probe_sink.handle_done)
+        win._size_ping_worker.failed.connect(win._hub_probe_sink.handle_failed)
         win._size_ping_worker.start()
     except Exception:
         pass

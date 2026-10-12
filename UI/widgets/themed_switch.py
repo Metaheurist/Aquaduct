@@ -48,12 +48,12 @@ class ThemedSwitch(QCheckBox):
         target = self._target_knob_x() if checked else float(self._KNOB_MARGIN)
         if self._anim is not None:
             self._anim.stop()
-        self._anim = QPropertyAnimation(self, b"knobX")
+        # Parented so the animation is destroyed with the switch; set_knob_x repaints.
+        self._anim = QPropertyAnimation(self, b"knobX", self)
         self._anim.setDuration(140)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim.setStartValue(self._knob_x)
         self._anim.setEndValue(target)
-        self._anim.valueChanged.connect(lambda _: self.update())
         self._anim.start()
 
     def setChecked(self, checked: bool) -> None:  # noqa: FBT001

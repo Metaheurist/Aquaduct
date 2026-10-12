@@ -5,6 +5,15 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def _preflight_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.runtime.preflight import PreflightResult
+
+    monkeypatch.setattr(
+        "UI.main_window.preflight_check",
+        lambda **_k: PreflightResult(ok=True, errors=[], warnings=[]),
+    )
+
+
 @pytest.mark.qt
 def test_main_window_constructs(qtbot, monkeypatch, patch_paths, write_ui_settings):
     # Minimal settings file
@@ -15,6 +24,39 @@ def test_main_window_constructs(qtbot, monkeypatch, patch_paths, write_ui_settin
     qtbot.addWidget(w)
     w.show()
     assert w is not None
+
+
+@pytest.mark.qt
+def test_collect_settings_builds_deferred_tabs_first(qtbot, monkeypatch, patch_paths, write_ui_settings):
+    write_ui_settings({"topic_tags": []})
+    from UI.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    qtbot.waitUntil(lambda: w._tabs_init_finished, timeout=30000)
+
+    attached: list[str] = []
+    w._deferred_tab_queue = [("Late", lambda win: attached.append("late"))]
+    settings = w._collect_settings_from_ui()
+
+    assert attached == ["late"]
+    assert w._deferred_tab_queue == []
+    assert settings.video.fps == int(w.fps_spin.value())
+
+
+@pytest.mark.qt
+def test_run_qty_survives_series_mode_toggle(qtbot, monkeypatch, patch_paths, write_ui_settings):
+    write_ui_settings({"topic_tags": []})
+    from UI.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+
+    w.run_qty_spin.setValue(7)
+    assert w.series_episode_spin.value() == 7
+    w.series_mode_check.setChecked(True)
+    w.series_mode_check.setChecked(False)
+    assert w.run_qty_spin.value() == 7
 
 
 @pytest.mark.qt
@@ -76,6 +118,7 @@ def test_storyboard_dialog_constructs(qtbot, tmp_path):
 def test_on_run_queues_when_pipeline_worker_running(qtbot, monkeypatch, patch_paths, write_ui_settings):
     """Clicking Run while a pipeline is active appends a FIFO job instead of no-op."""
     write_ui_settings({"topic_tags": []})
+    _preflight_ok(monkeypatch)
     from UI.main_window import MainWindow
 
     w = MainWindow()
@@ -98,6 +141,7 @@ def test_on_run_queues_when_pipeline_worker_running(qtbot, monkeypatch, patch_pa
 def test_on_run_queues_when_preview_worker_running(qtbot, monkeypatch, patch_paths, write_ui_settings):
     """Run uses preview_worker/storyboard_worker — queue must trigger while those are busy, not only pipeline worker."""
     write_ui_settings({"topic_tags": []})
+    _preflight_ok(monkeypatch)
     from UI.main_window import MainWindow
 
     w = MainWindow()
