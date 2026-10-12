@@ -142,16 +142,20 @@ def _domain(url: str | None) -> str:
     if not url:
         return ""
     try:
-        return (urlparse(url).netloc or "").lower()
+        return (urlparse(url).hostname or "").lower()
     except Exception:
         return ""
+
+
+def _host_is(host: str, domain: str) -> bool:
+    return host == domain or host.endswith("." + domain)
 
 
 def _is_wiki_like(url: str | None) -> bool:
     d = _domain(url)
     if not d:
         return False
-    return ".fandom.com" in d or "wikipedia.org" in d.split(".") or "wiki" in d
+    return _host_is(d, "fandom.com") or _host_is(d, "wikipedia.org") or "wiki" in d
 
 
 def clean_article_excerpt(

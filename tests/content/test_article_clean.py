@@ -100,3 +100,12 @@ def test_clean_many_returns_per_item_excerpts() -> None:
 def test_handles_empty_input() -> None:
     assert clean_article_excerpt("") == ""
     assert clean_article_excerpt(None) == ""  # type: ignore[arg-type]
+
+
+def test_is_wiki_like_matches_hosts_not_substrings() -> None:
+    from src.content.article_clean import _is_wiki_like
+
+    assert _is_wiki_like("https://en.wikipedia.org/wiki/Python")
+    assert _is_wiki_like("https://starwars.fandom.com/wiki/Yoda")
+    assert not _is_wiki_like("https://fandom.com.example.net/page")
+    assert not _is_wiki_like("https://example.com/?next=.fandom.com")

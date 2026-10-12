@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig, AppSettings
 from src.platform import openai_client as oc
@@ -45,7 +46,7 @@ def test_build_openai_client_default_base_for_groq(monkeypatch):
         api_models=ApiModelRuntimeSettings(llm=ApiRoleConfig(provider="groq", model="llama-3.1-8b-instant"))
     )
     c = oc.build_openai_client_from_settings(s)
-    assert "groq.com" in c.base_url
+    assert urlparse(c.base_url).hostname == "api.groq.com"
 
 
 def test_build_client_gemini_base_no_double_v1(monkeypatch):
@@ -58,7 +59,7 @@ def test_build_client_gemini_base_no_double_v1(monkeypatch):
         )
     )
     c = oc.build_openai_client_from_settings(s)
-    assert "generativelanguage.googleapis.com" in c.base_url
+    assert urlparse(c.base_url).hostname == "generativelanguage.googleapis.com"
     assert "openai/v1/v1" not in c.base_url.replace("//", "/")
     assert c.base_url.rstrip("/").endswith("openai") or c.base_url.rstrip("/").endswith("openai/")
 

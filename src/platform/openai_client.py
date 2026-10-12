@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.core.config import AppSettings
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -288,7 +288,8 @@ def build_openai_client_from_settings(settings: AppSettings) -> OpenAIClient:
 def _normalize_openai_api_base_path(base: str) -> str:
     """OpenAI v1 default host gets ``/v1``; Gemini's OpenAI-compat base must stay ``…/v1beta/openai`` (no extra ``/v1``)."""
     b = base.rstrip("/")
-    if "generativelanguage.googleapis.com" in b and "openai" in b:
+    parsed = urlparse(b)
+    if parsed.hostname == "generativelanguage.googleapis.com" and "openai" in parsed.path:
         return b
     if not b.endswith("/v1"):
         b = f"{b}/v1"

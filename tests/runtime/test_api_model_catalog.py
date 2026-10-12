@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from src.settings.api_model_catalog import (
     default_models_for_provider,
     default_openai_compatible_base_url_for_llm,
@@ -45,8 +47,11 @@ def test_uses_openai_chat_protocol_for_llm():
 
 
 def test_default_openai_compatible_base_url_for_llm():
-    assert "groq.com" in (default_openai_compatible_base_url_for_llm("groq") or "")
-    assert "generativelanguage.googleapis.com" in (default_openai_compatible_base_url_for_llm("google_ai_studio") or "")
+    assert urlparse(default_openai_compatible_base_url_for_llm("groq") or "").hostname == "api.groq.com"
+    assert (
+        urlparse(default_openai_compatible_base_url_for_llm("google_ai_studio") or "").hostname
+        == "generativelanguage.googleapis.com"
+    )
     assert default_openai_compatible_base_url_for_llm("openai") is None
 
 
