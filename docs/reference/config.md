@@ -180,6 +180,16 @@ Process-only guardrail bypass for **NSFW-related** checks (see [`nsfw_guardrails
 
 API keys, OAuth client secrets, and similar fields in **`ui_settings.json`** are stored as **Fernet-encrypted** blobs when [`src/settings/secrets_crypto.py`](../../src/settings/secrets_crypto.py) is available. A per-user key file lives under **`.Aquaduct_data/.ui_settings_fernet.key`**. Plaintext values from older installs are **migrated on load**. **`config show`** redacts secrets by default; pass **`--show-secrets`** to print plaintext ([CLI](cli.md#config-show)).
 
+The same **`SECRET_FIELDS`** list governs every other place settings are written:
+
+| File | Handling |
+|------|----------|
+| `.Aquaduct_data/pipeline_queue.json` | Each queued item's `settings` is encrypted with the same key on save and decrypted on load. |
+| `videos/<series>/series.json` settings snapshot | Secret fields are stripped (`strip_secret_fields`). On resume, [`rehydrate`](../../src/series/rehydrate.py) overlays keys, tokens, and OAuth client secrets from live settings. |
+| `runs/<run_id>/run_report.json` settings snapshot | Secret fields are replaced with `(redacted)`. |
+
+Any new settings field whose name contains `key`, `token`, `secret`, or `password` must be added to `SECRET_FIELDS` (or to the explicit non-secret allowlist in [`tests/security/test_secret_persistence.py`](../../tests/security/test_secret_persistence.py)); that test fails otherwise.
+
 ## Settings schema version
 
 `settings_schema_version` in **`ui_settings.json`** tracks migrations applied by [`src/settings/ui_settings.py`](../../src/settings/ui_settings.py). Bump when adding breaking key renames or default changes so upgrades merge safely.

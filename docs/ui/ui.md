@@ -35,6 +35,29 @@ python UI/ui_app.py
 
 On cold start (especially a **frozen Windows EXE**), the app shows a small **startup splash** with a **progress bar** and **elapsed seconds** while settings load and the main window module imports (the long stretch uses an **indeterminate** bar because imports run on one thread). Set **`AQUADUCT_NO_SPLASH=1`** to skip the splash for debugging.
 
+## Screenshots
+
+Default settings, Basic mode, fresh app data (no characters, keys, or queue).
+
+| | |
+|---|---|
+| ![Pipeline](../images/ui/01_pipeline.png) | ![Topics](../images/ui/02_topics.png) |
+| ![Characters](../images/ui/03_characters.png) | ![Model](../images/ui/04_model.png) |
+| ![Video](../images/ui/05_video.png) | ![Picture](../images/ui/06_picture.png) |
+| ![Effects](../images/ui/07_effects.png) | ![Captions](../images/ui/08_captions.png) |
+| ![API](../images/ui/09_api.png) | ![Branding](../images/ui/10_branding.png) |
+| ![Library](../images/ui/11_library.png) | ![My PC](../images/ui/12_my_pc.png) |
+| ![Tasks](../images/ui/13_tasks.png) | |
+
+Regenerate after UI changes:
+
+```powershell
+$env:AQUADUCT_NO_SPLASH='1'
+python scripts/capture_ui_screenshots.py
+```
+
+[`scripts/capture_ui_screenshots.py`](../../scripts/capture_ui_screenshots.py) points every `application_data_dir` import at a temporary folder, saves default `AppSettings`, suppresses startup toasts, the Hugging Face token prompt, and the first-run tutorial, builds all deferred tabs, and writes `docs/images/ui/NN_<tab>.png`. Your real `.Aquaduct_data` is never read or written.
+
 ## Tabs
 - **Pipeline** (tab label **Pipeline**; code: Run tab)
   - **Basic** mode: numbered **step cards** (format tiles, quantity stepper, content source, run actions) with SVG icons ([`UI/widgets/visual_primitives.py`](../../UI/widgets/visual_primitives.py), [`option_tiles.py`](../../UI/widgets/option_tiles.py)). **Advanced** adds art style, series mode, personality, and legacy combo rows.
@@ -128,6 +151,8 @@ On cold start (especially a **frozen Windows EXE**), the app shows a small **sta
 ## Settings persistence
 Saved to:
 - `ui_settings.json` (repo root; marked **hidden** on Windows and macOS after each save so it stays out of casual folder browsing)
+
+Tabs after the first are attached one per event-loop tick after startup. **`MainWindow._ensure_all_tabs_built()`** drains that queue synchronously, and **`_collect_settings_from_ui`** calls it first, so **Save**, **Run**, and queued runs always read every tab's widgets even when clicked before startup finishes.
 
 ## Theme
 Applied via a global Qt stylesheet (QSS) built from [`UI/theme/palette.py`](../../UI/theme/palette.py) (`build_qss` / `resolve_palette`) with:

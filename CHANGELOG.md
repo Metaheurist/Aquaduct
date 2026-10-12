@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Stability, security, CI, and screenshots
+
+#### Fixes
+- [`ThemedSwitch`](UI/widgets/themed_switch.py): knob animation is parented to the switch, fixing an access violation when a switch was destroyed mid-animation.
+- [`settings_tab.py`](UI/tabs/settings_tab.py): Hub size probe results go through a `QObject` sink parented to the status label, so a late worker signal can no longer call into a deleted widget.
+- [`MainWindow`](UI/main_window.py): `_ensure_all_tabs_built()` runs before settings are collected. Clicking **Run** or **Save** before deferred tabs finished building previously raised `AttributeError` (for example `fps_spin`).
+- **Run** tab: **Videos to generate** and series **Episodes to generate** stay in sync both ways; quantity no longer reverts after toggling series mode off.
+- Runtime dependency install prompt: a successful install (exit code 0) was reported as incomplete.
+- Preset and catalog labels (video platform templates, quality presets, API provider names) no longer use em dashes.
+
+#### Security
+- `pipeline_queue.json` stores secret settings fields Fernet-encrypted (same key as `ui_settings.json`).
+- Series `series.json` snapshots no longer contain API keys, tokens, or OAuth client secrets; resume overlays them from live settings (TikTok and YouTube client secrets added to the live overlay).
+- `run_report.json` redacts secret fields.
+- TikTok upload helpers refuse non-HTTPS URLs.
+- New [`strip_secret_fields`](src/settings/secrets_crypto.py) helper. See [Config, Encrypted secrets](docs/reference/config.md#encrypted-secrets-ui_settingsjson).
+
+#### CI and tooling
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml): full pytest suite on Windows (CPU PyTorch, offscreen Qt, `-m "not cuda_gpu"`, `--timeout=300`) and a security job (**bandit** medium+, **pip-audit**).
+- `[tool.bandit]` config in `pyproject.toml`; `pytest-timeout` added to `requirements-dev.txt`.
+- [`scripts/capture_ui_screenshots.py`](scripts/capture_ui_screenshots.py) renders every tab against isolated app data into [`docs/images/ui/`](docs/images/ui/); screenshots embedded in [Desktop UI](docs/ui/ui.md#screenshots) and the README.
+
+#### Tests
+- [`tests/security/`](tests/security/): secret persistence (settings, queue, series, run report, CLI redaction, `SECRET_FIELDS` coverage), repo hygiene (no committed credentials, local secrets gitignored), test isolation, outbound HTTPS.
+- `write_ui_settings` now redirects every `application_data_dir` import; earlier tests could write the real `.Aquaduct_data/pipeline_queue.json`.
+- `built_main_window` fixture; Qt tests stub Hub probes and network checks and preload `torch` before Qt.
+- Regression tests for the fixes above; stale tab tests updated for the OptionTiles / deferred-tab UI; CLIP tokenizer test marked `slow` and skipped when the tokenizer cannot load.
+
 ### Visual Basic Mode (desktop UI)
 
 Per-tab **Basic | Advanced** mode with visual-first controls, SVG tiles, and layout polish across settings tabs.

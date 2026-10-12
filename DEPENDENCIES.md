@@ -74,6 +74,11 @@ From the repo root (activate your venv first):
 | **Qt / UI** | `pytest -m qt` | Only UI tests (needs **PyQt6** and usually **pytest-qt**). |
 | **Full** | `pytest` | Entire suite (Qt tests skip or run depending on installed PyQt6). |
 
+| **CI** | `pytest -m "not cuda_gpu" --timeout=300` | What [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on Windows with CPU PyTorch and `QT_QPA_PLATFORM=offscreen`. |
+| **Security** | `pytest tests/security` | Secret persistence, repo hygiene, test isolation, outbound HTTPS. |
+
+**`pytest-timeout`** (in `requirements-dev.txt`) provides `--timeout`. The CI security job installs **bandit** and **pip-audit** separately; bandit settings (excluded dirs, skipped `B615` for user-selected Hub repo ids) are in `[tool.bandit]` in [`pyproject.toml`](pyproject.toml).
+
 Optional slow marker: `pytest -m "not slow"` if individual tests are marked `@pytest.mark.slow`. Import smoke for the API stack: [`tests/runtime/test_import_smoke_api.py`](tests/runtime/test_import_smoke_api.py).
 
 ## Core runtime libraries

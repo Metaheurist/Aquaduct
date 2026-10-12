@@ -68,6 +68,16 @@ Run **all** tests (including `@pytest.mark.qt` UI tests; needs PyQt6 + pytest-qt
 pytest -q
 ```
 
+Security checks (secret persistence, repo hygiene, test isolation, outbound HTTPS) live in [`tests/security/`](tests/security/):
+
+```powershell
+pytest -q tests/security
+bandit -c pyproject.toml -r src UI -ll -ii
+pip-audit -r requirements.txt -r requirements-dev.txt
+```
+
+**CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to `main` and on pull requests: the full suite on Windows (CPU PyTorch, `-m "not cuda_gpu"`, offscreen Qt, `--timeout=300`) plus a **bandit** and **pip-audit** job.
+
 If a Qt-related test crashes with an access violation on some Windows/Python builds, run the headless subset above; core pipeline tests are in the non-`qt` set. For a short table of tiers, see **Test tiers** in [`DEPENDENCIES.md`](DEPENDENCIES.md). The pytest tree is grouped under `tests/<area>/`; see [`tests/README.md`](tests/README.md).
 
 ### 2) Run once
@@ -140,6 +150,10 @@ Run:
 ```powershell
 python -m UI
 ```
+
+![Pipeline tab (Basic mode)](docs/images/ui/01_pipeline.png)
+
+More tab screenshots: [Desktop UI, Screenshots](docs/ui/ui.md#screenshots).
 
 The title bar includes a **Photo \| Video** toggle (persists as `media_mode` in `ui_settings.json`) to switch between the picture pipeline and the video pipeline; **Library** and open-folder actions follow the active mode.
 

@@ -16,9 +16,15 @@ Run the suite from the repository root so `pytest.ini` applies; `pytest` then co
 | [`social/`](social/) | Upload tasks, TikTok/TikTok-style posting helpers |
 | [`core/`](core/) | App paths, media library FS |
 | [`debug/`](debug/) | `dprint` category registry, `MODULE_DEBUG_FLAGS` / `AQUADUCT_DEBUG` merge, `active_categories` cache |
+| [`security/`](security/) | Secret fields encrypted in `ui_settings.json` and `pipeline_queue.json`, stripped from series snapshots, redacted in run reports and `config show` ([`test_secret_persistence.py`](security/test_secret_persistence.py)); tracked files free of credentials, local secrets gitignored ([`test_repo_hygiene.py`](security/test_repo_hygiene.py)); `write_ui_settings` redirects all app data ([`test_test_isolation.py`](security/test_test_isolation.py)); TikTok helpers refuse non-HTTPS URLs ([`test_outbound_urls.py`](security/test_outbound_urls.py)) |
 | [`gpu/`](gpu/) | Multi-GPU sharding registry / gates ([`src/gpu/multi_device/`](../src/gpu/multi_device/)) |
 
 Shared fixtures: [`conftest.py`](conftest.py).
+
+- **`write_ui_settings`** / **`patch_paths`**: point every `application_data_dir` import (`app_dirs`, `config`, `ui_settings`, `pipeline_queue_store`, `secrets_crypto`, `llm_chat_rag`) at `tmp_path`. Tests must never touch the real `.Aquaduct_data`.
+- **`built_main_window(settings=None)`**: constructs `MainWindow`, registers it with `qtbot`, and builds all deferred tabs so every tab widget exists.
+- Qt tests stub the Hub size probe worker and the network reachability check; `pytest_configure` imports `torch` before Qt (on Windows, loading torch DLLs after `QApplication` can access-violate).
+- `--timeout=300` (from **pytest-timeout**) is what CI uses; a hung Qt test fails instead of stalling the run.
 
 ```powershell
 # Typical headless run (no Qt)
@@ -26,6 +32,12 @@ pytest -q -m "not qt"
 
 # NSFW guardrails / session bypass (no Qt)
 pytest tests/content/test_nsfw_prompt_branch.py tests/content/test_nsfw_topic_filter.py tests/runtime/test_preflight_nsfw_uploads.py -q
+
+# Security tests
+pytest tests/security -q
+
+# Same command CI runs
+pytest -m "not cuda_gpu" --timeout=300 -p no:cacheprovider
 
 # API-mode smoke (example)
 pytest tests/models/test_model_backend.py tests/runtime/test_preflight.py tests/runtime/test_api_generation.py tests/runtime/test_api_model_catalog.py tests/platform/test_kling_client.py tests/platform/test_openai_client.py -q
