@@ -4,7 +4,7 @@
 #   python scripts/install_pytorch.py --with-rest
 # Or: python scripts/install_pytorch.py && pip install -r requirements.txt
 #
-requests>=2.32.0
+requests>=2.34.2
 beautifulsoup4>=4.12.0
 lxml>=5.2.0
 python-dotenv>=1.0.0
