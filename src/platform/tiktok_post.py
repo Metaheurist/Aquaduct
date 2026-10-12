@@ -21,6 +21,13 @@ AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 INBOX_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
 
 
+def _require_https(url: str) -> str:
+    """Reject non-HTTPS URLs (e.g. ``file://`` in an API-supplied upload URL) before ``urlopen``."""
+    if urllib.parse.urlsplit(str(url or "")).scheme.lower() != "https":
+        raise ValueError(f"Refusing non-HTTPS TikTok URL: {str(url)[:120]!r}")
+    return url
+
+
 def default_redirect_uri(port: int) -> str:
     return f"http://127.0.0.1:{port}/callback/"
 
@@ -60,13 +67,13 @@ def _form_post(url: str, data: dict[str, str], timeout_s: int = 60) -> dict[str,
 
     body = urllib.parse.urlencode(data).encode("utf-8")
     req = urllib.request.Request(
-        url,
+        _require_https(url),
         data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosec B310 - https enforced above
             raw = resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         raw = e.read().decode("utf-8", errors="replace")
@@ -155,7 +162,7 @@ def _json_post_authed(url: str, access_token: str, body: dict[str, Any], timeout
 
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
-        url,
+        _require_https(url),
         data=data,
         headers={
             "Authorization": f"Bearer {access_token}",
@@ -163,7 +170,7 @@ def _json_post_authed(url: str, access_token: str, body: dict[str, Any], timeout
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosec B310 - https enforced above
         raw = resp.read().decode("utf-8")
     return json.loads(raw) if raw else {}
 
@@ -171,7 +178,7 @@ def _json_post_authed(url: str, access_token: str, body: dict[str, Any], timeout
 def _put_video_chunk(upload_url: str, chunk: bytes, content_type: str, byte_start: int, byte_end: int, total: int) -> None:
     cr = f"bytes {byte_start}-{byte_end}/{total}"
     req = urllib.request.Request(
-        upload_url,
+        _require_https(upload_url),
         data=chunk,
         headers={
             "Content-Type": content_type,
@@ -180,7 +187,7 @@ def _put_video_chunk(upload_url: str, chunk: bytes, content_type: str, byte_star
         },
         method="PUT",
     )
-    with urllib.request.urlopen(req, timeout=600) as resp:
+    with urllib.request.urlopen(req, timeout=600) as resp:  # nosec B310 - https enforced above
         if resp.status not in (200, 201):
             raise ValueError(f"Upload PUT failed: HTTP {resp.status}")
 

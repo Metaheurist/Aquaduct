@@ -170,17 +170,6 @@ def settings_snapshot(settings: Any) -> dict[str, Any]:
         d = dict(settings)
     else:
         return {"repr": repr(settings)[:500]}
-    for secret_key in (
-        "hf_token",
-        "firecrawl_api_key",
-        "elevenlabs_api_key",
-        "tiktok_client_secret",
-        "tiktok_access_token",
-        "tiktok_refresh_token",
-        "youtube_client_secret",
-        "youtube_access_token",
-        "youtube_refresh_token",
-    ):
-        if secret_key in d and d[secret_key]:
-            d[secret_key] = "(redacted)"
-    return d
+    from src.settings.secrets_crypto import strip_secret_fields
+
+    return strip_secret_fields(d, replacement="(redacted)")

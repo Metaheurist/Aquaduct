@@ -220,6 +220,10 @@ def find_or_create_series(
         "_force_cpu_diffusion",
     ):
         snap.pop(k, None)
+    # Credentials are overlaid from live settings on rehydrate; never write them into videos/.
+    from src.settings.secrets_crypto import strip_secret_fields
+
+    snap = strip_secret_fields(snap)
 
     record = SeriesRecord(
         slug=slug,

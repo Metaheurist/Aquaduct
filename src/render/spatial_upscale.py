@@ -134,7 +134,7 @@ def ensure_realesrgan_x4_weights() -> Path | None:
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         log.info("Downloading Real-ESRGAN x4+ weights to %s", dest)
-        urllib.request.urlretrieve(REALESRGAN_X4_URL, str(dest))
+        urllib.request.urlretrieve(REALESRGAN_X4_URL, str(dest))  # nosec B310 - fixed https constant
     except Exception as exc:
         log.warning("Could not download RealESRGAN weights: %s", exc)
         return None

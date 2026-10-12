@@ -122,12 +122,16 @@ def _deserialize_queue_item(raw: Any) -> dict[str, Any] | None:
 
 
 def save_pipeline_queue(queue: list[dict[str, Any]]) -> bool:
-    """Atomically persist the in-memory queue."""
+    """Atomically persist the in-memory queue (secret fields encrypted like ``ui_settings.json``)."""
+    from src.settings.secrets_crypto import encrypt_settings_dict
+
     p = store_path()
     items: list[dict[str, Any]] = []
     for entry in queue or []:
         ser = _serialize_queue_item(entry)
         if ser is not None:
+            if isinstance(ser.get("settings"), dict):
+                ser["settings"] = encrypt_settings_dict(ser["settings"], data_dir=p.parent)
             items.append(ser)
     payload = json.dumps(
         {"schema_version": STORE_SCHEMA_VERSION, "items": items},
@@ -165,8 +169,12 @@ def load_pipeline_queue() -> list[dict[str, Any]]:
     raw_items = data.get("items")
     if not isinstance(raw_items, list):
         return []
+    from src.settings.secrets_crypto import decrypt_settings_dict
+
     out: list[dict[str, Any]] = []
     for raw in raw_items:
+        if isinstance(raw, dict) and isinstance(raw.get("settings"), dict):
+            raw = {**raw, "settings": decrypt_settings_dict(raw["settings"], data_dir=p.parent)}
         item = _deserialize_queue_item(raw)
         if item is not None:
             out.append(item)

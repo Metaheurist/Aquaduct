@@ -12,3 +12,8 @@ markers = [
     "slow: long-running integration tests",
     "cuda_gpu: optional real-GPU smoke tests",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", ".venv-build", "build", "dist"]
+# B615: Hub repo ids are user-selected at runtime, so revisions cannot be pinned in code.
+skips = ["B615"]

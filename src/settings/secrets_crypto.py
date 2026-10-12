@@ -81,6 +81,15 @@ def encrypt_settings_dict(data: dict[str, Any], *, data_dir: Path | None = None)
     return out
 
 
+def strip_secret_fields(data: dict[str, Any], *, replacement: str = "") -> dict[str, Any]:
+    """Return a copy of ``data`` with every non-empty secret field replaced by ``replacement``."""
+    out = dict(data)
+    for field in SECRET_FIELDS:
+        if out.get(field):
+            out[field] = replacement
+    return out
+
+
 def decrypt_settings_dict(data: dict[str, Any], *, data_dir: Path | None = None) -> dict[str, Any]:
     """Return a copy of ``data`` with encrypted secret fields decrypted."""
     out = dict(data)
