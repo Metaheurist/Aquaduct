@@ -6,4 +6,4 @@ pytest-timeout>=2.3.0
 
 # PyInstaller: also in requirements-build.txt for the dedicated build venv (.venv-build).
 # Install pyinstaller here too if you use one venv for both dev and local one-off packaging.
-pyinstaller>=6.6.0
+pyinstaller>=6.22.3
