@@ -119,3 +119,10 @@ def test_hybrid_search_with_mock_embeddings() -> None:
     )
     hits = ix.search("watermark help", k=2, min_score=0.01)
     assert hits and "Watermark" in hits[0][0].source
+
+
+def test_strip_html_drops_script_and_style_with_loose_end_tags() -> None:
+    from src.content.llm_chat_rag import _strip_html
+
+    html = "<p>Keep</p><script>bad()</script ><style type=x>.a{}</style\n><b>this</b> &amp; more"
+    assert _strip_html(html) == "Keep this &amp; more"

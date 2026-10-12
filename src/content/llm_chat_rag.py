@@ -12,6 +12,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable, Final, Sequence
 
@@ -105,11 +106,42 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in TOKEN_RE.findall((text or "").lower()) if t and t not in _STOPWORDS]
 
 
+class _TextExtractor(HTMLParser):
+    _SKIP = frozenset({"script", "style"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: Any) -> None:
+        if tag in self._SKIP:
+            self._skip_depth += 1
+        self.parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP and self._skip_depth:
+            self._skip_depth -= 1
+        self.parts.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_depth:
+            self.parts.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        if not self._skip_depth:
+            self.parts.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        if not self._skip_depth:
+            self.parts.append(f"&#{name};")
+
+
 def _strip_html(html: str) -> str:
-    s = re.sub(r"(?is)<script.*?>.*?</script>", "", html)
-    s = re.sub(r"(?is)<style.*?>.*?</style>", "", s)
-    s = re.sub(r"(?s)<.*?>", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
+    parser = _TextExtractor()
+    parser.feed(html or "")
+    parser.close()
+    return re.sub(r"\s+", " ", "".join(parser.parts)).strip()
 
 
 def _slug_heading(title: str) -> str:
