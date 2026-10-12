@@ -75,7 +75,7 @@ LENGTH_PRESETS: dict[LengthPresetId, LengthPreset] = {
     "short": LengthPreset(
         id="short",
         label="Short clip (~10–15 s)",
-        description="Fewer scenes, snappier pacing — ideal for hooks and TikTok loops.",
+        description="Fewer scenes, snappier pacing; ideal for hooks and TikTok loops.",
         clips_per_video=3,
         pro_clip_seconds=4.0,
         length_factor=0.85,
@@ -91,7 +91,7 @@ LENGTH_PRESETS: dict[LengthPresetId, LengthPreset] = {
     "long": LengthPreset(
         id="long",
         label="Long clip (~50–70 s)",
-        description="More beats and longer scenes — best for cinematic horror or explainers.",
+        description="More beats and longer scenes; best for cinematic horror or explainers.",
         clips_per_video=8,
         pro_clip_seconds=6.0,
         length_factor=1.25,
@@ -103,7 +103,7 @@ SCENE_PRESETS: dict[ScenePresetId, ScenePreset] = {
     "punchy": ScenePreset(
         id="punchy",
         label="Punchy scenes",
-        description="Each scene ~3 s — many quick cuts.",
+        description="Each scene ~3 s, many quick cuts.",
         target_clip_seconds=3.0,
         expand_to_n_scenes=True,
     ),
@@ -117,7 +117,7 @@ SCENE_PRESETS: dict[ScenePresetId, ScenePreset] = {
     "cinematic": ScenePreset(
         id="cinematic",
         label="Cinematic scenes",
-        description="Each scene ~7 s — fewer, longer beats.",
+        description="Each scene ~7 s; fewer, longer beats.",
         target_clip_seconds=7.0,
         expand_to_n_scenes=False,
     ),
@@ -160,14 +160,14 @@ RESOLUTION_PRESETS: dict[ResolutionPresetId, ResolutionPreset] = {
     "vertical_720p": ResolutionPreset(
         id="vertical_720p",
         label="Vertical 720×1280",
-        description="Lighter render — useful for slow GPUs.",
+        description="Lighter render, useful for slow GPUs.",
         width=720,
         height=1280,
     ),
     "square_1080": ResolutionPreset(
         id="square_1080",
         label="Square 1080×1080",
-        description="Square 1:1 — Instagram/X feed posts.",
+        description="Square 1:1 for Instagram/X feed posts.",
         width=1080,
         height=1080,
     ),

@@ -163,7 +163,7 @@ class PredictedVram:
 
     def display(self, *, mode: QuantMode) -> str:
         if self.low_gb is None or self.high_gb is None:
-            return "—"
+            return "-"
         if abs(self.high_gb - self.low_gb) < 0.2:
             return f"~ {self.high_gb:.0f} GB ({mode_label(mode)})"
         return f"~ {self.low_gb:.0f}-{self.high_gb:.0f} GB ({mode_label(mode)})"

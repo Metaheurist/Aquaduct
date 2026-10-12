@@ -51,7 +51,7 @@ PLATFORM_PRESETS: tuple[PlatformPreset, ...] = (
     PlatformPreset(
         id="shortform_vertical_720",
         title="Short-form vertical (720p)",
-        platforms="Same as above — lighter file size / faster export",
+        platforms="Same as above (lighter file size, faster export)",
         width=720,
         height=1280,
         fps=30,
@@ -134,7 +134,7 @@ PLATFORM_PRESETS: tuple[PlatformPreset, ...] = (
     ),
     PlatformPreset(
         id="pro_shortform_60fps",
-        title="Pro — vertical 60 fps",
+        title="Pro vertical (60 fps)",
         platforms="Frame-accurate diffusion (one gen frame per video frame) · very GPU/time heavy",
         width=1080,
         height=1920,
@@ -164,13 +164,13 @@ def preset_by_id(preset_id: str) -> PlatformPreset | None:
 # All (width, height) pairs presets use — for populating the resolution dropdown
 # Labels for the resolution dropdown (one row per distinct size used by templates)
 _RESOLUTION_ROWS: tuple[tuple[str, int, int], ...] = (
-    ("Vertical 9:16 — 1080×1920", 1080, 1920),
-    ("Vertical 9:16 — 720×1280", 720, 1280),
-    ("Square 1:1 — 1080×1080", 1080, 1080),
-    ("Portrait 4:5 — 1080×1350", 1080, 1350),
-    ("Tall 2:3 — 1000×1500 (Pinterest)", 1000, 1500),
-    ("Landscape 16:9 — 1920×1080", 1920, 1080),
-    ("Landscape 16:9 — 1280×720", 1280, 720),
+    ("Vertical 9:16, 1080×1920", 1080, 1920),
+    ("Vertical 9:16, 720×1280", 720, 1280),
+    ("Square 1:1, 1080×1080", 1080, 1080),
+    ("Portrait 4:5, 1080×1350", 1080, 1350),
+    ("Tall 2:3, 1000×1500 (Pinterest)", 1000, 1500),
+    ("Landscape 16:9, 1920×1080", 1920, 1080),
+    ("Landscape 16:9, 1280×720", 1280, 720),
 )
 
 

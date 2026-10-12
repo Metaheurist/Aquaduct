@@ -1,5 +1,5 @@
-# Regenerate docs/reference/model_inventory.md — run from repo root:
-#   python scripts/gen_model_inventory_md.py
+# Regenerate docs/reference/model_inventory.md (run from repo root:
+#   python scripts/gen_model_inventory_md.py)
 from __future__ import annotations
 
 import sys
@@ -23,8 +23,8 @@ def run() -> str:
     lines.append("# Model inventory (local + API)\n\n")
     lines.append("Curated **local** models come from `model_options()`; **API** providers from `api_model_catalog.PROVIDERS` and `default_models_for_provider`.\n\n")
     lines.append("**Tiers** (`[Pro]`, `[Standard]`, `[Lite]`) are defined in `src/models/model_tiers.py`.\n\n")
-    lines.append("**Local VRAM** is the **heuristic** label from `vram_requirement_hint()` in `src/models/hardware.py` (quantization, offload, and settings change real needs). **API** rows use the provider’s cloud—**no local GPU** for that step.\n\n")
-    lines.append("---\n\n## Local (Hugging Face) — `Model` tab, execution: Local\n\n")
+    lines.append("**Local VRAM** is the **heuristic** label from `vram_requirement_hint()` in `src/models/hardware.py` (quantization, offload, and settings change real needs). **API** rows use the provider’s cloud, **no local GPU** for that step.\n\n")
+    lines.append("---\n\n## Local (Hugging Face): `Model` tab, execution: Local\n\n")
     lines.append("| Role | `repo_id` | Tier | Size hint (UI) | Speed | Typical GPU / RAM (heuristic) |\n")
     lines.append("|------|-----------|------|----------------|-------|----------------------------------|\n")
     for o in model_options():
@@ -36,12 +36,12 @@ def run() -> str:
             pair_image_repo_id=str(getattr(o, "pair_image_repo_id", "") or ""),
         )
         t = local_tier_for_repo(o.repo_id)
-        sh = (getattr(o, "size_hint", "") or "—").replace("|", "\\|")
+        sh = (getattr(o, "size_hint", "") or "-").replace("|", "\\|")
         lines.append(
             f"| {o.kind} | `{o.repo_id}` | {tier_label(t)} | {sh} | {o.speed} | {vr.replace('|', ' ')} |\n"
         )
 
-    lines.append("\n---\n\n## API — `Model` + `API` tab, execution: API\n\n")
+    lines.append("\n---\n\n## API: `Model` + `API` tab, execution: API\n\n")
     lines.append("One row per **provider + role + default model** from `default_models_for_provider`. Custom model ids and Replicate version strings are also supported in the UI.\n\n")
     lines.append("| Provider | Role | `model` id | Tier | Local GPU for this step | Env keys (first listed) |\n")
     lines.append("|----------|------|------------|------|--------------------------|------------------------|\n")
@@ -59,7 +59,7 @@ def run() -> str:
     lines.append("\n### Notes\n\n")
     lines.append(
         "- **OpenAI `video` role:** `default_models_for_provider` falls back to the provider’s full `model_slugs` "
-        "tuple, so the Video row may list chat/image/TTS ids—use a real Pro text-to-video id from the provider’s docs, "
+        "tuple, so the Video row may list chat/image/TTS ids, use a real Pro text-to-video id from the provider’s docs, "
         "or choose **Kling / Magic Hour / Replicate** for motion.\n"
     )
     lines.append("- **Regenerate:** `python scripts/gen_model_inventory_md.py` from the repo root.\n")

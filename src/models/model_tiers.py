@@ -22,7 +22,7 @@ def tier_label(tier_id: str) -> str:
         return "Standard"
     if s == TIER_LITE:
         return "Lite"
-    return tier_id or "—"
+    return tier_id or "-"
 
 
 def tier_badge(tier_id: str) -> str:

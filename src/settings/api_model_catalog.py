@@ -23,7 +23,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
     # --- Recommended defaults (API mode) — env keys: GEMINI_API_KEY, SILICONFLOW_API_KEY, MAGIC_HOUR_API_KEY, INWORLD_API_KEY ---
     ApiProviderSpec(
         id="google_ai_studio",
-        display_name="Google AI Studio (Gemini) — large context, ~1.5k req/day (free)",
+        display_name="Google AI Studio (Gemini): large context, ~1.5k req/day (free)",
         roles=("llm",),
         env_key_names=("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY"),
         model_slugs=("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"),
@@ -31,7 +31,7 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
     ),
     ApiProviderSpec(
         id="siliconflow",
-        display_name="SiliconFlow (Flux, SD3, …) — daily free credits",
+        display_name="SiliconFlow (Flux, SD3, …): daily free credits",
         roles=("image",),
         env_key_names=("SILICONFLOW_API_KEY", "OPENAI_API_KEY"),
         model_slugs=(
@@ -41,21 +41,21 @@ PROVIDERS: tuple[ApiProviderSpec, ...] = (
     ),
     ApiProviderSpec(
         id="kling",
-        display_name="Kling AI (motion) — ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo",
+        display_name="Kling AI (motion): ~66 credits/day (24h reset), ≈6×5s HQ; alt: Pika ~30 cr/mo",
         roles=("video",),
         env_key_names=("KLING_ACCESS_KEY", "KLING_SECRET_KEY"),
         model_slugs=("kling-v3", "kling-v2-6", "kling-v2-master", "kling-v2-5-turbo"),
     ),
     ApiProviderSpec(
         id="magic_hour",
-        display_name="Magic Hour — generative video API, ~100 credits/day (free)",
+        display_name="Magic Hour: generative video API, ~100 credits/day (free)",
         roles=("video",),
         env_key_names=("MAGIC_HOUR_API_KEY", "MAGICHOUR_API_KEY"),
         model_slugs=("default", "ltx-2", "wan-2.2", "seedance", "kling-3.0", "kling-1.6"),
     ),
     ApiProviderSpec(
         id="inworld",
-        display_name="Inworld — low-latency TTS (free tier)",
+        display_name="Inworld: low-latency TTS (free tier)",
         roles=("voice",),
         env_key_names=("INWORLD_API_KEY", "OPENAI_API_KEY"),
         model_slugs=("inworld-tts-1.5-max", "inworld-tts-1.5-mini"),
