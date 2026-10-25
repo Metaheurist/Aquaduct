@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import os
 from contextlib import contextmanager
 
 from src.util.cuda_capabilities import cuda_device_reported_by_torch
@@ -16,8 +17,11 @@ def cleanup_vram() -> None:
     leave several GB reserved before the next large load (e.g. Wan T2V after LLM/TTS on another card).
     """
     # Multiple GC passes helps release large graphs sooner (CPU RAM + VRAM).
-    gc.collect()
-    gc.collect()
+    # Under pytest this collect runs after Qt widgets have been torn down and can
+    # access-violate on Windows (faulthandler: Garbage-collecting in this function).
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        gc.collect()
+        gc.collect()
     try:
         import torch
 
@@ -56,11 +60,12 @@ def purge_process_memory_aggressive() -> None:
     allocator to the driver. Does **not** unload models that are still referenced (e.g. a
     running pipeline worker holding a pipeline in memory).
     """
-    for _ in range(4):
-        try:
-            gc.collect()
-        except Exception:
-            break
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        for _ in range(4):
+            try:
+                gc.collect()
+            except Exception:
+                break
     try:
         import torch
     except Exception:
