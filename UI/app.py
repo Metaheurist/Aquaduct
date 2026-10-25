@@ -132,6 +132,12 @@ def main() -> None:
         splash.set_progress(22, "Loading main window code…")
         # Import is heavy on cold start (frozen EXE); indeterminate bar while blocked.
         splash.set_indeterminate("Loading modules - this can take a while on first launch…")
+    # Import torch on this thread before the window builds. The Model tab probes GPUs through
+    # torch, and a background import races Windows DLL init with later gc.collect() calls.
+    try:
+        import torch  # noqa: F401
+    except Exception:
+        pass
     from UI.main_window import MainWindow
 
     if splash is not None:
