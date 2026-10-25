@@ -24,6 +24,22 @@ def _stub_no_cpu_torch_gpu_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_check_imports_presence_only_does_not_import(tmp_path, monkeypatch):
+    import sys
+
+    import src.runtime.preflight as pf
+
+    (tmp_path / "aq_heavy_probe_mod.py").write_text("raise RuntimeError('imported')\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(pf, "_IMPORT_PROBE_CACHE", {})
+
+    assert pf._check_imports(["aq_heavy_probe_mod", "aq_not_installed_xyz"], full_import=False) == [
+        "aq_not_installed_xyz"
+    ]
+    assert "aq_heavy_probe_mod" not in sys.modules
+    assert pf._check_imports(["aq_heavy_probe_mod"], full_import=True) == ["aq_heavy_probe_mod"]
+
+
 def test_preflight_invalid_fps(monkeypatch):
     # Pretend ffmpeg exists
     import src.runtime.preflight as pf
@@ -40,7 +56,7 @@ def test_preflight_strict_requires_ffmpeg(monkeypatch):
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: None)  # type: ignore[arg-type]
     # Also don't fail imports in this test
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     r = preflight_check(settings=AppSettings(), strict=True)
     assert not r.ok
     assert any("FFmpeg is not under" in e for e in r.errors)
@@ -50,7 +66,7 @@ def test_preflight_pro_requires_video_model(monkeypatch):
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(video=v, video_model_id="")
     r = preflight_check(settings=s, strict=True)
@@ -63,7 +79,7 @@ def test_preflight_pro_allows_svd_img2vid(monkeypatch):
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(video=v, video_model_id="stabilityai/stable-video-diffusion-img2vid-xt")
     r = preflight_check(settings=s, strict=True)
@@ -75,7 +91,7 @@ def test_preflight_pro_disables_slideshow(monkeypatch):
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     v = VideoSettings(use_image_slideshow=True, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(video=v, video_model_id="cerspense/zeroscope_v2_576w")
     r = preflight_check(settings=s, strict=True)
@@ -87,7 +103,7 @@ def test_preflight_strict_blocks_cpu_torch_when_nvidia_and_cpu_wheel(monkeypatch
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr("src.models.torch_install.pytorch_cpu_wheel_with_nvidia_gpu_present", lambda: True)
     monkeypatch.setattr(
         "src.models.torch_install.cuda_torch_required_message_for_nvidia_host",
@@ -102,7 +118,7 @@ def test_preflight_cpu_torch_block_skipped_with_env_allow(monkeypatch: pytest.Mo
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr("src.models.torch_install.pytorch_cpu_wheel_with_nvidia_gpu_present", lambda: True)
     monkeypatch.setenv("AQUADUCT_ALLOW_CPU_TORCH_WITH_NVIDIA", "1")
     r = preflight_check(
@@ -118,7 +134,7 @@ def test_preflight_local_explicit_matches_default(monkeypatch):
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     r0 = preflight_check(settings=AppSettings(), strict=True)
     r1 = preflight_check(settings=AppSettings(model_execution_mode="local"), strict=True)
     assert r0.ok is r1.ok
@@ -130,7 +146,7 @@ def test_preflight_api_mode_requires_keys(monkeypatch):
     from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig, AppSettings
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     s = AppSettings(
         model_execution_mode="api",
         api_models=ApiModelRuntimeSettings(
@@ -150,7 +166,7 @@ def test_preflight_api_mode_pro_requires_replicate(monkeypatch):
     from src.core.config import ApiModelRuntimeSettings, ApiRoleConfig, AppSettings, VideoSettings
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     v = VideoSettings(use_image_slideshow=False, pro_mode=True, pro_clip_seconds=4.0)
     s = AppSettings(
         model_execution_mode="api",
@@ -173,7 +189,7 @@ def test_preflight_watermark_requires_existing_file(monkeypatch, tmp_path):
     from src.core.config import BrandingSettings
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
 
     branding = BrandingSettings(watermark_enabled=True, watermark_path=str(tmp_path / "nope.png"))
     s = AppSettings(branding=branding)
@@ -186,7 +202,7 @@ def test_preflight_local_missing_hf_snapshot(monkeypatch):
     import src.runtime.preflight as pf
 
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr("src.runtime.preflight.model_has_local_snapshot", lambda *a, **k: False)
     r = preflight_check(settings=AppSettings(), strict=True)
     assert not r.ok
@@ -211,7 +227,7 @@ def test_preflight_host_ram_warning_when_flag_and_low_free(monkeypatch: pytest.M
 
     monkeypatch.setenv("AQUADUCT_HOST_RAM_PREFLIGHT", "1")
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
 
     class _VM:
         total = 16 << 30
@@ -235,7 +251,7 @@ def test_preflight_host_ram_skipped_for_api(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setenv("AQUADUCT_HOST_RAM_PREFLIGHT", "1")
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr(pf, "api_preflight_errors", lambda s: [])
 
     class _VM:
@@ -265,7 +281,7 @@ def test_preflight_heavy_repo_ram_warning(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setenv("AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM", "1")
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr(
         "src.models.model_manager.load_hf_size_cache",
         lambda _path: {"black-forest-labs/flux.1-dev": 7 * (1024**3)},
@@ -294,7 +310,7 @@ def test_preflight_heavy_repo_ram_skipped_when_ram_high(monkeypatch: pytest.Monk
 
     monkeypatch.setenv("AQUADUCT_PREFLIGHT_HEAVY_REPO_RAM", "1")
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr(
         "src.models.model_manager.load_hf_size_cache",
         lambda _path: {"black-forest-labs/flux.1-dev": 7 * (1024**3)},
@@ -323,7 +339,7 @@ def test_preflight_cpu_busy_warning(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("AQUADUCT_CPU_PREFLIGHT", "1")
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
 
     def _cpu(interval=None):  # noqa: ANN001
         return 0.0 if interval is None else 95.0

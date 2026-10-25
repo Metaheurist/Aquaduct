@@ -1,6 +1,29 @@
 from __future__ import annotations
 
+import platform
+
+import pytest
+
+from src.models import hardware
 from src.models.hardware import _format_cpu_display_line
+
+
+def test_cpu_brand_lookup_runs_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[int] = []
+
+    def _fake() -> tuple[str, float]:
+        calls.append(1)
+        return "Fake CPU", 3.0
+
+    hardware._cpu_brand_clock_detect.cache_clear()
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(hardware, "_cpu_brand_clock_windows", _fake)
+    try:
+        assert hardware._cpu_brand_clock() == ("Fake CPU", 3.0)
+        assert hardware._cpu_brand_clock() == ("Fake CPU", 3.0)
+        assert len(calls) == 1
+    finally:
+        hardware._cpu_brand_clock_detect.cache_clear()
 
 
 def test_format_cpu_display_shows_clock_when_known() -> None:

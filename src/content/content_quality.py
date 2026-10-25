@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -13,9 +14,8 @@ from .crawler import NewsItem
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+-]{1,}")
 
 
-def _tokens(s: str) -> set[str]:
-    toks = [t.lower() for t in _TOKEN_RE.findall(s or "")]
-    stop = {
+_STOP_WORDS = frozenset(
+    {
         "a",
         "an",
         "and",
@@ -48,10 +48,16 @@ def _tokens(s: str) -> set[str]:
         "tools",
         "ai",
     }
-    return {t for t in toks if t not in stop and len(t) >= 2}
+)
 
 
-def _jaccard(a: set[str], b: set[str]) -> float:
+@functools.lru_cache(maxsize=16384)
+def _tokens(s: str) -> frozenset[str]:
+    toks = [t.lower() for t in _TOKEN_RE.findall(s or "")]
+    return frozenset(t for t in toks if t not in _STOP_WORDS and len(t) >= 2)
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
     if not a or not b:
         return 0.0
     inter = len(a & b)

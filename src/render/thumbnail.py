@@ -42,8 +42,8 @@ def generate_thumbnail(
         str(out),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except (subprocess.CalledProcessError, OSError):
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return None
     if out.is_file() and out.stat().st_size > 256:
         return out

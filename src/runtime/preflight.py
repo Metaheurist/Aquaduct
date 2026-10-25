@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -130,18 +131,26 @@ def _preflight_spatial_upscale_warnings(settings: AppSettings) -> list[str]:
     return out
 
 
-_IMPORT_PROBE_CACHE: dict[tuple[str, ...], tuple[str, ...]] = {}
+_IMPORT_PROBE_CACHE: dict[tuple[bool | str, ...], tuple[str, ...]] = {}
 
 
-def _check_imports(mods: Iterable[str]) -> list[str]:
-    key = tuple(sorted({str(m) for m in mods}))
+def _check_imports(mods: Iterable[str], *, full_import: bool = True) -> list[str]:
+    """
+    Return the modules that are unavailable. ``full_import=False`` only checks that each module
+    is installed: the UI refreshes readiness on the GUI thread, and importing torch, transformers
+    and diffusers there freezes the window for several seconds.
+    """
+    key = (full_import, *sorted({str(m) for m in mods}))
     cached = _IMPORT_PROBE_CACHE.get(key)
     if cached is not None:
         return list(cached)
     missing: list[str] = []
     for m in mods:
         try:
-            __import__(m)
+            if full_import:
+                __import__(m)
+            elif importlib.util.find_spec(m) is None:
+                missing.append(m)
         except Exception:
             missing.append(m)
     _IMPORT_PROBE_CACHE[key] = tuple(missing)
@@ -309,7 +318,7 @@ def preflight_check(*, settings: AppSettings, strict: bool = True) -> PreflightR
         if not v.use_image_slideshow:
             core_mods.append("imageio")
 
-    missing = _check_imports(core_mods)
+    missing = _check_imports(core_mods, full_import=strict)
     if missing:
         errors.append("Missing Python packages: " + ", ".join(missing))
 

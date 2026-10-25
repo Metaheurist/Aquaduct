@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -70,7 +70,12 @@ def attach_library_tab(win) -> None:
     win.library_search_edit.setPlaceholderText("Search title, folder, hashtags…")
     win.library_search_edit.setClearButtonEnabled(True)
     win.library_search_edit.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed))
-    win.library_search_edit.textChanged.connect(lambda _t: win._library_fill_tables())
+    # Each refill rescans disk and rebuilds every card; wait for typing to pause.
+    win._library_search_debounce = QTimer(win.library_search_edit)
+    win._library_search_debounce.setSingleShot(True)
+    win._library_search_debounce.setInterval(250)
+    win._library_search_debounce.timeout.connect(lambda: win._library_fill_tables())
+    win.library_search_edit.textChanged.connect(lambda _t: win._library_search_debounce.start())
     tool_row.addWidget(win.library_search_edit, 1)
 
     inner_root, _, _, lay = make_tab_root(

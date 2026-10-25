@@ -8,7 +8,11 @@ import sys
 import traceback
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication
+from src.util.torch_dll_preload import preload_torch_dlls
+
+preload_torch_dlls()  # must run before any PyQt6 import
+
+from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from UI.theme import TIKTOK_QSS, build_qss, resolve_palette, set_active_palette
 from src.util.single_instance import single_instance_guard

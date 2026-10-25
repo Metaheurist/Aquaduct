@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import functools
 import os
 import platform
 import re
 import subprocess
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -335,21 +337,34 @@ def _format_cpu_display_line(*, fallback: str, friendly: str | None, clock_ghz: 
     return base
 
 
-def get_hardware_info() -> HardwareInfo:
-    os_name = f"{platform.system()} {platform.release()} ({platform.version()})"
-    raw_cpu = platform.processor() or platform.machine() or "Unknown CPU"
-    friendly: str | None = None
-    clk_ghz: float | None = None
+_CPU_BRAND_LOCK = threading.Lock()
+
+
+def _cpu_brand_clock() -> tuple[str | None, float | None]:
+    """CPU name + nominal clock; cached because the Windows WMI query spawns PowerShell (~1 s)."""
+    with _CPU_BRAND_LOCK:
+        return _cpu_brand_clock_detect()
+
+
+@functools.lru_cache(maxsize=1)
+def _cpu_brand_clock_detect() -> tuple[str | None, float | None]:
     try:
         sysname = platform.system()
         if sysname == "Windows":
-            friendly, clk_ghz = _cpu_brand_clock_windows()
-        elif sysname == "Linux":
-            friendly, clk_ghz = _cpu_brand_clock_linux_proc()
-        elif sysname == "Darwin":
-            friendly, clk_ghz = _cpu_brand_clock_darwin_sysctl()
+            return _cpu_brand_clock_windows()
+        if sysname == "Linux":
+            return _cpu_brand_clock_linux_proc()
+        if sysname == "Darwin":
+            return _cpu_brand_clock_darwin_sysctl()
     except Exception:
-        friendly, clk_ghz = None, None
+        pass
+    return None, None
+
+
+def get_hardware_info() -> HardwareInfo:
+    os_name = f"{platform.system()} {platform.release()} ({platform.version()})"
+    raw_cpu = platform.processor() or platform.machine() or "Unknown CPU"
+    friendly, clk_ghz = _cpu_brand_clock()
     cpu = _format_cpu_display_line(fallback=raw_cpu, friendly=friendly, clock_ghz=clk_ghz)
     ram_gb = _get_ram_gb_windows() if os.name == "nt" else None
     if ram_gb is None:

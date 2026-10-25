@@ -208,7 +208,8 @@ def attach_tasks_tab(win) -> None:
     adv_act.addWidget(win.tasks_youtube_btn)
 
     if hasattr(win, "_sync_tasks_upload_buttons"):
-        win._sync_tasks_upload_buttons()
+        # Collecting from the UI here would build the remaining deferred tabs mid-attach.
+        win._sync_tasks_upload_buttons(getattr(win, "settings", None))
 
     win.tasks_remove_btn = QPushButton("Remove")
     win.tasks_remove_btn.setObjectName("danger")

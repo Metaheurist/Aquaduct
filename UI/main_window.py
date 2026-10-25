@@ -134,6 +134,22 @@ _TASKS_ACTIVE_JOB_TOKEN = "__active_job__"
 _TASKS_QUEUED_PIPELINE_TOKEN = "__queued_pipeline__"
 
 # Pipeline tab builds synchronously so the window can show quickly; the rest attach after first paint.
+def _warm_cpu_brand_cache() -> None:
+    try:
+        from src.models.hardware import _cpu_brand_clock
+
+        _cpu_brand_clock()
+    except Exception:
+        pass
+
+
+def _warm_torch_import() -> None:
+    try:
+        import torch  # noqa: F401
+    except Exception:
+        pass
+
+
 _DEFERRED_TAB_ATTACHERS: tuple[tuple[str, Callable], ...] = (
     ("topics", attach_topics_tab),
     ("characters", attach_characters_tab),
@@ -375,6 +391,10 @@ class MainWindow(QMainWindow):
         #   System:          My PC
         # Group adjacency improves discoverability; visibility per media mode is handled by tab text.
         # Pipeline first (default tab); remaining tabs attach after the window is shown.
+        # The Model and My PC tabs read the CPU name via a slow WMI query and probe GPUs through
+        # torch (~2 s cold import); warm both off-thread so the tab build only waits on what is left.
+        threading.Thread(target=_warm_cpu_brand_cache, name="cpu-brand-warm", daemon=True).start()
+        threading.Thread(target=_warm_torch_import, name="torch-warm", daemon=True).start()
         attach_run_tab(self)
         self._deferred_tab_queue: list[tuple[str, Callable]] = list(_DEFERRED_TAB_ATTACHERS)
         self._tabs_init_finished = False

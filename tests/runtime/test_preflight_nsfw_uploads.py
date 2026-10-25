@@ -27,7 +27,7 @@ def test_preflight_nsfw_rejects_tiktok_auto_upload(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(pf, "is_api_mode", lambda _s: False)
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr(pf, "local_hf_model_snapshot_errors", lambda _settings: [])
     s = AppSettings(
         video_format="nsfw",
@@ -44,7 +44,7 @@ def test_preflight_nsfw_skips_upload_and_safety_warnings_when_session_guardrail_
 
     monkeypatch.setattr(pf, "is_api_mode", lambda _s: False)
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr(pf, "local_hf_model_snapshot_errors", lambda _settings: [])
     monkeypatch.setenv("AQUADUCT_DEV_DISABLE_CONTENT_GUARDRAILS", "1")
     s = AppSettings(
@@ -64,7 +64,7 @@ def test_preflight_nsfw_warns_on_allow_nsfw_effective(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(pf, "is_api_mode", lambda _s: False)
     monkeypatch.setattr(pf, "find_ffmpeg", lambda p: p)  # type: ignore[arg-type]
-    monkeypatch.setattr(pf, "_check_imports", lambda mods: [])
+    monkeypatch.setattr(pf, "_check_imports", lambda mods, **_k: [])
     monkeypatch.setattr(pf, "local_hf_model_snapshot_errors", lambda _settings: [])
     s = AppSettings(video_format="nsfw", video=VideoSettings())
     r = preflight_check(settings=s, strict=True)
