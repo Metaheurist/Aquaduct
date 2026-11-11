@@ -2,7 +2,7 @@
 pytest>=8.0.0
 pytest-qt>=4.4.0
 pytest-mock>=3.17.0
-pytest-timeout>=2.3.0
+pytest-timeout>=2.4.0
 
 # PyInstaller: also in requirements-build.txt for the dedicated build venv (.venv-build).
 # Install pyinstaller here too if you use one venv for both dev and local one-off packaging.
