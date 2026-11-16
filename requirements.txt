@@ -11,7 +11,7 @@ python-dotenv>=1.2.4
 
 # Local LLM + image generation (install torch first: scripts/install_pytorch.py)
 transformers>=5.20.2
-accelerate>=0.34.0
+accelerate>=1.15.0
 bitsandbytes>=0.43.0
 diffusers>=0.32.0
 safetensors>=0.4.0
