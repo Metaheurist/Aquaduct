@@ -24,7 +24,10 @@ tiktoken>=0.7.0
 protobuf>=4.25.0,<6
 
 # Media
-moviepy>=2.2.1,<3
+# Stay on MoviePy 1.x: src/render/editor.py still uses the v1 API
+# (moviepy.editor, set_duration/set_audio/subclip/resize). Do not bump to 2.x
+# until that module is migrated.
+moviepy>=1.0.3,<2
 Pillow>=10.4.0
 numpy>=2.0.0
 

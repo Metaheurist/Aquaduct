@@ -223,7 +223,7 @@ def build_shorts_title_description(
     add_shorts_hashtag: bool,
 ) -> tuple[str, str]:
     """Reuse meta.json + hashtags.txt; optionally ensure #Shorts for discovery."""
-            from src.platform.tiktok_post import build_caption_package
+    from src.platform.tiktok_post import build_caption_package
 
     title, cap = build_caption_package(video_dir)
     if add_shorts_hashtag:
