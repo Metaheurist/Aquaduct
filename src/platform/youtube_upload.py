@@ -22,6 +22,13 @@ YOUTUBE_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos"
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 
 
+def _require_https(url: str) -> str:
+    """Reject non-HTTPS URLs before ``urlopen`` (Bandit B310 / SSRF hygiene)."""
+    if urllib.parse.urlsplit(str(url or "")).scheme.lower() != "https":
+        raise ValueError(f"Refusing non-HTTPS Google/YouTube URL: {str(url)[:120]!r}")
+    return url
+
+
 def default_youtube_redirect_uri(port: int) -> str:
     return f"http://127.0.0.1:{port}/callback/"
 
@@ -51,13 +58,13 @@ def build_authorization_url(
 def _form_post(url: str, data: dict[str, str], timeout_s: int = 60) -> dict[str, Any]:
     body = urllib.parse.urlencode(data).encode("utf-8")
     req = urllib.request.Request(
-        url,
+        _require_https(url),
         data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosec B310 - https enforced above
             raw = resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         raw = e.read().decode("utf-8", errors="replace")
@@ -166,7 +173,7 @@ def upload_mp4_resumable(
     qs = urllib.parse.urlencode({"uploadType": "resumable", "part": "snippet,status"})
     url = f"{YOUTUBE_UPLOAD}?{qs}"
     req = urllib.request.Request(
-        url,
+        _require_https(url),
         data=body_json,
         headers={
             "Authorization": f"Bearer {access_token}",
@@ -178,7 +185,7 @@ def upload_mp4_resumable(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:  # nosec B310 - https enforced above
             loc = resp.headers.get("Location") or resp.headers.get("location")
             status = int(resp.status)
     except urllib.error.HTTPError as e:
@@ -189,7 +196,7 @@ def upload_mp4_resumable(
         raise ValueError("YouTube resumable init did not return a Location header")
 
     put_req = urllib.request.Request(
-        str(loc).strip(),
+        _require_https(str(loc).strip()),
         data=raw,
         headers={
             "Authorization": f"Bearer {access_token}",
@@ -199,7 +206,7 @@ def upload_mp4_resumable(
         method="PUT",
     )
     try:
-        with urllib.request.urlopen(put_req, timeout=600) as resp2:
+        with urllib.request.urlopen(put_req, timeout=600) as resp2:  # nosec B310 - https enforced above
             out_raw = resp2.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="replace")
