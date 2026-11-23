@@ -29,7 +29,7 @@ protobuf>=4.25.0,<6
 # until that module is migrated.
 moviepy>=1.0.3,<2
 Pillow>=10.4.0
-numpy>=2.0.0
+numpy>=2.2.6
 
 # Audio IO
 soundfile>=0.12.0
