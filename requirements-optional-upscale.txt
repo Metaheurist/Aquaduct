@@ -7,4 +7,4 @@
 # basicsr pulls training utilities; pinned loosely for inference-only use.
 basicsr>=1.4.2
 realesrgan>=0.3.0
-opencv-python-headless>=4.8.0
+opencv-python-headless>=5.1.0.95
